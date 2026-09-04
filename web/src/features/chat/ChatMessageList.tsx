@@ -77,7 +77,6 @@ function ChatMessageRow({
 }: ChatMessageRowProps) {
   const { state, deleteChatMessage, reactToChatMessage } = useRoom();
   const [reactOpen, setReactOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
   // a CSS-only bar (group-hover) would close as soon as the mouse left the
   // row to reach the popover/dropdown — those portal outside the row's DOM
   // tree, so ":hover" on the row stops applying partway there. Hover
@@ -88,6 +87,9 @@ function ChatMessageRow({
   // against state.me.userId, not state.me.id, or "is this my message?"
   // breaks after reconnecting/reloading (connection id changes, userId doesn't).
   const isMine = message.id === state.me.userId;
+  // author deletes their own message; admin deletes anyone's — same split
+  // the server enforces in handleChatDelete (modules/chat.ts).
+  const canDelete = isMine || isMod;
   // own messages never "highlight for being mentioned" — mentioning
   // yourself isn't a notification.
   const mentionsMe = !isMine && mentionsUser(message.text, mentionLookup, state.me.userId);
@@ -101,7 +103,7 @@ function ChatMessageRow({
     <div
       id={`chat-msg-${message.msgId}`}
       onMouseEnter={() => setIsRowActive(true)}
-      onMouseLeave={() => { if (!reactOpen && !moreOpen) setIsRowActive(false); }}
+      onMouseLeave={() => { if (!reactOpen) setIsRowActive(false); }}
       className={cn(
         'group/msg relative flex gap-3 rounded-md border-l-2 border-transparent px-3 transition-colors',
         showHeader ? 'mt-3' : '',
@@ -216,6 +218,18 @@ function ChatMessageRow({
             </div>
           </PopoverContent>
         </Popover>
+        {canDelete && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Apagar"
+            className="text-text-muted hover:bg-red/12 hover:text-red"
+            onClick={() => deleteChatMessage(message.msgId)}
+          >
+            <Trash2 size={14} />
+          </Button>
+        )}
         <Button type="button" variant="ghost" size="icon-xs" aria-label="Responder" onClick={onReply}>
           <Reply size={14} />
         </Button>
@@ -223,19 +237,6 @@ function ChatMessageRow({
           <Button type="button" variant="ghost" size="icon-xs" aria-label="Editar" onClick={onStartEdit}>
             <Pencil size={14} />
           </Button>
-        )}
-        {isMod && (
-          <DropdownMenu onOpenChange={(open) => { setMoreOpen(open); if (!open) setIsRowActive(false); }}>
-            <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Mais opcoes" />}>
-              <MoreHorizontal size={14} />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem variant="destructive" onClick={() => deleteChatMessage(message.msgId)}>
-                <Trash2 size={14} />
-                <span>Apagar</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         )}
       </div>
 
@@ -271,7 +272,7 @@ function ChatMessageRow({
                 <span>Editar</span>
               </DropdownMenuItem>
             )}
-            {isMod && (
+            {canDelete && (
               <DropdownMenuItem variant="destructive" onClick={() => deleteChatMessage(message.msgId)}>
                 <Trash2 size={14} />
                 <span>Apagar</span>
