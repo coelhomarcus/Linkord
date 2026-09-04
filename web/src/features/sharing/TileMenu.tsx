@@ -6,6 +6,7 @@ import type { AnchorRect } from '../../state/RoomContext';
 import { useParticipantMedia } from './useLiveKitTrack';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Slider } from '@/components/ui/slider';
+import { saveCallVolume } from '../settings/useCallVolumePreference';
 
 /** LocalTrack e RemoteTrack (as unicas subclasses concretas de Track) tem
  * esse metodo, mas a classe base abstrata nao declara — daria pra importar
@@ -68,6 +69,10 @@ export function TileMenu() {
   const kind = menuTarget?.kind ?? null;
   const isMe = participantId !== null && participantId === state.me.id;
   const audioKey = kind === 'screen' ? `${participantId}:screen` : participantId;
+  // chave estavel pra persistir o volume (userId, nao participantId — ver
+  // useCallVolumePreference.ts).
+  const targetUserId = participantId !== null ? (state.participants.get(participantId)?.userId ?? null) : null;
+  const volumeStorageKey = kind === 'screen' ? `${targetUserId}:screen` : targetUserId;
 
   // a track que entra nas estatisticas de bitrate abaixo — a mesma que o
   // Tile deste kind especifico esta mostrando.
@@ -145,6 +150,7 @@ export function TileMenu() {
     setSliderValue(v);
     const audio = audioRegistry.current.get(audioKey!)?.element;
     if (audio) audio.volume = v / 100;
+    if (targetUserId) saveCallVolume(volumeStorageKey!, v / 100);
   }
 
   return (

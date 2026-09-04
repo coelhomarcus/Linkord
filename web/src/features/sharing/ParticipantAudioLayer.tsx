@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useRoom } from '../../state/RoomContext';
 import { useParticipantMedia, useAttachTrack } from './useLiveKitTrack';
+import { loadCallVolume } from '../settings/useCallVolumePreference';
 
 /** Dono dos elementos <audio> (mic + audio de tela) de UM participante
  * remoto — vive fora dos Tiles visuais de proposito: o tile "de si mesma"
@@ -13,7 +14,8 @@ import { useParticipantMedia, useAttachTrack } from './useLiveKitTrack';
  * real (100%, setado explicitamente mais abaixo) e completamente separado
  * disso — mudo por autoplay bloqueado nao e a mesma coisa que volume baixo. */
 function ParticipantAudio({ participantId }: { participantId: string }) {
-  const { audioRegistry, audioUnlocked, deafened } = useRoom();
+  const { state, audioRegistry, audioUnlocked, deafened } = useRoom();
+  const userId = state.participants.get(participantId)?.userId ?? null;
   const media = useParticipantMedia(participantId);
   const micRef = useRef<HTMLAudioElement | null>(null);
   const screenRef = useRef<HTMLAudioElement | null>(null);
@@ -32,17 +34,25 @@ function ParticipantAudio({ participantId }: { participantId: string }) {
     const screenKey = `${participantId}:screen`;
     const micEl = micRef.current;
     const screenEl = screenRef.current;
-    // volume real fica no default do navegador (1.0/100%) — setado aqui de
-    // proposito explicito, nao implicito, ja que "audio no minimo" foi
-    // exatamente a confusao que gerou esse bug (era o bloqueio de autoplay
-    // sendo lido como volume, o volume real nunca esteve baixo).
-    if (micEl) { micEl.volume = 1; audioRegistry.current.set(participantId, { element: micEl }); }
-    if (screenEl) { screenEl.volume = 1; audioRegistry.current.set(screenKey, { element: screenEl }); }
+    // volume real vem da preferencia salva por userId (default 100% se nunca
+    // ajustado) — setado aqui de proposito explicito, nao implicito, ja que
+    // "audio no minimo" foi exatamente a confusao que gerou um bug anterior
+    // (era o bloqueio de autoplay sendo lido como volume, o volume real nunca
+    // esteve baixo). userId (nao participantId) porque e o que sobrevive a
+    // reconexoes/abas — ver useCallVolumePreference.ts.
+    if (micEl) {
+      micEl.volume = userId ? loadCallVolume(userId) : 1;
+      audioRegistry.current.set(participantId, { element: micEl });
+    }
+    if (screenEl) {
+      screenEl.volume = userId ? loadCallVolume(`${userId}:screen`) : 1;
+      audioRegistry.current.set(screenKey, { element: screenEl });
+    }
     return () => {
       audioRegistry.current.delete(participantId);
       audioRegistry.current.delete(screenKey);
     };
-  }, [participantId, audioRegistry]);
+  }, [participantId, userId, audioRegistry]);
 
   return (
     <>
