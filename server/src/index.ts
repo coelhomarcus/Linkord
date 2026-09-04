@@ -7,11 +7,10 @@ import { sweepExpiredSessions } from './modules/auth/session.js';
 import { ensureSeeded, ensureVoiceChannelExists } from './modules/channels.js';
 import { ensureUploadDir, sweepStaleUploads } from './modules/attachments.js';
 
-// rede de seguranca por tras do try/catch de cada handler em realtime/socket.ts
-// — cobre qualquer erro assincrono que escape do ciclo normal de mensagens
-// (ex.: um timer, uma promise solta) e que de outro jeito derrubaria o
-// processo inteiro (Node mata o processo em unhandledRejection/
-// uncaughtException por padrao), desconectando toda a sala.
+// backstop behind the try/catch in each handler in realtime/socket.ts —
+// covers any async error escaping the normal message cycle (a timer, a
+// stray promise) that would otherwise kill the process (Node exits on
+// unhandledRejection/uncaughtException by default), disconnecting the room.
 process.on('unhandledRejection', (err) => {
   console.error('[process] unhandledRejection:', err instanceof Error ? err.stack : err);
 });
@@ -20,10 +19,10 @@ process.on('uncaughtException', (err) => {
 });
 
 async function bootstrap(): Promise<void> {
-  // Nem o CMD do Docker nem o ExecStart do systemd passam por npm script —
-  // sem migrar aqui, ninguem aplica migration nenhuma em producao. Falha
-  // alto e sai: subir com o schema desatualizado e pior que nao subir (o
-  // systemd com Restart=always vai ficar tentando de novo, visivel nos logs).
+  // neither the Docker CMD nor systemd ExecStart go through an npm script —
+  // without migrating here, nobody applies migrations in production. Fail
+  // loud and exit: booting with a stale schema is worse than not booting
+  // (systemd's Restart=always will keep retrying, visibly in the logs).
   if (config.MIGRATE_ON_BOOT) {
     try {
       await runMigrations();
@@ -34,9 +33,9 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  // categoria+canal padrao ("Geral"/"geral") na primeira vez que o banco
-  // esta vazio — cobre instalacao nova e upgrade de quem tinha o chat
-  // unico antigo (em memoria, ja removido).
+  // default category+channel ("General"/"general") the first time the DB
+  // is empty — covers both a fresh install and upgrading from the old
+  // single in-memory chat.
   try {
     await ensureSeeded();
     await ensureVoiceChannelExists();
@@ -45,10 +44,10 @@ async function bootstrap(): Promise<void> {
     process.exit(1);
   }
 
-  // pasta dos anexos (config.UPLOAD_DIR, normalmente um bind mount) — cria
-  // se vier vazia, senao o primeiro upload falharia com ENOENT. Aproveita
-  // pra limpar sessoes de upload em pedacos abandonadas (aba fechada/crash
-  // antes do server cair da ultima vez).
+  // attachments folder (config.UPLOAD_DIR, usually a bind mount) — create
+  // it if empty, otherwise the first upload would fail with ENOENT. Also
+  // cleans up abandoned chunked-upload sessions (tab closed/browser crash
+  // before the server's last shutdown).
   try {
     await ensureUploadDir();
     await sweepStaleUploads();
@@ -58,10 +57,10 @@ async function bootstrap(): Promise<void> {
   }
 
   const fastify = createApp();
-  // fastify.server (http.Server por baixo) ja existe assim que Fastify() e
-  // chamado, antes de listen() — o Socket.IO se anexa nele do mesmo jeito
-  // que se anexaria num http.Server puro, sem precisar de nenhuma mudanca
-  // em realtime/socket.ts.
+  // fastify.server (the underlying http.Server) already exists once
+  // Fastify() is called, before listen() — Socket.IO attaches to it the
+  // same way it would to a plain http.Server, no change needed in
+  // realtime/socket.ts.
   const io = createWsServer(fastify.server);
 
   await fastify.listen({ port: config.PORT, host: config.HOST_BIND });
@@ -71,15 +70,15 @@ async function bootstrap(): Promise<void> {
     console.warn('Aviso: LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET nao configurados — compartilhar tela/camera vai falhar.');
   }
 
-  // limpeza periodica de sessoes vencidas — nao precisa ser a cada request,
-  // so pra nao deixar a tabela crescer pra sempre.
+  // periodic cleanup of expired sessions — doesn't need to run per
+  // request, just enough to keep the table from growing forever.
   const sessionSweepTimer = setInterval(() => {
     sweepExpiredSessions().catch((err) => console.error('[auth] falha ao limpar sessoes vencidas:', err instanceof Error ? err.stack : err));
   }, 60 * 60 * 1000);
   sessionSweepTimer.unref();
 
-  // mesma cadencia — TTL de sessao de upload e 24h (config.UPLOAD_SESSION_TTL_MS),
-  // checar a cada hora sobra pra nao deixar chunk orfao acumulando disco.
+  // same cadence — upload session TTL is 24h (config.UPLOAD_SESSION_TTL_MS),
+  // checking hourly is enough to avoid orphaned chunks piling up on disk.
   const uploadSweepTimer = setInterval(() => {
     sweepStaleUploads().catch((err) => console.error('[attachments] falha ao limpar uploads abandonados:', err instanceof Error ? err.stack : err));
   }, 60 * 60 * 1000);

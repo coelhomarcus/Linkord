@@ -20,21 +20,21 @@ import { useParticipantMedia, useIsSpeaking } from '../features/sharing/useLiveK
 import { Avatar, colorFor } from '../shared/Avatar';
 import type { Category, Channel } from '../types/protocol';
 
-/** Uma linha de participante conectado na chamada — decide sozinha se
- * aparece (so quem ativou o mic), mesmo padrao que ParticipantAudioLayer ja
- * usa pra decidir quem monta um <audio>. Aparece pra QUALQUER UM conectado,
- * nao so quando eu mesma estou na chamada — igual o Discord mostra quem
- * esta num canal de voz mesmo antes de voce entrar nele. Anel colorido
- * (mesma cor da borda de "falando" dos tiles, ver Tile.tsx) quando fala. */
+/** A connected call participant's row — decides on its own whether to show
+ * (mic activated only), same pattern ParticipantAudioLayer already uses to
+ * decide who gets an <audio>. Shows for ANYONE connected, not just when
+ * I'm in the call myself — like Discord shows who's in a voice channel
+ * even before you join it. Colored ring (same "speaking" border color as
+ * tiles, see Tile.tsx) while speaking. */
 function CallParticipantRow({ id, name, avatar }: { id: string; name: string; avatar: string }) {
   const { state, deafened } = useRoom();
   const media = useParticipantMedia(id);
   const isSpeaking = useIsSpeaking(id);
   if (!media.micActivated) return null;
   const tint = colorFor(id);
-  // ensurdecido nao tem track no LiveKit (ver protocol.ts) — pra mim mesma
-  // e o estado local (instantaneo); pros outros vem do Participant que o
-  // servidor ja repassa (participant-updated).
+  // deafened has no LiveKit track (see protocol.ts) — for myself it's
+  // local state (instant); for others it comes from the Participant the
+  // server relays (participant-updated).
   const isDeafened = id === state.me.id ? deafened : (state.participants.get(id)?.deafened ?? false);
 
   return (
@@ -45,8 +45,8 @@ function CallParticipantRow({ id, name, avatar }: { id: string; name: string; av
       <span className="min-w-0 flex-1 truncate text-body text-text-secondary">{name}</span>
       {!!media.cameraTrack && <Video size={15} className="flex-none text-green" />}
       {!!media.screenTrack && <ScreenShare size={15} className="flex-none text-blurple" />}
-      {/* ensurdecido ja implica mudo — mostrar os dois icones juntos seria
-          redundante, igual o Discord so mostra o de ensurdecido nesse caso. */}
+      {/* deafened already implies muted — showing both icons would be
+          redundant, same as Discord only showing the deafened one. */}
       {isDeafened ? (
         <HeadphoneOff size={15} className="flex-none text-red" />
       ) : (
@@ -271,14 +271,14 @@ interface ChannelTreeProps {
   onSelectChannel: (channel: Channel) => void;
 }
 
-/** Categorias/canais (texto E o unico canal de voz, a Chamada), com
- * drag-and-drop de verdade (admin) — reordenar categorias, reordenar canais
- * dentro de uma, e mover um canal pra OUTRA categoria arrastando (a Chamada
- * inclusive, ela e um canal como qualquer outro pro dnd-kit). `localCategories`
- * e um espelho otimista: o onDragOver ja "arrasta visualmente" um canal pra
- * outra categoria antes do servidor confirmar, e onDragEnd manda o pedido
- * final — a proxima `channels-tree` do servidor (fonte de verdade) sincroniza
- * de volta assim que chegar. */
+/** Categories/channels (text and voice), with real drag-and-drop (admin) —
+ * reordering categories, reordering channels within one, and dragging a
+ * channel into ANOTHER category (voice channels included, just another
+ * channel to dnd-kit). `localCategories` is an optimistic mirror: onDragOver
+ * already "visually drags" a channel into another category before the
+ * server confirms, and onDragEnd sends the final request — the next
+ * `channels-tree` from the server (source of truth) syncs back once it
+ * arrives. */
 export function ChannelTree({ activeChannelId, onSelectChannel }: ChannelTreeProps) {
   const { state, categories, reorderCategories, reorderChannels, channelsError, clearChannelsError } = useRoom();
   const isAdmin = state.me.role === 'admin';
@@ -302,14 +302,14 @@ export function ChannelTree({ activeChannelId, onSelectChannel }: ChannelTreePro
   function handleDragOver(event: DragOverEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    if (active.data.current?.type !== 'channel') return; // categoria so reordena no dragEnd
+    if (active.data.current?.type !== 'channel') return; // a category only reorders on dragEnd
 
     setLocalCategories((prev) => {
       const fromCat = findCategoryOf(String(active.id), prev);
       if (!fromCat) return prev;
       const overType = over.data.current?.type;
       const toCatId = overType === 'channel' ? findCategoryOf(String(over.id), prev)?.id : String(over.id);
-      if (!toCatId || fromCat.id === toCatId) return prev; // mesma categoria: dragEnd cuida via arrayMove
+      if (!toCatId || fromCat.id === toCatId) return prev; // same category: dragEnd handles it via arrayMove
 
       const channel = fromCat.channels.find((ch) => ch.id === active.id);
       if (!channel) return prev;
@@ -342,9 +342,9 @@ export function ChannelTree({ activeChannelId, onSelectChannel }: ChannelTreePro
       return;
     }
 
-    // canal: onDragOver ja moveu localCategories pra outra categoria se
-    // cruzou uma fronteira — so falta fixar a ordem final dentro de onde ele
-    // pousou (reordenar a lista dessa categoria).
+    // channel: onDragOver already moved localCategories to another category
+    // if it crossed a boundary — just needs the final order fixed within
+    // wherever it landed (reorder that category's list).
     const targetCat = findCategoryOf(String(active.id), localCategories);
     if (!targetCat) { setLocalCategories(categories); return; }
     const oldIndex = targetCat.channels.findIndex((ch) => ch.id === active.id);
@@ -377,9 +377,9 @@ export function ChannelTree({ activeChannelId, onSelectChannel }: ChannelTreePro
   );
 }
 
-/** Criar canal — pedido pelo menu de contexto (botao direito) da sidebar,
- * nao mais um "+" inline: precisa escolher a categoria tambem, entao um
- * modal com Select cabe melhor do que um campinho de texto sozinho. */
+/** Create a channel — requested from the sidebar's context menu
+ * (right-click), no longer an inline "+": also needs picking a category,
+ * so a modal with a Select fits better than a lone text field. */
 export function NewChannelDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { categories, createChannel } = useRoom();
   const [name, setName] = useState('');

@@ -1,9 +1,6 @@
-// ---------------------------------------------------------------------------
-// Limitador de tentativas em memoria (janela deslizante) — usado pro login,
-// pra dificultar forca bruta de senha. Nao precisa sobreviver a um restart
-// nem ser compartilhado entre instancias, igual todo outro estado do
-// servidor (participants, boardObjects).
-// ---------------------------------------------------------------------------
+// In-memory attempt limiter (sliding window) — used for login, to make
+// password brute-forcing harder. Doesn't need to survive a restart or be
+// shared across instances, like the rest of the server's state (participants).
 
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILURES = 10;
@@ -21,7 +18,7 @@ function prune(key: string): number[] {
   return kept;
 }
 
-/** null se liberado, ou o numero de segundos ate poder tentar de novo. */
+/** null if allowed, otherwise the number of seconds until the next try. */
 export function checkBlocked(key: string): number | null {
   const kept = prune(key);
   if (kept.length < MAX_FAILURES) return null;

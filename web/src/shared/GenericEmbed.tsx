@@ -15,11 +15,12 @@ function isHexColor(color: string | null | undefined): color is string {
   return !!color && /^#[0-9a-f]{3,8}$/i.test(color);
 }
 
-// site conhecido sem depender do scraping — cobre o card inteiro (nome,
-// favicon, cor de destaque) quando o link e YouTube/Twitch, cujo player a
-// gente ja sabe montar so com o ID extraido da URL (chatEmbeds.ts). Assim,
-// se a busca de Open Graph falhar (rede instavel, site fora do ar por um
-// instante), o video/stream ainda toca — so a descricao real que some.
+// known site without depending on scraping — covers the whole card (name,
+// favicon, accent color) when the link is YouTube/Twitch, whose player we
+// already know how to build from just the ID extracted from the URL
+// (chatEmbeds.ts). So if the Open Graph fetch fails (flaky network, site
+// briefly down), the video/stream still plays — only the real description
+// is missing.
 const KNOWN_SITE: Partial<Record<DetectedEmbed['kind'], { name: string; favicon: string; accent: string }>> = {
   youtube: { name: 'YouTube', favicon: 'https://www.youtube.com/favicon.ico', accent: '#ff0000' },
   'twitch-channel': { name: 'Twitch', favicon: 'https://www.twitch.tv/favicon.ico', accent: '#9146ff' },
@@ -37,7 +38,7 @@ function TwitchPlayer({ embed }: { embed: DetectedEmbed }) {
         ? 'VOD da Twitch'
         : 'Clip da Twitch';
     return (
-      // botao cru de proposito: area clicavel inteira, nao um botao de icone
+      // plain button on purpose: the whole area is clickable, not an icon button
       <button
         type="button"
         onClick={() => setLoaded(true)}
@@ -64,17 +65,17 @@ function TwitchPlayer({ embed }: { embed: DetectedEmbed }) {
 }
 
 /**
- * Card de embed de link, no estilo do embed de link do Discord: barra
- * colorida a esquerda, favicon + nome do site, titulo em destaque,
- * descricao truncada e o player/imagem embaixo. Cobre TRES situacoes com o
- * mesmo visual:
- *  - link generico sem formato conhecido (kind:'link', ver chatEmbeds.ts) —
- *    tudo vem do Open Graph buscado no servidor (server/linkPreview.js);
- *  - YouTube/Twitch — o player entra no lugar da imagem, mas o
- *    titulo/descricao/favicon ainda vem do Open Graph da propria pagina
- *    (YouTube e Twitch tambem publicam essas tags);
- *  - qualquer link cujo Open Graph aponte um og:video tocavel (ex.: um post
- *    com um mp4 hospedado por fora) — mesma logica do link generico.
+ * Link embed card, styled like Discord's link embed: colored bar on the
+ * left, favicon + site name, highlighted title, truncated description, and
+ * the player/image below. Covers THREE cases with the same look:
+ *  - a generic link with no known format (kind:'link', see chatEmbeds.ts)
+ *    — everything comes from Open Graph fetched on the server
+ *    (server/linkPreview.ts);
+ *  - YouTube/Twitch — the player takes the image's place, but title/
+ *    description/favicon still come from that page's own Open Graph
+ *    (YouTube and Twitch also publish those tags);
+ *  - any link whose Open Graph points at a playable og:video (e.g. a post
+ *    with an externally hosted mp4) — same logic as the generic link.
  */
 export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
   const { url } = embed;
@@ -105,10 +106,11 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
     );
   }
 
-  // scraping nao trouxe nada aproveitavel (bloqueado, fora do ar, site sem
-  // meta tags) — cai pro card minimo so com o link, MENOS quando ja sabemos
-  // montar o player so com o ID da URL (YouTube/Twitch): nesse caso o video
-  // ainda toca, so a descricao real que fica de fora (ver KNOWN_SITE).
+  // scraping didn't turn up anything usable (blocked, down, site with no
+  // meta tags) — falls back to the minimal link-only card, EXCEPT when we
+  // already know how to build the player from just the URL's ID (YouTube/
+  // Twitch): in that case the video still plays, only the real description
+  // is missing (see KNOWN_SITE).
   if (!data.title && !data.description && !data.image && !hasKnownPlayer) {
     return (
       <a

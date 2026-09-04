@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
-import fsStreams from 'node:fs'; // so pra createReadStream/createWriteStream (montagem dos chunks), ver assembleChunks
+import fsStreams from 'node:fs'; // only for createReadStream/createWriteStream (chunk assembly), see assembleChunks
 import path from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { eq, and, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
@@ -13,35 +13,22 @@ import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from './auth/session.js';
 import { channelExists } from './channels.js';
 
-// ---------------------------------------------------------------------------
-// Anexos no chat (imagem ou qualquer outro arquivo) — no maximo UM por
-// mensagem. O arquivo em si vive em disco (config.UPLOAD_DIR, bind mount
-// configurado por fora, ver .env.example), nomeado so pelo uuid gerado aqui
-// (sem extensao — o tipo real fica na coluna mime_type, nunca confiamos no
-// nome pra decidir como servir de volta). So a linha (metadado) mora no
-// Postgres. Cota global calculada AO VIVO (soma/conta a tabela inteira) em
-// vez de um contador separado — sem isso, nao ha risco de "dessincronizar"
-// do que existe de verdade em disco.
-//
-// So uma lista curta de mime de imagem e servida inline; qualquer outro tipo
-// vira download forcado (application/octet-stream + Content-Disposition:
-// attachment) — evita que um .svg/.html com script embutido rode no nosso
-// dominio se alguem abrir o link direto (ver serveUpload).
-// ---------------------------------------------------------------------------
-
-// imagem, video e audio: nenhum desses executa script embutido no navegador
-// (diferente de svg/html), servir inline e seguro. Qualquer OUTRO tipo
-// (pdf, zip, doc...) continua forcando download (ver serveUpload abaixo).
+// Chat attachments: max one per message, stored on disk keyed by a uuid (no
+// extension — real mime type lives in the mime_type column, never trust the
+// name). Quota is computed live from the table, not a cached counter, so it
+// can't drift from what's actually on disk. Only a known list of image/
+// video/audio mimes is served inline; everything else forces a download
+// (prevents an uploaded .svg/.html from executing script on our own origin
+// — see serveUpload).
 const INLINE_MIME_TYPES = new Set([
   'image/png', 'image/jpeg', 'image/gif', 'image/webp',
   'video/mp4', 'video/webm', 'video/ogg',
   'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4',
 ]);
-const ID_RE = /^[0-9a-f]{32}$/; // crypto.randomUUID() sem hifens (ver newId)
+const ID_RE = /^[0-9a-f]{32}$/; // crypto.randomUUID() without dashes, see newId
 const AVATAR_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
-// so reconhece o formato que NOS geramos (ver newId) — uma URL externa
-// (https://...) ou qualquer outra coisa simplesmente nao casa, e tratada
-// como "nao e upload nosso" em vez de erro.
+// only matches our own upload format (see newId) — an external URL just
+// doesn't match, treated as "not ours," not an error.
 const AVATAR_URL_RE = /^\/uploads\/([0-9a-f]{32})$/;
 
 function newId(): string {
@@ -56,16 +43,11 @@ export async function ensureUploadDir(): Promise<void> {
   await fs.mkdir(config.UPLOAD_DIR, { recursive: true });
 }
 
-// ---------------------------------------------------------------------------
-// Upload de anexo de chat em pedacos (chunks) — necessario pro teto de 2GB
-// (config.MAX_ATTACHMENT_BYTES): um POST unico desse tamanho nem passa de
-// proxy nenhum na frente (Cloudflare/nginx barram corpo grande) nem seria
-// seguro pro processo Node segurar inteiro em memoria de uma vez. Estado da
-// sessao de upload vive so em disco (sem tabela no Postgres) — deploy e
-// single-instance (ver docker-compose.yml/deploy/install.sh), entao nao ha
-// motivo pra compartilhar isso entre processos. `uploadId` (mesmo formato de
-// newId()) vira DIRETO o id final do anexo, sem passo de rename.
-// ---------------------------------------------------------------------------
+// Chunked upload for MAX_ATTACHMENT_BYTES (2GB): a single POST that size
+// wouldn't survive most proxies or be safe to buffer in memory. Upload
+// session state lives on disk only (no DB table) — deployment is single-
+// instance, so there's no need to share it across processes. `uploadId`
+// becomes the final attachment id directly, no rename step.
 
 interface UploadManifest {
   uploadId: string;
@@ -89,14 +71,11 @@ function manifestPathFor(uploadId: string): string {
 }
 
 function chunkPathFor(uploadId: string, index: number): string {
-  // zero-padded a 6 digitos: sobra de longe pro totalChunks de qualquer
-  // arquivo real (8MB/chunk, ate arquivo gigante ainda fica na casa dos
-  // milhares), e mantem a ordenacao alfabetica == ordenacao numerica.
+  // zero-padded so alphabetical sort matches numeric sort
   return path.join(tmpDirFor(uploadId), String(index).padStart(6, '0'));
 }
 
-/** Le o manifest de uma sessao de upload — null se nao existe ou esta
- * corrompido (sessao desconhecida pro chamador, trata como 404). */
+/** null if missing or corrupt — caller treats that as 404. */
 async function readManifest(uploadId: string): Promise<UploadManifest | null> {
   try {
     return JSON.parse(await fs.readFile(manifestPathFor(uploadId), 'utf8'));
@@ -105,17 +84,15 @@ async function readManifest(uploadId: string): Promise<UploadManifest | null> {
   }
 }
 
-/** Tamanho esperado de UM chunk especifico — todos tem chunkSize, exceto o
- * ultimo, que e o resto (totalSize nem sempre e multiplo exato de chunkSize). */
+/** All chunks are chunkSize except the last, which is the remainder. */
 export function expectedChunkLength(manifest: UploadManifest, index: number): number {
   return index === manifest.totalChunks - 1
     ? manifest.totalSize - manifest.chunkSize * (manifest.totalChunks - 1)
     : manifest.chunkSize;
 }
 
-/** Concatena os chunks (em ordem) no arquivo final via STREAM — nunca
- * Buffer.concat do arquivo inteiro, que e exatamente o que se quer evitar
- * num anexo de ate 2GB (memoria do processo). */
+/** Streams chunks in order into the final file — never Buffer.concat, which
+ * is exactly what a 2GB upload needs to avoid. */
 async function assembleChunks(uploadId: string, manifest: UploadManifest, destPath: string): Promise<void> {
   const writeStream = fsStreams.createWriteStream(destPath);
   try {
@@ -137,9 +114,8 @@ async function assembleChunks(uploadId: string, manifest: UploadManifest, destPa
   }
 }
 
-/** Varredura de sessoes de upload abandonadas (aba fechada, crash do
- * navegador — nunca chamou complete nem cancelar) — chamada no boot e a cada
- * hora (ver src/index.ts), mesmo padrao do sweepExpiredSessions de login. */
+/** Cleans up abandoned upload sessions (tab closed / browser crash before
+ * complete or cancel) — called at boot and hourly. */
 export async function sweepStaleUploads(): Promise<void> {
   const tmpRoot = path.join(config.UPLOAD_DIR, 'tmp');
   let ids: string[];
@@ -156,8 +132,8 @@ export async function sweepStaleUploads(): Promise<void> {
       const manifest: UploadManifest = JSON.parse(await fs.readFile(path.join(dir, 'manifest.json'), 'utf8'));
       createdAtMs = new Date(manifest.createdAt).getTime();
     } catch {
-      // manifest ausente/corrompido (ex.: crash bem no meio do init) — usa a
-      // data de criacao da PASTA como fallback, pra ainda conseguir varrer.
+      // manifest missing/corrupt — fall back to the folder's creation time
+      // so it can still be swept.
       try {
         createdAtMs = (await fs.stat(dir)).birthtimeMs;
       } catch {
@@ -176,11 +152,9 @@ export interface UsageInfo {
   maxBytes: number;
 }
 
-/** Uso atual da cota — sempre a verdade (soma/conta a tabela inteira, sem
- * contador que possa dessincronizar). Uma sala pequena nunca vai ter linhas
- * o bastante pra isso pesar. So conta anexo de CHAT (messageId preenchido) —
- * foto de perfil (messageId nulo, ver schema.ts) fica de fora da cota de
- * 30GB de proposito. */
+/** Always computed live (sum/count the table) — never drifts from disk.
+ * Only counts chat attachments (messageId set); avatars are excluded from
+ * the 30GB quota on purpose. */
 export async function getUsage(): Promise<UsageInfo> {
   const [row] = await db
     .select({ totalBytes: sql<number>`coalesce(sum(${attachmentsTable.size}), 0)`, totalFiles: sql<number>`count(*)` })
@@ -193,8 +167,7 @@ async function broadcastUsage(): Promise<void> {
   broadcast({ t: 'storage-usage', ...(await getUsage()) });
 }
 
-/** Anexos de varias mensagens de uma vez (historico do canal) — uma query so,
- * evita N+1. Devolve um Map messageId -> linha crua de attachments. */
+/** One query for all messages' attachments (avoids N+1). */
 export async function getByMessageIds(messageIds: number[]): Promise<Map<number, Attachment>> {
   const map = new Map<number, Attachment>();
   if (!messageIds.length) return map;
@@ -203,21 +176,18 @@ export async function getByMessageIds(messageIds: number[]): Promise<Map<number,
   return map;
 }
 
-/** Apaga o ARQUIVO de disco do anexo de uma mensagem (se houver) — chamado
- * ANTES do DELETE da mensagem em modules/chat.ts. A linha de attachments
- * some sozinha via CASCADE quando a mensagem e apagada logo em seguida;
- * aqui so cuida do que o Postgres nao sabe (o arquivo). */
+/** Deletes the on-disk file only — the DB row disappears via CASCADE when
+ * the message is deleted right after (see modules/chat.ts). Postgres
+ * doesn't know about the file, so that part has to happen separately. */
 export async function deleteForMessage(messageId: number): Promise<void> {
   const [row] = await db.select().from(attachmentsTable).where(eq(attachmentsTable.messageId, messageId)).limit(1);
   if (!row) return;
   await fs.unlink(filePathFor(row.id)).catch((err: NodeJS.ErrnoException) => { if (err.code !== 'ENOENT') throw err; });
 }
 
-/** Mesma ideia, em lote — apagar um CANAL faz CASCADE em messages (e dali em
- * attachments) direto no Postgres, sem passar por deleteForMessage/
- * handleChatDelete. Sem isso, apagar um canal com imagens deixaria os
- * arquivos orfaos no disco pra sempre. Chamado por modules/channels.ts ANTES
- * do delete do canal. */
+/** Same idea in bulk — deleting a channel CASCADEs messages/attachments in
+ * Postgres without going through deleteForMessage, so this exists purely to
+ * avoid orphaned files. Called by modules/channels.ts before the delete. */
 export async function deleteForChannel(channelId: string): Promise<void> {
   const rows = await db
     .select({ id: attachmentsTable.id })
@@ -227,22 +197,17 @@ export async function deleteForChannel(channelId: string): Promise<void> {
   await Promise.all(rows.map((row) => fs.unlink(filePathFor(row.id)).catch((err: NodeJS.ErrnoException) => { if (err.code !== 'ENOENT') throw err; })));
 }
 
-/** Apaga a foto de perfil ANTIGA de disco (e sua linha) quando a conta troca
- * pra uma nova — chamado por realtime/participants.ts#handleProfile. Sem
- * isso, cada troca de foto deixaria a anterior orfa no disco pra sempre (uma
- * conta so tem UMA foto de cada vez, nunca precisa manter historico).
- * `avatarValue` pode ser uma URL externa ou vazio — nesse caso nao e nosso
- * upload, `AVATAR_URL_RE` so casa o formato `/uploads/<id>` que NOS geramos,
- * e a funcao simplesmente nao faz nada. `isNull(messageId)` na query e uma
- * segunda trava (alem do regex): mesmo que alguem manipule o valor mandado
- * pro servidor, so deixa apagar uma linha que e mesmo de foto de perfil,
- * nunca um anexo de chat de verdade. */
+/** Deletes the OLD avatar file+row when an account switches to a new one
+ * (see realtime/participants.ts#handleProfile) — otherwise old avatars pile
+ * up orphaned forever. No-ops for an external URL or empty value.
+ * `isNull(messageId)` is a second guard so a manipulated value could never
+ * delete a real chat attachment. */
 export async function deleteAvatarFile(avatarValue: unknown): Promise<void> {
   const match = AVATAR_URL_RE.exec(String(avatarValue == null ? '' : avatarValue));
   if (!match) return;
   const id = match[1]!;
   const deleted = await db.delete(attachmentsTable).where(and(eq(attachmentsTable.id, id), isNull(attachmentsTable.messageId))).returning({ id: attachmentsTable.id });
-  if (!deleted.length) return; // nao era uma linha de foto de perfil — nao mexe no arquivo
+  if (!deleted.length) return; // wasn't actually an avatar row — leave the file alone
   await fs.unlink(filePathFor(id)).catch((err: NodeJS.ErrnoException) => { if (err.code !== 'ENOENT') throw err; });
 }
 
@@ -251,27 +216,21 @@ export function sanitizeFileName(raw: unknown): string {
   return s || 'arquivo';
 }
 
-/** Content-Disposition seguro pra nome com acentuacao/espacos/aspas — ASCII
- * simplificado como fallback (`filename=`) + UTF-8 de verdade via
- * `filename*=` (RFC 5987), que navegadores modernos preferem. */
+/** ASCII fallback (`filename=`) plus a real UTF-8 filename* (RFC 5987),
+ * which modern browsers prefer — handles accents/spaces/quotes safely. */
 export function contentDispositionFor(kind: 'inline' | 'attachment', fileName: string): string {
   const asciiFallback = fileName.replace(/[^\x20-\x7E]/g, '_').replace(/"/g, "'");
   return `${kind}; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
 }
 
-// Guarda em memoria pra serializar chamadas concorrentes de complete() do
-// MESMO uploadId — sem isso, duas requisicoes (retry duplicado do cliente,
-// aba duplicada) poderiam tentar montar/gravar o mesmo arquivo final ao
-// mesmo tempo. So precisa durar a vida do processo (reset num restart e
-// correto: nenhum complete estava de fato em andamento na hora do restart).
+// serializes concurrent complete() calls for the SAME uploadId — without
+// this, a duplicate client retry could try to assemble/write the same final
+// file twice. Process-lifetime only (correctly resets on restart).
 const completingUploads = new Set<string>();
 
-/** Passo 1/3 do upload em pedacos — declara o arquivo (nome, tamanho, canal)
- * antes de mandar qualquer byte, pra falhar cedo (canal inexistente, cota
- * cheia, tamanho acima do teto) sem o cliente ja ter subido nada. Devolve o
- * uploadId (que tambem sera o id final do anexo) e o chunkSize que o
- * servidor decidiu (config.UPLOAD_CHUNK_BYTES) — o cliente nunca hardcoda
- * esse valor. */
+/** Step 1/3 — declares the file before any bytes are sent, so an invalid
+ * channel/quota/size fails fast. Server decides chunkSize; the client never
+ * hardcodes it. */
 async function handleAttachmentInit(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
@@ -307,9 +266,8 @@ async function handleAttachmentInit(request: FastifyRequest, reply: FastifyReply
   sendJson(reply, 201, { uploadId, chunkSize, totalChunks });
 }
 
-/** Passo 2/3 — recebe UM pedaco do arquivo (no maximo config.UPLOAD_CHUNK_BYTES,
- * so o ultimo pode ser menor). Gravacao e idempotente (overwrite) — o cliente
- * pode reenviar o mesmo indice sem problema (retry de conexao instavel). */
+/** Step 2/3 — one chunk (up to UPLOAD_CHUNK_BYTES, last one may be
+ * smaller). Idempotent: re-sending the same index is a safe retry. */
 export async function handleAttachmentChunk(request: FastifyRequest<{ Params: { id: string; index: string } }>, reply: FastifyReply): Promise<void> {
   const uploadId = request.params.id;
   const index = Number(request.params.index);
@@ -323,10 +281,9 @@ export async function handleAttachmentChunk(request: FastifyRequest<{ Params: { 
     return sendError(reply, 400, 'invalid_index', 'Indice de pedaco invalido.');
   }
 
-  // corpo cru (Buffer) — o parser de conteudo pra essas rotas e trocado em
-  // registerAttachmentRoutes abaixo; o teto de tamanho vem do bodyLimit da
-  // rota (config.UPLOAD_CHUNK_BYTES), esse length exato ainda precisa ser
-  // conferido aqui (o ULTIMO pedaco e sempre menor que o teto).
+  // raw Buffer body — content-type parser for this route is swapped in
+  // registerAttachmentRoutes below; bodyLimit caps it, but the exact length
+  // still needs checking here (the last chunk is always smaller).
   const expected = expectedChunkLength(manifest, index);
   const buffer = request.body as Buffer;
   if (buffer.length !== expected) return sendError(reply, 400, 'chunk_size_mismatch', 'Tamanho do pedaco nao bate com o esperado.');
@@ -335,10 +292,9 @@ export async function handleAttachmentChunk(request: FastifyRequest<{ Params: { 
   sendJson(reply, 200, { received: index });
 }
 
-/** Passo 3/3 — confirma que todos os pedacos chegaram, monta o arquivo final
- * via stream (nunca inteiro em memoria) e so entao cria a mensagem/anexo no
- * banco. Os chunks so somem do disco DEPOIS do commit da transacao (exigencia
- * de sempre limpar o que nao e mais preciso assim que o arquivo monta). */
+/** Step 3/3 — confirms all chunks arrived, streams them into the final file
+ * (never fully in memory), then creates the message/attachment row. Chunks
+ * are only deleted from disk AFTER the transaction commits. */
 export async function handleAttachmentComplete(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> {
   const uploadId = request.params.id;
   const cookies = parseCookies(request.headers.cookie || '');
@@ -387,16 +343,15 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
       row = inserted.attachmentRow;
       message = inserted.messageRow;
     } catch (err) {
-      // mantem os CHUNKS de proposito (nao apaga tmpDirFor aqui) — o cliente
-      // pode chamar complete() de novo sem precisar re-subir o arquivo
-      // inteiro. So o arquivo final (parcial/invalido) e descartado.
+      // keep the CHUNKS on purpose — client can retry complete() without
+      // re-uploading everything; only the (partial/invalid) final file is
+      // discarded.
       await fs.unlink(destPath).catch(() => {});
       throw err;
     }
 
-    // so apaga os chunks DEPOIS do commit ter dado certo (exigencia: sempre
-    // que o arquivo monta, os chunks somem). Falha ao apagar so loga —
-    // sweepStaleUploads() limpa o que sobrar mais tarde.
+    // only deleted after a successful commit; a failed delete here just
+    // logs — sweepStaleUploads cleans it up later.
     await fs.rm(tmpDirFor(uploadId), { recursive: true, force: true })
       .catch((err) => console.error('[attachments] falha ao apagar chunks apos montagem:', err instanceof Error ? err.stack : err));
 
@@ -418,9 +373,8 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
   }
 }
 
-/** Cancela uma sessao de upload em andamento (chamado pelo cliente quando um
- * envio falha de forma irrecuperavel) — apaga os chunks na hora, sem esperar
- * a varredura. Idempotente: chamar de novo numa sessao ja apagada e sucesso. */
+/** Cancels an in-progress upload session — deletes chunks immediately
+ * instead of waiting for the sweep. Idempotent. */
 export async function handleAttachmentCancel(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> {
   const uploadId = request.params.id;
   const cookies = parseCookies(request.headers.cookie || '');
@@ -434,15 +388,12 @@ export async function handleAttachmentCancel(request: FastifyRequest<{ Params: {
   sendJson(reply, 200, { ok: true });
 }
 
-/** Upload de foto de perfil — mesma pasta/rota de servir (`/uploads/<id>`)
- * dos anexos de chat, so que a linha nasce com `messageId: null` (marca
- * "isso e foto de perfil", ver schema.ts e getUsage) e sem passar pela cota
- * de 30GB (uma unica foto por conta, teto proprio bem menor,
- * config.MAX_AVATAR_BYTES). O cliente manda so os bytes crus da imagem
- * (Content-Type = mime real) e recebe `{ avatar: '/uploads/<id>' }` de
- * volta — quem realmente APLICA isso como avatar da conta e o fluxo
- * existente (`profile` por WebSocket, ver realtime/participants.ts), que
- * tambem cuida de apagar a foto antiga (deleteAvatarFile acima). */
+/** Avatar upload — same storage/serving route as chat attachments
+ * (`/uploads/<id>`), but the row is born with `messageId: null` (marks it
+ * as an avatar, see schema.ts/getUsage) and skips the 30GB quota. Client
+ * sends raw image bytes; applying the result as the account's avatar
+ * happens in the existing `profile` websocket flow (realtime/participants.ts),
+ * which also cleans up the old file (see deleteAvatarFile above). */
 async function handleAvatarUpload(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
@@ -493,8 +444,8 @@ export async function serveUpload(request: FastifyRequest<{ Params: { id: string
     .header('Content-Disposition', contentDispositionFor(inline ? 'inline' : 'attachment', row.fileName))
     .header('Content-Length', data.length)
     .header('X-Content-Type-Options', 'nosniff')
-    // privado (nao 'public'): gated por sessao, um cache compartilhado nao
-    // deveria guardar isso pra servir a outra pessoa sem checar de novo.
+    // private, not public: gated by session — a shared cache shouldn't
+    // serve this to someone else without re-checking.
     .header('Cache-Control', 'private, max-age=31536000, immutable')
     .send(data);
 }
@@ -505,9 +456,9 @@ export function registerAttachmentRoutes(fastify: FastifyInstance): void {
   fastify.delete('/api/attachments/:id', handleAttachmentCancel);
   fastify.get('/uploads/:id', serveUpload);
 
-  // corpo cru (Buffer), nao JSON — plugin proprio (encapsulado) so pra essas
-  // duas rotas: trocar addContentTypeParser na instancia raiz quebraria o
-  // parse de JSON de toda rota /api/* do resto do app.
+  // raw Buffer body, not JSON — scoped plugin for just these 2 routes:
+  // swapping addContentTypeParser on the root instance would break JSON
+  // parsing for every other /api/* route.
   fastify.register(async (scoped) => {
     scoped.addContentTypeParser('*', { parseAs: 'buffer' }, (_req, payload, done) => done(null, payload));
     scoped.post('/api/attachments/:id/chunk/:index', { bodyLimit: config.UPLOAD_CHUNK_BYTES }, handleAttachmentChunk);

@@ -28,19 +28,19 @@ interface LeftSidebarProps {
   onOpenSettings: () => void;
 }
 
-/** Centro do app, estilo Discord: canais agrupados por categoria (a Chamada
- * e um canal de voz como qualquer outro na arvore, com quem esta conectado
- * indentado embaixo dela — ver ChannelTree), e area do usuario fixa no
- * rodape. */
+/** App's center, Discord-style: channels grouped by category (a voice
+ * channel is just another channel in the tree, with connected people
+ * indented under it — see ChannelTree), and a fixed user area at the
+ * bottom. */
 export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings }: LeftSidebarProps) {
   const { state, livekitRoom, toggleMicMuted, deafened, toggleDeafened, leaveVoiceChannel, joinVoiceChannel, openChannel, activeChannelId } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
   const mics = useMediaDevices(livekitRoom, 'audioinput');
 
-  // selecionar um canal de texto tambem troca pra tela de Chat, caso ainda
-  // nao esteja nela; selecionar um canal de voz entra nele de fato (conecta
-  // a Room desse canal especifico, sai de outro se eu estiver em algum) e
-  // troca pra tela de call.
+  // selecting a text channel also switches to the Chat screen if not
+  // already there; selecting a voice channel actually joins it (connects
+  // to that specific channel's Room, leaving another if already in one)
+  // and switches to the call screen.
   function handleSelectChannel(channel: Channel) {
     if (channel.type === 'voice') {
       joinVoiceChannel(channel.id);
@@ -58,44 +58,23 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings }
         <span className="text-title font-bold tracking-tight text-text-primary">Linkord</span>
       </div>
 
-      {/* data-sidebar-channels: marca a area onde o botao direito abre as
-          opcoes de admin (nova categoria/canal) no GlobalContextMenu — so
-          essa area, nao o rodape (avatar/mic/ajustes) logo abaixo. */}
+      {/* data-sidebar-channels: marks the area where right-click opens the
+          admin options (new category/channel) in GlobalContextMenu — only
+          this area, not the footer (avatar/mic/settings) below. */}
       <div data-sidebar-channels className="min-h-0 flex-1 overflow-y-auto px-2">
         <div className="flex flex-col gap-0.5">
-          {/* sem rotulo "Comunicação" aqui de proposito — as categorias que
-              o proprio admin cria (ChannelTree, Chamada inclusa) ja rotulam
-              esse grupo, um segundo label por cima delas seria peso morto. */}
           <ChannelTree activeChannelId={activeView === 'chat' ? activeChannelId : null} onSelectChannel={handleSelectChannel} />
         </div>
       </div>
 
-      {/* rodape unico e persistente, estilo Discord: usuario + controles de
-          chamada sempre no mesmo lugar (nao troca de bloco ao entrar/sair
-          da call — so os botoes de mic/fone ficam inertes fora dela).
-          Cartao flutuante (nao mais uma barra encostada com border-t): fundo
-          e borda proprios, com respiro (mx/mb) mostrando o bg-bg-sidebar por
-          tras — pedido explicito de estilo "flutuante" igual a referencia.
-          rounded-xl (nao -lg): bate com a pilula do composer do chat, mesma
-          familia de cartao flutuante — pedido explicito de harmonia entre
-          os dois. */}
       <div className="mx-2 mb-2 flex flex-none items-center gap-2 rounded-xl border border-strong bg-bg-tertiary px-2 py-2">
-        {/* so a foto — sem nome do lado, pra ocupar menos espaco horizontal
-            (o nome ja aparece no topo do rodape de Ajustes e em toda
-            mensagem que a pessoa manda; aqui repetir so apertava os
-            controles ao lado, ver o "c.." truncado que isso causava). */}
         <Avatar id={state.me.id ?? 'me'} name={state.me.name} avatar={state.me.avatar} size={36} />
 
-        {/* mic + seta: a seta agora troca de MICROFONE (dispositivo de
-            entrada real do pc), nao mais esconde "sair da chamada" — esse
-            ganhou botao proprio, sempre visivel, logo depois. Desabilitado
-            fora da chamada, nao ha mic nenhum pra mutar antes de entrar
-            (evita publicar o mic sem passar pelo clique em "Chamada"), mas
-            a troca de dispositivo em si funciona mesmo fora dela. */}
-        {/* ml-auto no primeiro controle: sem o nome (flex-1) empurrando os
-            botoes pra ponta, esse grupo (mic+seta ate ajustes) fica colado
-            no avatar por padrao — ml-auto aqui sozinho basta pra empurrar
-            ELE e tudo que vem depois pro fim da linha, igual ficava antes. */}
+        {/* mic + arrow: the arrow switches MICROPHONE (the PC's actual
+            input device); disabled outside a call since there's no mic to
+            mute before joining (avoids publishing the mic without going
+            through joining a voice channel first) — device switching
+            itself still works outside a call. */}
         <div className={cn('ml-auto flex items-center rounded-md', myMedia.micMuted && inCall && 'bg-red/12')}>
           <Tooltip>
             <TooltipTrigger
@@ -169,9 +148,6 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings }
           <TooltipContent side="top">{deafened ? 'Voltar a ouvir' : 'Parar de ouvir'}</TooltipContent>
         </Tooltip>
 
-        {/* sair da chamada: botao proprio e sempre visivel quando ha
-            chamada pra sair — antes ficava escondido dentro do dropdown do
-            mic, dificil de achar. */}
         {inCall && (
           <Tooltip>
             <TooltipTrigger

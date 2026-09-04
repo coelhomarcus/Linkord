@@ -9,33 +9,20 @@ import { sendJson, sendError } from '../../http/respond.js';
 import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
 
-// ---------------------------------------------------------------------------
-// GET /api/link-preview?url=<url> — busca title/description/image/video via
-// tags Open Graph (e fallbacks <title>/<meta name="description">) de um link
-// generico colado no chat, pro card de embed (web/src/shared/GenericEmbed.tsx)
-// nao depender do navegador de quem esta lendo (CORS bloquearia um fetch
-// direto do cliente pra qualquer site de terceiro).
-//
-// Isso significa que O SERVIDOR baixa uma URL escolhida por quem manda
-// mensagem no chat — risco classico de SSRF (alguem cola um link apontando
-// pra rede interna tentando ler algo que so o proprio servidor enxerga). A
-// defesa fica em fetchSafe/safeLookup: o IP e validado NO MOMENTO DE CADA
-// CONEXAO (nao so um DNS lookup antecipado, que um dominio com DNS rebinding
-// — resolve pra um IP publico na validacao e um privado na hora de conectar
-// de verdade — contornaria), redirects sao seguidos manualmente (cada hop
-// revalidado do zero, teto de 3) e a leitura do corpo tem teto de bytes e de
-// tempo.
-// ---------------------------------------------------------------------------
+// GET /api/link-preview?url=<url> — server-side fetch (avoids CORS) for a
+// generic link's Open Graph tags. This means the server fetches a URL
+// chosen by whoever sends the chat message — classic SSRF risk. Defense:
+// the IP is validated at CONNECTION time (see fetchSafe/safeLookup), not
+// just an upfront DNS lookup (which DNS rebinding would bypass); redirects
+// are followed manually with revalidation on each hop (capped at 3); the
+// body read has byte and time caps.
 
 const FETCH_TIMEOUT_MS = 5000;
-// rede de seguranca pra pagina malformada sem `</head>` (ver abaixo) — o
-// corte de verdade e semantico, nao um teto de bytes: algumas paginas (o
-// YouTube e a pior, ~700KB de HTML ANTES da primeira meta tag OG) tem um
-// <head> legitimamente enorme, e um teto pequeno cortava a busca bem antes
-// de chegar nas tags que a gente queria.
+// safety net for a malformed page with no `</head>` — the real cutoff is
+// semantic; YouTube's head alone can be ~700KB before the first OG tag.
 const MAX_BODY_BYTES = 1.5 * 1024 * 1024;
 const MAX_REDIRECTS = 3;
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6h — mesmo link, mesmo preview pra todo mundo
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6h — same link, same preview for everyone
 const CACHE_MAX_ENTRIES = 500;
 const USER_AGENT = 'Mozilla/5.0 (compatible; LinkordBot/1.0; +link preview)';
 const HEAD_CLOSE_RE = /<\/head/i;
@@ -66,7 +53,7 @@ function cacheGet(url: string): LinkPreviewResult | undefined {
 }
 
 function cacheSet(url: string, value: LinkPreviewResult): void {
-  // Map preserva ordem de insercao — o primeiro a entrar e o mais velho.
+  // Map preserves insertion order — the first one in is the oldest.
   if (cache.size >= CACHE_MAX_ENTRIES) {
     const oldestKey = cache.keys().next().value;
     if (oldestKey !== undefined) cache.delete(oldestKey);
@@ -74,15 +61,11 @@ function cacheSet(url: string, value: LinkPreviewResult): void {
   cache.set(url, { value, expiresAtMs: Date.now() + CACHE_TTL_MS });
 }
 
-// ---------------------------------------------------------------------------
-// Rate limit POR USUARIO — so conta contra o limite quando de fato precisa
-// SAIR pra internet buscar uma URL nova (cache HIT nao entra aqui, ver
-// fetchLinkPreviewData: colar um link ja visto por outra pessoa continua
-// livre). Sem isso, colar varios links diferentes rapido bastava pra fazer
-// o servidor abrir dezenas de conexoes de saida por segundo. Janela fixa
-// simples (nao token bucket) — o volume aqui e baixo o bastante (uma sala)
-// pra precisao extra nao valer a complexidade.
-// ---------------------------------------------------------------------------
+// per-user rate limit — only counts when we actually need to fetch a NEW
+// url (a cache hit is free, see fetchLinkPreviewData). Without this,
+// pasting several different links fast could open dozens of outbound
+// connections per second. Fixed window, not a token bucket — traffic here
+// is low enough that the extra precision isn't worth the complexity.
 export const RATE_LIMIT_MAX = 20;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const rateLimitState = new Map<string, { count: number; windowStartMs: number }>(); // userId -> { count, windowStartMs }
@@ -98,9 +81,9 @@ export function isRateLimited(userId: string): boolean {
   return entry.count > RATE_LIMIT_MAX;
 }
 
-/** true = endereco privado/reservado, nunca deve ser conectado a partir do
- * servidor (RFC1918, loopback, link-local, CGNAT, faixas de teste/multicast
- * em IPv4; loopback/link-local/ULA em IPv6, incluindo IPv4 mapeado). */
+/** True = private/reserved address, never safe to connect to from the
+ * server (RFC1918, loopback, link-local, CGNAT, IPv4 test/multicast
+ * ranges; loopback/link-local/ULA in IPv6, including IPv4-mapped). */
 export function isBlockedIp(address: string, family: number): boolean {
   if (family === 6) {
     const a = address.toLowerCase();
@@ -118,22 +101,21 @@ export function isBlockedIp(address: string, family: number): boolean {
   if (a === 172 && b >= 16 && b <= 31) return true;
   if (a === 192 && b === 168) return true;
   if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
-  // as faixas de teste/benchmark abaixo sao TODAS /24 (so um terceiro octeto
-  // especifico) — o resto do /16 em cada uma e espaco publico de verdade
-  // (ex.: 192.0.66.0/24 e da NASA). Checar so a/b, sem o c, bloqueava um
-  // /16 inteiro por engano.
+  // these test/benchmark ranges are all /24s (one specific 3rd octet) — the
+  // rest of the /16 is real public space (e.g. 192.0.66.0/24 is NASA's).
+  // Checking only a/b without c would block a whole /16 by mistake.
   if (a === 192 && b === 0 && c === 0) return true; // 192.0.0.0/24 (IETF Protocol Assignments)
   if (a === 192 && b === 0 && c === 2) return true; // 192.0.2.0/24 (TEST-NET-1)
-  if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15 (benchmark) — esse sim e o /15 inteiro
+  if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15 (benchmark) — this one really is the whole /15
   if (a === 198 && b === 51 && c === 100) return true; // 198.51.100.0/24 (TEST-NET-2)
   if (a === 203 && b === 0 && c === 113) return true; // 203.0.113.0/24 (TEST-NET-3)
-  if (a >= 224) return true; // multicast + reservado
+  if (a >= 224) return true; // multicast + reserved
   return false;
 }
 
-/** `lookup` customizado passado pro http/https.request — chamado pelo Node
- * a CADA tentativa de conexao (inclusive apos redirect), entao valida o IP
- * de verdade sendo usado, nao so um DNS antecipado. */
+/** Custom `lookup` passed to http/https.request — called by Node on EVERY
+ * connection attempt (including after a redirect), so it validates the
+ * actual IP being used, not just an upfront DNS lookup. */
 function safeLookup(
   hostname: string,
   options: LookupOptions,
@@ -192,9 +174,9 @@ function fetchSafe(targetUrl: string, redirectsLeft: number): Promise<{ html: st
         if (settled) return;
         bytes += Buffer.byteLength(chunk);
         body += chunk;
-        // para assim que o </head> fecha (todas as meta tags OG vivem ali
-        // dentro, nunca no <body>) ou, se a pagina nao tiver um head normal,
-        // no teto de bytes como rede de seguranca.
+        // stop once </head> closes (all OG meta tags live there, never in
+        // <body>), or at the byte cap as a safety net for a page with no
+        // normal head.
         if (HEAD_CLOSE_RE.test(body) || bytes >= MAX_BODY_BYTES) {
           settled = true;
           res.destroy();
@@ -213,9 +195,9 @@ function fetchSafe(targetUrl: string, redirectsLeft: number): Promise<{ html: st
 
 const HTML_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
 
-/** As paginas escrevem o conteudo das meta tags como HTML (ex.: og:title com
- * apostrofo vira "&#39;" ou "&apos;") — sem decodificar aqui, o card mostra
- * a entidade crua em vez do caractere de verdade. */
+/** Pages write meta tag content as HTML (e.g. an apostrophe becomes
+ * "&#39;") — without decoding, the card would show the raw entity instead
+ * of the actual character. */
 export function decodeHtmlEntities(text: string): string {
   return text.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (whole, code: string) => {
     if (code[0] === '#') {
@@ -236,7 +218,7 @@ export function extractMetaTags(html: string): Record<string, string> {
     const contentM = /content\s*=\s*["']([^"']*)["']/i.exec(tag);
     if (propM && contentM) {
       const key = propM[1]!.toLowerCase();
-      if (!(key in metas)) metas[key] = decodeHtmlEntities(contentM[1]!); // primeira ocorrencia vence
+      if (!(key in metas)) metas[key] = decodeHtmlEntities(contentM[1]!); // first occurrence wins
     }
   }
   return metas;
@@ -262,7 +244,7 @@ export function safeResolve(raw: string | null | undefined, base: string): strin
 
 export function emptyResult(rawUrl: string): LinkPreviewResult {
   let hostname = rawUrl;
-  try { hostname = new URL(rawUrl).hostname.replace(/^www\./, ''); } catch { /* mantem a url crua */ }
+  try { hostname = new URL(rawUrl).hostname.replace(/^www\./, ''); } catch { /* keep the raw url */ }
   return { url: rawUrl, title: null, description: null, image: null, video: null, favicon: null, siteName: hostname, themeColor: null };
 }
 
@@ -290,9 +272,9 @@ async function fetchLinkPreviewData(rawUrl: string, userId: string): Promise<Lin
 
     result = { url: rawUrl, title, description, image, video, favicon, siteName, themeColor };
   } catch {
-    // scraping falhou (bloqueado, timeout, site fora do ar, SSRF barrado) —
-    // ainda assim devolve algo renderizavel: um card minimo so com o
-    // dominio, igual o Discord faz quando nao consegue ler metadata.
+    // scraping failed (blocked, timeout, site down, SSRF blocked) — still
+    // return something renderable: a minimal card with just the domain,
+    // like Discord does when it can't read metadata.
     result = emptyResult(rawUrl);
   }
 

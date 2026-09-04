@@ -12,10 +12,9 @@ import * as ratelimit from './ratelimit.js';
 import { db } from '../../db/client.js';
 import { users } from '../../db/schema.js';
 
-// ---------------------------------------------------------------------------
-// Rotas /api/auth/* — registro fechado por codigo de convite, login, logout,
-// e "quem sou eu" (usado pelo frontend no boot pra saber se ja esta logado).
-// ---------------------------------------------------------------------------
+// /api/auth/* routes — registration closed behind an invite code, login,
+// logout, and "who am I" (used by the frontend at boot to check if
+// already logged in).
 
 const USERNAME_RE = new RegExp(`^[A-Za-z0-9_.-]{${config.MIN_USERNAME_LEN},${config.MAX_USERNAME_LEN}}$`);
 
@@ -27,9 +26,9 @@ function ipOfRequest(request: FastifyRequest): string {
   return request.raw.socket.remoteAddress || '?';
 }
 
-/** Compara em tempo constante mesmo quando os tamanhos diferem — timingSafeEqual
- * lanca nesse caso, entao ainda gastamos um compare de tamanho igual pra nao
- * vazar o tamanho do codigo certo via timing. */
+/** Constant-time compare even when lengths differ — timingSafeEqual throws
+ * in that case, so we still spend an equal-length compare to avoid leaking
+ * the correct code's length via timing. */
 function safeCompare(a: unknown, b: unknown): boolean {
   const bufA = Buffer.from(String(a));
   const bufB = Buffer.from(String(b));
@@ -55,8 +54,8 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
   const confirmPassword = String(body.confirmPassword == null ? '' : body.confirmPassword);
   const code = String(body.code == null ? '' : body.code);
 
-  // fail closed: sem codigo configurado, registro fechado — nunca "aberto por
-  // esquecimento" de configuracao.
+  // fail closed: no code configured means registration is closed — never
+  // "open by a forgotten config."
   if (!config.REGISTRATION_CODE) return sendError(reply, 403, 'registration_closed', 'Registro fechado.');
   if (!safeCompare(code, config.REGISTRATION_CODE)) return sendError(reply, 403, 'invalid_code', 'Codigo de convite invalido.');
 
@@ -83,9 +82,9 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
 
   const { rawToken } = await createSession(user.id);
   setSessionCookie(request, reply, rawToken);
-  // diretorio de usuarios (sidebar direita) de quem ja esta conectado ganha
-  // a conta nova sem precisar recarregar — broadcast puro via os sockets ja
-  // abertos, sem acoplar essa rota HTTP ao socket.io em si.
+  // the user directory (right sidebar) for anyone already connected gets
+  // the new account without reloading — plain broadcast over already-open
+  // sockets, no coupling of this HTTP route to socket.io itself.
   broadcast({ t: 'user-registered', user: publicUser(user) });
   sendJson(reply, 201, { user: publicUser(user) });
 }
@@ -110,9 +109,9 @@ async function handleLogin(request: FastifyRequest, reply: FastifyReply): Promis
   }
 
   const user = await findByUsernameLower(username);
-  // usuario inexistente ainda verifica contra um hash de mentira, pra gastar
-  // o mesmo tempo de CPU e o tempo de resposta nao denunciar quais usernames
-  // existem. A mensagem de erro tambem e IDENTICA pros dois casos.
+  // a nonexistent user still verifies against a fake hash, to spend the
+  // same CPU time — and the response time doesn't reveal which usernames
+  // exist. The error message is also IDENTICAL for both cases.
   const ok = await verifyPassword(password, user ? user.passwordHash : DUMMY_HASH);
 
   if (!user || !ok) {

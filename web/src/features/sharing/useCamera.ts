@@ -11,9 +11,9 @@ export interface CameraApi {
 }
 
 /**
- * Liga/desliga a propria camera (so video), publicada como track na Room do
- * LiveKit. O microfone e independente (ver useMicrophone.ts) — cada um liga/
- * desliga na hora que quiser.
+ * Turns your own camera (video only) on/off, published as a track on the
+ * LiveKit Room. The microphone is independent (see useMicrophone.ts) —
+ * each toggles on its own.
  */
 export function useCamera(room: Room, dispatch: Dispatch<RoomAction>, quality: Quality): CameraApi {
   const startCamera = useCallback(async () => {

@@ -3,27 +3,16 @@ import { config } from '../config/env.js';
 import { updateAvatar } from '../modules/auth/users.js';
 import type { AppSocket, HandlerTable, Participant, PublicParticipant } from '../types.js';
 
-// ---------------------------------------------------------------------------
-// Presenca: quem esta na sala unica e compartilhada (sem geracao de link).
-// broadcast/send moram aqui (nao num util.ts separado) porque broadcast
-// depende diretamente do registro de participantes pra saber pra quem mandar.
-//
-// Identidade vem do socket.user (resolvido pelo io.use em realtime/socket.ts
-// a partir do cookie de sessao) — o cliente nunca mais afirma name/avatar no
-// join. `id` continua sendo POR CONEXAO (nao por conta): e a chave usada
-// pelo LiveKit como identity, e se virasse por-conta, a segunda aba do mesmo
-// usuario receberia a mesma identity e o LiveKit expulsaria a primeira.
-// `userId` (da conta) e o que amarra reconexao e permite duas abas da mesma
-// pessoa sem uma achar a outra.
-// ---------------------------------------------------------------------------
+// Presence for the single shared room. `id` is per-CONNECTION (used as the
+// LiveKit identity) — if it were per-account, a second tab would get the
+// same identity and LiveKit would kick the first one. `userId` (the
+// account) is what ties reconnection together and lets two tabs coexist.
 export const participants = new Map<string, Participant>(); // id -> participant
 
 const newId = () => crypto.randomBytes(8).toString('hex');
 const newToken = () => crypto.randomBytes(24).toString('hex');
 
-// URL externa (https://...) OU um upload nosso (/uploads/<id>, ver
-// modules/attachments.ts#handleAvatarUpload) — as duas formas validas de
-// foto de perfil.
+// external URL (https://...) or one of our own uploads (/uploads/<id>)
 const UPLOADED_AVATAR_RE = /^\/uploads\/[0-9a-f]{32}$/;
 function sanitizeAvatar(url: unknown): string {
   const s = String(url == null ? '' : url).trim().slice(0, config.MAX_AVATAR_LEN);
@@ -34,19 +23,15 @@ export function publicParticipant(p: Participant): PublicParticipant {
   return { id: p.id, userId: p.userId, name: p.name, avatar: p.avatar, role: p.role, deafened: p.deafened, voiceChannelId: p.voiceChannelId };
 }
 
-/** Muda em qual canal de voz `p` esta (ou tira de todos, com null) e avisa
- * todo mundo — chamado por realtime/socket.ts (handleVoiceJoin/Leave), que e
- * quem sabe validar o canal (channels.ts) e mintar o token (livekit.ts) antes
- * de chegar aqui. Mora aqui (nao em socket.ts) pra mutacao de Participant
- * ficar centralizada num lugar so, igual handleDeafened acima. */
+/** Changes which voice channel `p` is in (or none, with null) and notifies
+ * everyone — called from realtime/socket.ts (handleVoiceJoin/Leave) after it
+ * validates the channel and mints the token. */
 export function setVoiceChannelId(p: Participant, channelId: string | null): void {
   p.voiceChannelId = channelId;
   broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
 }
 
-/** Endereco de quem conectou — usado so em log. Mora aqui (nao num util.ts
- * separado) pelo mesmo motivo de send/broadcast: e chamado a partir de
- * realtime/socket.ts logo na conexao, antes de haver participante. */
+/** Address of who connected — used for logging only. */
 export function ipOf(socket: AppSocket): string {
   if (config.TRUST_PROXY) {
     const fwd = socket.handshake.headers['x-forwarded-for'];
@@ -57,20 +42,19 @@ export function ipOf(socket: AppSocket): string {
 
 export function send(socket: AppSocket | null | undefined, obj: { t: string; [key: string]: unknown }): void {
   if (socket && socket.connected) {
-    try { socket.emit(obj.t, obj); } catch { /* socket morrendo */ }
+    try { socket.emit(obj.t, obj); } catch { /* socket dying */ }
   }
 }
 
 export function broadcast(obj: { t: string; [key: string]: unknown }, exceptId?: string): void {
   for (const p of participants.values()) {
     if (p.id === exceptId) continue;
-    if (p.socket && p.socket.connected) { try { p.socket.emit(obj.t, obj); } catch { /* socket morrendo */ } }
+    if (p.socket && p.socket.connected) { try { p.socket.emit(obj.t, obj); } catch { /* socket dying */ } }
   }
 }
 
-/** true se ALGUMA conexao dessa conta esta com socket vivo agora — usado
- * pro diretorio de usuarios (online/offline). Varredura simples do Map (sem
- * contador a parte): a sala e pequena, entao o custo e irrelevante. */
+/** True if ANY connection for this account has a live socket right now —
+ * used for the online/offline directory. Linear scan is fine at this scale. */
 export function isUserOnline(userId: string): boolean {
   for (const p of participants.values()) {
     if (p.userId === userId && p.socket) return true;
@@ -78,8 +62,8 @@ export function isUserOnline(userId: string): boolean {
   return false;
 }
 
-/** Snapshot pro `welcome` — lista de userIds distintos com socket vivo agora
- * (nao inclui quem esta so na janela de graca, ver isUserOnline). */
+/** Snapshot for `welcome` — distinct userIds with a live socket right now
+ * (excludes anyone only in the grace window, see isUserOnline). */
 export function listOnlineUserIds(): string[] {
   const ids = new Set<string>();
   for (const p of participants.values()) if (p.socket) ids.add(p.userId);
@@ -87,21 +71,18 @@ export function listOnlineUserIds(): string[] {
 }
 
 export function removeParticipant(p: Participant): void {
-  if (participants.get(p.id) !== p) return; // ja foi substituido por uma reconexao
+  if (participants.get(p.id) !== p) return; // already replaced by a reconnect
   if (p.graceTimer) clearTimeout(p.graceTimer);
   participants.delete(p.id);
   broadcast({ t: 'participant-left', id: p.id });
-  // so agora (nao em handleClose) pra respeitar a mesma janela de graca que
-  // ja vale pra 'participant-left' — uma queda de rede curta nao pisca
-  // offline no diretorio, igual nao pisca "saiu" no resto da sala.
+  // only here (not handleClose) to respect the same grace window as
+  // 'participant-left' — a brief network drop shouldn't flicker offline.
   if (!isUserOnline(p.userId)) broadcast({ t: 'user-offline', userId: p.userId });
 }
 
-/** Remove fantasmas da MESMA conta (participantes com socket=null presos na
- * janela de graca de RECONNECT_GRACE_MS) antes de criar uma conexao nova.
- * Sem isso, uma aba que travou/fechou sem 'pagehide' deixa um fantasma
- * segurando o lock da chamada por ate 30s, e uma aba NOVA do mesmo usuario
- * levaria call-busy do proprio fantasma. */
+/** Removes ghosts (socket=null, stuck in the reconnect grace window) for
+ * the SAME account before creating a new connection — otherwise a crashed
+ * tab would hold the slot for up to RECONNECT_GRACE_MS. */
 function evictGhostsForUser(userId: string): void {
   for (const p of [...participants.values()]) {
     if (p.userId === userId && p.socket === null) removeParticipant(p);
@@ -113,26 +94,22 @@ interface JoinMessage {
   token?: string;
 }
 
-/** Cria/acha o participante da conexao (reconecta na mesma identidade se
- * tiver token valido da MESMA conta) e seta socket.participantId. So devolve
- * o participante — quem monta e manda o `welcome` e o realtime/socket.ts,
- * que enxerga chat/board tambem (join fica sem depender de outras features,
- * pra nao formar ciclo). Manda o erro de sala cheia e devolve null quando
- * aplicavel. */
+/** Creates or resumes the connection's participant (same identity if a
+ * valid resume token for the SAME account) and sets socket.participantId.
+ * The `welcome` message itself is assembled by realtime/socket.ts (which
+ * also touches chat/other features) to avoid a cycle. Sends the room-full
+ * error and returns null when applicable. */
 export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
   if (socket.participantId) return null;
-  const u = socket.user; // garantido pelo io.use — nunca ha socket sem sessao valida
-  // calculado ANTES de mexer no Map — se essa e a unica conexao dessa conta
-  // (nova ou retomando de uma janela de graca sem outra aba viva), e uma
-  // transicao pra "online" que o diretorio de usuarios precisa saber.
+  const u = socket.user; // guaranteed by io.use — no socket exists without a valid session
+  // computed BEFORE touching the Map — if this is the account's only
+  // connection, it's a transition to "online" the directory needs to know.
   const wasOnline = isUserOnline(u.userId);
   let p: Participant | null = null;
   if (msg.id && msg.token) {
     const existing = participants.get(String(msg.id));
-    // o check de userId e o que impede um token de resume de OUTRA conta ser
-    // reaproveitado — antes so o token cru (comparado com ===, nao
-    // timing-safe: e um segredo aleatorio de 24 bytes por conexao, nao uma
-    // senha) decidia isso sozinho.
+    // checking userId (not just the token) stops a resume token from being
+    // reused by a different account.
     if (existing && existing.token === String(msg.token) && existing.userId === u.userId) p = existing;
   }
   if (p) {
@@ -154,10 +131,9 @@ export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
       name: u.username,
       avatar: sanitizeAvatar(u.avatar),
       role: u.role,
-      // sempre comeca desensurdecido numa conexao NOVA (aba/reload de
-      // verdade) — o proprio cliente tambem comeca com esse estado zerado
-      // (useState local, nao persistido). Um resume (rede caiu e voltou,
-      // mesma aba) reusa o `p` existente e PRESERVA o valor, ver join() acima.
+      // always starts undeafened on a brand NEW connection (client starts
+      // the same way); a resume above reuses the existing `p` and
+      // PRESERVES the value.
       deafened: false,
       voiceChannelId: null,
       graceTimer: null,
@@ -169,11 +145,10 @@ export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
   return p;
 }
 
-/** So o avatar e editavel em sessao — o nome agora e o username da conta,
- * imutavel. Persiste no banco pra sobreviver a reconexao/outra aba (a sessao
- * em cache pode levar ate 60s pra refletir isso numa aba que AINDA NAO
- * conectou, ver modules/auth/session.ts — a aba que editou ja atualiza na
- * hora via participant-updated abaixo). */
+/** Only the avatar is editable — name is the account's immutable username.
+ * Persisted to survive reconnects/other tabs (the session cache can take up
+ * to 60s to reflect this for a tab that hasn't reconnected yet — the
+ * editing tab updates immediately via participant-updated below). */
 function handleProfile(socket: AppSocket, msg: { avatar?: string }): void {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
@@ -181,13 +156,10 @@ function handleProfile(socket: AppSocket, msg: { avatar?: string }): void {
   p.avatar = sanitizeAvatar(msg.avatar);
   broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
   updateAvatar(p.userId, p.avatar).catch((err) => console.error(`[${p.id}] falha ao salvar avatar:`, err instanceof Error ? err.stack : err));
-  // apaga o ARQUIVO da foto antiga se ela era um upload nosso e mudou pra
-  // outra coisa — sem isso, cada troca de foto deixaria a anterior orfa no
-  // disco pra sempre (so uma foto por conta de cada vez). import() dinamico
-  // (nao no topo do arquivo) so pra quebrar o ciclo — modules/attachments.ts
-  // ja importa `participants`/`broadcast` DESTE arquivo, um import estatico
-  // no topo aqui criaria um ciclo (mesmo padrao usado em
-  // modules/channels.ts#handleChannelDelete).
+  // deletes the OLD photo file if it was one of our uploads and changed —
+  // otherwise each photo change would leave the previous one orphaned.
+  // Dynamic import to avoid a cycle: modules/attachments.ts already imports
+  // from this file.
   if (oldAvatar && oldAvatar !== p.avatar) {
     import('../modules/attachments.js')
       .then(({ deleteAvatarFile }) => deleteAvatarFile(oldAvatar))
@@ -195,10 +167,8 @@ function handleProfile(socket: AppSocket, msg: { avatar?: string }): void {
   }
 }
 
-/** "Ensurdecer" nao tem equivalente de track no LiveKit (diferente de
- * mic-mudo) — e so um flag que o proprio cliente anuncia, pra quem mais
- * puder mostrar o icone (sidebar, tile em foco), igual o Discord mostra
- * nos outros participantes da call. */
+/** No LiveKit track equivalent for "deafened" — just a flag the client
+ * announces so others can show the icon. */
 function handleDeafened(socket: AppSocket, msg: { value?: unknown }): void {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
@@ -206,21 +176,21 @@ function handleDeafened(socket: AppSocket, msg: { value?: unknown }): void {
   broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
 }
 
-// ---- aba fechando/recarregando: sai da sala na hora, sem esperar a janela
-// de reconexao (essa so deveria valer pra queda de rede/crash, onde esse
-// evento nao chega a disparar) -----------------------------------------
+// tab closing/reloading: leaves the room immediately, without the reconnect
+// grace window (that's only for network drops/crashes, which never fire
+// this event).
 function handleLeave(socket: AppSocket): void {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   removeParticipant(p);
 }
 
-/** socket.on('disconnect'): abre a janela de reconexao (RECONNECT_GRACE_MS)
- * em vez de remover na hora — cobre queda de rede/reload, onde 'leave' nao
- * chega a disparar. */
+/** socket.on('disconnect') — opens the reconnect grace window instead of
+ * removing immediately, covering network drops/reloads where 'leave' never
+ * fires. */
 export function handleClose(socket: AppSocket): void {
   const p = participants.get(socket.participantId ?? '');
-  if (!p || p.socket !== socket) return; // ja foi substituido por uma reconexao mais nova
+  if (!p || p.socket !== socket) return; // already replaced by a newer reconnect
   p.socket = null;
   p.graceTimer = setTimeout(() => removeParticipant(p), config.RECONNECT_GRACE_MS);
 }

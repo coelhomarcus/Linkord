@@ -1,19 +1,19 @@
 import { useRoom } from '../../state/RoomContext';
 
-/** Camada flutuante de reacoes-relampago sobre o palco — cada uma nasce numa
- * posicao horizontal sorteada (RoomProvider) e sobe sozinha via CSS; aqui e
- * so exibicao. Estilo Google Meet: emoji grande, quase sem moldura, nome
- * pequeno e discreto embaixo. */
+/** Floating layer of flash reactions over the stage — each one spawns at a
+ * random horizontal position (RoomProvider) and floats up on its own via
+ * CSS; this is just display. Google Meet style: big emoji, almost no
+ * frame, small discreet name below. */
 export function ReactionsOverlay() {
   const { state, reactions } = useRoom();
 
   if (!reactions.length) return null;
 
   return (
-    // z-40: acima da barra de controles da chamada (z-20) e do PiP flutuante
-    // (z-30) — igual o Google Meet, a reacao passa por cima de tudo na tela
-    // de call. Fica abaixo de modal/dropdown/menu (z-50) e do aviso de
-    // reconexao (z-[60]) de proposito, esses continuam por cima.
+    // z-40: above the call control bar (z-20) and the floating PiP (z-30)
+    // — like Google Meet, reactions render over everything on the call
+    // screen. Stays below modal/dropdown/menu (z-50) and the reconnect
+    // banner (z-[60]) on purpose — those stay on top.
     <div className="pointer-events-none absolute inset-0 z-40 overflow-hidden">
       {reactions.map((r) => {
         const name = r.id === state.me.id ? state.me.name : (state.participants.get(r.id)?.name ?? '');

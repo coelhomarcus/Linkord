@@ -1,11 +1,11 @@
-/** Bitrate de envio (tela e camera), persistido no localStorage — separado do
- * perfil (chave propria, ss-quality) porque e uma preferencia tecnica, nao de
- * identidade. */
+/** Upload bitrate (screen and camera), persisted in localStorage —
+ * separate from the profile (own key, ss-quality) since it's a technical
+ * preference, not an identity one. */
 
 export type Quality = 'standard' | 'reduced' | 'minimum';
 
-/** Formato de VideoEncoding do livekit-client — declarado aqui (sem importar
- * a lib nesta pasta) pra manter settings/ isolado do resto das features. */
+/** livekit-client's VideoEncoding shape — declared here (without importing
+ * the lib in this folder) to keep settings/ isolated from other features. */
 export interface QualityEncoding {
   maxBitrate: number;
   maxFramerate: number;

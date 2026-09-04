@@ -1,31 +1,31 @@
 import type { Participant } from '../types/protocol';
 
 export interface Me {
-  id: string | null; // por CONEXAO (= identity do LiveKit) — nao confundir com userId
-  userId: string | null; // da CONTA — estavel entre abas/reconexoes
-  name: string; // username da conta, imutavel
+  id: string | null; // per CONNECTION (= LiveKit identity) — not the same as userId
+  userId: string | null; // per ACCOUNT — stable across tabs/reconnects
+  name: string;
   avatar: string;
   role: 'user' | 'admin';
-  sharing: boolean; // compartilhando tela
+  sharing: boolean;
   cameraOn: boolean;
-  // mic NAO mora aqui — "ativado"/"mudo" sao lidos direto do LiveKit (ver
-  // useParticipantMedia em useLiveKitTrack.ts), a mesma fonte de verdade
-  // usada pra participantes remotos. Sem isso duplicado, sem risco de
-  // dessincronizar.
-  sharingSince: number | null; // Date.now() de quando a tela comecou (pro "no ar" das estatisticas)
+  // mic does NOT live here — "activated"/"muted" are read straight from
+  // LiveKit (see useParticipantMedia in useLiveKitTrack.ts), the same
+  // source of truth used for remote participants. No duplication, no risk
+  // of drift.
+  sharingSince: number | null; // Date.now() when screen share started
 }
 
 export interface RoomState {
   me: Me;
-  participants: Map<string, Participant>; // nunca inclui "me"
-  // key composta de tile (`${participantId}:${kind}`, ver useCallTiles.ts) —
-  // nao e mais so o id do participante, porque tela/camera da mesma pessoa
-  // agora podem ser focadas separadamente.
+  participants: Map<string, Participant>; // never includes "me"
+  // composite tile key (`${participantId}:${kind}`, see useCallTiles.ts) —
+  // no longer just the participant id, since one person's screen and
+  // camera can now be focused independently.
   focusedId: string | null;
   reconnecting: boolean;
-  joined: boolean; // welcome ja recebido (habilita compartilhar)
-  // erro em nivel de SALA (ex.: sala cheia) — identidade/login ja e coisa do
-  // AuthContext, isso aqui e so o que pode dar errado DEPOIS de autenticado.
+  joined: boolean; // welcome already received (enables sharing)
+  // ROOM-level error (e.g. room full) — identity/login is AuthContext's
+  // job; this is only what can go wrong AFTER authenticating.
   roomError: string | null;
   shareError: string | null;
 }
@@ -85,9 +85,9 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       return {
         ...state,
         participants,
-        // focusedId e uma tile key (`${id}:kind`) — compara por prefixo, nao
-        // igualdade direta, pra desfocar tanto a tela quanto a camera dessa
-        // pessoa se ela sair enquanto uma das duas estava em foco.
+        // focusedId is a tile key (`${id}:kind`) — compares by prefix, not
+        // direct equality, to unfocus both that person's screen and camera
+        // if they leave while either was focused.
         focusedId: state.focusedId?.startsWith(`${action.id}:`) ? null : state.focusedId,
       };
     }

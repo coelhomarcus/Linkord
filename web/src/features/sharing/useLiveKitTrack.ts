@@ -10,8 +10,8 @@ export interface ParticipantMedia {
   screenAudioTrack: LKTrack | null;
   cameraTrack: LKTrack | null;
   micTrack: LKTrack | null;
-  /** true assim que o mic foi ativado nesta sessao (publicado) — fica true
-   * mesmo mudo, ja que mutar so desliga o audio, nao despublica. */
+  /** true once the mic was activated this session (published) — stays
+   * true even muted, since muting only turns off audio, doesn't unpublish. */
   micActivated: boolean;
   micMuted: boolean;
 }
@@ -21,19 +21,18 @@ const EMPTY_MEDIA: ParticipantMedia = {
   micActivated: false, micMuted: true,
 };
 
-/** Acha o Participant (local ou remoto) correspondente a uma identity — a
- * mesma logica usada por useParticipantMedia e useCallTiles. */
+/** Finds the Participant (local or remote) for an identity — same logic
+ * used by useParticipantMedia and useCallTiles. */
 export function getParticipant(room: Room, identity: string): Participant | undefined {
   return room.localParticipant.identity === identity ? room.localParticipant : room.getParticipantByIdentity(identity);
 }
 
-/** Track "ativa" — publication existe E nao esta mutada. Mutar video
- * (camera/tela) para o hardware de verdade (diferente de mutar audio de
- * mic, que so desliga o audio sem parar nada) mas NAO despublica: a
- * publication/Track continuam existindo pra sempre depois da primeira
- * ativacao da sessao, com isMuted=true. Sem esse filtro, `!!cameraTrack`
- * ficaria true mesmo com a camera desligada, deixando um <video> preto
- * anexado a uma track parada. */
+/** "Active" track — publication exists AND isn't muted. Muting video
+ * (camera/screen) stops the hardware for real (unlike muting mic audio,
+ * which just turns off sound) but does NOT unpublish: the publication/
+ * Track keep existing forever after the first activation, with
+ * isMuted=true. Without this filter, `!!cameraTrack` would stay true with
+ * the camera off, leaving a black <video> attached to a dead track. */
 export function activeTrack(participant: Participant, source: Track.Source): LKTrack | null {
   const pub = participant.getTrackPublication(source);
   return pub && !pub.isMuted ? (pub.track ?? null) : null;
@@ -47,10 +46,10 @@ function readMedia(room: Room, identity: string): ParticipantMedia {
     screenTrack: activeTrack(participant, Track.Source.ScreenShare),
     screenAudioTrack: activeTrack(participant, Track.Source.ScreenShareAudio),
     cameraTrack: activeTrack(participant, Track.Source.Camera),
-    // micTrack fica cru (nao filtra por isMuted) de proposito — o audio
-    // element em ParticipantAudioLayer precisa continuar anexado mesmo
-    // mudo, pronto pra tocar na hora assim que desmutar; o "mudo" do mic ja
-    // e expresso a parte via micMuted, nao escondendo a track.
+    // micTrack stays raw (not filtered by isMuted) on purpose — the audio
+    // element in ParticipantAudioLayer needs to stay attached even muted,
+    // ready to play the instant it unmutes; "muted" is expressed
+    // separately via micMuted, not by hiding the track.
     micTrack: micPub?.track ?? null,
     micActivated: !!micPub,
     micMuted: micPub ? micPub.isMuted : true,
@@ -58,13 +57,12 @@ function readMedia(room: Room, identity: string): ParticipantMedia {
 }
 
 const MEDIA_EVENTS = [
-  // TrackPublished/Unpublished disparam assim que alguem publica/despublica,
-  // MESMO sem eu ter me inscrito na track — sem eles, meu proprio estado so
-  // "descobria" que um participante remoto tinha ativado o mic por acidente,
-  // quando algum OUTRO evento (ex: eu mesma ativando o mic, LocalTrackPublished)
-  // disparava um refresh de bandeja. TrackSubscribed/Unsubscribed continuam
-  // aqui tambem, pra saber quando a TRACK em si (nao so a publicacao) fica
-  // disponivel pra tocar/anexar.
+  // TrackPublished/Unpublished fire as soon as someone publishes/
+  // unpublishes, even without me subscribing to the track — without them,
+  // my own state would only "discover" a remote participant activated
+  // their mic when some OTHER event triggered a refresh. TrackSubscribed/
+  // Unsubscribed are here too, to know when the TRACK itself (not just the
+  // publication) is available to play/attach.
   RoomEvent.TrackPublished,
   RoomEvent.TrackUnpublished,
   RoomEvent.TrackSubscribed,
@@ -77,12 +75,12 @@ const MEDIA_EVENTS = [
   RoomEvent.ParticipantDisconnected,
 ];
 
-/** Le quais tracks (tela/camera/mic) um participante (local ou remoto) tem
- * publicadas agora, e se o mic esta mudo — LiveKit e a unica fonte de
- * verdade disso, nao ha nada guardado a parte no reducer. Um hook so pro
- * participante inteiro (nao um por Track.Source) porque quem monta a lista
- * de tiles (useCallTiles) e o proprio Tile precisam ver tela e camera
- * juntas pra decidir quantos retangulos essa pessoa ocupa. */
+/** Reads which tracks (screen/camera/mic) a participant (local or remote)
+ * has published now, and whether the mic is muted — LiveKit is the only
+ * source of truth, nothing kept separately in the reducer. One hook for
+ * the whole participant (not one per Track.Source) because both the tile
+ * list (useCallTiles) and Tile itself need screen and camera together to
+ * decide how many rectangles this person occupies. */
 export function useParticipantMedia(identity: string): ParticipantMedia {
   const { livekitRoom } = useRoom();
   const [media, setMedia] = useState<ParticipantMedia>(EMPTY_MEDIA);
@@ -97,29 +95,29 @@ export function useParticipantMedia(identity: string): ParticipantMedia {
   return media;
 }
 
-// RMS 0..1 — ponto de partida razoavel, pode precisar de ajuste fino depois
-// de testar com microfone de verdade (mais sensivel = menor; menos = maior).
+// RMS 0..1 — reasonable starting point, may need tuning after testing with
+// a real mic (more sensitive = lower; less = higher).
 const SPEAKING_THRESHOLD = 0.02;
-// segura a borda por um instante depois de cair abaixo do limiar, pra nao
-// piscar a cada pausa curta entre palavras — so a subida e instantanea.
+// holds the border for a moment after dropping below the threshold, so it
+// doesn't flicker on short pauses between words — only rising is instant.
 const SPEAKING_RELEASE_MS = 250;
 
-// um AudioContext so pro app inteiro (nao um por tile) — Web Audio so LE a
-// track, nao "consome" ela, entao a mesma track alimenta isso e o
-// <audio>/<video> que ja a usa em paralelo sem conflito nenhum.
+// one AudioContext for the whole app (not one per tile) — Web Audio only
+// READS the track, doesn't "consume" it, so the same track feeds this and
+// the <audio>/<video> already using it in parallel without conflict.
 let sharedAudioContext: AudioContext | null = null;
 function getAudioContext(): AudioContext {
   if (!sharedAudioContext) sharedAudioContext = new AudioContext();
   return sharedAudioContext;
 }
 
-/** Se um participante esta falando agora. Antes isso vinha de
- * RoomEvent.ActiveSpeakersChanged — mas esse evento nao e calculado no
- * navegador, e sim empurrado periodicamente pelo SERVIDOR do LiveKit via
- * sinalizacao, o que causava um atraso perceptivel entre comecar a falar e a
- * borda aparecer (fora do nosso controle, principalmente no LiveKit Cloud).
- * Aqui a deteccao roda 100% local: analisa o audio real da track via Web
- * Audio API (AnalyserNode + requestAnimationFrame), pronta em ~1 frame. */
+/** Whether a participant is speaking right now. Used to come from
+ * RoomEvent.ActiveSpeakersChanged — but that event isn't computed in the
+ * browser, it's pushed periodically by the LiveKit SERVER via signaling,
+ * causing a noticeable lag between starting to speak and the border
+ * appearing (out of our control, especially on LiveKit Cloud). Detection
+ * here runs 100% locally: analyzes the track's real audio via the Web
+ * Audio API (AnalyserNode + requestAnimationFrame), ready in ~1 frame. */
 export function useIsSpeaking(identity: string): boolean {
   const media = useParticipantMedia(identity);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -165,9 +163,9 @@ export function useIsSpeaking(identity: string): boolean {
   return isSpeaking;
 }
 
-/** Anexa (attach/detach) uma track do LiveKit a um elemento de video/audio —
- * o WebRTC nativo cuida do resto (jitter, adaptacao de bitrate, etc), sem
- * fila/buffer manual nenhum. */
+/** Attaches/detaches a LiveKit track to a video/audio element — native
+ * WebRTC handles the rest (jitter, bitrate adaptation, etc), no manual
+ * queue/buffer. */
 export function useAttachTrack(track: LKTrack | null, elRef: RefObject<HTMLMediaElement | null>): void {
   useEffect(() => {
     const el = elRef.current;

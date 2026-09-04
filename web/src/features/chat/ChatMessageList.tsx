@@ -13,11 +13,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/shared/lib/utils';
 
-// mensagens consecutivas do mesmo autor dentro dessa janela agrupam (avatar/
-// nome so na primeira) — mesmo espirito do Discord.
+// consecutive messages from the same author within this window group
+// together (avatar/name only on the first) — same idea as Discord.
 const GROUP_GAP_MS = 5 * 60 * 1000;
-// referencia estavel — reaproveitada em vez de `[]` a cada render quando um
-// canal ainda nao teve o historico carregado (ver channel-open).
+// stable reference — reused instead of a new `[]` on every render for a
+// channel whose history hasn't loaded yet.
 const EMPTY_MESSAGES: ChatMessage[] = [];
 
 function formatTime(ts: number): string {
@@ -41,7 +41,7 @@ function buildRenderItems(messages: ChatMessage[]): RenderItem[] {
     if (dateKey !== lastDateKey) {
       items.push({ type: 'date', key: `date-${dateKey}`, label: formatDateHeading(m.ts) });
       lastDateKey = dateKey;
-      lastMsg = null; // forca cabecalho de autor de novo apos o divisor
+      lastMsg = null; // forces the author header to show again after the date divider
     }
     const showHeader = !lastMsg || lastMsg.id !== m.id || m.ts - lastMsg.ts > GROUP_GAP_MS;
     items.push({ type: 'message', key: String(m.msgId), message: m, showHeader });
@@ -65,9 +65,10 @@ interface ChatMessageRowProps {
   onJumpTo: (msgId: number) => void;
 }
 
-/** Uma linha do historico — sem balao, fundo continuo. `showHeader` decide
- * se mostra avatar/nome (primeira de uma sequencia do mesmo autor) ou fica
- * compacta (so o horario, no hover, no lugar do avatar). */
+/** One row in history — no bubble, continuous background. `showHeader`
+ * decides whether to show avatar/name (first in a run from the same
+ * author) or stay compact (just the time, on hover, where the avatar
+ * would be). */
 function ChatMessageRow({
   message, showHeader, isMod, isHighlighted, isEditing, editText, onEditTextChange,
   onStartEdit, onSaveEdit, onCancelEdit, onReply, onJumpTo,
@@ -75,15 +76,15 @@ function ChatMessageRow({
   const { state, deleteChatMessage, reactToChatMessage } = useRoom();
   const [reactOpen, setReactOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
-  // a barra so em CSS (group-hover) fechava sozinha assim que o mouse saia
-  // da linha pra ir ate o popover/dropdown — eles portam pra fora da arvore
-  // da linha, entao ":hover" na linha para de valer no meio do caminho.
-  // Aqui o hover vira estado: continua "ativo" enquanto um popover/dropdown
-  // desta linha estiver aberto, mesmo com o mouse fisicamente fora dela.
+  // a CSS-only bar (group-hover) would close as soon as the mouse left the
+  // row to reach the popover/dropdown — those portal outside the row's DOM
+  // tree, so ":hover" on the row stops applying partway there. Hover
+  // becomes state here instead: stays "active" while a popover/dropdown
+  // from this row is open, even with the mouse physically outside it.
   const [isRowActive, setIsRowActive] = useState(false);
-  // message.id e o USERID da conta (nao o id de conexao) — comparar contra
-  // state.me.userId, nao state.me.id, senao "e minha mensagem?" quebra depois
-  // de reconectar/recarregar (id de conexao muda, userId nao).
+  // message.id is the account's USERID (not a connection id) — compare
+  // against state.me.userId, not state.me.id, or "is this my message?"
+  // breaks after reconnecting/reloading (connection id changes, userId doesn't).
   const isMine = message.id === state.me.userId;
 
   function handleEditKeyDown(e: ReactKeyboardEvent<HTMLTextAreaElement>) {
@@ -103,10 +104,9 @@ function ChatMessageRow({
       )}
     >
       <div className="w-10 flex-none pt-0.5">
-        {/* message.id (o authorId) vira null quando a conta de quem mandou
-            foi apagada (moderacao, ver protocol.ts) — cai pro nome (que fica
-            congelado na mensagem pra sempre) como semente da cor, so pra
-            nao repetir sempre a MESMA cor pra todo autor apagado. */}
+        {/* message.id (authorId) becomes null when the sender's account was
+            deleted — falls back to the frozen name as the color seed, just
+            so every deleted author doesn't get the SAME color. */}
         {showHeader ? (
           <Avatar id={message.id ?? message.name} name={message.name} avatar={message.avatar} size={40} />
         ) : (
@@ -123,10 +123,9 @@ function ChatMessageRow({
             onClick={() => onJumpTo(message.replyTo!.msgId)}
             className="mb-0.5 flex max-w-full items-center gap-1.5 pl-4 text-label text-text-muted transition-colors hover:text-text-secondary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            {/* conector curvo do Discord (baixado do kit do Figma) — troca o
-                icone de seta generico por um SVG proprio; stroke="currentColor"
-                pra acompanhar a cor do texto (igual hover/normal do resto da
-                linha). */}
+            {/* Discord's curved reply connector (from their Figma kit) — a
+                custom SVG instead of a generic arrow icon; stroke="currentColor"
+                to follow the text color (same hover/normal as the rest of the row). */}
             <svg width="14" height="5" viewBox="0 0 25 8.5" fill="none" className="flex-none -translate-y-px" xmlns="http://www.w3.org/2000/svg">
               <path d="M0.5 8.5V5.5C0.5 2.73858 2.73858 0.5 5.5 0.5H25" stroke="currentColor" />
             </svg>
@@ -186,8 +185,7 @@ function ChatMessageRow({
         )}
       </div>
 
-      {/* barra de acoes — visivel no hover da linha OU enquanto um popover/
-          dropdown dela estiver aberto (ver isRowActive acima). */}
+      {/* visible on row hover OR while one of its popovers/dropdowns is open (see isRowActive above). */}
       <div className={cn(
         'absolute right-2 top-0 z-10 -translate-y-1/2 items-center gap-0.5 rounded-md border border-strong bg-bg-floating p-0.5 shadow-popover',
         isRowActive ? 'flex' : 'hidden'
@@ -243,23 +241,23 @@ interface ChatMessageListProps {
   onReply: (message: ChatMessage) => void;
 }
 
-/** Historico do chat — estilo Discord: sem balao, fundo continuo, mensagens
- * agrupadas por autor, divisor de data, e a barra de acoes por mensagem no
- * hover (reagir/responder/editar/apagar). */
+/** Chat history — Discord-style: no bubbles, continuous background,
+ * messages grouped by author, date divider, and a per-message action bar
+ * on hover (react/reply/edit/delete). */
 export function ChatMessageList({ className, channelId, onReply }: ChatMessageListProps) {
   const { state, messagesByChannel, editChatMessage } = useRoom();
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  // wrapper SO do conteudo (nao o viewport com scroll) — com overflow-y-auto,
-  // o viewport tem tamanho fixo (nao cresce com o conteudo), entao um
-  // ResizeObserver NELE nunca dispara por causa de mensagem/imagem nova. O
-  // que cresce e esse div de dentro; e ele que precisa ser observado (ver
-  // useEffect abaixo).
+  // wraps ONLY the content (not the scrolling viewport) — with
+  // overflow-y-auto, the viewport has a fixed size (doesn't grow with
+  // content), so a ResizeObserver ON IT never fires for a new message/
+  // image. The div that grows is this inner one; that's what needs
+  // observing (see the effect below).
   const contentRef = useRef<HTMLDivElement | null>(null);
-  // true enquanto o usuario estiver "colado" no fim (ou ainda nao rolou pra
-  // lugar nenhum) — so entao um conteudo novo (mensagem, ou uma imagem/anexo
-  // que so ganha altura de verdade DEPOIS de carregar) reajusta o scroll
-  // sozinho; se a pessoa rolou pra cima pra ler o historico, nada aqui deve
-  // puxar ela de volta pro fim.
+  // true while the user is "stuck" to the bottom (or hasn't scrolled
+  // anywhere yet) — only then does new content (a message, or an image/
+  // attachment that only gains real height AFTER loading) auto-adjust the
+  // scroll; if they scrolled up to read history, nothing here should pull
+  // them back down.
   const stickToBottomRef = useRef(true);
   const isMod = state.me.role === 'admin';
   const chatMessages = messagesByChannel.get(channelId) ?? EMPTY_MESSAGES;
@@ -269,20 +267,20 @@ export function ChatMessageList({ className, channelId, onReply }: ChatMessageLi
   const [highlightedMsgId, setHighlightedMsgId] = useState<number | null>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
 
-  // trocar de canal SEMPRE comeca no fim (a mensagem mais recente) — nunca
-  // preserva a posicao de rolagem de outro canal.
+  // switching channels ALWAYS starts at the bottom (most recent message) —
+  // never preserves another channel's scroll position.
   useEffect(() => {
     stickToBottomRef.current = true;
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [channelId]);
 
-  // "colado no fim" (ver stickToBottomRef acima) via ResizeObserver no
-  // CONTEUDO (nao no numero de mensagens): cobre tanto mensagem nova quanto
-  // qualquer coisa que so muda de altura depois de renderizada — imagem/
-  // anexo carregando (ChatAttachment), preview de link (ChatEmbed) — sem
-  // isso, o scroll ficava "certo" no momento em que a imagem ainda nao tinha
-  // altura nenhuma e ficava pra tras assim que ela terminava de carregar.
+  // "stuck to bottom" (see stickToBottomRef above) via a ResizeObserver on
+  // the CONTENT (not the message count): covers both a new message and
+  // anything that only changes height after rendering — a loading image/
+  // attachment (ChatAttachment), a link preview (ChatEmbed) — without
+  // this, the scroll position would be "correct" while the image still
+  // had no height, then fall behind once it finished loading.
   useEffect(() => {
     const scrollEl = scrollRef.current;
     const contentEl = contentRef.current;
@@ -290,7 +288,7 @@ export function ChatMessageList({ className, channelId, onReply }: ChatMessageLi
 
     function handleScroll() {
       const el = scrollEl!;
-      // tolerancia de alguns px pra "no fim" nao exigir pixel perfeito
+      // a few px of tolerance so "at the bottom" doesn't require pixel-perfect
       stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
     }
     const resizeObserver = new ResizeObserver(() => {
@@ -302,16 +300,16 @@ export function ChatMessageList({ className, channelId, onReply }: ChatMessageLi
       resizeObserver.disconnect();
       scrollEl.removeEventListener('scroll', handleScroll);
     };
-    // liga so uma vez — scrollRef/contentRef sao os MESMOS nos do DOM a vida
-    // inteira do componente (nao remonta ao trocar de canal), nao precisa
-    // recriar o observer/listener a cada troca.
+    // attaches only once — scrollRef/contentRef are the SAME DOM nodes for
+    // the component's whole lifetime (doesn't remount on channel switch),
+    // no need to recreate the observer/listener each time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // mensagem MINHA enviada agora sempre puxa pro fim, mesmo se eu tivesse
-  // rolado pra cima antes de mandar — eu que acabei de escrever, faz sentido
-  // eu ver ela aparecer (mensagem de OUTRA pessoa nao forca isso, so gruda
-  // se eu ja estava no fim, ver o ResizeObserver acima).
+  // MY OWN message sent now always pulls to the bottom, even if I'd
+  // scrolled up before sending — I just wrote it, makes sense to see it
+  // appear (someone ELSE's message doesn't force this, it only sticks if I
+  // was already at the bottom, see the ResizeObserver above).
   const lastMineTsRef = useRef(0);
   useEffect(() => {
     const last = chatMessages[chatMessages.length - 1];

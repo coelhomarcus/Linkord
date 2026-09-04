@@ -1,7 +1,7 @@
 import { participants, broadcast } from './participants.js';
 import type { AppSocket, HandlerTable } from '../types.js';
 
-// lista curta e fixa — evita aceitar texto arbitrario como "reacao"
+// short fixed list — avoids accepting arbitrary text as a "reaction"
 export const ALLOWED_REACTIONS = new Set(['👍', '❤️', '😂', '😮', '👏', '🎉']);
 
 function handleReaction(socket: AppSocket, msg: { emoji?: string }): void {

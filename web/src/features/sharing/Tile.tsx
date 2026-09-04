@@ -13,26 +13,25 @@ interface TileProps {
   participantId: string;
   kind: TileKind;
   isMine: boolean;
-  /** 'cover' (padrao — grade, miniaturas, PiP): a celula tem o tamanho que o
-   * layout mandar, e o video a preenche cortando o excesso — certo pra
-   * tiles pequenos, onde cortar e melhor que sobrar espaco. 'contain' (tile
-   * em foco): a CAIXA (nao so o video) se ajusta pra caber certinho na
-   * proporcao real do video dentro do espaco disponivel — como nunca sobra
-   * espaco dentro da caixa, os selos (nome/engrenagem) e os cantos
-   * arredondados ficam sempre em cima da imagem de verdade. */
+  /** 'cover' (default — grid, thumbnails, PiP): the cell is whatever size
+   * the layout dictates, and the video fills it by cropping the excess —
+   * right for small tiles, where cropping beats leftover space. 'contain'
+   * (focused tile): the BOX (not just the video) resizes to fit the
+   * video's real ratio within the available space — since there's never
+   * leftover space inside the box, the badges (name/gear) and rounded
+   * corners always sit on top of the actual image. */
   fit?: 'cover' | 'contain';
-  /** Avatar GRANDE centralizado (so aparece quando kind==='avatar', camera
-   * desligada) — o tile nao sabe seu proprio tamanho renderizado (quem
-   * decide e o pai, via width/height inline), entao precisa vir de fora.
-   * Default pensado pra grade/foco; a tira de miniaturas do modo foco passa
-   * um valor menor (ver TileGrid) — sem isso, 80px fixo dentro de uma
-   * miniatura de 90px de altura ficava gigante, quase do tamanho da celula
-   * inteira. */
+  /** Large centered avatar (only shows when kind==='avatar', camera off) —
+   * the tile doesn't know its own rendered size (the parent decides, via
+   * inline width/height), so this has to come from outside. Default is
+   * tuned for grid/focus; the focus-mode thumbnail strip passes a smaller
+   * value (see TileGrid) — without it, a fixed 80px inside a 90px-tall
+   * thumbnail looked huge, almost the size of the whole cell. */
   avatarSize?: number;
-  /** Tamanho do nome na pilula inferior — 'body' (padrao, grade/miniaturas)
-   * ou 'label' (um degrau menor, usado no tile GRANDE do modo foco: o tile
-   * ocupa a tela quase inteira, entao o mesmo texto que e proporcional
-   * numa celula pequena da grade fica desproporcional ali). */
+  /** Name size in the bottom pill — 'body' (default, grid/thumbnails) or
+   * 'label' (one step smaller, used on the LARGE focused tile: it fills
+   * almost the whole screen, so the same text that's proportional in a
+   * small grid cell looks oversized there). */
   nameSize?: 'body' | 'label';
 }
 
@@ -46,8 +45,8 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
   const participant = isMine ? null : state.participants.get(participantId);
   const name = isMine ? state.me.name : (participant?.name ?? '');
   const avatar = isMine ? state.me.avatar : (participant?.avatar ?? '');
-  // ensurdecido nao tem track no LiveKit — pra mim mesma e o estado local
-  // (instantaneo), pros outros vem do Participant que o servidor repassa.
+  // deafened has no LiveKit track — for myself it's local state (instant),
+  // for others it comes from the Participant the server relays.
   const isDeafened = isMine ? deafened : (participant?.deafened ?? false);
 
   const media = useParticipantMedia(participantId);
@@ -57,8 +56,8 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
   const videoTrack = kind === 'screen' ? media.screenTrack : kind === 'camera' ? media.cameraTrack : null;
   useAttachTrack(videoTrack, videoRef);
 
-  // borda reativa de fala: so no tile "da pessoa" (camera/avatar) — falar
-  // nao deveria destacar a tela compartilhada.
+  // reactive speaking border: only on the "person" tile (camera/avatar) —
+  // speaking shouldn't highlight the shared screen.
   const showSpeakingBorder = kind !== 'screen' && isSpeaking;
   const tint = colorFor(participantId);
 
@@ -69,13 +68,13 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
     return () => { tileDomRegistry.current.delete(key); };
   }, [key, showsVideo, videoTrack, tileDomRegistry]);
 
-  // fit="contain": calcula o tamanho exato que a CAIXA (nao so o video)
-  // precisa ter pra caber sem cortar na proporcao real do video, dentro do
-  // espaco que o pai (quem de fato define o espaco disponivel) tem —
-  // mesma conta que object-fit:contain faria, aplicada na caixa inteira em
-  // vez de so no video. Reage a: pai mudar de tamanho (redimensionar
-  // janela, abrir/fechar chat) e o video mudar de proporcao (carrega
-  // metadata, ou uma transmissao que muda de resolucao no meio da sessao).
+  // fit="contain": computes the exact size the BOX (not just the video)
+  // needs to fit without cropping, at the video's real ratio, within the
+  // space the parent actually has — the same math object-fit:contain would
+  // do, applied to the whole box instead of just the video. Reacts to: the
+  // parent resizing (window resize, chat opening/closing) and the video's
+  // ratio changing (metadata loads, or a stream that changes resolution
+  // mid-session).
   useEffect(() => {
     if (fit !== 'contain' || !showsVideo) { setContainSize(null); return; }
     const root = rootRef.current;
@@ -110,8 +109,8 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
 
   const handleContextMenu = useCallback((e: MouseEvent) => {
     e.preventDefault();
-    // sem isso o clique borbulharia ate o GlobalContextMenu (App.tsx) e
-    // abriria os dois menus juntos.
+    // without this the click would bubble up to GlobalContextMenu
+    // (App.tsx) and open both menus at once.
     e.stopPropagation();
     openTileMenu(key, participantId, kind, { left: e.clientX, top: e.clientY, right: e.clientX, bottom: e.clientY });
   }, [key, participantId, kind, openTileMenu]);
@@ -149,21 +148,21 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
 
       <div className={cn(
         'absolute bottom-2 left-2 flex max-w-[calc(100%-16px)] items-center gap-1.5 rounded-full bg-bg-tertiary/85 py-1 pr-2.5',
-        // pl-1 so faz sentido pra "abracar" o avatar de 20px que fica logo
-        // em seguida — sem ele, o texto merece o mesmo respiro do lado
-        // direito (pr-2.5), senao cola na borda esquerda da pilula.
+        // pl-1 only makes sense to "hug" the 20px avatar right after it —
+        // without it, the text deserves the same breathing room as the
+        // right side (pr-2.5), or it'd stick to the pill's left edge.
         showsVideo ? 'pl-1' : 'pl-2.5'
       )}>
-        {/* so mostra o avatar aqui pros tiles de VIDEO (camera/tela) — e a
-            unica referencia visual de quem e nesses casos. No tile
-            kind==='avatar' o avatar GRANDE ja preenche o corpo inteiro logo
-            acima, repetir de novo aqui (pequeno) era so redundancia. */}
+        {/* only shows the avatar here for VIDEO tiles (camera/screen) — it's
+            the only visual reference to who it is in those cases. On a
+            kind==='avatar' tile the LARGE avatar already fills the whole
+            body above, repeating it here (small) would be redundant. */}
         {showsVideo && <Avatar id={participantId} name={name} avatar={avatar} size={20} />}
         <span className={cn('select-none truncate font-medium text-text-primary', nameSize === 'label' ? 'text-label' : 'text-body')}>{name}</span>
-        {/* icones "meta" — so aparecem quando NAO sao redundantes com o que
-            esse tile especifico ja mostra (ex.: nao repete camera-ligada no
-            proprio tile de camera), sinalizando que a pessoa tem OUTRO
-            stream ativo em algum outro tile. */}
+        {/* "meta" icons — only show when NOT redundant with what this
+            specific tile already displays (e.g. doesn't repeat camera-on
+            on the camera tile itself), signaling the person has ANOTHER
+            active stream on some other tile. */}
         {kind !== 'camera' && !!media.cameraTrack && <Video size={14} className="flex-none text-green" />}
         {kind !== 'screen' && !!media.screenTrack && <ScreenShare size={14} className="flex-none text-blurple" />}
         {isDeafened ? (

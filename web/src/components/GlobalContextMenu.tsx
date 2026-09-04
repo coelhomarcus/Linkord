@@ -11,9 +11,8 @@ interface GlobalContextMenuProps {
   onOpenSettings: () => void;
 }
 
-// campo de texto: deixa o menu NATIVO aparecer ali (colar, sugestao de
-// ortografia, etc) em vez do nosso — nao faz sentido "ir pra aba" num
-// campo de nome, e sem isso ninguem conseguia colar texto em lugar nenhum.
+// text field: let the NATIVE menu show there (paste, spelling suggestions,
+// etc.) instead of ours — pasting text anywhere would be impossible otherwise.
 function isEditableTarget(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLInputElement ||
@@ -22,17 +21,18 @@ function isEditableTarget(target: EventTarget | null): boolean {
   );
 }
 
-/** Substitui o menu nativo do navegador pelo nosso em qualquer lugar do site.
- * `className="contents"` no trigger tira a div wrapper do layout (display:
- * contents) sem tirar ela do DOM — os filhos continuam filhos diretos do
- * flex do Shell, visualmente identico a nao ter wrapper nenhum.
+/** Replaces the browser's native context menu with ours everywhere on the
+ * site. `className="contents"` on the trigger removes the wrapper div from
+ * layout (display: contents) without removing it from the DOM — children
+ * stay direct children of the Shell's flex, visually identical to no
+ * wrapper at all.
  *
- * So existe UM ContextMenu no app inteiro (nao um por regiao) — o conteudo
- * muda de acordo com ONDE o clique direito aconteceu (ver `sidebarTarget`),
- * em vez de aninhar dois menus (o que causaria conflito: os dois triggers
- * escutando o mesmo evento nativo `contextmenu`). Criar categoria/canal
- * pra admin entra aqui do mesmo jeito que "Copiar" ja entra condicionalmente
- * quando ha selecao de texto. */
+ * There's only ONE ContextMenu in the whole app (not one per region) — its
+ * content changes based on WHERE the right-click happened (see
+ * `sidebarTarget`), instead of nesting two menus (which would conflict:
+ * both triggers listening to the same native `contextmenu` event).
+ * Create category/channel for admins is conditional the same way "Copy"
+ * already is when there's a text selection. */
 export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMenuProps) {
   const { state, categories, createCategory } = useRoom();
   const [hasSelection, setHasSelection] = useState(false);
@@ -49,10 +49,10 @@ export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMen
       if (isEditableTarget(e.target)) return;
       e.preventDefault();
     }
-    // fase de captura, antes do ContextMenuTrigger (que fica na arvore
-    // inteira via className="contents") ver o evento — corta a propagacao
-    // pra ele nunca abrir nosso menu num campo de texto, deixando o
-    // navegador cuidar do proprio menu (com "Colar") normalmente.
+    // capture phase, before ContextMenuTrigger (spanning the whole tree via
+    // className="contents") sees the event — stops propagation so it never
+    // opens our menu on a text field, letting the browser show its own
+    // menu (with "Paste") normally.
     function stopForEditable(e: MouseEvent) {
       if (isEditableTarget(e.target)) e.stopPropagation();
     }

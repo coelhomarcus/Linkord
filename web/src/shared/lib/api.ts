@@ -1,9 +1,9 @@
-/** Cliente HTTP fino pras rotas fora do WebSocket — o resto do app inteiro
- * fala Socket.IO; isso aqui cobre o que precisa existir ANTES de qualquer
- * socket (login/registro, ja que o handshake exige cookie de sessao) e o
- * que e mais simples como REST puro (aba Midias dos Ajustes, ver
- * server/media.js — uma listagem paginada, sem estado nenhum pra manter
- * vivo num socket). */
+/** Thin HTTP client for the routes outside the WebSocket — the rest of the
+ * app speaks Socket.IO; this covers what must exist BEFORE any socket
+ * (login/register, since the handshake requires a session cookie) and
+ * what's simpler as plain REST (Settings' Media tab, see
+ * server/src/modules/media.ts — a paginated listing, no state to keep
+ * alive in a socket). */
 
 import type { ChatAttachment } from '../../types/protocol';
 import type { DetectedEmbed } from './chatEmbeds';
@@ -35,7 +35,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (res.status === 204) return undefined as T;
 
   let body: unknown = null;
-  try { body = await res.json(); } catch { /* corpo vazio/nao-JSON — trata abaixo */ }
+  try { body = await res.json(); } catch { /* empty/non-JSON body — handled below */ }
 
   if (!res.ok) {
     const err = (body && typeof body === 'object' ? (body as { error?: { code?: string; message?: string } }).error : null) || {};
@@ -60,12 +60,10 @@ export function logout(): Promise<void> {
   return apiFetch('/api/auth/logout', { method: 'POST' });
 }
 
-// ---- Midia do projeto inteiro (aba "Midias" dos Ajustes) -------------------
-
 export type MediaKind = 'uploads' | 'embeds';
 
-/** Uma entrada da aba Midias — sempre tem OU `attachment` (kind=uploads) OU
- * `embed` (kind=embeds), nunca os dois, nunca nenhum (ver server/media.js). */
+/** An entry in the Media tab — always has EITHER `attachment` (kind=uploads)
+ * OR `embed` (kind=embeds), never both, never neither (see media.ts). */
 export interface MediaItem {
   msgId: number;
   channelId: string;
@@ -79,8 +77,8 @@ export interface MediaItem {
 
 export interface MediaPage {
   items: MediaItem[];
-  /** `msgId` pra mandar como `before` na proxima chamada — null quando
-   * chegou ao fim (ver server/media.js#fetchUploadsPage/fetchEmbedsPage). */
+  /** `msgId` to send as `before` on the next call — null once it reaches
+   * the end (see media.ts#fetchUploadsPage/fetchEmbedsPage). */
   nextBefore: number | null;
 }
 
@@ -89,8 +87,6 @@ export function fetchMedia(kind: MediaKind, before: number | null, limit = 24): 
   if (before != null) params.set('before', String(before));
   return apiFetch(`/api/media?${params.toString()}`);
 }
-
-// ---- Preview de link generico (embed com Open Graph, ver GenericEmbed.tsx) -
 
 export interface LinkPreviewData {
   url: string;

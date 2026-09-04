@@ -8,14 +8,14 @@ interface ImageLightboxProps {
   onOpenChange: (open: boolean) => void;
 }
 
-/** Modal de imagem em tela cheia, estilo Discord — clicar numa imagem do
- * chat abre isso em vez de navegar pra uma aba nova. Nao usa o Dialog
- * generico (ui/dialog.tsx) de proposito: aquele e um "cartao" com fundo/
- * padding/max-w pequeno pra formularios, aqui a imagem e o proprio
- * conteudo, sem moldura — precisa dos primitivos do Base UI direto pra
- * controlar isso. Fundo escuro (nao o cinza claro do Dialog padrao), clicar
- * fora ou Escape fecha (o Base UI ja cuida do Escape/foco), clicar na
- * imagem em si NAO fecha. */
+/** Fullscreen image modal, Discord-style — clicking a chat image opens this
+ * instead of navigating to a new tab. Doesn't use the generic Dialog
+ * (ui/dialog.tsx) on purpose: that one is a small "card" with
+ * background/padding/max-w meant for forms, here the image itself is the
+ * content with no frame — needs Base UI's primitives directly to control
+ * that. Dark background (not the default Dialog's light gray); clicking
+ * outside or Escape closes it (Base UI already handles Escape/focus);
+ * clicking the image itself does NOT close it. */
 export function ImageLightbox({ src, alt, open, onOpenChange }: ImageLightboxProps) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>

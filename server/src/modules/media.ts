@@ -8,35 +8,28 @@ import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from './auth/session.js';
 import { firstEmbed, type DetectedEmbed } from './link-preview/embeds.js';
 
-// ---------------------------------------------------------------------------
-// GET /api/media — aba "Midias" dos Ajustes: agrega TODO anexo enviado e
-// TODO link embutivel do projeto inteiro (todos os canais, nao so o aberto
-// no momento), mais recente primeiro. Duas listas separadas (?kind=uploads
-// ou ?kind=embeds), cada uma paginada por cursor (?before=<msgId>, exclusive)
-// em vez de offset — o historico cresce com o tempo, e cursor nao pula nem
-// repete item se uma mensagem nova chegar entre dois cliques de
-// "carregar mais" (offset pularia/repetiria).
+// GET /api/media — Settings "Media" tab: aggregates every uploaded
+// attachment and every embeddable link across ALL channels, newest first.
+// Two lists (?kind=uploads or embeds), each cursor-paginated
+// (?before=<msgId>, exclusive) instead of offset — a cursor can't skip or
+// repeat an item if a new message arrives between two "load more" clicks.
 //
-// uploads e uma query so, exata (innerJoin em attachments ja filtra pra so
-// mensagem-com-anexo). embeds precisa escanear o TEXTO da mensagem em JS
-// (mesma logica de web/src/shared/lib/chatEmbeds.ts, espelhada em
-// modules/link-preview/embeds.ts) — nem todo link vira embed (a maioria dos
-// links do dia a dia nao casa com YouTube/Twitch/midia direta), entao o
-// filtro SQL (~* 'https?://') so pega candidatos; fetchEmbedsPage escaneia
-// em lotes ate juntar `limit` embeds de verdade ou esgotar a tabela.
-// ---------------------------------------------------------------------------
+// uploads is one exact query (the attachments innerJoin already filters to
+// message-with-attachment). embeds must scan message TEXT in JS (mirrors
+// web/src/shared/lib/chatEmbeds.ts) since not every link becomes an embed —
+// the SQL filter (~* 'https?://') only narrows candidates; fetchEmbedsPage
+// scans in batches until it collects `limit` real embeds or the table runs out.
 
 const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 60;
 const EMBED_BATCH_SIZE = 40;
-// teto de linhas escaneadas numa unica chamada, mesmo sem juntar `limit`
-// embeds — evita um loop caro se o canal tiver centenas de links que nao
-// viram embed nenhum. Quem clicar "carregar mais" de novo so continua do
-// cursor onde parou (ver nextBefore), sem perder nem repetir nada.
+// cap on rows scanned per call, even without reaching `limit` embeds —
+// avoids an expensive loop if a channel has hundreds of non-embed links.
+// "Load more" resumes exactly from the cursor (see nextBefore).
 const EMBED_SCAN_CEILING = 400;
-// messages.id e `serial` (integer de 4 bytes) — Number.MAX_SAFE_INTEGER
-// como sentinela de "sem cursor ainda" estoura o range do Postgres (erro
-// "integer out of range" na hora da query). O teto real da coluna e esse.
+// messages.id is a 4-byte `serial` — using Number.MAX_SAFE_INTEGER as the
+// "no cursor yet" sentinel overflows Postgres's int4 range. This is the
+// column's real ceiling.
 const PG_INT4_MAX = 2147483647;
 
 interface MediaBaseRow {
@@ -91,10 +84,9 @@ async function fetchUploadsPage(before: number | null, limit: number): Promise<{
       size: attachmentsTable.size,
     })
     .from(messages)
-    // innerJoin (nao left) em attachments.message_id=messages.id ja filtra
-    // sozinho pra so mensagem-com-anexo — foto de perfil (attachments com
-    // message_id NULL) nunca bate nesse join, fica de fora sem precisar de
-    // filtro extra.
+    // innerJoin (not left) on attachments.message_id=messages.id already
+    // filters to message-with-attachment — avatars (message_id NULL) never
+    // match, no extra filter needed.
     .innerJoin(attachmentsTable, eq(attachmentsTable.messageId, messages.id))
     .innerJoin(channels, eq(channels.id, messages.channelId))
     .where(lt(messages.id, before ?? PG_INT4_MAX))
@@ -134,16 +126,15 @@ async function fetchEmbedsPage(before: number | null, limit: number): Promise<{ 
     if (batch.length === 0) { exhausted = true; break; }
     scanned += batch.length;
 
-    // se o `limit` for atingido NO MEIO do lote, paramos de consumi-lo sem
-    // saber se havia mais candidatos depois do ponto onde paramos — nesse
-    // caso NAO da pra concluir "fim da tabela" so por esse lote ter vindo
-    // mais curto que EMBED_BATCH_SIZE (ele so ficou curto porque nos
-    // desistimos de le-lo inteiro, nao porque acabaram as linhas).
+    // if `limit` is hit MID-BATCH, we stop consuming it without knowing if
+    // more candidates existed past that point — so a short batch here does
+    // NOT by itself mean "end of table" (it's short because we gave up
+    // early, not because the rows ran out).
     let stoppedEarly = false;
     for (const row of batch) {
-      // cursor SEMPRE avanca, mesmo quando o candidato nao vira embed —
-      // e o que garante que a proxima chamada (outro clique de "carregar
-      // mais") retoma exatamente daqui, sem re-escanear nem pular nada.
+      // cursor ALWAYS advances, even when a candidate doesn't become an
+      // embed — this is what lets the next call ("load more" again) resume
+      // exactly here, without re-scanning or skipping anything.
       cursor = row.msgId;
       const embed = firstEmbed(row.text);
       if (embed) {
@@ -151,8 +142,8 @@ async function fetchEmbedsPage(before: number | null, limit: number): Promise<{ 
         if (items.length >= limit) { stoppedEarly = true; break; }
       }
     }
-    // so aqui, com o lote INTEIRO consumido, um lote curto de fato significa
-    // que a tabela acabou.
+    // only here, with the FULL batch consumed, does a short batch actually
+    // mean the table ran out.
     if (!stoppedEarly && batch.length < EMBED_BATCH_SIZE) { exhausted = true; break; }
   }
 
