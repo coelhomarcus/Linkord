@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Room } from 'livekit-client';
 import type { Room as LKRoom } from 'livekit-client';
+import { loadDevicePreference, saveDevicePreference } from './useDevicePreference';
 
 export interface DeviceOption {
   deviceId: string;
@@ -28,11 +29,29 @@ export function useMediaDevices(room: LKRoom, kind: MediaDeviceKind): MediaDevic
   const [devices, setDevices] = useState<DeviceOption[]>([]);
   const [activeDeviceId, setActiveDeviceId] = useState<string | undefined>(undefined);
   const [permissionNeeded, setPermissionNeeded] = useState(false);
+  // applies the saved preference at most once per hook instance — avoids
+  // re-forcing it on every refresh() (e.g. triggered by requestPermission).
+  const appliedSavedRef = useRef(false);
 
   const refresh = useCallback(async (requestPermissions: boolean) => {
     const list = await Room.getLocalDevices(kind, requestPermissions);
     setDevices(list.map((d) => ({ deviceId: d.deviceId, label: d.label })));
     setPermissionNeeded(list.length > 0 && list.every((d) => !d.label));
+
+    if (!appliedSavedRef.current) {
+      appliedSavedRef.current = true;
+      const saved = loadDevicePreference(kind);
+      // only apply a device id that's actually present right now — never
+      // force-apply a stale/removed device.
+      if (saved && list.some((d) => d.deviceId === saved) && room.getActiveDevice(kind) !== saved) {
+        try {
+          await room.switchActiveDevice(kind, saved);
+        } catch (err) {
+          console.warn(`Falha ao aplicar ${kind} salvo`, err);
+        }
+      }
+    }
+
     setActiveDeviceId(room.getActiveDevice(kind));
   }, [room, kind]);
 
@@ -44,6 +63,7 @@ export function useMediaDevices(room: LKRoom, kind: MediaDeviceKind): MediaDevic
   const selectDevice = useCallback(async (deviceId: string) => {
     await room.switchActiveDevice(kind, deviceId);
     setActiveDeviceId(deviceId);
+    saveDevicePreference(kind, deviceId);
   }, [room, kind]);
 
   const requestPermission = useCallback(() => refresh(true), [refresh]);

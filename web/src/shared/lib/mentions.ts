@@ -26,3 +26,17 @@ export function mentionsUser(text: string, lookup: Map<string, PublicUser>, user
   }
   return false;
 }
+
+/** Looser than mentionsUser: doesn't need the account directory, just
+ * compares the raw @token against MY OWN known username — fine because
+ * usernames are unique, so it can't produce a false positive for someone
+ * else. Used from RoomProvider's handleServerMessage, which only has a
+ * myUsernameRef available, not a fresh allUsers Map. */
+export function mentionsUsername(text: string, username: string | null): boolean {
+  if (!username) return false;
+  const lower = username.toLowerCase();
+  for (const match of text.matchAll(MENTION_RE)) {
+    if (match[1]!.toLowerCase() === lower) return true;
+  }
+  return false;
+}

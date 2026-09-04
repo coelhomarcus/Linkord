@@ -27,7 +27,7 @@ import { cn } from '@/shared/lib/utils';
 const SettingsModal = lazy(() => import('./features/settings/SettingsModal').then((m) => ({ default: m.SettingsModal })));
 
 function Shell() {
-  const { state, dispatch, livekitRoom, closeTileMenu, sendWs, notifyActiveView } = useRoom();
+  const { state, dispatch, livekitRoom, closeTileMenu, sendWs, notifyActiveView, registerRequestChatView } = useRoom();
   const [activeView, setActiveView] = useState<AppView>('chat');
   const roomError = state.roomError;
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -40,6 +40,10 @@ function Shell() {
   // only so the new-message sound (RoomProvider) knows if the person is
   // already looking at chat.
   useEffect(() => { notifyActiveView(activeView); }, [activeView, notifyActiveView]);
+
+  // lets a desktop-notification click switch to the Chat tab (RoomProvider
+  // only owns the active channel, not this view state).
+  useEffect(() => { registerRequestChatView(() => setActiveView('chat')); }, [registerRequestChatView]);
 
   // mic isn't included: with the "native" model (activate once, only
   // mute/unmute), it stays published in the background for most of the
