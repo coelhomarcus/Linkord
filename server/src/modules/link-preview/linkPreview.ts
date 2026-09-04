@@ -2,9 +2,10 @@ import http from 'node:http';
 import https from 'node:https';
 import dns from 'node:dns';
 import type { LookupOptions, LookupAddress } from 'node:dns';
-import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { IncomingMessage } from 'node:http';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { config } from '../../config/env.js';
-import { sendJson, sendError, type RouteTable } from '../../http/router.js';
+import { sendJson, sendError } from '../../http/respond.js';
 import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
 
@@ -299,23 +300,24 @@ async function fetchLinkPreviewData(rawUrl: string, userId: string): Promise<Lin
   return result;
 }
 
-async function handleLinkPreview(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const cookies = parseCookies(req.headers.cookie || '');
+async function handleLinkPreview(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return sendError(res, 401, 'unauthenticated', 'Nao autenticado.');
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
 
-  const url = new URL(req.url || '', 'http://x');
-  const target = url.searchParams.get('url');
-  if (!target) return sendError(res, 400, 'missing_url', 'Parametro url obrigatorio.');
+  const target = (request.query as Record<string, string | undefined>).url;
+  if (!target) return sendError(reply, 400, 'missing_url', 'Parametro url obrigatorio.');
 
   let parsed: URL;
-  try { parsed = new URL(target); } catch { return sendError(res, 400, 'invalid_url', 'URL invalida.'); }
+  try { parsed = new URL(target); } catch { return sendError(reply, 400, 'invalid_url', 'URL invalida.'); }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return sendError(res, 400, 'invalid_url', 'So http/https e suportado.');
+    return sendError(reply, 400, 'invalid_url', 'So http/https e suportado.');
   }
 
   const data = await fetchLinkPreviewData(target, sess.userId);
-  sendJson(res, 200, data);
+  sendJson(reply, 200, data);
 }
 
-export const routes: RouteTable = { 'GET /api/link-preview': handleLinkPreview };
+export function registerLinkPreviewRoutes(fastify: FastifyInstance): void {
+  fastify.get('/api/link-preview', handleLinkPreview);
+}

@@ -1,6 +1,6 @@
 import { config } from './config/env.js';
 import { participants as participantsMap, broadcast } from './realtime/participants.js';
-import { createHttpServer } from './http/server.js';
+import { createApp } from './http/app.js';
 import { createWsServer } from './realtime/socket.js';
 import { runMigrations } from './db/migrate.js';
 import { sweepExpiredSessions } from './modules/auth/session.js';
@@ -57,16 +57,19 @@ async function bootstrap(): Promise<void> {
     process.exit(1);
   }
 
-  const server = createHttpServer();
-  const io = createWsServer(server);
+  const fastify = createApp();
+  // fastify.server (http.Server por baixo) ja existe assim que Fastify() e
+  // chamado, antes de listen() — o Socket.IO se anexa nele do mesmo jeito
+  // que se anexaria num http.Server puro, sem precisar de nenhuma mudanca
+  // em realtime/socket.ts.
+  const io = createWsServer(fastify.server);
 
-  server.listen(config.PORT, config.HOST_BIND, () => {
-    console.log(`Linkord ouvindo em http://${config.HOST_BIND}:${config.PORT}`);
-    console.log('Sala unica, qualquer participante pode compartilhar. Camera/tela via WebRTC (LiveKit).');
-    if (!config.LIVEKIT_URL || !config.LIVEKIT_API_KEY || !config.LIVEKIT_API_SECRET) {
-      console.warn('Aviso: LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET nao configurados — compartilhar tela/camera vai falhar.');
-    }
-  });
+  await fastify.listen({ port: config.PORT, host: config.HOST_BIND });
+  console.log(`Linkord ouvindo em http://${config.HOST_BIND}:${config.PORT}`);
+  console.log('Sala unica, qualquer participante pode compartilhar. Camera/tela via WebRTC (LiveKit).');
+  if (!config.LIVEKIT_URL || !config.LIVEKIT_API_KEY || !config.LIVEKIT_API_SECRET) {
+    console.warn('Aviso: LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET nao configurados — compartilhar tela/camera vai falhar.');
+  }
 
   // limpeza periodica de sessoes vencidas — nao precisa ser a cada request,
   // so pra nao deixar a tabela crescer pra sempre.
@@ -88,7 +91,7 @@ async function bootstrap(): Promise<void> {
       broadcast({ t: 'server-restart' });
       for (const p of participantsMap.values()) { try { p.socket && p.socket.disconnect(true); } catch { /* socket ja morrendo */ } }
       io.close();
-      server.close(() => process.exit(0));
+      fastify.close().then(() => process.exit(0)).catch(() => process.exit(1));
       setTimeout(() => process.exit(0), 3000).unref();
     });
   }

@@ -2,14 +2,13 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import fsStreams from 'node:fs'; // so pra createReadStream/createWriteStream (montagem dos chunks), ver assembleChunks
 import path from 'node:path';
-import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { eq, and, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
 import { config } from '../config/env.js';
 import { db } from '../db/client.js';
 import { attachments as attachmentsTable, messages, type Attachment } from '../db/schema.js';
 import { broadcast } from '../realtime/participants.js';
-import { readRawBody, readJsonBody } from '../http/body.js';
-import { sendJson, sendError, type RouteTable } from '../http/router.js';
+import { sendJson, sendError, jsonBody } from '../http/respond.js';
 import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from './auth/session.js';
 import { channelExists } from './channels.js';
@@ -273,14 +272,14 @@ const completingUploads = new Set<string>();
  * uploadId (que tambem sera o id final do anexo) e o chunkSize que o
  * servidor decidiu (config.UPLOAD_CHUNK_BYTES) — o cliente nunca hardcoda
  * esse valor. */
-async function handleAttachmentInit(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const cookies = parseCookies(req.headers.cookie || '');
+async function handleAttachmentInit(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return sendError(res, 401, 'unauthenticated', 'Nao autenticado.');
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
 
-  const body = await readJsonBody(req);
+  const body = jsonBody(request.body);
   const channelId = String(body.channelId || '');
-  if (!channelId || !(await channelExists(channelId))) return sendError(res, 404, 'channel_not_found', 'Canal nao encontrado.');
+  if (!channelId || !(await channelExists(channelId))) return sendError(reply, 404, 'channel_not_found', 'Canal nao encontrado.');
 
   const fileName = sanitizeFileName(body.fileName);
   const mimeType = String(body.mimeType || 'application/octet-stream').split(';')[0]!.trim() || 'application/octet-stream';
@@ -288,12 +287,12 @@ async function handleAttachmentInit(req: IncomingMessage, res: ServerResponse): 
 
   const totalSize = Number(body.totalSize);
   if (!Number.isInteger(totalSize) || totalSize <= 0 || totalSize > config.MAX_ATTACHMENT_BYTES) {
-    return sendError(res, 400, 'invalid_size', 'Tamanho de arquivo invalido.');
+    return sendError(reply, 400, 'invalid_size', 'Tamanho de arquivo invalido.');
   }
 
   const usage = await getUsage();
   if (usage.totalBytes + totalSize > config.MAX_STORAGE_BYTES) {
-    return sendError(res, 400, 'storage_full', 'Armazenamento cheio (30GB no total). Apague arquivos antigos antes de enviar mais.');
+    return sendError(reply, 400, 'storage_full', 'Armazenamento cheio (30GB no total). Apague arquivos antigos antes de enviar mais.');
   }
 
   const uploadId = newId();
@@ -305,44 +304,51 @@ async function handleAttachmentInit(req: IncomingMessage, res: ServerResponse): 
     chunkSize, totalChunks, createdAt: new Date().toISOString(),
   } satisfies UploadManifest));
 
-  sendJson(res, 201, { uploadId, chunkSize, totalChunks });
+  sendJson(reply, 201, { uploadId, chunkSize, totalChunks });
 }
 
 /** Passo 2/3 — recebe UM pedaco do arquivo (no maximo config.UPLOAD_CHUNK_BYTES,
  * so o ultimo pode ser menor). Gravacao e idempotente (overwrite) — o cliente
  * pode reenviar o mesmo indice sem problema (retry de conexao instavel). */
-export async function handleAttachmentChunk(req: IncomingMessage, res: ServerResponse, uploadId: string, index: number): Promise<void> {
-  const cookies = parseCookies(req.headers.cookie || '');
+export async function handleAttachmentChunk(request: FastifyRequest<{ Params: { id: string; index: string } }>, reply: FastifyReply): Promise<void> {
+  const uploadId = request.params.id;
+  const index = Number(request.params.index);
+  const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return sendError(res, 401, 'unauthenticated', 'Nao autenticado.');
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
 
   const manifest = await readManifest(uploadId);
-  if (!manifest || manifest.userId !== sess.userId) return sendError(res, 404, 'upload_not_found', 'Upload nao encontrado.');
+  if (!manifest || manifest.userId !== sess.userId) return sendError(reply, 404, 'upload_not_found', 'Upload nao encontrado.');
   if (!Number.isInteger(index) || index < 0 || index >= manifest.totalChunks) {
-    return sendError(res, 400, 'invalid_index', 'Indice de pedaco invalido.');
+    return sendError(reply, 400, 'invalid_index', 'Indice de pedaco invalido.');
   }
 
+  // corpo cru (Buffer) — o parser de conteudo pra essas rotas e trocado em
+  // registerAttachmentRoutes abaixo; o teto de tamanho vem do bodyLimit da
+  // rota (config.UPLOAD_CHUNK_BYTES), esse length exato ainda precisa ser
+  // conferido aqui (o ULTIMO pedaco e sempre menor que o teto).
   const expected = expectedChunkLength(manifest, index);
-  const buffer = await readRawBody(req, expected);
-  if (buffer.length !== expected) return sendError(res, 400, 'chunk_size_mismatch', 'Tamanho do pedaco nao bate com o esperado.');
+  const buffer = request.body as Buffer;
+  if (buffer.length !== expected) return sendError(reply, 400, 'chunk_size_mismatch', 'Tamanho do pedaco nao bate com o esperado.');
 
   await fs.writeFile(chunkPathFor(uploadId, index), buffer);
-  sendJson(res, 200, { received: index });
+  sendJson(reply, 200, { received: index });
 }
 
 /** Passo 3/3 — confirma que todos os pedacos chegaram, monta o arquivo final
  * via stream (nunca inteiro em memoria) e so entao cria a mensagem/anexo no
  * banco. Os chunks so somem do disco DEPOIS do commit da transacao (exigencia
  * de sempre limpar o que nao e mais preciso assim que o arquivo monta). */
-export async function handleAttachmentComplete(req: IncomingMessage, res: ServerResponse, uploadId: string): Promise<void> {
-  const cookies = parseCookies(req.headers.cookie || '');
+export async function handleAttachmentComplete(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> {
+  const uploadId = request.params.id;
+  const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return sendError(res, 401, 'unauthenticated', 'Nao autenticado.');
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
 
   const manifest = await readManifest(uploadId);
-  if (!manifest || manifest.userId !== sess.userId) return sendError(res, 404, 'upload_not_found', 'Upload nao encontrado.');
+  if (!manifest || manifest.userId !== sess.userId) return sendError(reply, 404, 'upload_not_found', 'Upload nao encontrado.');
 
-  if (completingUploads.has(uploadId)) return sendError(res, 409, 'already_completing', 'Upload ja esta sendo finalizado.');
+  if (completingUploads.has(uploadId)) return sendError(reply, 409, 'already_completing', 'Upload ja esta sendo finalizado.');
   completingUploads.add(uploadId);
 
   try {
@@ -350,18 +356,18 @@ export async function handleAttachmentComplete(req: IncomingMessage, res: Server
       try {
         await fs.access(chunkPathFor(uploadId, i));
       } catch {
-        return sendError(res, 400, 'incomplete_upload', 'Faltam pedacos do arquivo.');
+        return sendError(reply, 400, 'incomplete_upload', 'Faltam pedacos do arquivo.');
       }
     }
     let receivedTotal = 0;
     for (let i = 0; i < manifest.totalChunks; i++) {
       receivedTotal += (await fs.stat(chunkPathFor(uploadId, i))).size;
     }
-    if (receivedTotal !== manifest.totalSize) return sendError(res, 400, 'size_mismatch', 'Tamanho recebido nao bate com o declarado.');
+    if (receivedTotal !== manifest.totalSize) return sendError(reply, 400, 'size_mismatch', 'Tamanho recebido nao bate com o declarado.');
 
     const usage = await getUsage();
     if (usage.totalBytes + manifest.totalSize > config.MAX_STORAGE_BYTES) {
-      return sendError(res, 400, 'storage_full', 'Armazenamento cheio (30GB no total). Apague arquivos antigos antes de enviar mais.');
+      return sendError(reply, 400, 'storage_full', 'Armazenamento cheio (30GB no total). Apague arquivos antigos antes de enviar mais.');
     }
 
     const destPath = filePathFor(uploadId);
@@ -406,7 +412,7 @@ export async function handleAttachmentComplete(req: IncomingMessage, res: Server
     };
     broadcast({ t: 'chat', message: chatMessage });
     await broadcastUsage();
-    sendJson(res, 201, { message: chatMessage });
+    sendJson(reply, 201, { message: chatMessage });
   } finally {
     completingUploads.delete(uploadId);
   }
@@ -415,16 +421,17 @@ export async function handleAttachmentComplete(req: IncomingMessage, res: Server
 /** Cancela uma sessao de upload em andamento (chamado pelo cliente quando um
  * envio falha de forma irrecuperavel) — apaga os chunks na hora, sem esperar
  * a varredura. Idempotente: chamar de novo numa sessao ja apagada e sucesso. */
-export async function handleAttachmentCancel(req: IncomingMessage, res: ServerResponse, uploadId: string): Promise<void> {
-  const cookies = parseCookies(req.headers.cookie || '');
+export async function handleAttachmentCancel(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> {
+  const uploadId = request.params.id;
+  const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return sendError(res, 401, 'unauthenticated', 'Nao autenticado.');
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
 
   const manifest = await readManifest(uploadId);
   if (manifest && manifest.userId === sess.userId) {
     await fs.rm(tmpDirFor(uploadId), { recursive: true, force: true }).catch(() => {});
   }
-  sendJson(res, 200, { ok: true });
+  sendJson(reply, 200, { ok: true });
 }
 
 /** Upload de foto de perfil — mesma pasta/rota de servir (`/uploads/<id>`)
@@ -436,18 +443,18 @@ export async function handleAttachmentCancel(req: IncomingMessage, res: ServerRe
  * volta — quem realmente APLICA isso como avatar da conta e o fluxo
  * existente (`profile` por WebSocket, ver realtime/participants.ts), que
  * tambem cuida de apagar a foto antiga (deleteAvatarFile acima). */
-async function handleAvatarUpload(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const cookies = parseCookies(req.headers.cookie || '');
+async function handleAvatarUpload(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return sendError(res, 401, 'unauthenticated', 'Nao autenticado.');
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
 
-  const mimeType = String(req.headers['content-type'] || '').split(';')[0]!.trim();
+  const mimeType = String(request.headers['content-type'] || '').split(';')[0]!.trim();
   if (!AVATAR_MIME_TYPES.has(mimeType)) {
-    return sendError(res, 400, 'invalid_type', 'Formato invalido. Use PNG, JPEG, GIF ou WEBP.');
+    return sendError(reply, 400, 'invalid_type', 'Formato invalido. Use PNG, JPEG, GIF ou WEBP.');
   }
 
-  const buffer = await readRawBody(req, config.MAX_AVATAR_BYTES);
-  if (buffer.length === 0) return sendError(res, 400, 'empty_file', 'Arquivo vazio.');
+  const buffer = request.body as Buffer;
+  if (buffer.length === 0) return sendError(reply, 400, 'empty_file', 'Arquivo vazio.');
 
   const id = newId();
   await fs.writeFile(filePathFor(id), buffer);
@@ -457,50 +464,53 @@ async function handleAvatarUpload(req: IncomingMessage, res: ServerResponse): Pr
     await fs.unlink(filePathFor(id)).catch(() => {});
     throw err;
   }
-  sendJson(res, 201, { avatar: `/uploads/${id}` });
+  sendJson(reply, 201, { avatar: `/uploads/${id}` });
 }
 
-/** Chamada direto de http/server.ts (nao passa pelo router de /api/, que so
- * faz match exato de string sem parametro de id na URL) sempre que o path
- * comeca com /uploads/ — mesmo estilo do healthz/fallback estatico que ja
- * mora la. */
-export async function serveUpload(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<void> {
-  const cookies = parseCookies(req.headers.cookie || '');
+export async function serveUpload(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> {
+  const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) { res.writeHead(401).end('nao autenticado'); return; }
+  if (!sess) { reply.code(401).send('nao autenticado'); return; }
 
-  const id = pathname.slice('/uploads/'.length);
-  if (!ID_RE.test(id)) { res.writeHead(400).end('id invalido'); return; }
+  const id = request.params.id;
+  if (!ID_RE.test(id)) { reply.code(400).send('id invalido'); return; }
 
   const [row] = await db.select().from(attachmentsTable).where(eq(attachmentsTable.id, id)).limit(1);
-  if (!row) { res.writeHead(404).end('nao encontrado'); return; }
+  if (!row) { reply.code(404).send('nao encontrado'); return; }
 
   let data: Buffer;
   try {
     data = await fs.readFile(filePathFor(id));
   } catch {
-    res.writeHead(404).end('nao encontrado');
+    reply.code(404).send('nao encontrado');
     return;
   }
 
   const inline = INLINE_MIME_TYPES.has(row.mimeType);
-  res.writeHead(200, {
-    'Content-Type': inline ? row.mimeType : 'application/octet-stream',
-    'Content-Disposition': contentDispositionFor(inline ? 'inline' : 'attachment', row.fileName),
-    'Content-Length': data.length,
-    'X-Content-Type-Options': 'nosniff',
+  reply
+    .code(200)
+    .header('Content-Type', inline ? row.mimeType : 'application/octet-stream')
+    .header('Content-Disposition', contentDispositionFor(inline ? 'inline' : 'attachment', row.fileName))
+    .header('Content-Length', data.length)
+    .header('X-Content-Type-Options', 'nosniff')
     // privado (nao 'public'): gated por sessao, um cache compartilhado nao
     // deveria guardar isso pra servir a outra pessoa sem checar de novo.
-    'Cache-Control': 'private, max-age=31536000, immutable',
-  });
-  res.end(data);
+    .header('Cache-Control', 'private, max-age=31536000, immutable')
+    .send(data);
 }
 
-export const routes: RouteTable = {
-  // as demais rotas de upload em pedacos (chunk/complete/cancelar) tem
-  // segmento variavel na URL (uploadId/index) e por isso sao despachadas
-  // manualmente em http/server.ts, antes do router generico — mesmo estilo
-  // de /uploads/<id> (ver serveUpload). So esta e string exata.
-  'POST /api/attachments/init': handleAttachmentInit,
-  'POST /api/avatar': handleAvatarUpload,
-};
+export function registerAttachmentRoutes(fastify: FastifyInstance): void {
+  fastify.post('/api/attachments/init', handleAttachmentInit);
+  fastify.post('/api/attachments/:id/complete', handleAttachmentComplete);
+  fastify.delete('/api/attachments/:id', handleAttachmentCancel);
+  fastify.get('/uploads/:id', serveUpload);
+
+  // corpo cru (Buffer), nao JSON — plugin proprio (encapsulado) so pra essas
+  // duas rotas: trocar addContentTypeParser na instancia raiz quebraria o
+  // parse de JSON de toda rota /api/* do resto do app.
+  fastify.register(async (scoped) => {
+    scoped.addContentTypeParser('*', { parseAs: 'buffer' }, (_req, payload, done) => done(null, payload));
+    scoped.post('/api/attachments/:id/chunk/:index', { bodyLimit: config.UPLOAD_CHUNK_BYTES }, handleAttachmentChunk);
+    scoped.post('/api/avatar', { bodyLimit: config.MAX_AVATAR_BYTES }, handleAvatarUpload);
+  });
+}

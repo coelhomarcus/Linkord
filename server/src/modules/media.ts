@@ -1,9 +1,9 @@
 import { eq, and, lt, desc, sql } from 'drizzle-orm';
-import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { config } from '../config/env.js';
 import { db } from '../db/client.js';
 import { messages, channels, attachments as attachmentsTable } from '../db/schema.js';
-import { sendJson, sendError, type RouteTable } from '../http/router.js';
+import { sendJson, sendError } from '../http/respond.js';
 import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from './auth/session.js';
 import { firstEmbed, type DetectedEmbed } from './link-preview/embeds.js';
@@ -159,20 +159,22 @@ async function fetchEmbedsPage(before: number | null, limit: number): Promise<{ 
   return { items, nextBefore: exhausted ? null : cursor };
 }
 
-async function handleMedia(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const cookies = parseCookies(req.headers.cookie || '');
+async function handleMedia(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return sendError(res, 401, 'unauthenticated', 'Nao autenticado.');
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
 
-  const url = new URL(req.url || '', 'http://x');
-  const kind = url.searchParams.get('kind') === 'embeds' ? 'embeds' : 'uploads';
-  const beforeRaw = url.searchParams.get('before');
+  const query = request.query as Record<string, string | undefined>;
+  const kind = query.kind === 'embeds' ? 'embeds' : 'uploads';
+  const beforeRaw = query.before;
   const before = beforeRaw && /^\d+$/.test(beforeRaw) ? Number(beforeRaw) : null;
-  const limitRaw = Number(url.searchParams.get('limit'));
+  const limitRaw = Number(query.limit);
   const limit = Math.min(Math.max(Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : DEFAULT_LIMIT, 1), MAX_LIMIT);
 
   const page = kind === 'embeds' ? await fetchEmbedsPage(before, limit) : await fetchUploadsPage(before, limit);
-  sendJson(res, 200, page);
+  sendJson(reply, 200, page);
 }
 
-export const routes: RouteTable = { 'GET /api/media': handleMedia };
+export function registerMediaRoutes(fastify: FastifyInstance): void {
+  fastify.get('/api/media', handleMedia);
+}
