@@ -14,6 +14,7 @@
     "build:web": "npm run build --prefix web",
     "test": "npm run test:server && npm run test:web",
     "test:server": "node --env-file-if-exists=.env.test --import tsx --test \"server/src/**/*.test.ts\"",
+    "test:server:coverage": "node --env-file-if-exists=.env.test --import tsx --experimental-test-coverage --test \"server/src/**/*.test.ts\"",
     "test:web": "npm run test --prefix web",
     "db:generate": "node --env-file-if-exists=.env ./node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "node --env-file-if-exists=.env --import tsx server/src/db/migrate.ts",

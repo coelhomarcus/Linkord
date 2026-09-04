@@ -107,7 +107,7 @@ async function readManifest(uploadId: string): Promise<UploadManifest | null> {
 
 /** Tamanho esperado de UM chunk especifico — todos tem chunkSize, exceto o
  * ultimo, que e o resto (totalSize nem sempre e multiplo exato de chunkSize). */
-function expectedChunkLength(manifest: UploadManifest, index: number): number {
+export function expectedChunkLength(manifest: UploadManifest, index: number): number {
   return index === manifest.totalChunks - 1
     ? manifest.totalSize - manifest.chunkSize * (manifest.totalChunks - 1)
     : manifest.chunkSize;
@@ -246,7 +246,7 @@ export async function deleteAvatarFile(avatarValue: unknown): Promise<void> {
   await fs.unlink(filePathFor(id)).catch((err: NodeJS.ErrnoException) => { if (err.code !== 'ENOENT') throw err; });
 }
 
-function sanitizeFileName(raw: unknown): string {
+export function sanitizeFileName(raw: unknown): string {
   const s = String(raw == null ? '' : raw).trim().replace(/[\r\n/\\]/g, '_').slice(0, 200);
   return s || 'arquivo';
 }
@@ -254,7 +254,7 @@ function sanitizeFileName(raw: unknown): string {
 /** Content-Disposition seguro pra nome com acentuacao/espacos/aspas — ASCII
  * simplificado como fallback (`filename=`) + UTF-8 de verdade via
  * `filename*=` (RFC 5987), que navegadores modernos preferem. */
-function contentDispositionFor(kind: 'inline' | 'attachment', fileName: string): string {
+export function contentDispositionFor(kind: 'inline' | 'attachment', fileName: string): string {
   const asciiFallback = fileName.replace(/[^\x20-\x7E]/g, '_').replace(/"/g, "'");
   return `${kind}; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
 }

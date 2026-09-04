@@ -1,0 +1,36 @@
+name: Testes
+
+# Roda a suite inteira (servidor + frontend) em todo push/PR — nao precisa de
+# Postgres nenhum: server/src/db/client.ts so cria o Pool (nunca conecta de
+# verdade so por ser importado), e .env.test da uma DATABASE_URL fake so pra
+# satisfazer esse guard na hora do import. Nenhum teste hoje executa query.
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instala dependencias (raiz)
+        run: npm ci
+
+      - name: Instala dependencias (web)
+        run: npm ci --prefix web
+
+      - name: Testes do servidor
+        run: npm run test:server
+
+      - name: Testes do frontend
+        run: npm run test:web
+
+      - name: Build (garante que tudo ainda compila)
+        run: npm run build

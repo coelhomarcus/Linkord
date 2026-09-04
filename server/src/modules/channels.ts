@@ -30,13 +30,20 @@ interface CategoryTree {
   channels: ChannelSummary[];
 }
 
-function sanitizeChannelName(name: unknown): string | null {
+export function sanitizeChannelName(name: unknown): string | null {
   const s = String(name == null ? '' : name).trim().slice(0, 60);
   return s || null;
 }
 
 function isAdmin(p: Participant | undefined): boolean {
   return !!p && p.role === 'admin';
+}
+
+/** A sala nunca pode ficar sem NENHUM canal de voz — apagar o ultimo
+ * deixaria isso so recuperavel com um restart do servidor
+ * (ensureVoiceChannelExists so roda no boot). Canal de texto nunca trava. */
+export function canDeleteChannel(type: string, voiceChannelCount: number): boolean {
+  return type !== 'voice' || voiceChannelCount > 1;
 }
 
 /** Categoria "Geral" + canal de texto "geral" na primeira vez que o servidor
@@ -160,10 +167,7 @@ async function handleChannelDelete(socket: AppSocket, msg: { channelId?: string 
   if (!existing) return;
   if (existing.type === 'voice') {
     const voiceChannels = await db.select({ id: channels.id }).from(channels).where(eq(channels.type, 'voice'));
-    if (voiceChannels.length <= 1) {
-      // a sala nunca pode ficar sem NENHUM canal de voz — apagar o ultimo
-      // deixaria isso so recuperavel com um restart do servidor
-      // (ensureVoiceChannelExists so roda no boot).
+    if (!canDeleteChannel(existing.type, voiceChannels.length)) {
       send(socket, { t: 'error', code: 'cannot-delete-last-voice-channel', message: 'Precisa existir pelo menos um canal de voz.' });
       return;
     }
