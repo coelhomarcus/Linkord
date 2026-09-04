@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { MoreHorizontal, Pencil, Reply, SmilePlus, Trash2 } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
@@ -268,19 +268,32 @@ export function ChatMessageList({ className, channelId, onReply }: ChatMessageLi
   const highlightTimeoutRef = useRef<number | null>(null);
 
   // switching channels ALWAYS starts at the bottom (most recent message) —
-  // never preserves another channel's scroll position.
-  useEffect(() => {
+  // never preserves another channel's scroll position. A layout effect (not
+  // a regular one) so it resolves before the next effect below reads it,
+  // even when both fire in the same commit (channelId and chatMessages
+  // usually change together on a channel switch).
+  useLayoutEffect(() => {
     stickToBottomRef.current = true;
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
   }, [channelId]);
 
+  // whenever the rendered list actually changes — a new/edited/deleted
+  // message, a reaction, or history just arriving for a freshly opened
+  // channel — jump to the bottom synchronously (before paint) if still
+  // stuck there. This is what keeps the view pinned to new messages;
+  // depending only on the ResizeObserver below left a gap where the first
+  // paint of newly arrived history could show the TOP of the channel
+  // instead of the bottom.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight;
+  }, [chatMessages]);
+
   // "stuck to bottom" (see stickToBottomRef above) via a ResizeObserver on
-  // the CONTENT (not the message count): covers both a new message and
-  // anything that only changes height after rendering — a loading image/
-  // attachment (ChatAttachment), a link preview (ChatEmbed) — without
-  // this, the scroll position would be "correct" while the image still
-  // had no height, then fall behind once it finished loading.
+  // the CONTENT (not the message count): covers content that only gains
+  // real height AFTER the layout effect above already ran — a loading
+  // image/attachment (ChatAttachment), a link preview (ChatEmbed) —
+  // without this, the scroll position would be "correct" while the image
+  // still had no height, then fall behind once it finished loading.
   useEffect(() => {
     const scrollEl = scrollRef.current;
     const contentEl = contentRef.current;
