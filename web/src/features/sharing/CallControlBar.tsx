@@ -59,7 +59,12 @@ export function CallControlBar() {
     // control pill, both centered together — needs only ONE anchor point
     // (bottom-6/centered) instead of two absolute blocks computing the
     // distance between them.
-    <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
+    // `env(safe-area-inset-bottom)` (index.html sets viewport-fit=cover,
+    // needed for the rest of the app to draw edge-to-edge) — without it,
+    // this floating bar sits flush with the true screen edge on an iPhone
+    // and ends up partially hidden behind the home-indicator/gesture area;
+    // 0 on any device without a safe-area inset, so bottom-6 alone unchanged there.
+    <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
       {state.shareError && (
         <div className="flex max-w-[calc(100vw-2rem)] items-start gap-2 rounded-md border border-strong bg-bg-floating px-3 py-2 text-label text-text-secondary shadow-popover md:max-w-100">
           <span className="min-w-0 flex-1">{state.shareError}</span>
