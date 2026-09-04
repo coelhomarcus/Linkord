@@ -15,6 +15,18 @@ export interface Participant {
   // voice channel they're in now, or null — set by the server only on
   // explicit 'voice-join'/'voice-leave', never just from having the tab open.
   voiceChannelId: string | null;
+  // self-reported by each client (see ClientMessage 'mic-state'/'camera'/
+  // 'screen-share'/'speaking') — LiveKit only tells ME about people in MY
+  // OWN room, so this is what lets the sidebar show accurate icons for
+  // anyone in ANY voice channel, not just the one I'm connected to (see
+  // ChannelTree.tsx#CallParticipantRow). Reset to the defaults below on
+  // every 'voice-join'/'voice-leave' (server-side), so a stale value never
+  // survives a channel switch.
+  micActivated: boolean;
+  micMuted: boolean;
+  cameraOn: boolean;
+  sharing: boolean;
+  speaking: boolean;
 }
 
 // short fixed list — avoids accepting arbitrary text as a "reaction"
@@ -98,6 +110,14 @@ export type ClientMessage =
   | { t: 'profile'; avatar: string }
   | { t: 'reaction'; emoji: ReactionEmoji }
   | { t: 'deafened'; value: boolean }
+  // self-reported media state — same pattern as 'deafened' above, just
+  // split per field since each fires independently. Lets anyone (not just
+  // people in the same LiveKit room) see accurate camera/screen/mic icons
+  // for this participant (see Participant above and CallParticipantRow).
+  | { t: 'mic-state'; activated: boolean; muted: boolean }
+  | { t: 'camera'; on: boolean }
+  | { t: 'screen-share'; on: boolean }
+  | { t: 'speaking'; value: boolean }
   | { t: 'channel-open'; channelId: string }
   | { t: 'chat'; channelId: string; text: string; replyTo?: number }
   | { t: 'chat-delete'; msgId: number }

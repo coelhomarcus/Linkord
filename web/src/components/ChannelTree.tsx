@@ -20,22 +20,40 @@ import { useParticipantMedia, useIsSpeaking } from '../features/sharing/useLiveK
 import { Avatar, colorFor } from '../shared/Avatar';
 import type { Category, Channel } from '../types/protocol';
 
-/** A connected call participant's row — decides on its own whether to show
- * (mic activated only), same pattern ParticipantAudioLayer already uses to
- * decide who gets an <audio>. Shows for ANYONE connected, not just when
- * I'm in the call myself — like Discord shows who's in a voice channel
- * even before you join it. Colored ring (same "speaking" border color as
- * tiles, see Tile.tsx) while speaking. */
-function CallParticipantRow({ id, name, avatar }: { id: string; name: string; avatar: string }) {
+/** A connected call participant's row — shows for ANYONE connected, not
+ * just when I'm in the call myself, like Discord shows who's in a voice
+ * channel even before you join it (membership comes from `voiceChannelId`,
+ * Socket.IO, always live — see the filter at the call site). Colored ring
+ * (same "speaking" border color as tiles, see Tile.tsx) while speaking.
+ *
+ * Media icons (camera/screen/mic/speaking) have two possible sources:
+ * LiveKit, real-time but ONLY known for people in the SAME room I'm
+ * connected to; and each participant's own Socket.IO self-report (see
+ * protocol.ts's Participant fields and ClientMessage 'mic-state'/'camera'/
+ * 'screen-share'/'speaking'), always available but one broadcast round-trip
+ * behind. `viewerInSameChannel` picks which one to trust — never both, to
+ * avoid a stale value from one leaking through when the other should win. */
+function CallParticipantRow({ id, name, avatar, viewerInSameChannel }: {
+  id: string; name: string; avatar: string; viewerInSameChannel: boolean;
+}) {
   const { state, deafened } = useRoom();
   const media = useParticipantMedia(id);
-  const isSpeaking = useIsSpeaking(id);
-  if (!media.micActivated) return null;
+  const isSpeakingLive = useIsSpeaking(id);
+  const participant = state.participants.get(id); // socket-driven; undefined for "me"
+  const isMe = id === state.me.id;
+  // my own room IS whichever voice channel I'm connected to — always
+  // trust LiveKit for myself, same as for anyone else in that same room.
+  const trustLiveKit = isMe || viewerInSameChannel;
+  const micActivated = trustLiveKit ? media.micActivated : (participant?.micActivated ?? false);
+  const micMuted = trustLiveKit ? media.micMuted : (participant?.micMuted ?? true);
+  const cameraOn = trustLiveKit ? !!media.cameraTrack : (participant?.cameraOn ?? false);
+  const sharing = trustLiveKit ? !!media.screenTrack : (participant?.sharing ?? false);
+  const isSpeaking = trustLiveKit ? isSpeakingLive : (participant?.speaking ?? false);
   const tint = colorFor(id);
   // deafened has no LiveKit track (see protocol.ts) — for myself it's
   // local state (instant); for others it comes from the Participant the
   // server relays (participant-updated).
-  const isDeafened = id === state.me.id ? deafened : (state.participants.get(id)?.deafened ?? false);
+  const isDeafened = isMe ? deafened : (participant?.deafened ?? false);
 
   return (
     <div className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-bg-hover">
@@ -43,14 +61,14 @@ function CallParticipantRow({ id, name, avatar }: { id: string; name: string; av
         <Avatar id={id} name={name} avatar={avatar} size={26} />
       </div>
       <span className="min-w-0 flex-1 truncate text-body text-text-secondary">{name}</span>
-      {!!media.cameraTrack && <Video size={15} className="flex-none text-green" />}
-      {!!media.screenTrack && <ScreenShare size={15} className="flex-none text-blurple" />}
+      {cameraOn && <Video size={15} className="flex-none text-green" />}
+      {sharing && <ScreenShare size={15} className="flex-none text-blurple" />}
       {/* deafened already implies muted — showing both icons would be
           redundant, same as Discord only showing the deafened one. */}
       {isDeafened ? (
         <HeadphoneOff size={15} className="flex-none text-red" />
       ) : (
-        media.micMuted && <MicOff size={15} className="flex-none text-red" />
+        micActivated && micMuted && <MicOff size={15} className="flex-none text-red" />
       )}
     </div>
   );
@@ -232,10 +250,10 @@ function CategoryBlock({ category, activeChannelId, isAdmin, onSelectChannel }: 
               {ch.type === 'voice' && (
                 <div className="ml-4 flex flex-col gap-0.5 py-0.5 pl-2">
                   {state.me.id && activeVoiceChannelId === ch.id && (
-                    <CallParticipantRow id={state.me.id} name={state.me.name} avatar={state.me.avatar} />
+                    <CallParticipantRow id={state.me.id} name={state.me.name} avatar={state.me.avatar} viewerInSameChannel />
                   )}
                   {[...state.participants.values()].filter((p) => p.voiceChannelId === ch.id).map((p) => (
-                    <CallParticipantRow key={p.id} id={p.id} name={p.name} avatar={p.avatar} />
+                    <CallParticipantRow key={p.id} id={p.id} name={p.name} avatar={p.avatar} viewerInSameChannel={activeVoiceChannelId === ch.id} />
                   ))}
                 </div>
               )}
@@ -406,7 +424,7 @@ export function NewChannelDialog({ open, onOpenChange }: { open: boolean; onOpen
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-90 bg-bg-modal p-6">
+      <DialogContent className="max-w-[calc(100%-2rem)] bg-bg-modal p-6 sm:max-w-90">
         <DialogTitle className="text-title font-bold text-text-primary">Novo canal</DialogTitle>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">

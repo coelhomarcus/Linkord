@@ -74,7 +74,7 @@ export function FloatingPip({ allIds }: { allIds: string[] }) {
     <div
       ref={boxRef}
       className={cn(
-        'absolute z-30 aspect-video w-64 overflow-hidden rounded-xl shadow-popover ring-1 ring-foreground/10',
+        'absolute z-30 aspect-video w-36 overflow-hidden rounded-xl shadow-popover ring-1 ring-foreground/10 md:w-64',
         !dragPos && 'bottom-4 right-4'
       )}
       style={dragPos ? { left: dragPos.x, top: dragPos.y } : undefined}

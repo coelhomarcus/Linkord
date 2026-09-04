@@ -20,14 +20,25 @@ function sanitizeAvatar(url: unknown): string {
 }
 
 export function publicParticipant(p: Participant): PublicParticipant {
-  return { id: p.id, userId: p.userId, name: p.name, avatar: p.avatar, role: p.role, deafened: p.deafened, voiceChannelId: p.voiceChannelId };
+  return {
+    id: p.id, userId: p.userId, name: p.name, avatar: p.avatar, role: p.role,
+    deafened: p.deafened, voiceChannelId: p.voiceChannelId,
+    micActivated: p.micActivated, micMuted: p.micMuted, cameraOn: p.cameraOn, sharing: p.sharing, speaking: p.speaking,
+  };
 }
 
 /** Changes which voice channel `p` is in (or none, with null) and notifies
  * everyone — called from realtime/socket.ts (handleVoiceJoin/Leave) after it
- * validates the channel and mints the token. */
+ * validates the channel and mints the token. Also resets the self-reported
+ * media flags: a fresh join/leave means whatever they were reporting for a
+ * PREVIOUS channel (or before ever joining) no longer applies. */
 export function setVoiceChannelId(p: Participant, channelId: string | null): void {
   p.voiceChannelId = channelId;
+  p.micActivated = false;
+  p.micMuted = true;
+  p.cameraOn = false;
+  p.sharing = false;
+  p.speaking = false;
   broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
 }
 
@@ -136,6 +147,11 @@ export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
       // PRESERVES the value.
       deafened: false,
       voiceChannelId: null,
+      micActivated: false,
+      micMuted: true,
+      cameraOn: false,
+      sharing: false,
+      speaking: false,
       graceTimer: null,
     };
     participants.set(p.id, p);
@@ -176,6 +192,42 @@ function handleDeafened(socket: AppSocket, msg: { value?: unknown }): void {
   broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
 }
 
+/** Self-reported mic state (see ClientMessage 'mic-state') — the server
+ * never verifies this against LiveKit, same trust model as `deafened`.
+ * Lets anyone see an accurate mic-muted icon for this participant, not
+ * just people connected to the same LiveKit room. */
+function handleMicState(socket: AppSocket, msg: { activated?: unknown; muted?: unknown }): void {
+  const p = participants.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  p.micActivated = !!msg.activated;
+  p.micMuted = !!msg.muted;
+  broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
+}
+
+function handleCamera(socket: AppSocket, msg: { on?: unknown }): void {
+  const p = participants.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  p.cameraOn = !!msg.on;
+  broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
+}
+
+function handleScreenShare(socket: AppSocket, msg: { on?: unknown }): void {
+  const p = participants.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  p.sharing = !!msg.on;
+  broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
+}
+
+/** Detected 100% client-side (real audio level via Web Audio, see
+ * useLiveKitTrack.ts#useTrackSpeaking) — this just relays the already
+ * debounced on/off transitions, not a continuous stream. */
+function handleSpeaking(socket: AppSocket, msg: { value?: unknown }): void {
+  const p = participants.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  p.speaking = !!msg.value;
+  broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
+}
+
 // tab closing/reloading: leaves the room immediately, without the reconnect
 // grace window (that's only for network drops/crashes, which never fire
 // this event).
@@ -198,5 +250,9 @@ export function handleClose(socket: AppSocket): void {
 export const handlers: HandlerTable = {
   profile: handleProfile,
   deafened: handleDeafened,
+  'mic-state': handleMicState,
+  camera: handleCamera,
+  'screen-share': handleScreenShare,
+  speaking: handleSpeaking,
   leave: handleLeave,
 };

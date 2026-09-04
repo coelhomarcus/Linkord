@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Hash, MoreHorizontal, Trash2 } from 'lucide-react';
+import { ArrowLeft, Hash, MoreHorizontal, Trash2, Users } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatComposer } from './ChatComposer';
@@ -9,13 +9,24 @@ import type { ChatMessage } from '../../types/protocol';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
+interface ChatPageProps {
+  /** Below md, shows a back button that returns to the channel list —
+   * there's no room for sidebar + chat side by side (see Shell in
+   * App.tsx). Irrelevant from md up, where the sidebar is always visible. */
+  onBackMobile: () => void;
+}
+
 /** Chat as a full page (Discord-style text channel) — no bubble, no
  * centered column, fills the whole width between the left sidebar and the
  * user directory (right). */
-export function ChatPage() {
+export function ChatPage({ onBackMobile }: ChatPageProps) {
   const { state, categories, activeChannelId, deleteChannel } = useRoom();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  // below md, the member list has nowhere to sit beside the chat — becomes
+  // an overlay toggled from the header instead (see UserDirectory's
+  // mobileOpen prop).
+  const [membersOpen, setMembersOpen] = useState(false);
   const isMod = state.me.role === 'admin';
 
   const activeChannel = useMemo(
@@ -33,10 +44,16 @@ export function ChatPage() {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg-panel text-text-primary">
         <div className="flex flex-none items-center justify-between border-b border-subtle px-4 py-3">
           <div className="flex min-w-0 items-center gap-2">
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="Voltar pros canais" onClick={onBackMobile} className="-ml-1 flex-none text-text-muted hover:text-text-secondary md:hidden">
+              <ArrowLeft size={18} />
+            </Button>
             <Hash size={18} className="flex-none text-text-muted" />
             <h1 className="truncate text-title font-semibold text-text-primary">{activeChannel?.name ?? 'Chat'}</h1>
           </div>
           <div className="flex flex-none items-center gap-1">
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="Membros" onClick={() => setMembersOpen(true)} className="text-text-muted hover:text-text-secondary md:hidden">
+              <Users size={16} />
+            </Button>
             {/* admin-only — deleting the channel removes it and all its
                 messages from the database permanently. */}
             {isMod && activeChannel && (
@@ -78,7 +95,7 @@ export function ChatPage() {
           onConfirm={() => { if (activeChannelId) deleteChannel(activeChannelId); }}
         />
       </div>
-      <UserDirectory />
+      <UserDirectory mobileOpen={membersOpen} onMobileClose={() => setMembersOpen(false)} />
     </main>
   );
 }

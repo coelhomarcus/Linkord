@@ -3,7 +3,11 @@ import { initialRoomState, roomReducer } from './roomReducer';
 import type { Participant } from '../types/protocol';
 
 function participant(overrides: Partial<Participant> = {}): Participant {
-  return { id: 'p1', userId: 'u1', name: 'Fulana', avatar: '', role: 'user', deafened: false, voiceChannelId: null, ...overrides };
+  return {
+    id: 'p1', userId: 'u1', name: 'Fulana', avatar: '', role: 'user', deafened: false, voiceChannelId: null,
+    micActivated: false, micMuted: true, cameraOn: false, sharing: false, speaking: false,
+    ...overrides,
+  };
 }
 
 describe('roomReducer', () => {

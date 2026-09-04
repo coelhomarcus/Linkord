@@ -111,20 +111,25 @@ function getAudioContext(): AudioContext {
   return sharedAudioContext;
 }
 
-/** Whether a participant is speaking right now. Used to come from
+/** Whether a track is producing speech right now. Used to come from
  * RoomEvent.ActiveSpeakersChanged — but that event isn't computed in the
  * browser, it's pushed periodically by the LiveKit SERVER via signaling,
  * causing a noticeable lag between starting to speak and the border
  * appearing (out of our control, especially on LiveKit Cloud). Detection
  * here runs 100% locally: analyzes the track's real audio via the Web
- * Audio API (AnalyserNode + requestAnimationFrame), ready in ~1 frame. */
-export function useIsSpeaking(identity: string): boolean {
-  const media = useParticipantMedia(identity);
+ * Audio API (AnalyserNode + requestAnimationFrame), ready in ~1 frame.
+ *
+ * Takes the track/muted state directly (not an identity) — separated from
+ * useIsSpeaking below so RoomProvider.tsx can also run this for the LOCAL
+ * user, to self-report 'speaking' over Socket.IO (see protocol.ts). It
+ * can't call useIsSpeaking/useParticipantMedia itself: those need
+ * useRoom(), and RoomProvider is what PROVIDES that context, not a
+ * consumer of it. */
+export function useTrackSpeaking(track: LKTrack | null, muted: boolean): boolean {
   const [isSpeaking, setIsSpeaking] = useState(false);
 
   useEffect(() => {
-    const track = media.micTrack;
-    if (!track || media.micMuted) { setIsSpeaking(false); return; }
+    if (!track || muted) { setIsSpeaking(false); return; }
     const mediaStreamTrack = track.mediaStreamTrack;
     if (!mediaStreamTrack) return;
 
@@ -158,9 +163,17 @@ export function useIsSpeaking(identity: string): boolean {
       source.disconnect();
       analyser.disconnect();
     };
-  }, [media.micTrack, media.micMuted]);
+  }, [track, muted]);
 
   return isSpeaking;
+}
+
+/** Same detection as useTrackSpeaking, for a participant (local or remote)
+ * by identity — only accurate when the LOCAL user is connected to the same
+ * LiveKit room as `identity` (see useParticipantMedia). */
+export function useIsSpeaking(identity: string): boolean {
+  const media = useParticipantMedia(identity);
+  return useTrackSpeaking(media.micTrack, media.micMuted);
 }
 
 /** Attaches/detaches a LiveKit track to a video/audio element — native

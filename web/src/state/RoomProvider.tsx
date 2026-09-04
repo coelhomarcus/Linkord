@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { io } from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
 import { Room, RoomEvent, Track } from 'livekit-client';
-import type { LocalTrackPublication } from 'livekit-client';
+import type { LocalTrackPublication, Track as LKTrack } from 'livekit-client';
 import { RoomContext } from './RoomContext';
 import type { AnchorRect, AudioHandle, ReactionEvent, TileDomHandle } from './RoomContext';
 import { roomReducer, initialRoomState } from './roomReducer';
@@ -12,6 +12,7 @@ import { loadIdentity, saveIdentity } from './useIdentitySession';
 import { useScreenShare } from '../features/sharing/useScreenShare';
 import { useCamera } from '../features/sharing/useCamera';
 import { useMicrophone } from '../features/sharing/useMicrophone';
+import { useTrackSpeaking } from '../features/sharing/useLiveKitTrack';
 import type { TileKind } from '../features/sharing/tileTypes';
 import { loadShowStats, saveShowStats, loadNotifyVolume, saveNotifyVolume } from '../features/settings/useSettingsPreference';
 import { playSound, preloadSounds, setVolume } from '../shared/sounds';
@@ -245,6 +246,56 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       livekitRoom.off(RoomEvent.LocalTrackUnpublished, onMicUnpublished);
     };
   }, [livekitRoom, sendWs]);
+
+  // self-reports my own mic/camera/screen state to the server via
+  // Socket.IO — the ONLY way anyone NOT connected to my current voice
+  // channel's LiveKit room can know whether I'm muted, on camera, or
+  // sharing (LiveKit only tells people already in that specific room, see
+  // ChannelTree.tsx#CallParticipantRow). Also keeps the mic track/muted
+  // state in plain React state here, since RoomProvider PROVIDES useRoom()'s
+  // context and so can't consume useParticipantMedia/useIsSpeaking itself
+  // (needed below to detect and report 'speaking' the same way).
+  const [localMic, setLocalMic] = useState<{ track: LKTrack | null; muted: boolean }>({ track: null, muted: true });
+  useEffect(() => {
+    function reportMic() {
+      const pub = livekitRoom.localParticipant.getTrackPublication(Track.Source.Microphone);
+      setLocalMic({ track: pub?.track ?? null, muted: pub ? pub.isMuted : true });
+      sendWs({ t: 'mic-state', activated: !!pub, muted: pub ? pub.isMuted : true });
+    }
+    function reportCamera() {
+      sendWs({ t: 'camera', on: !!livekitRoom.localParticipant.getTrackPublication(Track.Source.Camera) });
+    }
+    function reportSharing() {
+      sendWs({ t: 'screen-share', on: !!livekitRoom.localParticipant.getTrackPublication(Track.Source.ScreenShare) });
+    }
+    const onPublishChange = (pub: { source: Track.Source }) => {
+      if (pub.source === Track.Source.Microphone) reportMic();
+      if (pub.source === Track.Source.Camera) reportCamera();
+      if (pub.source === Track.Source.ScreenShare) reportSharing();
+    };
+    // TrackMuted/Unmuted fire for ANY participant — filtered to my own
+    // publication, the only one I should be reporting.
+    const onMuteChange = (pub: { source: Track.Source }, participant: { identity: string }) => {
+      if (participant.identity === livekitRoom.localParticipant.identity && pub.source === Track.Source.Microphone) reportMic();
+    };
+    livekitRoom.on(RoomEvent.LocalTrackPublished, onPublishChange);
+    livekitRoom.on(RoomEvent.LocalTrackUnpublished, onPublishChange);
+    livekitRoom.on(RoomEvent.TrackMuted, onMuteChange);
+    livekitRoom.on(RoomEvent.TrackUnmuted, onMuteChange);
+    return () => {
+      livekitRoom.off(RoomEvent.LocalTrackPublished, onPublishChange);
+      livekitRoom.off(RoomEvent.LocalTrackUnpublished, onPublishChange);
+      livekitRoom.off(RoomEvent.TrackMuted, onMuteChange);
+      livekitRoom.off(RoomEvent.TrackUnmuted, onMuteChange);
+    };
+  }, [livekitRoom, sendWs]);
+
+  // 'speaking' is detected 100% locally (see useTrackSpeaking) — this only
+  // reports the already-debounced on/off transitions, not a continuous stream.
+  const isSpeakingLocal = useTrackSpeaking(localMic.track, localMic.muted);
+  useEffect(() => {
+    sendWs({ t: 'speaking', value: isSpeakingLocal });
+  }, [isSpeakingLocal, sendWs]);
 
   const [reactions, setReactions] = useState<ReactionEvent[]>([]);
   const reactionKeyRef = useRef(0);

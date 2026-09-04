@@ -26,7 +26,7 @@ export function ConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-100 bg-bg-modal p-6">
+      <DialogContent className="max-w-[calc(100%-2rem)] bg-bg-modal p-6 sm:max-w-100">
         <DialogTitle className="text-title font-bold text-text-primary">{title}</DialogTitle>
         <p className="select-none text-body text-text-secondary">{description}</p>
         <div className="mt-1 flex justify-end gap-2">

@@ -32,6 +32,16 @@ export interface Participant {
   // not just the one I'm connected to (LiveKit itself only gives me
   // participants in MY room).
   voiceChannelId: string | null;
+  // self-reported by the client (see realtime/participants.ts handlers for
+  // 'mic-state'/'camera'/'screen-share'/'speaking') — the server never
+  // verifies these against LiveKit itself, same trust model as `deafened`.
+  // Reset to their defaults on every voice-join/leave (setVoiceChannelId),
+  // so a stale value never survives a channel switch.
+  micActivated: boolean;
+  micMuted: boolean;
+  cameraOn: boolean;
+  sharing: boolean;
+  speaking: boolean;
   graceTimer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -44,6 +54,11 @@ export interface PublicParticipant {
   role: Role;
   deafened: boolean;
   voiceChannelId: string | null;
+  micActivated: boolean;
+  micMuted: boolean;
+  cameraOn: boolean;
+  sharing: boolean;
+  speaking: boolean;
 }
 
 /** The socket.io `Socket` with fields realtime/socket.ts attaches

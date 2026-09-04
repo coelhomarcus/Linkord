@@ -10,7 +10,7 @@ import type { ChatMessage, ReactionEmoji } from '../../types/protocol';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/shared/lib/utils';
 
 // consecutive messages from the same author within this window group
@@ -185,10 +185,12 @@ function ChatMessageRow({
         )}
       </div>
 
-      {/* visible on row hover OR while one of its popovers/dropdowns is open (see isRowActive above). */}
+      {/* desktop only — hover-revealed (see isRowActive above); touch has
+          no hover, so mobile gets a single always-visible trigger instead
+          (below) that opens the same actions in one menu. */}
       <div className={cn(
-        'absolute right-2 top-0 z-10 -translate-y-1/2 items-center gap-0.5 rounded-md border border-strong bg-bg-floating p-0.5 shadow-popover',
-        isRowActive ? 'flex' : 'hidden'
+        'absolute right-2 top-0 z-10 hidden -translate-y-1/2 items-center gap-0.5 rounded-md border border-strong bg-bg-floating p-0.5 shadow-popover',
+        isRowActive && 'md:flex'
       )}>
         <Popover open={reactOpen} onOpenChange={(open) => { setReactOpen(open); if (!open) setIsRowActive(false); }}>
           <PopoverTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Reagir" />}>
@@ -230,6 +232,48 @@ function ChatMessageRow({
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+      </div>
+
+      {/* mobile only — one always-visible trigger (no hover on touch)
+          bundling react/reply/edit/delete into a single menu instead of
+          four separate hover buttons. */}
+      <div className="absolute right-1 top-1 z-10 md:hidden">
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Acoes da mensagem" className="bg-bg-floating/90" />}>
+            <MoreHorizontal size={14} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <div className="flex gap-1 px-1 py-1">
+              {ALLOWED_REACTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => reactToChatMessage(message.msgId, emoji)}
+                  className="rounded-md p-1.5 text-[18px] leading-none transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onReply}>
+              <Reply size={14} />
+              <span>Responder</span>
+            </DropdownMenuItem>
+            {isMine && (
+              <DropdownMenuItem onClick={onStartEdit}>
+                <Pencil size={14} />
+                <span>Editar</span>
+              </DropdownMenuItem>
+            )}
+            {isMod && (
+              <DropdownMenuItem variant="destructive" onClick={() => deleteChatMessage(message.msgId)}>
+                <Trash2 size={14} />
+                <span>Apagar</span>
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );

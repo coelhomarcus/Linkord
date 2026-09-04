@@ -40,7 +40,7 @@ export function PromptDialog({ open, onOpenChange, title, label, placeholder, co
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-90 bg-bg-modal p-6">
+      <DialogContent className="max-w-[calc(100%-2rem)] bg-bg-modal p-6 sm:max-w-90">
         <DialogTitle className="text-title font-bold text-text-primary">{title}</DialogTitle>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
