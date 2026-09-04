@@ -24,7 +24,17 @@ export default defineConfig({
     emptyOutDir: true,
   },
   test: {
-    environment: 'node',
-    include: ['src/**/*.test.ts'],
+    // jsdom (nao 'node') pra poder montar componente React de verdade (RTL) —
+    // da tambem localStorage/document de graca pros testes de preferencias
+    // (useSettingsPreference.ts etc.), sem precisar de stub manual.
+    environment: 'jsdom',
+    include: ['src/**/*.test.{ts,tsx}'],
+    setupFiles: ['./src/test/setup.ts'],
+    // so roda com `npm run test:coverage` (--coverage) — o dia a dia
+    // (`npm run test`) fica rapido sem instrumentar nada.
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html'],
+    },
   },
 });

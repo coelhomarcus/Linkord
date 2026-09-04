@@ -28,16 +28,15 @@ function MediaRow({ item }: { item: MediaItem }) {
   );
 }
 
-/** Aba "Midias" dos Ajustes — agrega todo anexo enviado e todo link
- * embutivel do PROJETO INTEIRO (todos os canais, nao so o aberto no
- * momento), separados em duas listas (server/media.js decide a
- * classificacao; aqui so desenha, reaproveitando ChatAttachment/LinkPreview
- * — o mesmo componente que o proprio chat usa pra renderizar essas mesmas
- * coisas). Busca sob demanda: so carrega quando essa aba e aberta de
- * verdade (TabsPanel desmonta o conteudo das abas inativas por padrao, ver
- * SettingsModal), e refaz do zero cada vez que reabre — sem cache, mas o
- * app e pequeno o bastante (uma sala, poucos participantes) pra isso nunca
- * pesar. */
+/** Settings' "Media" tab — aggregates every uploaded attachment and every
+ * embeddable link across the WHOLE PROJECT (all channels, not just the one
+ * currently open), split into two lists (media.ts decides the
+ * classification; this just renders, reusing ChatAttachment/LinkPreview —
+ * the same components chat itself uses to render these). Fetches on
+ * demand: only loads when this tab is actually opened (TabsPanel unmounts
+ * inactive tabs' content by default, see SettingsModal), and refetches from
+ * scratch each time it reopens — no cache, but the app is small enough
+ * (one room, few participants) for that to never matter. */
 export function MediaTab() {
   const [kind, setKind] = useState<MediaKind>('uploads');
   const [items, setItems] = useState<MediaItem[]>([]);
@@ -61,8 +60,8 @@ export function MediaTab() {
     }
   }, []);
 
-  // troca de aba (uploads/embeds) reseta a lista e busca do zero — cada uma
-  // tem sua propria paginacao (cursor de uma nao serve pra outra).
+  // switching tabs (uploads/embeds) resets the list and refetches — each
+  // has its own pagination (one's cursor doesn't work for the other).
   useEffect(() => {
     setItems([]);
     setNextBefore(null);

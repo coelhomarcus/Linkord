@@ -126,9 +126,9 @@ function RegisterForm() {
   );
 }
 
-/** Tela cheia (nao um modal — nao ha nada atras dela pra escurecer) mostrada
- * enquanto ninguem esta logado. So depois dela existir e que o RoomProvider
- * monta e abre o socket — nunca ha conexao anonima. */
+/** Fullscreen view (not a modal — nothing behind it to dim) shown while no
+ * one is logged in. Only after this no longer renders does RoomProvider
+ * mount and open the socket — there's never an anonymous connection. */
 export function AuthScreen() {
   return (
     <div className="flex h-dvh items-center justify-center bg-bg-primary p-4">

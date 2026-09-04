@@ -1,4 +1,3 @@
-# ---- estagio 1: build do frontend (React + TS + Tailwind, via Vite) ----
 FROM node:22-alpine AS web-build
 WORKDIR /app/web
 COPY web/package.json web/package-lock.json ./
@@ -6,7 +5,6 @@ RUN npm ci --no-audit --no-fund
 COPY web/ ./
 RUN npm run build
 
-# ---- estagio 2: compilacao do servidor TypeScript ----
 FROM node:22-alpine AS server-build
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -14,13 +12,11 @@ RUN npm ci --no-audit --no-fund
 COPY server/ ./server/
 RUN npm run build:server
 
-# ---- estagio 3: dependencias de producao do servidor ----
 FROM node:22-alpine AS server-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
-# ---- estagio 4: runtime enxuto (sem devDependencies, sem fonte do frontend) ----
 FROM node:22-alpine
 ENV NODE_ENV=production
 WORKDIR /app

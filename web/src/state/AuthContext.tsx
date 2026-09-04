@@ -3,13 +3,11 @@ import type { ReactNode } from 'react';
 import { ApiError, fetchMe, login as apiLogin, logout as apiLogout, register as apiRegister } from '../shared/lib/api';
 import type { ApiUser } from '../shared/lib/api';
 
-// ---------------------------------------------------------------------------
-// Dono da conta logada (ou nao). Fica ACIMA do RoomProvider de proposito: o
-// RoomProvider so deve montar (e abrir o socket) quando ja existe sessao —
-// nunca deve existir socket anonimo. 'loading' e o estado inicial (checando
-// /api/auth/me) pra nao piscar a tela de login antes de saber se ja ha
-// cookie valido.
-// ---------------------------------------------------------------------------
+// Owns the logged-in account (or lack of one). Lives ABOVE RoomProvider on
+// purpose: RoomProvider should only mount (and open the socket) once a
+// session already exists — there must never be an anonymous socket.
+// 'loading' is the initial state (checking /api/auth/me) so the login
+// screen doesn't flash before knowing whether a valid cookie exists.
 
 type AuthStatus = 'loading' | 'anon' | 'authed';
 
@@ -19,9 +17,9 @@ interface AuthContextValue {
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string, confirmPassword: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
-  /** Reconsulta /api/auth/me — usado quando o socket rejeita o handshake
-   * (sessao expirada/revogada em outra aba) pra cair de volta na tela de
-   * login sem esperar o usuario recarregar a pagina. */
+  /** Re-queries /api/auth/me — used when the socket rejects the handshake
+   * (session expired/revoked in another tab) to fall back to the login
+   * screen without waiting for a page reload. */
   refresh: () => Promise<void>;
 }
 
@@ -65,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    try { await apiLogout(); } catch { /* mesmo se falhar no servidor, esquece localmente */ }
+    try { await apiLogout(); } catch { /* forget locally even if the server call fails */ }
     setUser(null);
     setStatus('anon');
   }, []);

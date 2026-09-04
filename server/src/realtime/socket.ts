@@ -3,7 +3,7 @@ import { Server, type Socket } from 'socket.io';
 import { config } from '../config/env.js';
 import {
   participants as participantsMap, join, send, broadcast, publicParticipant, handleClose, ipOf,
-  listOnlineUserIds, handlers as participantHandlers,
+  listOnlineUserIds, setVoiceChannelId, handlers as participantHandlers,
 } from './participants.js';
 import * as livekit from './livekit.js';
 import * as reactions from './reactions.js';
@@ -17,10 +17,10 @@ import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from '../modules/auth/session.js';
 import type { AppSocket, HandlerTable } from '../types.js';
 
-// Tabela {tipo da mensagem: handler(socket, msg)} juntando o que cada feature
-// exporta — adicionar uma feature nova e so registrar seus `handlers` aqui,
-// sem mexer no dispatch abaixo. 'join' fica de fora de proposito (ver
-// handleJoin) porque o welcome precisa juntar dado de varias features.
+// {message type: handler(socket, msg)} combining what each feature exports
+// — register a new feature's `handlers` here, no dispatch changes needed.
+// 'join' is special-cased (see handleJoin) because welcome needs data from
+// several features.
 const handlers: HandlerTable = Object.assign(
   {},
   participantHandlers,
@@ -36,22 +36,16 @@ interface JoinMessage {
   token?: string;
 }
 
-/** 'join' e o unico caso especial do dispatch: so participants.ts sabe criar/
- * achar o participante, mas o `welcome` que a resposta manda tambem carrega
- * o historico do chat e o token do LiveKit — dados de outras features. Fica
- * aqui (na raiz de composicao) pra nenhuma feature depender de outra. */
+/** 'join' is the one special case in the dispatch: only participants.ts
+ * creates/finds the participant, but the `welcome` reply also carries chat
+ * history and the LiveKit token — data from other features. Lives here
+ * (the composition root) so no feature depends on another. */
 async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
   const p = join(socket, msg);
   if (!p) return;
-  // chat/presenca nao devem cair junto se o LiveKit estiver mal configurado
-  // (aviso ja sai no boot, ver src/index.ts) — welcome vai com livekitToken
-  // null e o cliente so fica sem video nesse caso.
-  let livekitToken: string | null = null;
-  try {
-    livekitToken = await livekit.createToken(p);
-  } catch (err) {
-    console.warn(`[${p.id}] falha ao gerar token do LiveKit: ${err instanceof Error ? err.message : err}`);
-  }
+  // LiveKit token is NOT minted here anymore — just having the tab open/
+  // logged in shouldn't open a real voice session. That now only happens
+  // in handleVoiceJoin, when someone actually clicks a voice channel.
   send(socket, {
     t: 'welcome',
     id: p.id,
@@ -66,19 +60,47 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
     users: await listAllUsers(),
     onlineUserIds: listOnlineUserIds(),
     storageUsage: await attachments.getUsage(),
-    livekitToken,
     livekitUrl: config.LIVEKIT_URL,
-    livekitRoomName: config.LIVEKIT_ROOM_NAME,
   });
   broadcast({ t: 'participant-joined', participant: publicParticipant(p) }, p.id);
   console.log(`[${p.id}] entrou (${p.name}) de ${socket.ip}`);
 }
 
-/** Roda um handler (sincrono ou async) isolado de erro — sem isso, uma
- * excecao ou promise rejeitada de qualquer handler de qualquer feature
- * derruba o processo inteiro (Node mata o processo em unhandledRejection por
- * padrao), desconectando todo mundo na sala por um bug de uma unica
- * mensagem de um unico participante. */
+/** Actually joins a specific voice channel: mints a LiveKit token for that
+ * channel's room (`${LIVEKIT_ROOM_NAME}-${channelId}`, one room per voice
+ * channel) and sets `p.voiceChannelId` — only now (not in handleJoin), so a
+ * real voice session opens only when someone actually clicks a voice
+ * channel. Switching channels just calls this again; the client
+ * disconnects the old Room before connecting to the new one. */
+async function handleVoiceJoin(socket: AppSocket, msg: { channelId?: string }): Promise<void> {
+  const p = participantsMap.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  const channelId = String(msg.channelId || '');
+  if (!channelId) return;
+  const type = await channels.getChannelType(channelId);
+  if (type !== 'voice') return;
+  let livekitToken: string;
+  try {
+    livekitToken = await livekit.createToken(p, `${config.LIVEKIT_ROOM_NAME}-${channelId}`);
+  } catch (err) {
+    console.warn(`[${p.id}] falha ao gerar token do LiveKit: ${err instanceof Error ? err.message : err}`);
+    send(socket, { t: 'error', code: 'livekit-unavailable', message: 'Video/voz indisponivel no momento.' });
+    return;
+  }
+  setVoiceChannelId(p, channelId);
+  send(socket, { t: 'voice-token', channelId, livekitUrl: config.LIVEKIT_URL, livekitToken });
+}
+
+function handleVoiceLeave(socket: AppSocket): void {
+  const p = participantsMap.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  setVoiceChannelId(p, null);
+}
+
+/** Runs a handler (sync or async) isolated from errors — otherwise an
+ * exception or rejected promise from any feature's handler kills the whole
+ * process (Node exits on unhandledRejection by default), disconnecting the
+ * entire room over one participant's one bad message. */
 function safeHandle(eventName: string, socket: AppSocket, payload: unknown, handler: (socket: AppSocket, payload: unknown) => unknown): void {
   try {
     const result = handler(socket, payload);
@@ -93,19 +115,19 @@ function safeHandle(eventName: string, socket: AppSocket, payload: unknown, hand
 }
 
 export function createWsServer(httpServer: HttpServer): Server {
-  // transports:['websocket'] mantido por simplicidade (menos um fallback pra
-  // testar) — agora que camera/tela vao por WebRTC, nao ha mais motivo tecnico
-  // forte pra isso (o WebSocket so carrega sinalizacao pequena).
+  // transports:['websocket'] kept for simplicity (one less fallback to
+  // test) — now that camera/screen go over WebRTC, there's no strong
+  // technical reason for it (the socket only carries small signaling).
   const io = new Server(httpServer, {
     path: '/ws',
     transports: ['websocket'],
     maxHttpBufferSize: config.MAX_MSG_BYTES,
   });
 
-  // Nunca existe socket anonimo: o handshake (upgrade HTTP) carrega o cookie
-  // normalmente, entao a sessao ja e resolvida ANTES de 'connection' disparar.
-  // Uma rejeicao aqui mata o socket sem reconectar (socket.active vira false
-  // no cliente) — RoomProvider usa isso pra cair de volta na tela de login.
+  // no anonymous socket ever exists: the handshake carries the cookie, so
+  // the session is resolved BEFORE 'connection' fires. A rejection here
+  // kills the socket without reconnecting (socket.active becomes false
+  // client-side) — RoomProvider uses that to fall back to the login screen.
   io.use(async (socket: Socket, next) => {
     try {
       const cookies = parseCookies(socket.handshake.headers.cookie || '');
@@ -126,6 +148,8 @@ export function createWsServer(httpServer: HttpServer): Server {
     socket.onAny((eventName: string, payload: unknown) => {
       if (eventName === 'join') return safeHandle('join', socket, payload || {}, (s, p) => handleJoin(s, (p || {}) as JoinMessage));
       if (eventName === 'ping') return safeHandle('ping', socket, payload || {}, (s) => send(s, { t: 'pong' }));
+      if (eventName === 'voice-join') return safeHandle('voice-join', socket, payload || {}, (s, m) => handleVoiceJoin(s, (m || {}) as { channelId?: string }));
+      if (eventName === 'voice-leave') return safeHandle('voice-leave', socket, payload || {}, (s) => handleVoiceLeave(s));
 
       const handler = handlers[eventName];
       if (handler) safeHandle(eventName, socket, payload || {}, handler);

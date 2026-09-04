@@ -1,19 +1,21 @@
 import { useEffect, useRef } from 'react';
 import { useRoom } from '../../state/RoomContext';
 import { useParticipantMedia, useAttachTrack } from './useLiveKitTrack';
+import { loadCallVolume } from '../settings/useCallVolumePreference';
 
-/** Dono dos elementos <audio> (mic + audio de tela) de UM participante
- * remoto — vive fora dos Tiles visuais de proposito: o tile "de si mesma"
- * dessa pessoa troca de kind (avatar↔camera) toda vez que ela liga/desliga
- * a camera, e se o <audio> morasse dentro do Tile, cada troca desmontaria/
- * remontaria o elemento. Aqui o componente so remonta se a PESSOA sair da
- * sala, nunca por causa de kind. `audioUnlocked` (RoomProvider) e global —
- * um gesto qualquer do usuario libera autoplay pra pagina inteira, entao
- * nao ha "por participante" aqui, so espera esse flag virar true. Volume
- * real (100%, setado explicitamente mais abaixo) e completamente separado
- * disso — mudo por autoplay bloqueado nao e a mesma coisa que volume baixo. */
+/** Owns the <audio> elements (mic + screen audio) for ONE remote
+ * participant — lives outside the visual Tiles on purpose: that person's
+ * "self" tile switches kind (avatar↔camera) every time they toggle their
+ * camera, and if <audio> lived inside the Tile, each switch would
+ * unmount/remount the element. Here the component only remounts if the
+ * PERSON leaves the room, never because of kind. `audioUnlocked`
+ * (RoomProvider) is global — any user gesture unlocks autoplay for the
+ * whole page, so there's no "per participant" here, just waiting for that
+ * flag to flip true. Real volume (set explicitly below) is fully separate
+ * from that — muted by a blocked autoplay isn't the same as low volume. */
 function ParticipantAudio({ participantId }: { participantId: string }) {
-  const { audioRegistry, audioUnlocked, deafened } = useRoom();
+  const { state, audioRegistry, audioUnlocked, deafened } = useRoom();
+  const userId = state.participants.get(participantId)?.userId ?? null;
   const media = useParticipantMedia(participantId);
   const micRef = useRef<HTMLAudioElement | null>(null);
   const screenRef = useRef<HTMLAudioElement | null>(null);
@@ -32,17 +34,25 @@ function ParticipantAudio({ participantId }: { participantId: string }) {
     const screenKey = `${participantId}:screen`;
     const micEl = micRef.current;
     const screenEl = screenRef.current;
-    // volume real fica no default do navegador (1.0/100%) — setado aqui de
-    // proposito explicito, nao implicito, ja que "audio no minimo" foi
-    // exatamente a confusao que gerou esse bug (era o bloqueio de autoplay
-    // sendo lido como volume, o volume real nunca esteve baixo).
-    if (micEl) { micEl.volume = 1; audioRegistry.current.set(participantId, { element: micEl }); }
-    if (screenEl) { screenEl.volume = 1; audioRegistry.current.set(screenKey, { element: screenEl }); }
+    // real volume comes from the saved per-userId preference (default 100%
+    // if never adjusted) — set explicitly here, not implicitly, since
+    // "audio stuck at minimum" was exactly the confusion behind an earlier
+    // bug (the blocked-autoplay mute was being read as volume; real volume
+    // was never actually low). userId, not participantId, since that's
+    // what survives reconnects/tabs — see useCallVolumePreference.ts.
+    if (micEl) {
+      micEl.volume = userId ? loadCallVolume(userId) : 1;
+      audioRegistry.current.set(participantId, { element: micEl });
+    }
+    if (screenEl) {
+      screenEl.volume = userId ? loadCallVolume(`${userId}:screen`) : 1;
+      audioRegistry.current.set(screenKey, { element: screenEl });
+    }
     return () => {
       audioRegistry.current.delete(participantId);
       audioRegistry.current.delete(screenKey);
     };
-  }, [participantId, audioRegistry]);
+  }, [participantId, userId, audioRegistry]);
 
   return (
     <>
@@ -52,10 +62,10 @@ function ParticipantAudio({ participantId }: { participantId: string }) {
   );
 }
 
-/** Monta um <ParticipantAudio> por participante remoto presente na sala
- * (nunca pra mim mesma — nunca tocamos nosso proprio audio de volta). Vive
- * no Shell (App.tsx), fora da aba Call — precisa sobreviver a troca pra o
- * Quadro, senao o audio de todo mundo para ao trocar de aba. */
+/** Mounts one <ParticipantAudio> per remote participant in the room (never
+ * for myself — we never play our own audio back). Lives in the Shell
+ * (App.tsx), outside the Call tab — needs to survive switching tabs, or
+ * everyone's audio would stop. */
 export function ParticipantAudioLayer({ participantIds }: { participantIds: string[] }) {
   const { state } = useRoom();
   return (

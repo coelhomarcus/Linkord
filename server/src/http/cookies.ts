@@ -1,10 +1,10 @@
 import type { IncomingMessage } from 'node:http';
 import { config } from '../config/env.js';
 
-// ---------------------------------------------------------------------------
-// Parse/serializacao de cookie feitos a mao — o server nao tem framework
-// nenhum (http.createServer puro), entao nao ha `req.cookies` de graca.
-// ---------------------------------------------------------------------------
+// Hand-rolled cookie parse/serialize — kept manual even after moving to
+// Fastify (see http/app.ts) since Socket.IO's own handshake auth uses the
+// same parseCookies; a framework cookie plugin would mean a second
+// implementation to keep in sync.
 
 export function parseCookies(header: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -20,10 +20,10 @@ export function parseCookies(header: string): Record<string, string> {
   return out;
 }
 
-/** Decide o atributo Secure do cookie. 'auto' (padrao) confia em
- * X-Forwarded-Proto quando TRUST_PROXY esta ligado — o Caddyfile e o
- * nginx.conf do deploy/ ja mandam esse header. Sem isso, o cookie Secure
- * simplesmente nao seria salvo no http://localhost do dev. */
+/** Decides the cookie's Secure attribute. 'auto' (default) trusts
+ * X-Forwarded-Proto when TRUST_PROXY is on — the deploy's Caddyfile/
+ * nginx.conf already send that header. Without it, the Secure cookie just
+ * wouldn't save on local http://localhost dev. */
 export function isSecureRequest(req: IncomingMessage): boolean {
   if (config.COOKIE_SECURE === '1') return true;
   if (config.COOKIE_SECURE === '0') return false;

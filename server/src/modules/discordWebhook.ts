@@ -7,9 +7,10 @@ const KIND_MESSAGE: Record<string, (name: string) => string> = {
   screenshare: (name) => `🖥️ **${name}** começou a compartilhar a tela.`,
 };
 
-/** Manda uma notificação pro canal do Discord configurado (`DISCORD_WEBHOOK_URL`
- * — opcional, ver config/env.ts). Nunca lança: uma falha de rede/webhook
- * revogado não pode derrubar a conexão de quem só ativou o mic/tela. */
+/** Sends a notification to the configured Discord channel
+ * (`DISCORD_WEBHOOK_URL` — optional, see config/env.ts). Never throws: a
+ * network failure/revoked webhook can't take down the connection of
+ * whoever just activated their mic/screen. */
 async function notify(text: string): Promise<void> {
   if (!config.DISCORD_WEBHOOK_URL) return;
   try {
@@ -26,11 +27,11 @@ async function notify(text: string): Promise<void> {
   }
 }
 
-/** Cliente reporta a própria ação (nunca em nome de outro participante) —
- * mesmo espírito de `deafened`/`reaction`: o servidor não tem visibilidade
- * de quem está na chamada/compartilhando tela, isso vive só no LiveKit (ver
- * useParticipantMedia.ts), então quem sabe que "eu acabei de publicar o mic/
- * tela agora" é o próprio cliente (ver RoomProvider.tsx). */
+/** Client reports its OWN action (never on behalf of someone else) — same
+ * spirit as `deafened`/`reaction`: the server has no visibility into who's
+ * in the call/sharing (that lives in LiveKit only, see
+ * useParticipantMedia.ts), so only the client itself knows "I just
+ * published my mic/screen" (see RoomProvider.tsx). */
 async function handleCallEvent(socket: AppSocket, msg: { kind?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;

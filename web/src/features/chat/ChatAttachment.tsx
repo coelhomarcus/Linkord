@@ -4,25 +4,25 @@ import type { ChatAttachment as ChatAttachmentData } from '../../types/protocol'
 import { ImageLightbox } from '../../shared/ImageLightbox';
 import { formatFileSize } from '../../shared/lib/formatBytes';
 
-// espelha INLINE_MIME_TYPES de server/attachments.js — so decide COMO
-// renderizar aqui; o servidor decide de verdade como serve de volta
-// (Content-Type/Content-Disposition), essa lista aqui e so pra UI.
+// mirrors INLINE_MIME_TYPES from server/src/modules/attachments.ts — only
+// decides HOW to render here; the server decides how it actually serves it
+// back (Content-Type/Content-Disposition), this list is UI-only.
 const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const VIDEO_MIME_TYPES = new Set(['video/mp4', 'video/webm', 'video/ogg']);
 const AUDIO_MIME_TYPES = new Set(['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4']);
 
-/** Um anexo (imagem, video, audio ou qualquer outro arquivo) dentro de uma
- * mensagem. Imagem abre um modal em tela cheia ao clicar (ImageLightbox,
- * estilo Discord — nao mais uma aba nova); video/audio tocam inline;
- * qualquer outro tipo vira um chip com nome+tamanho que baixa ao clicar
- * (o servidor ja forca download via Content-Disposition nesse caso, ver
- * server/attachments.js#serveUpload).
+/** An attachment (image, video, audio, or any other file) inside a message.
+ * Images open a fullscreen modal on click (ImageLightbox, Discord-style —
+ * no longer a new tab); video/audio play inline; any other type becomes a
+ * name+size chip that downloads on click (the server already forces
+ * download via Content-Disposition in that case, see
+ * server/src/modules/attachments.ts).
  *
- * `target="_blank"` no chip de download NAO e cosmetico: sem ele, um clique
- * navega a PROPRIA aba pro link (mesmo com download forcado pelo servidor,
- * alguns navegadores ainda trocam de pagina primeiro) — isso desmonta o app
- * inteiro, derrubando a chamada em andamento junto. Com _blank, o pior caso
- * vira uma aba nova, nunca a nossa. */
+ * `target="_blank"` on the download chip is NOT cosmetic: without it, a
+ * click navigates OUR OWN tab to the link (even with server-forced
+ * download, some browsers still navigate first) — unmounting the whole app
+ * and dropping an ongoing call with it. With _blank, the worst case is a
+ * new tab, never ours. */
 export function ChatAttachment({ attachment }: { attachment: ChatAttachmentData }) {
   const url = `/uploads/${attachment.id}`;
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -35,9 +35,9 @@ export function ChatAttachment({ attachment }: { attachment: ChatAttachmentData 
             src={url}
             alt={attachment.name}
             loading="lazy"
-            // max-w fixo (nao so max-w-full): sem isso, uma imagem bem mais
-            // larga que alta cresce ate a largura inteira da coluna do chat
-            // pra caber no max-h — enorme mesmo sendo "so" uma miniatura.
+            // fixed max-w (not just max-w-full): otherwise a much-wider-than-
+            // tall image grows to the chat column's full width to fit
+            // max-h — huge even though it's "just" a thumbnail.
             className="max-h-80 max-w-sm rounded-md border border-strong object-contain"
           />
         </button>

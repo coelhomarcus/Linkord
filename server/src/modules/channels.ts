@@ -5,17 +5,12 @@ import { categories, channels } from '../db/schema.js';
 import { participants, broadcast, send } from '../realtime/participants.js';
 import type { AppSocket, HandlerTable, Participant } from '../types.js';
 
-// ---------------------------------------------------------------------------
-// Categorias e canais — de TEXTO (admin cria/apaga/reordena a vontade) ou de
-// VOZ (a Chamada: sempre existe exatamente UM, ensureVoiceChannelExists
-// garante isso no boot; criar outro ou apagar o unico que existe fica pra
-// depois). Quadro continua fixo, fora desse sistema (decisao ja tomada,
-// nao mencionado quando a Chamada entrou pra arvore). Toda mutacao
-// rebroadcast a ARVORE INTEIRA fresca (`channels-tree`) em vez de eventos
-// incrementais — a estrutura e pequena (gerenciada so pelo admin), entao
-// "buscar tudo de novo e reenviar" e mais simples e mais dificil de deixar
-// o cliente dessincronizado do que reconciliar diffs.
-// ---------------------------------------------------------------------------
+// Categories/channels — text or voice, admins create/delete/reorder either
+// freely (only the LAST voice channel is protected, see handleChannelDelete).
+// Every mutation rebroadcasts the WHOLE fresh tree (`channels-tree`) instead
+// of incremental events — the tree is small (only admins touch it), so
+// "refetch and resend everything" is simpler and harder to desync than
+// reconciling diffs.
 
 interface ChannelSummary {
   id: string;
@@ -29,7 +24,7 @@ interface CategoryTree {
   channels: ChannelSummary[];
 }
 
-function sanitizeChannelName(name: unknown): string | null {
+export function sanitizeChannelName(name: unknown): string | null {
   const s = String(name == null ? '' : name).trim().slice(0, 60);
   return s || null;
 }
@@ -38,10 +33,16 @@ function isAdmin(p: Participant | undefined): boolean {
   return !!p && p.role === 'admin';
 }
 
-/** Categoria "Geral" + canal de texto "geral" na primeira vez que o servidor
- * sobe com o banco vazio — cobre tanto instalacao nova quanto upgrade de
- * quem tinha o chat unico antigo (em memoria, ja removido). Chamado uma vez
- * no boot. */
+/** The room can never be left with NO voice channel — deleting the last
+ * one would only be recoverable with a server restart
+ * (ensureVoiceChannelExists only runs at boot). Text channels never lock. */
+export function canDeleteChannel(type: string, voiceChannelCount: number): boolean {
+  return type !== 'voice' || voiceChannelCount > 1;
+}
+
+/** "General" category + "general" text channel the first time the server
+ * boots with an empty DB — covers both a fresh install and upgrading from
+ * the old single in-memory chat. Called once at boot. */
 export async function ensureSeeded(): Promise<void> {
   const [existing] = await db.select({ id: categories.id }).from(categories).limit(1);
   if (existing) return;
@@ -51,14 +52,11 @@ export async function ensureSeeded(): Promise<void> {
   await db.insert(channels).values({ id: channelId, categoryId, name: 'geral', type: 'text', position: 0 });
 }
 
-/** Garante que existe exatamente UM canal de voz (a Chamada) em algum lugar
- * da arvore — chamado toda vez que o servidor sobe (nao so quando o banco
- * esta vazio, ver ensureSeeded): cobre tanto instalacao nova (roda logo
- * apos o seed acima, cai na mesma categoria "Geral") quanto upgrade de uma
- * instalacao que ja tinha categorias/canais de texto mas ainda nao tinha a
- * Chamada como linha do banco (ela vivia so em memoria antes). Se nao houver
- * NENHUMA categoria (o admin apagou tudo), so avisa no log — nao ha onde
- * colocar a Chamada. */
+/** Guarantees at least one voice channel exists somewhere in the tree —
+ * runs on every boot (not just an empty DB, see ensureSeeded), covering
+ * both a fresh install and upgrading an installation that had text
+ * channels but no voice channel row yet. Just logs if there's no category
+ * at all (admin deleted everything) — nowhere to put it. */
 export async function ensureVoiceChannelExists(): Promise<void> {
   const [existingVoice] = await db.select({ id: channels.id }).from(channels).where(eq(channels.type, 'voice')).limit(1);
   if (existingVoice) return;
@@ -72,8 +70,8 @@ export async function ensureVoiceChannelExists(): Promise<void> {
   await db.insert(channels).values({ id: crypto.randomUUID(), categoryId: firstCategory.id, name: 'Chamada', type: 'voice', position });
 }
 
-/** Arvore ordenada (categorias -> canais), pro `welcome` e pra rebroadcast
- * apos qualquer mutacao. */
+/** Ordered tree (categories -> channels), for `welcome` and for
+ * rebroadcasting after any mutation. */
 export async function listTree(): Promise<CategoryTree[]> {
   const cats = await db.select().from(categories).orderBy(categories.position);
   const chans = await db.select().from(channels).orderBy(channels.position);
@@ -89,6 +87,14 @@ export async function listTree(): Promise<CategoryTree[]> {
 export async function channelExists(channelId: string): Promise<boolean> {
   const [row] = await db.select({ id: channels.id }).from(channels).where(eq(channels.id, channelId)).limit(1);
   return !!row;
+}
+
+/** Used by realtime/socket.ts#handleVoiceJoin to check the channel exists
+ * and is actually voice before minting a LiveKit token — null covers both
+ * "doesn't exist" and any read error. */
+export async function getChannelType(channelId: string): Promise<string | null> {
+  const [row] = await db.select({ type: channels.type }).from(channels).where(eq(channels.id, channelId)).limit(1);
+  return row?.type ?? null;
 }
 
 async function broadcastTree(): Promise<void> {
@@ -114,9 +120,9 @@ async function handleCategoryDelete(socket: AppSocket, msg: { categoryId?: strin
   try {
     await db.delete(categories).where(eq(categories.id, categoryId));
   } catch (err: unknown) {
-    // 23001 = restrict_violation (SQLSTATE especifico de ON DELETE RESTRICT —
-    // NAO e o 23503/foreign_key_violation generico) — a categoria ainda tem
-    // canais dentro.
+    // 23001 = restrict_violation (the specific SQLSTATE for ON DELETE
+    // RESTRICT — NOT the generic 23503/foreign_key_violation) — the
+    // category still has channels in it.
     const cause = (err as { cause?: { code?: string } } | undefined)?.cause;
     if (cause?.code === '23001') {
       send(socket, { t: 'error', code: 'category-not-empty', message: 'Apague os canais dessa categoria antes de apaga-la.' });
@@ -127,19 +133,18 @@ async function handleCategoryDelete(socket: AppSocket, msg: { categoryId?: strin
   await broadcastTree();
 }
 
-async function handleChannelCreate(socket: AppSocket, msg: { categoryId?: string; name?: string }): Promise<void> {
+async function handleChannelCreate(socket: AppSocket, msg: { categoryId?: string; name?: string; type?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket || !isAdmin(p)) return;
   const categoryId = String(msg.categoryId || '');
   const name = sanitizeChannelName(msg.name);
+  const type = msg.type === 'voice' ? 'voice' : 'text';
   if (!categoryId || !name) return;
   const [category] = await db.select({ id: categories.id }).from(categories).where(eq(categories.id, categoryId)).limit(1);
   if (!category) return;
   const rows = await db.select({ position: channels.position }).from(channels).where(eq(channels.categoryId, categoryId));
   const position = rows.length ? Math.max(...rows.map((r) => r.position)) + 1 : 0;
-  // sempre 'text' — criar outro canal de voz fica pro futuro (so pode existir
-  // UM, ver ensureVoiceChannelExists), entao o tipo nunca vem do cliente.
-  await db.insert(channels).values({ id: crypto.randomUUID(), categoryId, name, type: 'text', position });
+  await db.insert(channels).values({ id: crypto.randomUUID(), categoryId, name, type, position });
   await broadcastTree();
 }
 
@@ -151,25 +156,23 @@ async function handleChannelDelete(socket: AppSocket, msg: { channelId?: string 
   const [existing] = await db.select({ type: channels.type }).from(channels).where(eq(channels.id, channelId)).limit(1);
   if (!existing) return;
   if (existing.type === 'voice') {
-    // so existe UM canal de voz e ainda nao da pra criar outro — apagar o
-    // unico deixaria a sala sem chamada nenhuma ate um restart do servidor
-    // (ensureVoiceChannelExists so roda no boot).
-    send(socket, { t: 'error', code: 'cannot-delete-voice-channel', message: 'Ainda nao e possivel apagar o canal de voz.' });
-    return;
+    const voiceChannels = await db.select({ id: channels.id }).from(channels).where(eq(channels.type, 'voice'));
+    if (!canDeleteChannel(existing.type, voiceChannels.length)) {
+      send(socket, { t: 'error', code: 'cannot-delete-last-voice-channel', message: 'Precisa existir pelo menos um canal de voz.' });
+      return;
+    }
   }
-  // import() dinamico (nao no topo do arquivo) so pra quebrar o ciclo —
-  // modules/attachments.ts ja importa channelExists DESTE arquivo, um
-  // import estatico no topo aqui criaria um ciclo. Chamado antes do delete
-  // abaixo: as mensagens do canal (e os anexos delas) vao embora via CASCADE
-  // no Postgres, sem passar por handleChatDelete — sem isso, os ARQUIVOS em
-  // disco de qualquer imagem/anexo desse canal ficariam orfaos pra sempre.
+  // dynamic import to avoid a cycle (modules/attachments.ts already imports
+  // channelExists from this file). Called before the delete below: the
+  // channel's messages/attachments go via CASCADE in Postgres without going
+  // through handleChatDelete, so this is what prevents orphaned files on disk.
   const { deleteForChannel } = await import('./attachments.js');
   await deleteForChannel(channelId);
   const result = await db.delete(channels).where(eq(channels.id, channelId));
   if (result.rowCount === 0) return;
-  // mensagens do canal ja foram embora via CASCADE — isso e o que "apaga do
-  // banco pra sempre" significa aqui. Aviso explicito (alem da arvore nova)
-  // pra quem estava exatamente NESSE canal saber que precisa trocar.
+  // messages already gone via CASCADE — this is what "permanently deleted"
+  // means here. Explicit notice (besides the fresh tree) for whoever was in
+  // exactly this channel.
   broadcast({ t: 'channel-deleted', channelId });
   await broadcastTree();
 }
@@ -203,18 +206,17 @@ async function handleCategoriesReorder(socket: AppSocket, msg: { orderedIds?: un
   if (!orderedIds.length) return;
   const existing = await db.select({ id: categories.id }).from(categories);
   const existingIds = new Set(existing.map((r) => r.id));
-  // o conjunto mandado tem que bater EXATAMENTE com o que existe — evita
-  // reindexar em cima de um id que nao existe mais (corrida com um delete).
+  // the set sent must EXACTLY match what exists — avoids reindexing over an
+  // id that no longer exists (race with a delete).
   if (orderedIds.length !== existingIds.size || !orderedIds.every((id) => existingIds.has(id))) return;
   await Promise.all(orderedIds.map((id, index) => db.update(categories).set({ position: index }).where(eq(categories.id, id))));
   await broadcastTree();
 }
 
-/** Reordena os canais de UMA categoria — tambem cobre "mover pra outra
- * categoria" (arrastar um canal pra dentro de outra lista no Discord): o
- * cliente manda a lista final inteira da categoria DE DESTINO, e todo canal
- * nela tem seu categoryId setado pra essa categoria (no-op pra quem ja
- * estava, mudanca de verdade so pro que foi movido). */
+/** Reorders one category's channels — also covers moving a channel to
+ * ANOTHER category (drag it into another list): client sends the
+ * destination category's full final list, and every channel in it gets
+ * that categoryId (no-op for ones already there). */
 async function handleChannelsReorder(socket: AppSocket, msg: { categoryId?: string; orderedIds?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket || !isAdmin(p)) return;
@@ -224,7 +226,7 @@ async function handleChannelsReorder(socket: AppSocket, msg: { categoryId?: stri
   const [category] = await db.select({ id: categories.id }).from(categories).where(eq(categories.id, categoryId)).limit(1);
   if (!category) return;
   const existing = await db.select({ id: channels.id }).from(channels).where(inArray(channels.id, orderedIds));
-  if (existing.length !== orderedIds.length) return; // algum id sumiu (corrida com um delete)
+  if (existing.length !== orderedIds.length) return; // some id disappeared (race with a delete)
   await Promise.all(orderedIds.map((id, index) => db.update(channels).set({ categoryId, position: index }).where(eq(channels.id, id))));
   await broadcastTree();
 }

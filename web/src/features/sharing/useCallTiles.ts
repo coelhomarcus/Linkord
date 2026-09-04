@@ -11,22 +11,23 @@ function buildDescriptors(room: Room, participantIds: string[]): TileDescriptor[
   for (const id of participantIds) {
     const participant = getParticipant(room, id);
     if (!participant) continue;
-    // participantIds inclui todo mundo na SALA (chat/presenca), nao so quem
-    // esta na chamada — sem esse filtro, qualquer um que nunca ativou o mic
-    // (ou ja saiu da call de verdade, ver leaveMic) aparecia como um tile
-    // avatar no palco, como se estivesse conectado. "Na call" = tem o mic
-    // publicado, mesma fonte de verdade usada em App.tsx (inCall) e na
-    // LeftSidebar (CallParticipantRow).
+    // participantIds includes everyone in the ROOM (chat/presence), not
+    // just who's in the call — without this filter, anyone who never
+    // activated their mic (or already left the call for real, see
+    // leaveMic) would show up as an avatar tile on stage, as if connected.
+    // "In the call" = has a published mic, the same source of truth used
+    // in App.tsx (inCall) and LeftSidebar (CallParticipantRow).
     if (!participant.getTrackPublication(Track.Source.Microphone)) continue;
-    // !!track sozinho nao basta: desligar camera/tela MUTA a publication
-    // (nao despublica), entao o objeto Track continua existindo pra sempre
-    // depois da primeira ativacao — activeTrack ja filtra isso.
+    // !!track alone isn't enough: turning off camera/screen MUTES the
+    // publication (doesn't unpublish), so the Track object keeps existing
+    // forever after the first activation — activeTrack already filters that.
     const hasScreen = !!activeTrack(participant, Track.Source.ScreenShare);
     const hasCamera = !!activeTrack(participant, Track.Source.Camera);
     if (hasScreen) out.push({ key: tileKey(id, 'screen'), participantId: id, kind: 'screen' });
-    // toda pessoa na call sempre tem exatamente UM tile "de si mesma"
-    // (camera se tiver, senao avatar) — e onde mic/selo de mudo/borda de
-    // fala vivem, nunca falta, mesmo compartilhando so tela.
+    // everyone in the call always has exactly ONE tile "of themselves"
+    // (camera if they have it, otherwise avatar) — this is where the mic/
+    // muted badge/speaking border live, never missing even when only
+    // sharing a screen.
     const selfKind = hasCamera ? 'camera' : 'avatar';
     out.push({ key: tileKey(id, selfKind), participantId: id, kind: selfKind });
   }
@@ -34,31 +35,32 @@ function buildDescriptors(room: Room, participantIds: string[]): TileDescriptor[
 }
 
 const CALL_TILE_EVENTS = [
-  // Published/Unpublished disparam assim que alguem entra/sai da call (o
-  // filtro "inCall" acima depende disso) — sem eles, esse hook so
-  // "descobria" que alguem entrou/saiu por acidente, quando outro evento
-  // qualquer disparava um refresh (mesma causa do bug corrigido antes em
-  // useLiveKitTrack.ts).
+  // Published/Unpublished fire as soon as someone joins/leaves the call
+  // (the "inCall" filter above depends on this) — without them, this hook
+  // would only "discover" someone joined/left by accident, whenever some
+  // other event triggered a refresh (same root cause as a bug fixed
+  // earlier in useLiveKitTrack.ts).
   RoomEvent.TrackPublished,
   RoomEvent.TrackUnpublished,
   RoomEvent.TrackSubscribed,
   RoomEvent.TrackUnsubscribed,
   RoomEvent.LocalTrackPublished,
   RoomEvent.LocalTrackUnpublished,
-  // desligar camera/tela e um MUTE (nao despublica, ver activeTrack acima)
-  // — sem escutar isso, o tile de camera nunca voltaria a virar avatar.
+  // turning off camera/screen is a MUTE (doesn't unpublish, see
+  // activeTrack above) — without listening for this, the camera tile
+  // would never turn back into an avatar.
   RoomEvent.TrackMuted,
   RoomEvent.TrackUnmuted,
   RoomEvent.ParticipantConnected,
   RoomEvent.ParticipantDisconnected,
 ];
 
-/** Monta a lista de tiles a renderizar no grid da chamada — um por FONTE de
- * midia ATIVA, nao por participante (tela e camera da mesma pessoa viram
- * dois retangulos separados, estilo Discord). Nao escuta
- * ActiveSpeakersChanged de proposito: falar nao muda QUANTOS tiles existem,
- * so precisa de destaque visual (isso e useIsSpeaking, dentro de cada
- * Tile). */
+/** Builds the list of tiles to render in the call grid — one per ACTIVE
+ * media source, not per participant (a person's screen and camera become
+ * two separate rectangles, Discord-style). Doesn't listen for
+ * ActiveSpeakersChanged on purpose: speaking doesn't change HOW MANY tiles
+ * exist, it only needs visual highlighting (that's useIsSpeaking, inside
+ * each Tile). */
 export function useCallTiles(participantIds: string[]): TileDescriptor[] {
   const { livekitRoom } = useRoom();
   const [descriptors, setDescriptors] = useState<TileDescriptor[]>([]);

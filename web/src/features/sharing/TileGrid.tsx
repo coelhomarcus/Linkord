@@ -8,32 +8,32 @@ interface TileGridProps {
   focusedId: string | null;
 }
 
-// tamanho fixo da tira de miniaturas do modo foco — sem fr/minmax aqui de
-// proposito (ver comentario grande abaixo).
+// fixed size for the focus-mode thumbnail strip — no fr/minmax here on
+// purpose (see the big comment below).
 const THUMB_W = 160;
 const THUMB_H = 90;
 
-// todo tile da grade (sem foco) mantem essa proporcao — nunca estica pra
-// quadrado, nem quando sobra espaco (o video em si ja usa object-cover,
-// ver Tile.tsx, entao cortar o excesso pra caber nessa caixa e esperado).
+// every grid tile (non-focus) keeps this ratio — never stretches to a
+// square even with room to spare (the video itself already uses
+// object-cover, see Tile.tsx, so cropping the excess to fit this box is expected).
 const TILE_ASPECT_RATIO = 16 / 9;
-const GRID_GAP = 12; // px — precisa bater com gap-3 (0.75rem = 12px)
+const GRID_GAP = 12; // px — must match gap-3 (0.75rem = 12px)
 
-/** Quantas pessoas "fingir" que tem, so pra efeito de TAMANHO do tile — com
- * so 2 ou 3 na chamada, dimensionar como se fossem exatamente essas 2/3
- * deixava os tiles enormes e quase quadrados (cada um vira metade da tela).
- * Sozinha (1) continua tratada como 1 mesmo — nesse caso GRANDE e o
- * comportamento certo, nao teria sentido fingir 4 e encolher a pessoa. De 2
- * a 4, sempre dimensiona como se fossem 4 (a mesma grade 2x2); a partir de
- * 5, cada pessoa a mais so aumenta a grade de verdade. */
+/** How many people to "pretend" there are, purely for tile SIZE — with
+ * only 2 or 3 in the call, sizing for exactly that made tiles huge and
+ * almost square (each becomes half the screen). Solo (1) still counts as
+ * 1 — there LARGE is the right call, no point pretending 4 and shrinking
+ * that person. From 2 to 4, always sizes as if there were 4 (the same 2x2
+ * grid); from 5 on, each extra person actually grows the grid. */
 function referenceCount(n: number): number {
   if (n <= 1) return n;
   return Math.max(n, 4);
 }
 
-/** Maior tile (respeitando TILE_ASPECT_RATIO) que cabe em `cols` colunas por
- * `rows` linhas dentro do espaco disponivel — testa contra largura E altura,
- * o menor dos dois "vence" (garante que nunca estoura o container). */
+/** Largest tile (respecting TILE_ASPECT_RATIO) that fits `cols` columns by
+ * `rows` rows within the available space — checks against both width AND
+ * height, the smaller of the two wins (guarantees it never overflows the
+ * container). */
 function fitTileSize(cols: number, rows: number, containerW: number, containerH: number): { tileW: number; tileH: number } {
   if (containerW <= 0 || containerH <= 0) return { tileW: 0, tileH: 0 };
   let tileW = (containerW - GRID_GAP * (cols - 1)) / cols;
@@ -46,31 +46,27 @@ function fitTileSize(cols: number, rows: number, containerW: number, containerH:
 }
 
 /**
- * Grade estilo Discord pra quando ninguem esta em foco: colunas = raiz
- * quadrada arredondada pra cima do numero de referencia (ver referenceCount),
- * tiles com proporcao FIXA (nunca esticam pra preencher a celula), cada
- * linha centralizada — inclusive a ultima, incompleta (ex.: 3 pessoas = 2
- * em cima, a 3a sozinha embaixo mas CENTRALIZADA, nao grudada na esquerda).
- * O tamanho do tile e recalculado a cada mudanca de tamanho do container via
- * ResizeObserver (mesma tecnica que Tile.tsx ja usa pro fit="contain").
+ * Discord-style grid for when no one is focused: columns = ceil(sqrt of
+ * the reference count, see referenceCount), tiles at a FIXED ratio (never
+ * stretch to fill the cell), each row centered — including an incomplete
+ * last row (e.g. 3 people = 2 on top, the 3rd alone below but CENTERED,
+ * not stuck to the left). Tile size is recalculated on every container
+ * resize via ResizeObserver (same technique Tile.tsx already uses for
+ * fit="contain").
  *
- * MODO FOCO e outra historia — tentei duas vezes manter o tile principal
- * (grid-column: 1/-1, ocupando todas as colunas) e a tira de miniaturas no
- * MESMO conjunto de colunas (via minmax(var(--thumb-w),1fr) e depois
- * minmax(160px,1fr)) e as duas vezes a tira ficou espremida. A causa: pedir
- * "colunas estreitas o bastante pra caber varias miniaturas pequenas" E
- * "essas mesmas colunas, somadas, tem que dar a largura TOTAL da tela pro
- * tile principal" sao dois requisitos que se contradizem — quando o grid
- * tem poucas colunas (poucas miniaturas), cada coluna "1fr" fica enorme
- * pra fechar a largura total, e a miniatura (limitada por max-width)
- * fica pequena dentro dela; quando tem muitas colunas, o piso de cada
- * uma some porque o grid inteiro tenta caber na largura disponivel de
- * qualquer jeito. Resolvido separando estruturalmente: o tile principal
- * vira um <div flex-1> comum (largura 100% de verdade, sem depender de
- * span de coluna nenhuma) e a tira de miniaturas e uma linha flex
- * SEPARADA embaixo, com largura FIXA por item (sem fr, sem minmax) e
- * overflow-x-auto nativo — não tem negociação de espaço nenhuma pra dar
- * errado.
+ * FOCUS MODE is a different story — two attempts at keeping the main tile
+ * (grid-column: 1/-1, spanning all columns) and the thumbnail strip in the
+ * SAME column set both squeezed the strip. Cause: "columns narrow enough
+ * for several small thumbnails" and "those same columns, summed, must
+ * equal the full screen width for the main tile" contradict each other —
+ * with few columns (few thumbnails) each "1fr" column grows huge to fill
+ * the width, shrinking the thumbnail inside it; with many columns, each
+ * one's floor disappears as the grid tries to fit the available width
+ * regardless. Fixed by splitting them structurally: the main tile becomes
+ * a plain <div flex-1> (real 100% width, no column span to depend on) and
+ * the thumbnail strip is a SEPARATE flex row below it, fixed width per
+ * item (no fr, no minmax) with native overflow-x-auto — nothing left to
+ * negotiate that could go wrong.
  */
 export function TileGrid({ descriptors, focusedId }: TileGridProps) {
   const { state } = useRoom();
@@ -80,7 +76,7 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
   useEffect(() => {
-    if (focus) return; // so precisa medir no modo grade
+    if (focus) return; // only needs measuring in grid mode
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
@@ -113,9 +109,9 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
           <div className="flex flex-none justify-center gap-3 overflow-x-auto pb-0.5">
             {thumbs.map((d) => (
               <div key={d.key} style={{ width: THUMB_W, height: THUMB_H }} className="flex-none">
-                {/* avatarSize menor: o default (80px) pensado pra tile
-                    grande ficava quase do tamanho da miniatura inteira
-                    (90px de altura) quando a camera esta desligada. */}
+                {/* smaller avatarSize: the default (80px) meant for a large
+                    tile was almost as big as the whole thumbnail (90px
+                    tall) with the camera off. */}
                 <Tile participantId={d.participantId} kind={d.kind} isMine={isMine(d.participantId)} avatarSize={32} />
               </div>
             ))}

@@ -6,44 +6,34 @@ import type { RoomAction, RoomState } from './roomReducer';
 import type { Quality } from '../features/settings/useQualityPreference';
 import type { TileKind } from '../features/sharing/tileTypes';
 
-/** Uma reacao ativa exibida na camada de overlay — `key` e unico por
- * instancia (nao por participante), ja que a mesma pessoa pode reagir
- * varias vezes seguidas. */
+/** An active reaction shown in the overlay — `key` is unique per instance
+ * (not per participant), since the same person can react repeatedly. */
 export interface ReactionEvent {
   key: number;
   id: string;
   emoji: ReactionEmoji;
-  /** posicao horizontal (% da largura do palco), sorteada uma vez no envio
-   * — espalha as reacoes pela tela em vez de empilhar num unico lugar. */
+  /** Horizontal position (% of stage width), rolled once on send — spreads
+   * reactions across the screen instead of stacking them. */
   left: number;
 }
 
-/** Registrado por todo tile (o meu e os remotos) — da ao TileMenu acesso ao
- * DOM real (tela cheia mira a raiz, PiP mira o video) sem precisar que o
- * menu seja filho do tile (ele e portalizado direto pro body). Audio NAO
- * mora mais aqui — isso e do ParticipantAudioLayer/audioRegistry abaixo,
- * porque o audio de alguem precisa sobreviver a troca de kind do tile dessa
- * pessoa (ligar/desligar camera), enquanto o tile em si desmonta/remonta. */
+/** One per tile (mine and remote) — gives TileMenu DOM access (fullscreen/
+ * PiP) without the menu being a child of the tile (it's portaled to body).
+ * Audio is separate (see AudioHandle) since it must survive a tile's kind
+ * changing (camera on/off). */
 export interface TileDomHandle {
   root: HTMLDivElement;
-  /** null em tiles sem video (avatar so-audio) — nao ha o que mirar em tela
-   * cheia/PiP nesse caso (o TileMenu ja trata isso). */
+  /** null for video-less tiles (audio-only avatar) — nothing to target. */
   video: HTMLVideoElement | null;
 }
 
-/** Um elemento de audio compartilhado (mic ou audio de tela de alguem),
- * registrado pelo ParticipantAudioLayer — sobrevive a troca de kind do tile
- * visual dessa pessoa. So pra acesso DOM (volume real do TileMenu); o
- * desbloqueio de autoplay mora em `audioUnlocked` (reativo, ver abaixo), nao
- * aqui — um Map em ref nao re-renderiza o Tile quando muda. Chave:
- * `participantId` pro audio do mic (tile camera/avatar dela),
- * `${participantId}:screen` pro audio da aba compartilhada (tile screen). */
+/** A person's shared audio element (mic or screen audio), registered by
+ * ParticipantAudioLayer — survives their tile's kind changing. Key:
+ * `participantId` for mic, `${participantId}:screen` for screen audio. */
 export interface AudioHandle {
   element: HTMLAudioElement;
 }
 
-/** Retangulo de ancoragem do menu de contexto — subset de DOMRect, ou os
- * 4 campos equivalentes derivados de um MouseEvent (clique direito). */
 export interface AnchorRect {
   left: number;
   top: number;
@@ -57,111 +47,100 @@ export interface RoomContextValue {
   sendWs: (msg: ClientMessage) => void;
   tileDomRegistry: MutableRefObject<Map<string, TileDomHandle>>;
   audioRegistry: MutableRefObject<Map<string, AudioHandle>>;
-  /** true assim que a pagina recebe qualquer gesto do usuario (clique,
-   * tecla) — autoplay de audio com som e bloqueado por padrao pelo
-   * navegador ate isso acontecer. Um flag global (nao por participante):
-   * um gesto qualquer ja libera autoplay pra pagina inteira, nao faz
-   * sentido pedir um clique por pessoa/tela compartilhada. */
+  /** True once the page gets a user gesture — browsers block autoplay-with-
+   * sound by default until then. Global, not per-participant. */
   audioUnlocked: boolean;
-  /** "Ensurdecer" — para de OUVIR todo mundo (mic e audio de tela dos
-   * outros), sem mexer no meu proprio mic. Puramente local (ninguem mais
-   * precisa saber disso, ao contrario de micMuted) — nao passa pelo
-   * protocolo. */
+  /** Stops hearing everyone (mic and screen audio), without touching your
+   * own mic. Purely local — not part of the protocol. */
   deafened: boolean;
   toggleDeafened: () => void;
-  /** Instancia unica da Room do LiveKit (camera/tela) — sempre a mesma
-   * referencia durante a vida do RoomProvider; a conexao de fato (connect())
-   * so acontece depois do primeiro 'welcome' do Socket.IO. */
+  /** Single stable Room instance for the whole session — connect() happens
+   * per voice channel, see joinVoiceChannel. */
   livekitRoom: Room;
-  /** Avisa qual tela (chat/call) esta ativa agora — so pro som de mensagem
-   * nova saber se a pessoa ja esta olhando o chat (Shell, em App.tsx, chama
-   * isso sempre que activeView muda). */
+  /** Lets the new-message sound know if the user is already looking at chat. */
   notifyActiveView: (view: 'chat' | 'call') => void;
+  /** Voice channel I'm connected to right now, or null — only changes via
+   * joinVoiceChannel/leaveVoiceChannel, never automatically. */
+  activeVoiceChannelId: string | null;
+  /** Joins a specific voice channel: leaves the current one if different,
+   * requests a LiveKit token for it, connects, and activates the mic. */
+  joinVoiceChannel: (channelId: string) => void;
   startSharing: () => Promise<void>;
   stopSharing: () => void;
   startCamera: () => Promise<void>;
   stopCamera: () => void;
-  /** Pede permissao + publica o mic, ja desmutado — chamado ao clicar em
-   * "Chamada" na sidebar (App.tsx), nao mais automatico. Idempotente:
-   * seguro chamar de novo (ex: retry apos permissao negada). */
+  /** Requests permission and publishes the mic, unmuted — called by
+   * joinVoiceChannel once the Room connects. Idempotent. */
   activateMic: () => Promise<void>;
-  /** So alterna mudo/desmutado — assume que activateMic ja rodou. */
+  /** Assumes activateMic already ran. */
   toggleMicMuted: () => Promise<void>;
-  /** Sai da chamada de verdade (despublica mic, para camera/tela) — ver
-   * useMicrophone.ts. Depois disso, ativar de novo pede o mic de novo. */
-  leaveCall: () => Promise<void>;
+  /** Leaves the current voice channel for real (unpublishes mic, stops
+   * camera/screen, disconnects the Room, notifies the server). */
+  leaveVoiceChannel: () => Promise<void>;
   quality: Quality;
   setQuality: (q: Quality) => void;
-  /** So o avatar e editavel em sessao — nome e o username da conta, imutavel. */
+  /** Only the avatar is editable — name is the account's immutable username. */
   updateAvatar: (avatar: string) => void;
-  /** Envia uma foto do proprio computador (PNG/JPEG/GIF/WEBP) e ja aplica
-   * como avatar da conta — por baixo, sobe pro mesmo UPLOAD_DIR dos anexos
-   * de chat (server/attachments.js) e chama updateAvatar com a URL
-   * resultante. Lanca em caso de erro (arquivo grande demais, tipo invalido).
-   * `onProgress` (0 a 1) e opcional — pra quem quiser mostrar uma barra real. */
+  /** Uploads a local file and applies it as the account avatar. Throws on
+   * error (too large, invalid type). `onProgress` (0 to 1) is optional. */
   uploadAvatarFile: (file: File, onProgress?: (fraction: number) => void) => Promise<string>;
   menuTarget: { key: string; participantId: string; kind: TileKind; rect: AnchorRect } | null;
   openTileMenu: (key: string, participantId: string, kind: TileKind, rect: AnchorRect) => void;
-  /** Retorna true se realmente fechou um menu aberto (idempotente) — usado
-   * pelo handler de Escape pra decidir se tambem deve tirar o foco. */
+  /** Returns true if it actually closed an open menu — used by the Escape
+   * handler to decide whether to also clear focus. */
   closeTileMenu: () => boolean;
   reactions: ReactionEvent[];
   sendReaction: (emoji: ReactionEmoji) => void;
   showStats: boolean;
   setShowStats: (value: boolean) => void;
-  /** Volume dos efeitos sonoros (0..1) — default 0.65, ver
-   * shared/sounds.ts#setVolume e useSettingsPreference.ts. */
+  /** Sound-effects volume (0..1), default 0.65. */
   notifyVolume: number;
   setNotifyVolume: (value: number) => void;
-  /** Arvore de categorias/canais (texto E o unico canal de voz, a Chamada)
-   * — so o admin cria/apaga/reordena (servidor revalida role sempre). */
+  /** Category/channel tree (text and voice) — only admins create/delete/
+   * reorder (server always revalidates). */
   categories: Category[];
   activeChannelId: string | null;
-  /** Troca o canal ativo — zera o nao-lido dele e busca o historico fresco. */
+  /** Switches the active channel — clears its unread count and fetches
+   * fresh history. */
   openChannel: (channelId: string) => void;
   messagesByChannel: Map<string, ChatMessage[]>;
-  /** Mensagens novas chegando pra um canal que nao e o ativo somam aqui —
-   * zerado ao abrir o canal (ver openChannel). */
+  /** New messages for a channel that isn't active accumulate here —
+   * cleared on openChannel. */
   unreadByChannel: Map<string, number>;
-  /** Diretorio de TODAS as contas cadastradas (sidebar direita, so na pagina
-   * de Chat) — online/offline vem de `onlineUserIds`, separado. */
+  /** Directory of ALL registered accounts (right sidebar, Chat page only) —
+   * online/offline comes from `onlineUserIds`, separately. */
   allUsers: Map<string, PublicUser>;
   onlineUserIds: Set<string>;
-  /** Erro recuperavel de gerenciar categoria/canal (ex.: apagar categoria
-   * nao vazia) — diferente de `state.roomError` (bloqueante de tela inteira). */
+  /** Recoverable channel-management error (e.g. deleting a non-empty
+   * category) — distinct from `state.roomError` (a full-screen blocker). */
   channelsError: string | null;
   clearChannelsError: () => void;
-  /** Apaga a conta de outra pessoa pra sempre — aba Moderacao dos Ajustes,
-   * admin-only (server/moderation.js revalida role sempre). Mensagens de
-   * quem for apagado continuam no historico (nome/avatar ja congelados na
-   * hora do envio); so a conta em si deixa de existir. */
+  /** Permanently deletes another account — Moderation tab, admin-only
+   * (server always revalidates role). Their past messages keep their
+   * frozen name/avatar; only the account itself stops existing. */
   deleteUserAccount: (userId: string) => void;
-  /** Erro recuperavel dessa mesma acao (ex.: tentar apagar a propria conta)
-   * — mesmo espirito de channelsError, so que pra aba Moderacao. */
+  /** Same idea as channelsError, for the Moderation tab. */
   moderationError: string | null;
   clearModerationError: () => void;
   sendChatMessage: (channelId: string, text: string, replyTo?: number) => void;
   deleteChatMessage: (msgId: number) => void;
-  /** So o autor original edita — nem admin (server/chat.js revalida). */
+  /** Only the original author can edit — not even admin (server revalidates). */
   editChatMessage: (msgId: number, text: string) => void;
-  /** Alterna a propria reacao naquele emoji (adiciona se nao tinha, tira se
-   * ja tinha) — reacao presa a UMA mensagem, diferente de sendReaction (a
-   * reacao flutuante "de sala"). */
+  /** Toggles my own reaction on that emoji — tied to ONE message, unlike
+   * sendReaction (the floating room-wide reaction). */
   reactToChatMessage: (msgId: number, emoji: ReactionEmoji) => void;
   createCategory: (name: string) => void;
   deleteCategory: (categoryId: string) => void;
   renameCategory: (categoryId: string, name: string) => void;
-  createChannel: (categoryId: string, name: string) => void;
+  createChannel: (categoryId: string, name: string, type?: 'text' | 'voice') => void;
   deleteChannel: (channelId: string) => void;
   renameChannel: (channelId: string, name: string) => void;
   reorderCategories: (orderedIds: string[]) => void;
   reorderChannels: (categoryId: string, orderedIds: string[]) => void;
-  /** Uso da cota de anexos (10GB no total, ver server/attachments.js) —
-   * atualiza sozinho a cada upload/apagada de qualquer participante
-   * (broadcast `storage-usage`), sem precisar recarregar os Ajustes. */
+  /** Attachment quota usage — updates itself on every upload/delete
+   * (`storage-usage` broadcast), no reload needed. */
   storageUsage: StorageUsage;
-  /** `onProgress` (0 a 1) e opcional — pra quem quiser mostrar uma barra real
-   * (ver ChatComposer). */
+  /** `onProgress` (0 to 1) is optional. */
   sendAttachment: (channelId: string, file: File, caption: string, onProgress?: (fraction: number) => void) => Promise<void>;
 }
 

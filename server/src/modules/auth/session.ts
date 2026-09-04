@@ -5,20 +5,17 @@ import { sessions, users } from '../../db/schema.js';
 import { config } from '../../config/env.js';
 import type { SessionUser } from '../../types.js';
 
-// ---------------------------------------------------------------------------
-// Sessoes de login. O cookie carrega um token cru de 32 bytes; so o sha256
-// dele (`tokenHash`) mora no banco — um vazamento do banco entao nao vira
-// sessao ativa reproduzivel.
+// Login sessions. The cookie carries a raw 32-byte token; only its sha256
+// (`tokenHash`) is stored — a DB leak alone can't be replayed as a session.
 //
-// O banco e remoto, entao resolver a sessao a cada handshake do Socket.IO (ou
-// a cada request HTTP) seria um round-trip WAN por reconexao. Por isso ha um
-// cache em memoria de 60s — barato de errar pra mais (so atrasa em ate 60s
-// ver uma troca de avatar ou um logout que aconteceu em OUTRA aba), caro de
-// errar pra menos (WAN em toda reconexao de rede instavel).
-// ---------------------------------------------------------------------------
+// The DB is remote, so resolving the session on every Socket.IO handshake/
+// HTTP request would be a WAN round-trip per reconnect. Hence a 60s
+// in-memory cache — cheap to get wrong in one direction (an avatar change
+// or logout from another tab can lag up to 60s), expensive in the other
+// (a WAN call on every flaky-network reconnect).
 
 const SESSION_CACHE_TTL_MS = 60 * 1000;
-const LAST_SEEN_STALE_MS = 60 * 60 * 1000; // so reescreve lastSeenAt se > 1h velho
+const LAST_SEEN_STALE_MS = 60 * 60 * 1000; // only rewrites lastSeenAt if older than 1h
 
 interface CacheEntry {
   value: SessionUser;
@@ -46,8 +43,8 @@ function cacheInvalidate(tokenHash: string): void {
   cache.delete(tokenHash);
 }
 
-/** Cria uma sessao nova e devolve o TOKEN CRU (vai no cookie) — nunca
- * persistido em texto puro, so o hash. */
+/** Creates a new session and returns the RAW token (goes in the cookie) —
+ * never persisted in plaintext, only the hash. */
 export async function createSession(userId: string): Promise<{ rawToken: string; expiresAt: Date }> {
   const rawToken = crypto.randomBytes(32).toString('base64url');
   const tokenHash = hashToken(rawToken);
@@ -56,8 +53,8 @@ export async function createSession(userId: string): Promise<{ rawToken: string;
   return { rawToken, expiresAt };
 }
 
-/** Resolve um token cru (de cookie) pro usuario dono da sessao, ou null se
- * invalida/expirada/inexistente. */
+/** Resolves a raw token (from a cookie) to the session's owner, or null if
+ * invalid/expired/nonexistent. */
 export async function resolveSession(rawToken: string | undefined | null): Promise<SessionUser | null> {
   if (!rawToken) return null;
   const tokenHash = hashToken(rawToken);
@@ -85,7 +82,7 @@ export async function resolveSession(rawToken: string | undefined | null): Promi
   }
 
   if (Date.now() - row.lastSeenAt.getTime() > LAST_SEEN_STALE_MS) {
-    // fire-and-forget: atraso/erro aqui nao deve travar a resolucao da sessao
+    // fire-and-forget: a delay/error here shouldn't block resolving the session
     db.update(sessions).set({ lastSeenAt: new Date() }).where(eq(sessions.tokenHash, tokenHash)).catch(() => {});
   }
 
@@ -101,19 +98,19 @@ export async function destroySession(rawToken: string | undefined | null): Promi
   await db.delete(sessions).where(eq(sessions.tokenHash, tokenHash));
 }
 
-/** Limpa sessoes vencidas do banco — chamado periodicamente pelo boot
- * (src/index.ts), nao a cada request. */
+/** Clears expired sessions from the DB — called periodically at boot
+ * (src/index.ts), not per request. */
 export async function sweepExpiredSessions(): Promise<void> {
   await db.delete(sessions).where(lt(sessions.expiresAt, new Date()));
 }
 
-/** Chamado por modules/moderation.ts ao apagar uma conta — a linha de
- * sessions ja sumiu via CASCADE (ver schema.ts), mas esse cache local pode
- * segurar uma entrada VALIDA por ate SESSION_CACHE_TTL_MS depois disso (ele
- * so expira por tempo, nao sabe que o banco mudou). Sem isso, quem acabou de
- * ser apagado continuaria autenticado — reconectando ou so mandando outra
- * mensagem — por ate 60s. Varre o Map inteiro (nao ha indice por userId, so
- * por tokenHash) — aceitavel: cache pequeno, e apagar conta e raro. */
+/** Called by modules/moderation.ts when deleting an account — the sessions
+ * row is already gone via CASCADE, but this local cache can hold a VALID
+ * entry for up to SESSION_CACHE_TTL_MS after that (it only expires by time,
+ * doesn't know the DB changed). Without this, someone just deleted would
+ * stay authenticated for up to 60s. Scans the whole Map (no index by
+ * userId, only tokenHash) — fine since the cache is small and account
+ * deletion is rare. */
 export function invalidateSessionsForUser(userId: string): void {
   for (const [tokenHash, entry] of cache) {
     if (entry.value && entry.value.userId === userId) cache.delete(tokenHash);

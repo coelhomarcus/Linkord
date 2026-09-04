@@ -10,10 +10,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/shared/lib/utils';
 
-/** Fundo do botao fica sempre neutro — quem carrega o significado do estado
- * e a cor do ICONE (mic mudo = vermelho, camera ligada = verde, etc). Mais
- * sutil que pintar o botao inteiro, e da pra ver o estado de varios
- * controles de relance sem cada um virar um blob colorido grande. */
+/** The button background stays neutral — the ICON color carries the state's
+ * meaning (mic muted = red, camera on = green, etc.). Subtler than painting
+ * the whole button, and lets several controls' state be read at a glance
+ * without each becoming a big colored blob. */
 function ControlButton({ onClick, label, icon, iconColorClass }: {
   onClick: () => void;
   label: string;
@@ -38,12 +38,12 @@ function ControlButton({ onClick, label, icon, iconColorClass }: {
   );
 }
 
-/** Barra flutuante estilo Discord com os controles de mic/camera/tela —
- * so monta quando `inCall` e true (App.tsx), entao o mic aqui nunca precisa
- * do estado "ainda nao ativado": isso ja aconteceu antes dela existir (ver
- * o clique em "Chamada" na sidebar). */
+/** Discord-style floating bar with mic/camera/screen controls — only mounts
+ * when `inCall` is true (App.tsx), so the mic here never needs a "not yet
+ * activated" state: that already happened before this existed (see the
+ * click on a voice channel in the sidebar). */
 export function CallControlBar() {
-  const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, toggleMicMuted, deafened, toggleDeafened, leaveCall, sendReaction } = useRoom();
+  const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, toggleMicMuted, deafened, toggleDeafened, leaveVoiceChannel, sendReaction } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
   const cameraOn = state.me.cameraOn;
   const sharing = state.me.sharing;
@@ -55,10 +55,10 @@ export function CallControlBar() {
   }
 
   return (
-    // coluna: o aviso de compartilhamento (quando existe) fica EMPILHADO em
-    // cima da pilula de controles, os dois centralizados juntos — assim so
-    // precisa de UM ancoramento (bottom-6/centralizado), nao dois blocos
-    // absolutos calculando a distancia um do outro.
+    // column: the sharing warning (when present) STACKS on top of the
+    // control pill, both centered together — needs only ONE anchor point
+    // (bottom-6/centered) instead of two absolute blocks computing the
+    // distance between them.
     <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
       {state.shareError && (
         <div className="flex max-w-100 items-start gap-2 rounded-md border border-strong bg-bg-floating px-3 py-2 text-label text-text-secondary shadow-popover">
@@ -105,8 +105,8 @@ export function CallControlBar() {
           onClick={toggleMicMuted}
           label={myMedia.micMuted ? 'Desmutar' : 'Mutar'}
           icon={myMedia.micMuted ? <MicOff size={18} /> : <Mic size={18} />}
-          // mudo: vermelho (aviso — ninguem te ouve). desmutado: cinza normal,
-          // o estado esperado enquanto voce fala.
+          // muted: red (warning — no one hears you). unmuted: normal gray,
+          // the expected state while talking.
           iconColorClass={myMedia.micMuted ? 'text-red' : 'text-text-secondary'}
         />
         <ControlButton
@@ -130,7 +130,7 @@ export function CallControlBar() {
 
         <Tooltip>
           <TooltipTrigger
-            onClick={leaveCall}
+            onClick={leaveVoiceChannel}
             aria-label="Sair da chamada"
             className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), 'h-11 w-11 rounded-full bg-red text-white hover:bg-red-hover')}
           >

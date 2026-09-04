@@ -1,6 +1,6 @@
-/** Identidade (id + token) persistida no sessionStorage — por aba, pra uma
- * reconexao (queda de rede, reload da mesma aba) retomar a mesma pessoa
- * sem duplicar na lista de participantes. */
+/** Identity (id + token) persisted in sessionStorage — per tab, so a
+ * reconnect (network drop, reload of the same tab) resumes as the same
+ * person instead of duplicating in the participant list. */
 
 interface StoredIdentity {
   id: string;

@@ -7,13 +7,11 @@ import { participants, broadcast, send, removeParticipant } from '../realtime/pa
 import { deleteAvatarFile } from './attachments.js';
 import type { AppSocket, HandlerTable, Participant } from '../types.js';
 
-// ---------------------------------------------------------------------------
-// Aba "Moderacao" dos Ajustes (admin-only) — hoje so apaga conta. Mensagens
-// de quem for apagado NAO somem (authorId vira NULL, mas authorName/
-// authorAvatar ja ficam congelados na propria linha desde o envio, ver
-// db/schema.ts — apagar uma conta e "essa pessoa nao pode mais entrar", nao
-// "reescrever o historico do chat"). Sessions somem sozinhas via CASCADE.
-// ---------------------------------------------------------------------------
+// Settings "Moderation" tab (admin-only) — currently only deletes accounts.
+// Deleted users' messages don't disappear (authorId becomes NULL, but
+// authorName/authorAvatar are already frozen on the row at send time, see
+// db/schema.ts — deleting an account means "this person can't log in
+// anymore," not "rewrite chat history"). Sessions vanish via CASCADE.
 
 function isAdmin(p: Participant | undefined): boolean {
   return !!p && p.role === 'admin';
@@ -26,22 +24,22 @@ async function handleUserDelete(socket: AppSocket, msg: { userId?: string }): Pr
   const targetId = String(msg.userId || '');
   if (!targetId) return;
 
-  // sem tela de "promover a admin" nenhuma, o unico jeito de voltar a ser
-  // admin depois seria re-registrar com o username de ADMIN_USERNAME — mais
-  // seguro simplesmente nao deixar apagar a PROPRIA conta por aqui.
+  // no "promote to admin" screen exists — the only way back to admin would
+  // be re-registering with ADMIN_USERNAME, so it's safer to just never
+  // allow deleting your OWN account here.
   if (targetId === p.userId) {
     send(socket, { t: 'error', code: 'cannot-delete-self', message: 'Voce nao pode apagar a propria conta por aqui.' });
     return;
   }
 
   const target = await findById(targetId);
-  if (!target) return; // ja foi apagada (corrida com outro admin, ou id invalido)
+  if (!target) return; // already deleted (race with another admin, or invalid id)
 
-  // apaga o ARQUIVO da foto de perfil antes da linha — depois do delete
-  // abaixo nao ha mais como saber qual era (users.avatar so existe nessa
-  // propria linha, attachments nao tem coluna de userId nenhuma). So faz
-  // sentido pra upload nosso (`/uploads/<id>`) — deleteAvatarFile ja ignora
-  // URL externa/vazia em silencio.
+  // delete the avatar FILE before the row — after the delete below there's
+  // no way to know which one it was (users.avatar only exists on this row;
+  // attachments has no userId column). Only matters for our own uploads
+  // (`/uploads/<id>`) — deleteAvatarFile already silently ignores an
+  // external/empty URL.
   if (target.avatar) {
     await deleteAvatarFile(target.avatar).catch((err) => {
       console.error(`[moderation] falha ao apagar foto de perfil de ${targetId}:`, err instanceof Error ? err.stack : err);
@@ -51,20 +49,20 @@ async function handleUserDelete(socket: AppSocket, msg: { userId?: string }): Pr
   const result = await db.delete(users).where(eq(users.id, targetId));
   if (result.rowCount === 0) return;
 
-  // fecha a janela de ate 60s que o cache de sessao (modules/auth/session.ts)
-  // deixaria aberta — sem isso, uma sessao ja resolvida recentemente
-  // continuaria "valida" pro servidor por um tempo mesmo com a conta ja
-  // apagada do banco.
+  // closes the up-to-60s window the session cache (modules/auth/session.ts)
+  // would otherwise leave open — without this, a recently-resolved session
+  // would stay "valid" to the server for a while even after the account is
+  // gone from the DB.
   invalidateSessionsForUser(targetId);
 
-  // kick imediato de toda conexao ao vivo dessa conta (pode ter mais de
-  // uma aba) — sessions ja sumiram via CASCADE, mas um socket que ja estava
-  // conectado nao sabe disso sozinho ate tentar reconectar.
+  // immediately kick every live connection for this account (could be more
+  // than one tab) — sessions are already gone via CASCADE, but an already-
+  // connected socket has no way to know that until it tries to reconnect.
   for (const other of [...participants.values()]) {
     if (other.userId !== targetId) continue;
     const otherSocket = other.socket;
     removeParticipant(other);
-    try { otherSocket?.disconnect(true); } catch { /* socket ja morrendo */ }
+    try { otherSocket?.disconnect(true); } catch { /* socket dying */ }
   }
 
   broadcast({ t: 'user-deleted', userId: targetId });

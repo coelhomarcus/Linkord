@@ -25,12 +25,6 @@ import { Tabs, TabsList, TabsIndicator, TabsPanel, TabsTrigger } from '@/compone
 
 const QUALITY_OPTIONS = Object.keys(QUALITY_LABELS) as Quality[];
 
-// cartao de agrupamento — mesma linguagem visual que o resto do app ja usa
-// pra "secao secundaria dentro de uma area maior" (ver banners do
-// ChatComposer): contorno + fundo proprios, nao mais so uma linha
-// (border-t) separando blocos soltos. Cada grupo de ajuste (qualidade,
-// microfone, volume, estatisticas...) vira um cartao, entao a aba nao lê
-// mais como uma lista unica amontoada.
 const settingsCardClass = 'flex flex-col gap-2 rounded-md border border-strong bg-bg-tertiary p-4';
 
 function formatGB(bytes: number): string {
@@ -42,9 +36,9 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-/** Um dropdown de dispositivo (mic ou camera) — mesmo Select do resto do
- * modal. Mostra um botao "Permitir acesso" no lugar da lista quando o
- * navegador ainda nao concedeu permissao (rotulos vazios/genericos). */
+/** A device dropdown (mic or camera) — shows a "Grant access" button in
+ * place of the list when the browser hasn't granted permission yet
+ * (empty/generic labels). */
 function DevicePicker({ label, room, kind }: { label: string; room: import('livekit-client').Room; kind: MediaDeviceKind }) {
   const { devices, activeDeviceId, permissionNeeded, selectDevice, requestPermission } = useMediaDevices(room, kind);
 
@@ -100,7 +94,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   async function handleAvatarFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = ''; // permite escolher o MESMO arquivo de novo depois
+    e.target.value = ''; // allows picking the SAME file again later
     if (!file) return;
     if (file.size > MAX_AVATAR_BYTES) {
       setAvatarError(`Arquivo muito grande (máximo ${formatMB(MAX_AVATAR_BYTES)}).`);
@@ -111,7 +105,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setUploadingAvatar(true);
     try {
       const url = await uploadAvatarFile(file, setAvatarUploadProgress);
-      setAvatar(url); // reflete na hora no campo/preview, ja aplicado por uploadAvatarFile
+      setAvatar(url);
     } catch (err) {
       setAvatarError(err instanceof Error ? err.message : 'Falha ao enviar a foto.');
     } finally {
@@ -121,29 +115,22 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      {/* DialogContent base ja vem com `sm:max-w-sm` (384px) embutido —
-          sobrescrever so o max-w sem prefixo nao basta, o `sm:` continua
-          valendo em qualquer tela >=640px e ganha por especificidade,
-          fazendo tudo parecer cortado. Precisa sobrescrever os dois. */}
-      {/* rounded-xl (nao mais -sm): mesma "superficie grande" do resto do
-          app (card de login, composer, tiles de video) — um modal desse
-          tamanho com canto de 4px lia como quase quadrado, destoando do
-          resto. */}
+      {/* DialogContent's base already bundles `sm:max-w-sm` (384px) — only
+          overriding the unprefixed max-w isn't enough, `sm:` still applies
+          on any screen >=640px and wins by specificity, clipping content.
+          Both must be overridden. */}
       <DialogContent className="grid-rows-[auto_1fr] min-h-130 max-h-[85vh] w-full max-w-3xl sm:max-w-3xl overflow-hidden rounded-xl bg-bg-modal p-0 gap-0">
         <DialogTitle className="border-b border-subtle px-6 pt-5 pb-2 text-display font-bold text-text-primary">Ajustes</DialogTitle>
         <Tabs defaultValue="profile" orientation="vertical" className="min-h-0 flex-1 items-stretch">
-          {/* sem border-l aqui — a sidebar se distingue do conteudo por ser
-              mais escura (bg-bg-primary vs bg-bg-modal do modal), nao por
-              uma linha divisoria. */}
           <TabsList className="h-auto w-44 flex-none flex-col items-stretch gap-1 rounded-none bg-bg-primary p-3">
             <TabsIndicator />
             <TabsTrigger value="profile" className="justify-start gap-2 px-2.5"><User size={16} /><span>Perfil</span></TabsTrigger>
             <TabsTrigger value="av" className="justify-start gap-2 px-2.5"><SlidersHorizontal size={16} /><span>Audio e video</span></TabsTrigger>
             <TabsTrigger value="prefs" className="justify-start gap-2 px-2.5"><Settings2 size={16} /><span>Preferencias</span></TabsTrigger>
             <TabsTrigger value="media" className="justify-start gap-2 px-2.5"><Images size={16} /><span>Midias</span></TabsTrigger>
-            {/* so o admin ve a aba — o servidor tambem revalida a role em
-                CADA acao (server/moderation.js), essa checagem aqui e so
-                pra nao mostrar a UI de graca pra quem nao pode usa-la. */}
+            {/* only admins see this tab — the server also revalidates the
+                role on EVERY action (moderation.ts), this check just
+                avoids showing UI to someone who can't use it. */}
             {state.me.role === 'admin' && (
               <TabsTrigger value="moderation" className="justify-start gap-2 px-2.5"><ShieldCheck size={16} /><span>Moderacao</span></TabsTrigger>
             )}
@@ -151,14 +138,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
           <div className="min-h-0 flex-1 overflow-y-auto p-6">
             <TabsPanel value="profile" className="flex flex-col gap-6">
-              {/* identidade — fora de qualquer cartao, de proposito: e leitura
-                  (nome/cargo), nao um controle pra mexer, entao nao compete
-                  visualmente com os grupos de ajuste abaixo. */}
               <div className="flex items-center gap-3">
                 <Avatar id={state.me.id || 'preview'} name={state.me.name} avatar={avatar} size={48} />
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  {/* nome e o username da conta — unico, definido no
-                      registro, imutavel. So o avatar continua editavel. */}
                   <p className="truncate text-title font-semibold text-text-primary">{state.me.name}</p>
                   {state.me.role === 'admin' && (
                     <span className="flex w-fit items-center gap-1 rounded-sm bg-blurple/15 px-1.5 py-0.5 text-caption font-medium text-blurple">
@@ -180,9 +162,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                     onChange={(e) => setAvatar(e.target.value)}
                   />
                 </div>
-                {/* dois botoes lado a lado, sem "ou" de encher espaco entre
-                    eles — ja se leem como alternativas so por estarem juntos
-                    (um so pra URL, outro pra arquivo local). */}
                 <div className="flex items-center gap-2">
                   <Button type="submit" size="sm">
                     <span>Salvar URL</span>
@@ -242,10 +221,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 </p>
               </div>
 
-              {/* DevicePicker ja renderiza o proprio Label ("Microfone"/
-                  "Camera") associado ao Select — um SectionLabel por cima
-                  repetindo a MESMA palavra era duplicacao pura, nao uma
-                  segunda informacao. */}
               <div className={settingsCardClass}>
                 <DevicePicker label="Microfone" room={livekitRoom} kind="audioinput" />
               </div>

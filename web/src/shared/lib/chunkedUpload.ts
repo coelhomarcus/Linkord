@@ -1,13 +1,13 @@
 import { ApiError } from './api';
 
-/** Upload de anexo de chat em pedacos (chunks) — necessario pro teto de 2GB
- * (ver server/attachments.js): um POST unico desse tamanho nem passa de
- * proxy nenhum na frente (Cloudflare/nginx barram corpo de requisicao
- * grande) nem seria seguro o servidor segurar inteiro em memoria de uma vez.
- * Fluxo: init (declara o arquivo, servidor devolve o tamanho de chunk) ->
- * N chunks (concorrencia limitada, com retry) -> complete (servidor monta o
- * arquivo e cria a mensagem). Em falha irrecuperavel, cancela a sessao no
- * servidor pra nao deixar chunk orfao ate a varredura periodica pegar. */
+/** Uploads a chat attachment in chunks — needed for the 2GB cap (see
+ * server/src/modules/attachments.ts): a single POST that size wouldn't get
+ * past any proxy in front (Cloudflare/nginx block large request bodies),
+ * nor would it be safe for the server to hold it all in memory at once.
+ * Flow: init (declares the file, server returns the chunk size) -> N chunks
+ * (limited concurrency, with retry) -> complete (server assembles the file
+ * and creates the message). On unrecoverable failure, cancels the session
+ * on the server so no chunk sits orphaned until the periodic sweep. */
 
 interface InitResponse {
   uploadId: string;
@@ -24,13 +24,13 @@ export interface ChunkedUploadOptions {
 
 async function toApiError(res: Response): Promise<ApiError> {
   let body: unknown = null;
-  try { body = await res.json(); } catch { /* corpo vazio/nao-JSON */ }
+  try { body = await res.json(); } catch { /* empty/non-JSON body */ }
   const err = (body && typeof body === 'object' ? (body as { error?: { code?: string; message?: string } }).error : null) || {};
   return new ApiError(res.status, err.code || 'unknown_error', err.message || 'Erro inesperado.');
 }
 
-/** Roda `task(i)` pra i em [0, count), no maximo `limit` em paralelo — para
- * na primeira falha (as tasks em voo terminam, mas nenhuma nova comeca). */
+/** Runs `task(i)` for i in [0, count), at most `limit` in parallel — stops
+ * on the first failure (in-flight tasks finish, no new ones start). */
 async function runWithConcurrency(count: number, limit: number, task: (i: number) => Promise<void>): Promise<void> {
   let next = 0;
   let firstError: unknown;
@@ -62,10 +62,10 @@ export async function uploadFileInChunks({ channelId, file, caption, onProgress 
   if (!initRes.ok) throw await toApiError(initRes);
   const { uploadId, chunkSize, totalChunks } = await initRes.json() as InitResponse;
 
-  // progresso agregado por bytes CONFIRMADOS por chunk — granularidade de
-  // ~8MB, suficiente pra uma barra de progresso legivel mesmo num arquivo de
-  // ate 2GB (fetch nao tem evento de progresso de upload, e nao precisa: o
-  // ganho de granularidade fina nao compensa trazer XHR so pra isso aqui).
+  // progress aggregated by bytes CONFIRMED per chunk — ~8MB granularity,
+  // enough for a readable progress bar even on a file up to 2GB (fetch has
+  // no upload-progress event, and doesn't need one: the finer granularity
+  // isn't worth pulling in XHR just for this).
   const sentPerChunk = new Array(totalChunks).fill(0);
   function reportProgress() {
     if (file.size <= 0) return;
@@ -98,8 +98,8 @@ export async function uploadFileInChunks({ channelId, file, caption, onProgress 
   try {
     await runWithConcurrency(totalChunks, MAX_CONCURRENT_CHUNKS, uploadChunk);
   } catch (err) {
-    // best-effort: libera os chunks no servidor na hora em vez de esperar a
-    // varredura periodica (server/attachments.js#sweepStaleUploads).
+    // best-effort: frees the chunks on the server right away instead of
+    // waiting for the periodic sweep (attachments.ts#sweepStaleUploads).
     fetch(`/api/attachments/${uploadId}`, { method: 'DELETE', credentials: 'same-origin' }).catch(() => {});
     throw err;
   }

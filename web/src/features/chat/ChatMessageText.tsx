@@ -13,8 +13,9 @@ function linkify(text: string) {
 
 export function ChatMessageText({ text }: { text: string }) {
   const embed = firstEmbed(text);
-  // o link que virou embed some do texto — so sobra o player/preview, nao o
-  // link cru em cima dele. Se a mensagem era so o link, nao sobra parágrafo.
+  // the link that became an embed disappears from the text — only the
+  // player/preview remains, not the raw link above it. If the message was
+  // just the link, no paragraph is left.
   const remaining = embed ? text.replace(embed.url, '').replace(/[ \t]{2,}/g, ' ').trim() : text;
   return (
     <>

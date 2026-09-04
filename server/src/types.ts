@@ -2,8 +2,9 @@ import type { Socket } from 'socket.io';
 
 export type Role = 'user' | 'admin';
 
-/** Sessao resolvida (ver modules/auth/session.ts#resolveSession) — anexada
- * como socket.user no handshake e usada por toda rota HTTP autenticada. */
+/** Resolved session (see modules/auth/session.ts#resolveSession) —
+ * attached as socket.user at handshake, used by every authenticated HTTP
+ * route. */
 export interface SessionUser {
   tokenHash: string;
   userId: string;
@@ -12,9 +13,9 @@ export interface SessionUser {
   role: Role;
 }
 
-/** Participante da sala unica (ver realtime/participants.ts). `id` e por
- * CONEXAO (nao por conta) — ver a nota em participants.ts. `socket` e null
- * durante a janela de graca de reconexao. */
+/** The single room's participant (see realtime/participants.ts). `id` is
+ * per-CONNECTION (not per-account) — see the note in participants.ts.
+ * `socket` is null during the reconnect grace window. */
 export interface Participant {
   id: string;
   token: string;
@@ -24,10 +25,17 @@ export interface Participant {
   avatar: string;
   role: Role;
   deafened: boolean;
+  // which voice channel they're in now, or null — set explicitly by
+  // 'voice-join'/'voice-leave' (see realtime/socket.ts), never just from
+  // having the socket connected. Needed server-side (not just client-local
+  // like `deafened`) because the sidebar shows who's in EACH voice channel,
+  // not just the one I'm connected to (LiveKit itself only gives me
+  // participants in MY room).
+  voiceChannelId: string | null;
   graceTimer: ReturnType<typeof setTimeout> | null;
 }
 
-/** Forma publica de um Participant — o que vai pro cliente (nunca `token`). */
+/** Public shape of a Participant — what goes to the client (never `token`). */
 export interface PublicParticipant {
   id: string;
   userId: string;
@@ -35,23 +43,24 @@ export interface PublicParticipant {
   avatar: string;
   role: Role;
   deafened: boolean;
+  voiceChannelId: string | null;
 }
 
-/** O `Socket` do socket.io com os campos que ws.js/socket.ts anexa
- * dinamicamente na conexao: `participantId` (setado por join()), `ip`
- * (calculado uma vez na conexao) e `user` (a sessao resolvida no io.use()
- * antes de 'connection' disparar — nunca existe socket sem ela). */
+/** The socket.io `Socket` with fields realtime/socket.ts attaches
+ * dynamically on connection: `participantId` (set by join()), `ip`
+ * (computed once on connect), and `user` (the session resolved in io.use()
+ * before 'connection' fires — no socket exists without it). */
 export type AppSocket = Socket & {
   participantId: string | null;
   ip: string;
   user: SessionUser;
 };
 
-/** Assinatura de um handler de mensagem do Socket.IO — cada feature exporta
- * um `handlers: HandlerTable` (ver realtime/socket.ts, que junta todos via
- * Object.assign). `T` fica solto (`any` na tabela combinada) de proposito:
- * cada handler concreto usa o tipo de payload que ele espera de verdade, e
- * `any` no parametro do tipo-alvo faz o TypeScript aceitar isso sem
- * contornar a checagem de tipo DENTRO de cada handler. */
+/** Socket.IO message handler signature — each feature exports a
+ * `handlers: HandlerTable` (see realtime/socket.ts, combined via
+ * Object.assign). `T` is left loose (`any` in the combined table) on
+ * purpose: each concrete handler uses its real payload type, and `any` on
+ * the target parameter lets TypeScript accept that without bypassing the
+ * type check INSIDE each handler. */
 export type SocketHandler<T = unknown> = (socket: AppSocket, msg: T) => unknown | Promise<unknown>;
 export type HandlerTable = Record<string, SocketHandler<any>>;

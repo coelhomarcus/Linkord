@@ -3,9 +3,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { config } from '../config/env.js';
 import * as schema from './schema.js';
 
-// ---------------------------------------------------------------------------
-// Conexao unica com o Postgres, compartilhada por todo o servidor.
-// ---------------------------------------------------------------------------
+// Single Postgres connection, shared by the whole server.
 if (!config.DATABASE_URL) {
   throw new Error('DATABASE_URL nao configurada — sem banco nao ha login (ver .env.example).');
 }
@@ -18,9 +16,10 @@ export const pool = new Pool({
   ssl: config.DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
 });
 
-// Sem esse listener, um erro num cliente OCIOSO do pool (banco reiniciou,
-// firewall matou a conexao) vira um 'error' sem handler que o Node transforma
-// em uncaughtException — derrubando a sala inteira por uma conexao parada.
+// without this listener, an error on an IDLE pool client (DB restarted,
+// firewall killed the connection) becomes an unhandled 'error' that Node
+// turns into an uncaughtException — taking down the whole room over one
+// stale connection.
 pool.on('error', (err) => {
   console.error('[db] erro em conexao ociosa do pool:', err instanceof Error ? err.stack : err);
 });

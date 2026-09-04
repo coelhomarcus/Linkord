@@ -3,7 +3,7 @@ import { initialRoomState, roomReducer } from './roomReducer';
 import type { Participant } from '../types/protocol';
 
 function participant(overrides: Partial<Participant> = {}): Participant {
-  return { id: 'p1', userId: 'u1', name: 'Fulana', avatar: '', role: 'user', deafened: false, ...overrides };
+  return { id: 'p1', userId: 'u1', name: 'Fulana', avatar: '', role: 'user', deafened: false, voiceChannelId: null, ...overrides };
 }
 
 describe('roomReducer', () => {
@@ -64,6 +64,46 @@ describe('roomReducer', () => {
       const next = roomReducer(state, { type: 'PARTICIPANT_LEFT', id: 'p1x' });
       expect(next.focusedId).toBe('p1:screen');
     });
+  });
+
+  it('PARTICIPANT_JOINED adiciona um participante novo a sala', () => {
+    const next = roomReducer(initialRoomState, { type: 'PARTICIPANT_JOINED', participant: participant({ id: 'p2', userId: 'u2' }) });
+    expect(next.participants.get('p2')?.userId).toBe('u2');
+  });
+
+  it('SET_RECONNECTING liga/desliga o flag', () => {
+    const next = roomReducer(initialRoomState, { type: 'SET_RECONNECTING', value: true });
+    expect(next.reconnecting).toBe(true);
+    expect(roomReducer(next, { type: 'SET_RECONNECTING', value: false }).reconnecting).toBe(false);
+  });
+
+  it('SET_LOCAL_AVATAR atualiza so o avatar de "me", sem mexer no resto', () => {
+    const next = roomReducer(initialRoomState, { type: 'SET_LOCAL_AVATAR', avatar: 'novo.png' });
+    expect(next.me.avatar).toBe('novo.png');
+    expect(next.me.name).toBe(initialRoomState.me.name);
+  });
+
+  it('SET_ROOM_ERROR seta e limpa (null) a mensagem de erro de sala', () => {
+    const withError = roomReducer(initialRoomState, { type: 'SET_ROOM_ERROR', message: 'sala cheia' });
+    expect(withError.roomError).toBe('sala cheia');
+    expect(roomReducer(withError, { type: 'SET_ROOM_ERROR', message: null }).roomError).toBeNull();
+  });
+
+  it('SET_LOCAL_CAMERA liga/desliga o flag de camera de "me"', () => {
+    const next = roomReducer(initialRoomState, { type: 'SET_LOCAL_CAMERA', on: true });
+    expect(next.me.cameraOn).toBe(true);
+  });
+
+  it('SET_FOCUSED muda o id em foco (tile key, nao so participantId)', () => {
+    const next = roomReducer(initialRoomState, { type: 'SET_FOCUSED', id: 'p1:screen' });
+    expect(next.focusedId).toBe('p1:screen');
+    expect(roomReducer(next, { type: 'SET_FOCUSED', id: null }).focusedId).toBeNull();
+  });
+
+  it('SET_SHARE_ERROR seta e limpa (null) o erro de compartilhamento/mic', () => {
+    const withError = roomReducer(initialRoomState, { type: 'SET_SHARE_ERROR', message: 'sem permissao de microfone' });
+    expect(withError.shareError).toBe('sem permissao de microfone');
+    expect(roomReducer(withError, { type: 'SET_SHARE_ERROR', message: null }).shareError).toBeNull();
   });
 
   describe('SET_LOCAL_SHARING', () => {

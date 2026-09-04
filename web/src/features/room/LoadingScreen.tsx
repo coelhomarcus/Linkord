@@ -1,10 +1,9 @@
-/** Tela cheia mostrada enquanto ainda nao ha nada de verdade pra ver — ou
- * checando sessao (AuthGate) ou conectada mas esperando o `welcome` do
- * servidor (Shell, antes de state.joined). Sem isso, a pagina piscava um
- * "esqueleto" da UI vazio (sidebar sem canais, chat sem mensagens) por um
- * instante ate os dados chegarem, o que parecia o site "montando" errado.
- * A barra usa --animate-sweep (index.css) — ja existia, definida mas sem
- * nenhum uso ainda. */
+/** Fullscreen view shown while there's nothing real to see yet — either
+ * checking the session (AuthGate) or connected but waiting for the
+ * server's `welcome` (Shell, before state.joined). Without this, the page
+ * flashed an empty UI "skeleton" (sidebar with no channels, chat with no
+ * messages) for a moment until data arrived, which looked like the site
+ * was assembling itself wrong. */
 export function LoadingScreen() {
   return (
     <div className="flex h-dvh items-center justify-center bg-bg-primary">

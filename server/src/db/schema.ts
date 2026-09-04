@@ -1,15 +1,12 @@
 import { pgTable, text, varchar, timestamp, integer, bigint, jsonb, serial, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
-// ---------------------------------------------------------------------------
-// Schema do banco (Drizzle).
-// ---------------------------------------------------------------------------
-
-/** Uma conta. `username` e o nome exibido (imutavel apos o registro) — nao ha
- * apelido separado, entao ele tambem e a chave de unicidade visivel na sala. */
+/** An account. `username` is the display name (immutable after
+ * registration) — there's no separate nickname, so it's also the room's
+ * visible uniqueness key. */
 export const users = pgTable('users', {
-  // gerado pela app com crypto.randomUUID() em vez de gen_random_uuid() pra
-  // nao depender da extensao pgcrypto estar instalada no banco.
+  // app-generated via crypto.randomUUID() instead of gen_random_uuid() to
+  // avoid depending on the pgcrypto extension being installed.
   id: text('id').primaryKey(),
   username: varchar('username', { length: 20 }).notNull(),
   passwordHash: text('password_hash').notNull(),
@@ -18,15 +15,15 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
-  // Unicidade CASE-INSENSITIVE: "Lune" e "lune" sao a mesma pessoa. Guardamos
-  // a grafia escolhida na coluna e a unicidade vive num indice sobre
-  // lower(username) — por isso toda busca por username precisa usar a MESMA
-  // expressao (ver auth/users.ts), senao o Postgres nao usa esse indice.
+  // CASE-INSENSITIVE uniqueness: "Lune" and "lune" are the same person. The
+  // chosen spelling is stored in the column; uniqueness lives in an index
+  // on lower(username) — every username lookup must use that SAME
+  // expression (see auth/users.ts), or Postgres won't use this index.
   uniqueIndex('users_username_lower_key').on(sql`lower(${t.username})`),
 ]);
 
-/** Sessao de login. A chave e o sha256 do valor que vai no cookie, nunca o
- * valor cru — um vazamento do banco entao nao vira sessao ativa reproduzivel. */
+/** Login session. The key is the sha256 of the cookie value, never the raw
+ * value — a DB leak alone can't be replayed as a session. */
 export const sessions = pgTable('sessions', {
   tokenHash: text('token_hash').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -37,11 +34,11 @@ export const sessions = pgTable('sessions', {
   index('sessions_user_id_idx').on(t.userId),
 ]);
 
-/** Categoria de canais de texto (estilo Discord) — so o admin cria/apaga.
- * `position` decide a ordem exibida; reordenar reindexed a lista inteira
- * (ver server/src/modules/channels.ts), nao usa indice fracionario. Apagar so
- * e permitido se estiver vazia (RESTRICT) — nao ha "o que fazer com os canais
- * orfaos" pra decidir, o admin apaga os canais primeiro. */
+/** A category of text channels (Discord-style) — admin-only create/
+ * delete. `position` decides display order; reordering reindexes the
+ * whole list (see channels.ts), no fractional index. Deleting only works
+ * if empty (RESTRICT) — there's no "what to do with orphaned channels" to
+ * decide, the admin deletes the channels first. */
 export const categories = pgTable('categories', {
   id: text('id').primaryKey(),
   name: varchar('name', { length: 60 }).notNull(),
@@ -49,13 +46,10 @@ export const categories = pgTable('categories', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-/** Um canal dentro de uma categoria — 'text' (chat, o admin cria/apaga
- * quantos quiser) ou 'voice' (a Chamada — sempre existe exatamente UM,
- * server/src/modules/channels.ts garante isso no boot; criar outro/apagar o
- * unico que existe fica pra depois, nao da pra fazer ainda). Apagar um canal
- * de texto e CASCADE nas mensagens dele (server/src/modules/chat.ts) — e
- * assim que "apagar o chat apaga tudo do banco pra sempre" funciona, sem
- * precisar apagar linha por linha. */
+/** A channel inside a category — 'text' or 'voice' (see channels.ts for
+ * the "at least one voice channel" rule). Deleting a text channel CASCADEs
+ * its messages (chat.ts) — that's how "delete the channel deletes
+ * everything from the DB forever" works, without deleting row by row. */
 export const channels = pgTable('channels', {
   id: text('id').primaryKey(),
   categoryId: text('category_id').notNull().references(() => categories.id, { onDelete: 'restrict' }),
@@ -67,12 +61,11 @@ export const channels = pgTable('channels', {
   index('channels_category_id_idx').on(t.categoryId),
 ]);
 
-/** Mensagem de chat, agora persistida (antes vivia so em memoria, perdida a
- * cada restart). `authorId` e SET NULL se a conta for apagada no futuro —
- * authorName/authorAvatar ficam congelados na propria linha (mesmo espirito
- * de "nome/avatar no momento do envio" que ja existia em memoria), entao o
- * historico continua legivel mesmo sem o autor mais existir. `replyTo` e
- * `reactions` guardam o mesmo formato congelado que o protocolo ja usava. */
+/** Chat message, now persisted (used to live only in memory, lost on
+ * every restart). `authorId` is SET NULL if the account is later deleted —
+ * authorName/authorAvatar stay frozen on the row, so history remains
+ * readable even without the author existing. `replyTo`/`reactions` keep
+ * the same frozen shape the protocol already used. */
 export const messages = pgTable('messages', {
   id: serial('id').primaryKey(),
   channelId: text('channel_id').notNull().references(() => channels.id, { onDelete: 'cascade' }),
@@ -88,25 +81,25 @@ export const messages = pgTable('messages', {
   index('messages_channel_id_idx').on(t.channelId),
 ]);
 
-/** Um arquivo em disco (config.UPLOAD_DIR) — anexo de mensagem OU foto de
- * perfil, os dois reaproveitam a mesma tabela/pasta/rota de servir de volta
- * (server/src/modules/attachments.ts). `messageId` NULL e o que distingue
- * uma foto de perfil de um anexo de chat: nunca é preenchido depois, e é por
- * isso que `getUsage()` (cota de 10GB dos Ajustes) filtra so `messageId IS
- * NOT NULL` — fotos de perfil nao contam nesse limite (uma por conta, sempre
- * substituindo a anterior, ver deleteAvatarFile). `id` e um uuid gerado pela
- * app, reaproveitado como nome do arquivo em disco — o Postgres nao sabe
- * disso, entao apagar essa linha (direto ou via CASCADE de messages/channels)
- * NUNCA apaga o arquivo sozinho; isso e responsabilidade do codigo que apaga
- * a linha (ver deleteForMessage/deleteForChannel/deleteAvatarFile). */
+/** A file on disk (config.UPLOAD_DIR) — either a message attachment or an
+ * avatar; both reuse the same table/folder/serving route
+ * (attachments.ts). `messageId` NULL is what distinguishes an avatar from
+ * a chat attachment (never backfilled later) — that's why getUsage()
+ * (Settings quota) filters on `messageId IS NOT NULL`; avatars don't count
+ * toward it (one per account, always replacing the previous, see
+ * deleteAvatarFile). `id` is an app-generated uuid reused as the on-disk
+ * filename — Postgres doesn't know that, so deleting this row (directly or
+ * via CASCADE from messages/channels) NEVER deletes the file by itself;
+ * that's on the code that deletes the row (see
+ * deleteForMessage/deleteForChannel/deleteAvatarFile). */
 export const attachments = pgTable('attachments', {
   id: text('id').primaryKey(),
   messageId: integer('message_id').references(() => messages.id, { onDelete: 'cascade' }),
   fileName: text('file_name').notNull(),
   mimeType: text('mime_type').notNull(),
-  // bigint (nao integer): teto de anexo e 2GiB (config.MAX_ATTACHMENT_BYTES),
-  // que estoura um int4 do Postgres (max 2.147.483.647) por 1 byte. mode:
-  // 'number' e seguro aqui — tamanho real de arquivo nunca chega perto de
+  // bigint (not integer): the attachment cap is 2GiB (MAX_ATTACHMENT_BYTES),
+  // which overflows Postgres's int4 (max 2,147,483,647) by 1 byte. mode:
+  // 'number' is safe here — a real file size never gets close to
   // Number.MAX_SAFE_INTEGER.
   size: bigint('size', { mode: 'number' }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

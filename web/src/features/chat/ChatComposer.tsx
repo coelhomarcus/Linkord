@@ -12,9 +12,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { UploadProgressBar } from '../../shared/UploadProgressBar';
 import { formatFileSize, formatSizeLimit } from '../../shared/lib/formatBytes';
 
-// nomes de categoria em pt-BR — a lib so vem em ingles por padrao, e o
-// resto do app inteiro e pt-BR (inclusive o placeholder do proprio campo de
-// mensagem logo abaixo).
+// category names in Portuguese — the library only ships English by
+// default, and the rest of the app is Portuguese too.
 const EMOJI_CATEGORIES: CategoryConfig[] = [
   { category: Categories.SUGGESTED, name: 'Usados recentemente' },
   { category: Categories.SMILEYS_PEOPLE, name: 'Carinhas e pessoas' },
@@ -34,14 +33,14 @@ interface ChatComposerProps {
   onCancelReply?: () => void;
 }
 
-/** Campo de mensagem do chat — Enter manda, Shift+Enter quebra linha, cresce
- * sozinho ate um teto (field-sizing-content, ja embutido no Textarea). */
+/** Chat message field — Enter sends, Shift+Enter breaks a line, grows on
+ * its own up to a cap (field-sizing-content, already built into Textarea). */
 export function ChatComposer({ className, channelId, replyingTo, onCancelReply }: ChatComposerProps) {
   const { state, sendChatMessage, sendAttachment } = useRoom();
   const [text, setText] = useState('');
-  // arquivo escolhido/colado fica "anexado" aqui — so sobe de verdade quando
-  // a mensagem e enviada (Enter/botao), igual o Discord: da pra digitar uma
-  // legenda, trocar de ideia (X) ou trocar o arquivo antes de mandar.
+  // chosen/pasted file stays "attached" here — only actually uploads when
+  // the message is sent (Enter/button), Discord-style: lets you type a
+  // caption, change your mind (X), or swap the file before sending.
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
   const [sendingFile, setSendingFile] = useState(false);
@@ -52,17 +51,16 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
   const formRef = useRef<HTMLFormElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  // dragenter/dragleave disparam pra CADA elemento filho conforme o mouse
-  // atravessa a arvore (entra no filho = leave do pai, sai do filho = enter
-  // do pai de novo) — sem um contador, isDragOver piscaria toda vez que o
-  // arrasto passasse por cima de qualquer coisa dentro do composer (a
-  // pilula, o banner de resposta etc.). So volta a false quando o contador
-  // zera de verdade (saiu de tudo).
+  // dragenter/dragleave fire for EVERY child element as the mouse crosses
+  // the tree (entering a child = leaving the parent, leaving the child =
+  // entering the parent again) — without a counter, isDragOver would
+  // flicker every time the drag passed over anything inside the composer.
+  // Only goes back to false once the counter truly hits zero.
   const dragCounterRef = useRef(0);
 
-  // preview local (so pra imagem) via object URL — nao chega a subir nada,
-  // e so leitura do arquivo que ja esta na maquina. Revoga ao trocar/remover
-  // pra nao vazar memoria.
+  // local preview (images only) via object URL — never uploads anything,
+  // just reads the file already on disk. Revoked on change/removal to
+  // avoid a memory leak.
   useEffect(() => {
     if (!pendingFile || !pendingFile.type.startsWith('image/')) {
       setPendingPreviewUrl(null);
@@ -73,12 +71,11 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
     return () => URL.revokeObjectURL(url);
   }, [pendingFile]);
 
-  // "foco segue a digitacao" estilo Discord: comecar a digitar em qualquer
-  // lugar do Chat manda o foco pro campo, sem precisar clicar nele primeiro.
-  // So mexe se nenhum OUTRO campo de texto ja estiver focado (nome, busca,
-  // um input de um modal aberto por cima etc.) e so pra tecla que realmente
-  // digita algo (e.key.length === 1 cobre letras/numeros/simbolos/espaco,
-  // exclui Tab/Escape/setas/F1/Shift, que tem nomes com mais de 1 caractere).
+  // Discord-style "focus follows typing": typing anywhere in Chat sends
+  // focus to the field without clicking it first. Only kicks in if no
+  // OTHER text field is already focused, and only for a key that actually
+  // types something (e.key.length === 1 covers letters/digits/symbols/
+  // space, excludes Tab/Escape/arrows/F1 etc., which have longer names).
   useEffect(() => {
     function handleGlobalKeyDown(e: globalThis.KeyboardEvent) {
       if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
@@ -90,9 +87,9 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
     return () => document.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
-  // sobe o anexo pendente de verdade — chamado so ao mandar (Enter/botao),
-  // nunca no momento de escolher o arquivo. A legenda e o texto atual do
-  // campo, se houver (pode ir vazia).
+  // actually uploads the pending attachment — called only on send
+  // (Enter/button), never when picking the file. The caption is whatever
+  // text is in the field right now (can be empty).
   async function sendPendingFile(file: File) {
     setAttachError(null);
     setUploadProgress(0);
@@ -125,11 +122,11 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
     setAttachError(null);
   }
 
-  // insere no CURSOR (nao so no fim) — clicar um emoji com o texto ja
-  // parcialmente digitado e o cursor no meio deve continuar dali, nao jogar
-  // o emoji pro final. selectionStart/End some assim que o campo perde foco
-  // (o Popover tira o foco do textarea ao abrir), entao cai pro fim do texto
-  // atual como fallback razoavel.
+  // inserts at the CURSOR (not just the end) — clicking an emoji with text
+  // already half-typed and the cursor mid-string should continue from
+  // there, not jump the emoji to the end. selectionStart/End disappear as
+  // soon as the field loses focus (the Popover steals it on open), so this
+  // falls back to the end of the current text.
   function handleEmojiClick(data: EmojiClickData) {
     const el = textareaRef.current;
     const start = el?.selectionStart ?? text.length;
@@ -138,8 +135,8 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
     setText(next);
     setEmojiOpen(false);
     const caret = start + data.emoji.length;
-    // o valor novo so existe no DOM depois do proximo render — setar a
-    // selecao no mesmo tick ainda pegaria o texto ANTIGO.
+    // the new value only exists in the DOM after the next render — setting
+    // the selection in the same tick would still see the OLD text.
     requestAnimationFrame(() => {
       el?.focus();
       el?.setSelectionRange(caret, caret);
@@ -157,10 +154,10 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
     }
   }
 
-  // so anexa (nao sobe ainda) — reaproveitado tanto pelo clipe
-  // (handleFileChange) quanto por colar imagem (handlePaste). Escolher um
-  // arquivo novo enquanto ja tem um anexado troca pelo novo (so um anexo por
-  // mensagem, igual o protocolo hoje).
+  // only attaches (doesn't upload yet) — shared by both the clip button
+  // (handleFileChange) and pasting an image (handlePaste). Picking a new
+  // file while one is already attached replaces it (one attachment per
+  // message, per the current protocol).
   function attachFile(file: File) {
     if (file.size > MAX_ATTACHMENT_BYTES) {
       setAttachError(`Arquivo muito grande (máximo ${formatSizeLimit(MAX_ATTACHMENT_BYTES)}).`);
@@ -172,15 +169,15 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = ''; // permite escolher o MESMO arquivo de novo depois
+    e.target.value = ''; // lets the SAME file be picked again later
     if (file) attachFile(file);
   }
 
-  // Ctrl+V com uma imagem na area de transferencia — mesmo caminho do clipe,
-  // so a origem do arquivo que muda. Sem isso, colar uma imagem colava so o
-  // texto/lixo que o navegador as vezes extrai do clipboard de imagem (ou
-  // nada) — preventDefault so quando ACHA uma imagem, colar texto normal
-  // continua funcionando do jeito nativo.
+  // Ctrl+V with an image on the clipboard — same path as the clip button,
+  // just a different file source. Without this, pasting an image would
+  // paste whatever stray text/garbage the browser sometimes extracts from
+  // an image clipboard entry (or nothing) — preventDefault only fires when
+  // an image is FOUND, pasting normal text still works natively.
   function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>) {
     const item = Array.from(e.clipboardData.items).find((it) => it.type.startsWith('image/'));
     if (!item) return;
@@ -189,9 +186,9 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
     if (file) attachFile(file);
   }
 
-  // arrastar um arquivo do sistema pra cima do composer — mesmo caminho de
-  // anexo que o clipe/colar ja usam (attachFile ja valida o tamanho contra
-  // MAX_ATTACHMENT_BYTES, ver acima; nao duplica essa checagem aqui).
+  // dragging a file from the OS onto the composer — same attach path the
+  // clip/paste already use (attachFile already validates size against
+  // MAX_ATTACHMENT_BYTES above, not duplicated here).
   function handleDragEnter(e: DragEvent<HTMLDivElement>) {
     if (disabled || !e.dataTransfer.types.includes('Files')) return;
     e.preventDefault();
@@ -201,7 +198,7 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
 
   function handleDragOver(e: DragEvent<HTMLDivElement>) {
     if (disabled || !e.dataTransfer.types.includes('Files')) return;
-    e.preventDefault(); // sem isso o navegador recusa o drop (abre o arquivo na aba)
+    e.preventDefault(); // without this the browser refuses the drop (opens the file in the tab instead)
   }
 
   function handleDragLeave(_e: DragEvent<HTMLDivElement>) {
@@ -222,10 +219,6 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
   const disabled = !state.joined || sendingFile;
 
   return (
-    // sem border-t: o composer agora "flutua" sobre o bg-bg-panel (respiro
-    // nas laterais/embaixo via padding), a propria pilula do campo (com sua
-    // borda) e que separa visualmente — nao mais uma linha encostada no
-    // topo, pedido explicito de estilo flutuante igual a referencia.
     <div
       className={`relative flex flex-none flex-col gap-1.5 px-3 pb-3 ${className ?? ''}`}
       onDragEnter={handleDragEnter}
@@ -248,10 +241,7 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
           </Button>
         </div>
       )}
-      {/* anexo escolhido/colado, ainda NAO enviado — Discord-like: da pra
-          digitar uma legenda, trocar de ideia (X) ou so mandar assim mesmo.
-          Continua visivel (com a barra por baixo) durante o envio de
-          verdade tambem — so troca o X por progresso. */}
+      {/* stays visible during the actual upload too — only the X becomes a progress bar. */}
       {pendingFile && (
         <div className="flex flex-col gap-1.5 rounded-md border border-strong bg-bg-tertiary px-3 py-2">
           <div className="flex items-center gap-2.5">
@@ -280,11 +270,6 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
       {attachError && (
         <p className="rounded-md border border-strong bg-red/12 px-3 py-1.5 text-label text-red">{attachError}</p>
       )}
-      {/* pilula unica, estilo Discord: anexar + campo + emoji + enviar todos
-          DENTRO do mesmo contorno (era uma linha solta com o Textarea sendo
-          o unico elemento com fundo proprio). O Textarea perde bg/borda
-          proprios aqui (bg-transparent) pra virar uma continuacao visual da
-          pilula, nao uma caixa dentro de outra caixa. */}
       <form
         ref={formRef}
         onSubmit={handleSubmit}

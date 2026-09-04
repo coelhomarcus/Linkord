@@ -8,18 +8,12 @@ import { channelExists } from './channels.js';
 import * as attachments from './attachments.js';
 import type { AppSocket, HandlerTable } from '../types.js';
 
-// ---------------------------------------------------------------------------
-// Chat de texto, agora POR CANAL e persistido no Postgres (antes vivia so em
-// memoria, um unico chat pra sala inteira, perdido a cada restart). Apagar
-// um canal (modules/channels.ts) e CASCADE aqui — e assim que "excluir um
-// chat apaga tudo pra sempre" funciona, sem precisar apagar linha por linha.
+// Deleting a channel (modules/channels.ts) CASCADEs here.
 //
-// `ChatMessage.id` (campo `id` no protocolo) guarda o USERID da conta, nao
-// mais o id de conexao (`p.id`) — mensagens agora sobrevivem a reconexoes e
-// reloads, entao "e minha mensagem?" (pra poder editar) e "eu reagi?" tem
-// que sobreviver a troca de aba/sessao tambem. O cliente compara contra
-// `state.me.userId`, nao `state.me.id`.
-// ---------------------------------------------------------------------------
+// `ChatMessage.id` (the `id` field) holds the account's USERID, not the
+// connection id (`p.id`) — messages persist across reconnects, so "is this
+// my message?" and "did I react?" must survive tab/session changes too.
+// The client compares against `state.me.userId`, not `state.me.id`.
 
 const REPLY_PREVIEW_LEN = 120;
 
@@ -47,8 +41,9 @@ function sanitizeChatText(text: unknown): string {
   return String(text == null ? '' : text).trim().slice(0, config.MAX_CHAT_LEN);
 }
 
-/** `attachment` (opcional) e a linha crua da tabela attachments — o proprio
- * anexo NAO mora na tabela messages, ver modules/attachments.ts. */
+/** `attachment` (optional) is the raw attachments-table row — the
+ * attachment itself doesn't live in the messages table, see
+ * modules/attachments.ts. */
 function rowToMessage(row: Message, attachment?: Attachment): ChatMessagePayload {
   const out: ChatMessagePayload = {
     msgId: row.id,
@@ -67,10 +62,10 @@ function rowToMessage(row: Message, attachment?: Attachment): ChatMessagePayload
   return out;
 }
 
-/** Monta a referencia congelada da mensagem original a partir do msgId que o
- * cliente mandou — se ja nao existir mais (apagada) ou for de outro canal,
- * retorna undefined em silencio (a resposta so nao carrega referencia
- * nenhuma, em vez de falhar a mensagem inteira). */
+/** Builds the frozen reference to the original message from the client's
+ * msgId — silently returns undefined if it's gone (deleted) or from
+ * another channel, so the reply just carries no reference instead of
+ * failing outright. */
 async function buildReplyRef(channelId: string, replyToId: unknown): Promise<ReplyRef | undefined> {
   const id = Number(replyToId);
   if (!Number.isFinite(id)) return undefined;
@@ -79,9 +74,9 @@ async function buildReplyRef(channelId: string, replyToId: unknown): Promise<Rep
   return { msgId: original.id, name: original.authorName, text: original.text.slice(0, REPLY_PREVIEW_LEN) };
 }
 
-/** Cliente abrindo um canal (trocou de aba, ou primeiro canal ao entrar) —
- * manda so pra ESSE socket (nao broadcast), as ultimas CHAT_HISTORY_LIMIT
- * mensagens. Sem paginacao (fora de escopo por enquanto). */
+/** Client opening a channel (switched tabs, or the first channel on join) —
+ * sends the last CHAT_HISTORY_LIMIT messages to just THIS socket (no
+ * broadcast). No pagination yet. */
 async function handleChannelOpen(socket: AppSocket, msg: { channelId?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
@@ -89,8 +84,8 @@ async function handleChannelOpen(socket: AppSocket, msg: { channelId?: string })
   if (!channelId || !(await channelExists(channelId))) return;
   const rows = await db.select().from(messages).where(eq(messages.channelId, channelId)).orderBy(desc(messages.id)).limit(config.CHAT_HISTORY_LIMIT);
   rows.reverse();
-  // uma query so pros anexos de TODAS as mensagens do historico, em vez de
-  // uma por mensagem (N+1) — a maioria nao tem anexo nenhum de qualquer jeito.
+  // one query for all history messages' attachments, not one per message
+  // (N+1) — most have no attachment anyway.
   const attachmentByMessageId = await attachments.getByMessageIds(rows.map((r) => r.id));
   send(socket, { t: 'channel-history', channelId, messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id))) });
 }
@@ -109,9 +104,9 @@ async function handleChat(socket: AppSocket, msg: { channelId?: string; text?: s
   broadcast({ t: 'chat', message: rowToMessage(row!) });
 }
 
-/** So o autor original edita — nem admin, igual o Discord (admin so pode
- * apagar, ver handleChatDelete). Comparado por userId, nao id de conexao —
- * continua sendo "seu" depois de reconectar/recarregar. */
+/** Only the original author edits — not even admin (Discord-like; admin
+ * can only delete, see handleChatDelete). Compared by userId, not
+ * connection id — stays "yours" after reconnecting/reloading. */
 async function handleChatEdit(socket: AppSocket, msg: { msgId?: unknown; text?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
@@ -121,15 +116,15 @@ async function handleChatEdit(socket: AppSocket, msg: { msgId?: unknown; text?: 
   const [existing] = await db.select().from(messages).where(eq(messages.id, msgId)).limit(1);
   if (!existing || existing.authorId !== p.userId) return;
   const [updated] = await db.update(messages).set({ text, editedAt: new Date() }).where(eq(messages.id, msgId)).returning();
-  // sem isso, editar a legenda de uma mensagem COM anexo fazia o anexo
-  // sumir da tela pra todo mundo (o cliente substitui a mensagem inteira
-  // pelo que chega em 'chat-edited', ver RoomProvider.tsx).
+  // without this, editing a caption on a message WITH an attachment made
+  // the attachment disappear for everyone (the client replaces the whole
+  // message with what arrives in 'chat-edited', see RoomProvider.tsx).
   const attachment = (await attachments.getByMessageIds([msgId])).get(msgId);
   broadcast({ t: 'chat-edited', message: rowToMessage(updated!, attachment) });
 }
 
-/** Alterna (nao so adiciona) — reagir de novo com o mesmo emoji tira a
- * propria reacao, igual o Discord. */
+/** Toggles (not just adds) — reacting again with the same emoji removes
+ * your own reaction, Discord-style. */
 async function handleChatReact(socket: AppSocket, msg: { msgId?: unknown; emoji?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
@@ -147,8 +142,8 @@ async function handleChatReact(socket: AppSocket, msg: { msgId?: unknown; emoji?
   broadcast({ t: 'chat-reaction-updated', channelId: existing.channelId, msgId, emoji, userIds: reactions[emoji] || [] });
 }
 
-// ---- moderacao (so admin) — apagar UMA mensagem. "Limpar tudo" nao existe
-// mais: apagar o canal inteiro (modules/channels.ts) cobre esse caso agora. --
+// admin-only — deletes ONE message. "Clear all" no longer exists: deleting
+// the whole channel (modules/channels.ts) covers that now.
 async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket || p.role !== 'admin') return;
@@ -156,9 +151,9 @@ async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Pr
   if (!Number.isFinite(msgId)) return;
   const [existing] = await db.select({ channelId: messages.channelId }).from(messages).where(eq(messages.id, msgId)).limit(1);
   if (!existing) return;
-  // apaga o ARQUIVO de disco antes da linha — depois do delete abaixo, a
-  // linha de attachments some sozinha via CASCADE, mas ninguem mais saberia
-  // qual arquivo apagar (ver modules/attachments.ts).
+  // delete the file on disk before the row — after the delete below, the
+  // attachments row disappears via CASCADE, but nothing would know which
+  // file to delete anymore (see modules/attachments.ts).
   await attachments.deleteForMessage(msgId);
   await db.delete(messages).where(eq(messages.id, msgId));
   broadcast({ t: 'chat-deleted', channelId: existing.channelId, msgId });

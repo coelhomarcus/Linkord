@@ -10,19 +10,20 @@ export interface DeviceOption {
 export interface MediaDevicesApi {
   devices: DeviceOption[];
   activeDeviceId: string | undefined;
-  /** true quando a lista veio sem rotulo (navegador so mostra o nome real
-   * do dispositivo depois de uma permissao concedida) — mostra um botao
-   * "Permitir acesso" em vez de pedir a permissao sozinho (evita um prompt
-   * de camera/mic surpresa so por abrir os Ajustes). */
+  /** true when the list came back with no labels (the browser only shows
+   * real device names after permission is granted) — shows a "Grant
+   * access" button instead of requesting permission on its own (avoids a
+   * surprise camera/mic prompt just from opening Settings). */
   permissionNeeded: boolean;
   selectDevice: (deviceId: string) => Promise<void>;
   requestPermission: () => Promise<void>;
 }
 
-/** Seletor de dispositivo de audio/video — usa a API do proprio livekit-client
- * (Room.getLocalDevices/room.getActiveDevice/switchActiveDevice) em vez de
- * navigator.mediaDevices cru. Troca de dispositivo e aplicada na hora, mesmo
- * com a track ja publicada (o LiveKit troca o MediaStreamTrack por baixo). */
+/** Audio/video device selector — uses livekit-client's own API
+ * (Room.getLocalDevices/room.getActiveDevice/switchActiveDevice) instead of
+ * raw navigator.mediaDevices. Device switches apply immediately, even with
+ * the track already published (LiveKit swaps the MediaStreamTrack
+ * underneath). */
 export function useMediaDevices(room: LKRoom, kind: MediaDeviceKind): MediaDevicesApi {
   const [devices, setDevices] = useState<DeviceOption[]>([]);
   const [activeDeviceId, setActiveDeviceId] = useState<string | undefined>(undefined);
@@ -35,8 +36,9 @@ export function useMediaDevices(room: LKRoom, kind: MediaDeviceKind): MediaDevic
     setActiveDeviceId(room.getActiveDevice(kind));
   }, [room, kind]);
 
-  // nunca pede permissao sozinho ao montar — so lista o que da pra listar
-  // sem rotulo (ou nada, se o navegador exigir permissao pra ate isso).
+  // never requests permission on its own when mounting — only lists what
+  // it can list without a label (or nothing, if the browser requires
+  // permission even for that).
   useEffect(() => { refresh(false); }, [refresh]);
 
   const selectDevice = useCallback(async (deviceId: string) => {

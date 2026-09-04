@@ -1,11 +1,11 @@
 import { ErrorBanner } from '../../shared/ErrorBanner';
 import { Button } from '@/components/ui/button';
 
-/** Tela cheia pra erros que impedem estar na sala (hoje: sala cheia) — o
- * socket ja foi desconectado de proposito nesse ponto (ver RoomProvider),
- * entao nao ha nada por tras pra mostrar. "Tentar de novo" so recarrega —
- * mais simples que reconectar o socket manualmente, e cobre o caso comum
- * (a sala esvaziou enquanto isso). */
+/** Fullscreen view for errors that prevent being in the room (today: room
+ * full) — the socket has already been deliberately disconnected at this
+ * point (see RoomProvider), so there's nothing behind it to show. "Try
+ * again" just reloads — simpler than manually reconnecting the socket, and
+ * covers the common case (the room emptied out in the meantime). */
 export function RoomErrorScreen({ message }: { message: string }) {
   return (
     <div className="flex h-dvh items-center justify-center bg-bg-primary p-4">

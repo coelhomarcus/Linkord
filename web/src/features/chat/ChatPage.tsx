@@ -9,9 +9,9 @@ import type { ChatMessage } from '../../types/protocol';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
-/** Chat como pagina cheia (canal de texto estilo Discord) — sem balao, sem
- * coluna centralizada, ocupa a largura toda entre a sidebar esquerda e o
- * diretorio de usuarios (direita). */
+/** Chat as a full page (Discord-style text channel) — no bubble, no
+ * centered column, fills the whole width between the left sidebar and the
+ * user directory (right). */
 export function ChatPage() {
   const { state, categories, activeChannelId, deleteChannel } = useRoom();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -23,9 +23,9 @@ export function ChatPage() {
     [categories, activeChannelId]
   );
 
-  // trocar de canal cancela uma resposta pendente — sem isso o banner
-  // "Respondendo a X" (e o replyTo mandado no envio) ficaria referenciando
-  // uma mensagem de um canal DIFERENTE do que a pessoa esta olhando agora.
+  // switching channels cancels a pending reply — otherwise the "Replying
+  // to X" banner (and the replyTo sent on submit) would reference a
+  // message from a DIFFERENT channel than the one now being viewed.
   useEffect(() => setReplyingTo(null), [activeChannelId]);
 
   return (
@@ -37,9 +37,8 @@ export function ChatPage() {
             <h1 className="truncate text-title font-semibold text-text-primary">{activeChannel?.name ?? 'Chat'}</h1>
           </div>
           <div className="flex flex-none items-center gap-1">
-            {/* so existe pra admin — apagar o canal e a unica opcao hoje
-                (substitui o antigo "limpar chat": apaga o canal inteiro,
-                mensagens somem do banco pra sempre). */}
+            {/* admin-only — deleting the channel removes it and all its
+                messages from the database permanently. */}
             {isMod && activeChannel && (
               <DropdownMenu>
                 <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-sm" aria-label="Mais opcoes" className="text-text-muted hover:text-text-secondary" />}>
@@ -59,12 +58,12 @@ export function ChatPage() {
         {activeChannelId && (
           <>
             <ChatMessageList className="px-2 pb-3 pt-2" channelId={activeChannelId} onReply={setReplyingTo} />
-            {/* key={activeChannelId}: forca remontar ao trocar de canal — sem
-                isso o composer e a MESMA instancia (so o prop channelId
-                muda), entao texto/anexo pendente sobreviveriam a troca de
-                canal e um Enter tardio mandaria pro canal ERRADO (o que
-                esta ativo agora, nao aquele onde a pessoa realmente
-                digitou/anexou). */}
+            {/* key={activeChannelId}: forces a remount on channel switch —
+                otherwise the composer is the SAME instance (only the
+                channelId prop changes), so pending text/attachment would
+                survive the switch and a late Enter would send to the
+                WRONG channel (the one now active, not where it was
+                actually typed/attached). */}
             <ChatComposer key={activeChannelId} channelId={activeChannelId} replyingTo={replyingTo} onCancelReply={() => setReplyingTo(null)} />
           </>
         )}

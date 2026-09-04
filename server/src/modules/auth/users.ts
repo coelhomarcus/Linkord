@@ -5,11 +5,9 @@ import { users, type User } from '../../db/schema.js';
 import { config } from '../../config/env.js';
 import type { Role } from '../../types.js';
 
-// ---------------------------------------------------------------------------
-// CRUD de contas. Unicidade de username e case-insensitive (indice sobre
-// lower(username) no schema) — toda busca por username usa a MESMA expressao
-// sql`lower(...)`, senao o Postgres nao bate com esse indice.
-// ---------------------------------------------------------------------------
+// Account CRUD. Username uniqueness is case-insensitive (index on
+// lower(username) in the schema) — every username lookup must use the
+// SAME sql`lower(...)` expression, or Postgres won't use that index.
 
 export interface PublicUser {
   id: string;
@@ -37,24 +35,25 @@ export async function findById(id: string): Promise<User | null> {
   return row || null;
 }
 
-/** Diretorio de contas (pra sidebar direita, online/offline) — sala privada
- * de baixa escala, ordenar por nome e trazer todo mundo de uma vez e
- * suficiente, sem paginacao. */
+/** Account directory (right sidebar, online/offline) — small private
+ * room, sorting by name and fetching everyone at once is enough, no
+ * pagination. */
 export async function listAllUsers(): Promise<PublicUser[]> {
   const rows = await db.select().from(users).orderBy(sql`lower(${users.username})`);
   return rows.map(publicUser);
 }
 
-/** Lanca com `.code = 'username_taken'` se a corrida perder a checagem previa
- * pro indice unico do banco (ex.: dois registros simultaneos do mesmo nome). */
+/** Throws with `.code = 'username_taken'` if a race loses to the DB's
+ * unique index despite the earlier check (e.g. two simultaneous signups
+ * with the same name). */
 export async function createUser({ username, passwordHash, role }: { username: string; passwordHash: string; role: Role }): Promise<User> {
   const id = crypto.randomUUID();
   try {
     const [row] = await db.insert(users).values({ id, username, passwordHash, role }).returning();
     return row!;
   } catch (err: unknown) {
-    // drizzle envolve o erro do driver em DrizzleQueryError — o codigo do
-    // Postgres (23505 = unique_violation) vem em err.cause.code, nao err.code.
+    // drizzle wraps the driver error in DrizzleQueryError — Postgres's code
+    // (23505 = unique_violation) is in err.cause.code, not err.code.
     const cause = (err as { cause?: { code?: string } } | undefined)?.cause;
     if (cause?.code === '23505') {
       const dup = Object.assign(new Error('Esse nome de usuario ja esta em uso.'), { code: 'username_taken' as const });

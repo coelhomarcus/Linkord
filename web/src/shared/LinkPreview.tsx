@@ -5,10 +5,9 @@ import type { DetectedEmbed } from './lib/chatEmbeds';
 import { ImageLightbox } from './ImageLightbox';
 import { GenericEmbed } from './GenericEmbed';
 
-/** Mostrado quando um link que reconhecemos como midia (imagem/video/audio)
- * falha ao carregar de verdade (link quebrado, protecao de hotlink, etc.) —
- * sem isso o usuario ficaria sem nenhuma pista nem como abrir o link
- * original. */
+/** Shown when a link we recognize as media (image/video/audio) actually
+ * fails to load (broken link, hotlink protection, etc.) — otherwise the
+ * user would have no clue or way to open the original link. */
 function EmbedFailedFallback({ url, className }: { url: string; className: string }) {
   return (
     <a
@@ -25,26 +24,24 @@ function EmbedFailedFallback({ url, className }: { url: string; className: strin
 
 interface LinkPreviewProps {
   embed: DetectedEmbed;
-  /** Espaçamento/contexto de quem esta usando (chat encosta no texto de
-   * cima com mt-1.5; um modal normalmente nao precisa de nada). */
+  /** Spacing/context from whoever's using it (chat adds mt-1.5 to sit
+   * under the text above; a modal usually needs none). */
   className?: string;
 }
 
-/** Preview de um link reconhecido (YouTube/Twitch/imagem/video/audio) no
- * chat (ver ChatEmbed, que so acrescenta a margem pro texto de cima).
- * YouTube/Twitch so carregam o iframe depois de um clique (evita autoplay/
- * som surpresa e trafego pra links que ninguem vai assistir) — video/audio/
- * imagem direta carregam na hora. */
+/** Preview of a recognized link (YouTube/Twitch/image/video/audio) in chat
+ * (see ChatEmbed, which just adds the margin under the text). YouTube/Twitch
+ * only load the iframe after a click (avoids surprise autoplay/sound and
+ * traffic for links nobody will watch) — video/audio/image load right away. */
 export function LinkPreview({ embed, className = '' }: LinkPreviewProps) {
   const [failed, setFailed] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  // YouTube/Twitch/link generico compartilham o mesmo card (favicon + nome
-  // do site + titulo + descricao, ver GenericEmbed) — so o que entra no
-  // lugar da imagem muda por tipo. `key={embed.url}` garante que trocar de
-  // link (ex.: mensagem editada, ou o mesmo componente reaproveitado pra
-  // outro item numa lista) reinicia o estado interno em vez de arrastar o
-  // do link anterior.
+  // YouTube/Twitch/generic link share the same card (favicon + site name +
+  // title + description, see GenericEmbed) — only what replaces the image
+  // changes per type. `key={embed.url}` resets internal state on a link
+  // change (edited message, or the component reused for another list item)
+  // instead of carrying over the previous link's state.
   if (embed.kind === 'youtube' || embed.kind === 'twitch-channel' || embed.kind === 'twitch-vod' || embed.kind === 'twitch-clip' || embed.kind === 'link') {
     return <GenericEmbed key={embed.url} embed={embed} className={className} />;
   }
@@ -63,11 +60,11 @@ export function LinkPreview({ embed, className = '' }: LinkPreviewProps) {
     return <audio src={embed.url} controls preload="metadata" onError={() => setFailed(true)} className={`block w-full max-w-sm ${className}`} />;
   }
 
-  // image — w-auto/h-auto (nao w-full+object-contain) deixa o navegador usar
-  // a proporcao NATURAL da imagem, so limitada pelos tetos — sem isso sobra
-  // espaco vazio na caixa quando a proporcao nao bate, que aparecia como
-  // borda. Abre o mesmo lightbox de tela cheia que um anexo de upload usa
-  // (ver ChatAttachment.tsx) — nao navega pro link, igual foi pedido.
+  // image — w-auto/h-auto (not w-full+object-contain) lets the browser use
+  // the image's NATURAL aspect ratio, only capped by max-height/width —
+  // otherwise empty space shows up as a border when the ratio doesn't match
+  // the box. Opens the same fullscreen lightbox an upload attachment uses
+  // (see ChatAttachment.tsx) instead of navigating to the link.
   return (
     <>
       <button type="button" onClick={() => setLightboxOpen(true)} className={`block w-fit cursor-zoom-in ${className}`}>

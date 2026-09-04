@@ -1,14 +1,10 @@
-// ---------------------------------------------------------------------------
-// Deteccao de links embutiveis — espelha web/src/shared/lib/chatEmbeds.ts
-// (mesmos regex, mesma ordem de checagem). So existe aqui pra classificar
-// mensagens na aba Midias dos Ajustes (server/src/modules/media.ts) SEM
-// devolver pro cliente um monte de mensagem-com-link-qualquer que na hora de
-// renderizar nao vira embed nenhum (a maioria dos links do dia a dia nao
-// casa com nenhum desses formatos). O cliente continua sendo quem decide
-// como desenhar cada tipo (LinkPreview.tsx) — isso aqui so filtra/anota,
-// nunca monta HTML/iframe. Se mudar um regex de um lado, muda do outro
-// tambem.
-// ---------------------------------------------------------------------------
+// Embeddable-link detection — mirrors web/src/shared/lib/chatEmbeds.ts
+// (same regexes, same check order). Exists here to classify messages for
+// the Settings Media tab (server/src/modules/media.ts) without returning
+// every message-with-any-link to the client when most everyday links don't
+// match any of these formats. The client still decides how to render each
+// kind (LinkPreview.tsx) — this only filters/tags, never builds HTML/
+// iframes. Change a regex on one side, change it on the other too.
 
 const URL_RE = /https?:\/\/[^\s<>"']+/gi;
 
@@ -52,15 +48,15 @@ export function detectEmbed(url: string): DetectedEmbed {
   if (AUDIO_EXT_RE.test(url)) return { kind: 'audio', url };
   if (IMAGE_EXT_RE.test(url) || IMAGE_HOST_RE.test(url)) return { kind: 'image', url };
 
-  // espelha o fallback de chatEmbeds.ts: qualquer link restante ainda conta
-  // como "embutivel" (o card generico com Open Graph, ver
-  // web/src/shared/GenericEmbed.tsx) — sem isso a aba Midias > Embeds
-  // ficaria sem esses links, so com YouTube/Twitch/midia direta.
+  // mirrors chatEmbeds.ts's fallback: any remaining link still counts as
+  // "embeddable" (the generic Open Graph card, see
+  // web/src/shared/GenericEmbed.tsx) — without this, Media > Embeds would
+  // miss those links, showing only YouTube/Twitch/direct media.
   return { kind: 'link', url };
 }
 
-/** Primeiro link embutivel de um texto — mesma regra do chat (so um por
- * mensagem, ver firstEmbed em chatEmbeds.ts). */
+/** First embeddable link in a text — same rule as chat (one per message,
+ * see firstEmbed in chatEmbeds.ts). */
 export function firstEmbed(text: string): DetectedEmbed | null {
   for (const url of extractUrls(String(text || ''))) {
     const embed = detectEmbed(url);

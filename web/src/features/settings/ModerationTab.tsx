@@ -16,8 +16,6 @@ function UserRow({ user, online, isMe, onDeleteRequest }: {
     <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-bg-hover">
       <div className="relative flex-none">
         <Avatar id={user.id} name={user.username} avatar={user.avatar} size={32} />
-        {/* mesma linguagem do UserDirectory (chat): verde preenchido = online,
-            cinza solido = offline. */}
         <span
           className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-bg-tertiary ${online ? 'bg-green' : 'bg-text-muted'}`}
         />
@@ -30,9 +28,9 @@ function UserRow({ user, online, isMe, onDeleteRequest }: {
         <p className="select-none text-caption text-text-muted">{online ? 'Online' : 'Offline'}</p>
       </div>
       {user.role === 'admin' && <ShieldCheck size={16} className="flex-none text-blurple" />}
-      {/* apagar a propria conta por aqui fica bloqueado tanto na UI (disabled)
-          quanto no servidor (server/moderation.js revalida de novo) — a UI
-          so evita o clique inutil, nunca e a unica trava. */}
+      {/* deleting your own account here is blocked both in the UI
+          (disabled) and on the server (moderation.ts revalidates again) —
+          the UI just avoids a useless click, it's never the only guard. */}
       <Button
         type="button"
         variant="ghost"
@@ -48,12 +46,12 @@ function UserRow({ user, online, isMe, onDeleteRequest }: {
   );
 }
 
-/** Aba "Moderacao" dos Ajustes — admin-only (SettingsModal so mostra a
- * TabsTrigger quando state.me.role==='admin', e o servidor revalida de
- * novo em cada acao, nunca confia so no botao escondido). Hoje faz uma
- * coisa: apagar conta. Reaproveita o mesmo `allUsers`/`onlineUserIds` que
- * ja alimenta o UserDirectory do chat — nao busca nada novo, so lista o
- * que o app ja tem em memoria. */
+/** Settings' "Moderation" tab — admin-only (SettingsModal only shows the
+ * TabsTrigger when state.me.role==='admin', and the server revalidates
+ * again on every action, never trusting a hidden button alone). Does one
+ * thing today: delete an account. Reuses the same `allUsers`/
+ * `onlineUserIds` that already feeds chat's UserDirectory — fetches
+ * nothing new, just lists what the app already has in memory. */
 export function ModerationTab() {
   const { state, allUsers, onlineUserIds, deleteUserAccount, moderationError, clearModerationError } = useRoom();
   const [confirmTarget, setConfirmTarget] = useState<PublicUser | null>(null);
