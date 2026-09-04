@@ -50,6 +50,8 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     setNotifyVolume: noop,
     notificationsEnabled: false,
     setNotificationsEnabled: noop,
+    hideAudioOnlyTiles: false,
+    setHideAudioOnlyTiles: noop,
     categories: [],
     activeChannelId: null,
     openChannel: noop,

@@ -21,8 +21,11 @@ interface StageProps {
  * (App.tsx) along with `allIds` so controls and everyone else's audio keep
  * working while another channel's tab is active (see App.tsx). */
 export function Stage({ allIds, onBackMobile }: StageProps) {
-  const { state } = useRoom();
-  const descriptors = useCallTiles(allIds);
+  const { state, hideAudioOnlyTiles } = useRoom();
+  const allDescriptors = useCallTiles(allIds);
+  // "Mostrar apenas cameras e transmissoes" (Stage's right-click menu) —
+  // keeps screen/camera tiles, hides plain audio-only ones (kind 'avatar').
+  const descriptors = hideAudioOnlyTiles ? allDescriptors.filter((d) => d.kind !== 'avatar') : allDescriptors;
 
   // `pb-32` reserves room at the bottom so <CallControlBar/> (a sibling,
   // absolutely positioned, floating over this) never covers the last row
@@ -34,7 +37,7 @@ export function Stage({ allIds, onBackMobile }: StageProps) {
   // back to 1.25rem and wiping out the reserved space, letting the bar
   // overlap tiles on desktop.
   return (
-    <main className="relative flex flex-1 min-w-0 items-center justify-center overflow-auto bg-bg-call p-2 pb-32 text-text-primary md:px-5 md:pt-5">
+    <main data-stage className="relative flex flex-1 min-w-0 items-center justify-center overflow-auto bg-bg-call p-2 pb-32 text-text-primary md:px-5 md:pt-5">
       <Button
         type="button"
         variant="ghost"

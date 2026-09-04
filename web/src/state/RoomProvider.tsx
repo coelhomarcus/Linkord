@@ -15,6 +15,7 @@ import { useMicrophone } from '../features/sharing/useMicrophone';
 import { useTrackSpeaking } from '../features/sharing/useLiveKitTrack';
 import type { TileKind } from '../features/sharing/tileTypes';
 import { loadShowStats, saveShowStats, loadNotifyVolume, saveNotifyVolume } from '../features/settings/useSettingsPreference';
+import { loadHideAudioOnlyTiles, saveHideAudioOnlyTiles } from '../features/settings/useStageViewPreference';
 import { playSound, preloadSounds, setVolume } from '../shared/sounds';
 import {
   loadNotificationsEnabled, saveNotificationsEnabled, setNotificationsModuleEnabled,
@@ -95,6 +96,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     setNotificationsEnabledState(value);
     saveNotificationsEnabled(value);
     setNotificationsModuleEnabled(value);
+  }, []);
+
+  const [hideAudioOnlyTiles, setHideAudioOnlyTilesState] = useState(loadHideAudioOnlyTiles);
+  const setHideAudioOnlyTiles = useCallback((value: boolean) => {
+    setHideAudioOnlyTilesState(value);
+    saveHideAudioOnlyTiles(value);
   }, []);
 
   const sendWs = useCallback((msg: ClientMessage) => {
@@ -615,6 +622,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted, leaveVoiceChannel, quality, setQuality,
         updateAvatar, uploadAvatarFile, menuTarget, openTileMenu, closeTileMenu,
         reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
+        hideAudioOnlyTiles, setHideAudioOnlyTiles,
         categories, activeChannelId, openChannel, messagesByChannel, unreadByChannel,
         allUsers, onlineUserIds, channelsError, clearChannelsError: () => setChannelsError(null),
         deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null),

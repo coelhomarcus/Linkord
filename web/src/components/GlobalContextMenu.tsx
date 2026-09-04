@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Copy, FolderPlus, Hash, Settings } from 'lucide-react';
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
+import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { useRoom } from '../state/RoomContext';
 import { PromptDialog } from '../shared/PromptDialog';
 import { NewChannelDialog } from './ChannelTree';
@@ -34,9 +34,10 @@ function isEditableTarget(target: EventTarget | null): boolean {
  * Create category/channel for admins is conditional the same way "Copy"
  * already is when there's a text selection. */
 export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMenuProps) {
-  const { state, categories, createCategory } = useRoom();
+  const { state, categories, createCategory, hideAudioOnlyTiles, setHideAudioOnlyTiles } = useRoom();
   const [hasSelection, setHasSelection] = useState(false);
   const [sidebarTarget, setSidebarTarget] = useState(false);
+  const [stageTarget, setStageTarget] = useState(false);
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
   const [newChannelOpen, setNewChannelOpen] = useState(false);
   const isAdmin = state.me.role === 'admin';
@@ -44,6 +45,7 @@ export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMen
   useEffect(() => {
     function captureTarget(e: MouseEvent) {
       setSidebarTarget(e.target instanceof HTMLElement && !!e.target.closest('[data-sidebar-channels]'));
+      setStageTarget(e.target instanceof HTMLElement && !!e.target.closest('[data-stage]'));
     }
     function blockNative(e: MouseEvent) {
       if (isEditableTarget(e.target)) return;
@@ -97,6 +99,17 @@ export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMen
                   <span>Novo canal</span>
                 </ContextMenuItem>
               )}
+              <ContextMenuSeparator />
+            </>
+          )}
+          {stageTarget && (
+            <>
+              <ContextMenuCheckboxItem
+                checked={hideAudioOnlyTiles}
+                onCheckedChange={setHideAudioOnlyTiles}
+              >
+                <span>Mostrar apenas cameras e transmissoes</span>
+              </ContextMenuCheckboxItem>
               <ContextMenuSeparator />
             </>
           )}

@@ -103,6 +103,11 @@ export interface RoomContextValue {
    * off. Turning it on requests browser Notification permission. */
   notificationsEnabled: boolean;
   setNotificationsEnabled: (value: boolean) => void;
+  /** Call grid filter — hides plain audio-only tiles (kind 'avatar'),
+   * keeping only camera/screen-share tiles. Toggled from the Stage's
+   * context menu. */
+  hideAudioOnlyTiles: boolean;
+  setHideAudioOnlyTiles: (value: boolean) => void;
   /** Category/channel tree (text and voice) — only admins create/delete/
    * reorder (server always revalidates). */
   categories: Category[];
