@@ -5,8 +5,9 @@ import { useRoom } from '../../state/RoomContext';
 import { Avatar } from '../../shared/Avatar';
 import { ChatMessageText } from './ChatMessageText';
 import { ChatAttachment } from './ChatAttachment';
+import { buildMentionLookup, mentionsUser } from '../../shared/lib/mentions';
 import { ALLOWED_REACTIONS } from '../../types/protocol';
-import type { ChatMessage, ReactionEmoji } from '../../types/protocol';
+import type { ChatMessage, PublicUser, ReactionEmoji } from '../../types/protocol';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -55,6 +56,7 @@ interface ChatMessageRowProps {
   showHeader: boolean;
   isMod: boolean;
   isHighlighted: boolean;
+  mentionLookup: Map<string, PublicUser>;
   isEditing: boolean;
   editText: string;
   onEditTextChange: (text: string) => void;
@@ -70,7 +72,7 @@ interface ChatMessageRowProps {
  * author) or stay compact (just the time, on hover, where the avatar
  * would be). */
 function ChatMessageRow({
-  message, showHeader, isMod, isHighlighted, isEditing, editText, onEditTextChange,
+  message, showHeader, isMod, isHighlighted, mentionLookup, isEditing, editText, onEditTextChange,
   onStartEdit, onSaveEdit, onCancelEdit, onReply, onJumpTo,
 }: ChatMessageRowProps) {
   const { state, deleteChatMessage, reactToChatMessage } = useRoom();
@@ -86,6 +88,9 @@ function ChatMessageRow({
   // against state.me.userId, not state.me.id, or "is this my message?"
   // breaks after reconnecting/reloading (connection id changes, userId doesn't).
   const isMine = message.id === state.me.userId;
+  // own messages never "highlight for being mentioned" — mentioning
+  // yourself isn't a notification.
+  const mentionsMe = !isMine && mentionsUser(message.text, mentionLookup, state.me.userId);
 
   function handleEditKeyDown(e: ReactKeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSaveEdit(); }
@@ -98,9 +103,9 @@ function ChatMessageRow({
       onMouseEnter={() => setIsRowActive(true)}
       onMouseLeave={() => { if (!reactOpen && !moreOpen) setIsRowActive(false); }}
       className={cn(
-        'group/msg relative flex gap-3 rounded-md px-3 transition-colors',
+        'group/msg relative flex gap-3 rounded-md border-l-2 border-transparent px-3 transition-colors',
         showHeader ? 'mt-3' : '',
-        isHighlighted ? 'bg-blurple/15' : 'hover:bg-bg-hover'
+        isHighlighted ? 'bg-blurple/15' : mentionsMe ? 'border-l-yellow bg-yellow/10 hover:bg-yellow/15' : 'hover:bg-bg-hover'
       )}
     >
       <div className="w-10 flex-none pt-0.5">
@@ -155,7 +160,7 @@ function ChatMessageRow({
           </div>
         ) : (
           <div className="text-body text-text-primary">
-            <ChatMessageText text={message.text} />
+            <ChatMessageText text={message.text} mentionLookup={mentionLookup} myUserId={state.me.userId} />
             {message.editedAt && <span className="ml-1 select-none text-caption text-text-muted">(editado)</span>}
             {message.attachment && <ChatAttachment attachment={message.attachment} />}
           </div>
@@ -289,7 +294,8 @@ interface ChatMessageListProps {
  * messages grouped by author, date divider, and a per-message action bar
  * on hover (react/reply/edit/delete). */
 export function ChatMessageList({ className, channelId, onReply }: ChatMessageListProps) {
-  const { state, messagesByChannel, editChatMessage } = useRoom();
+  const { state, messagesByChannel, editChatMessage, allUsers } = useRoom();
+  const mentionLookup = useMemo(() => buildMentionLookup(allUsers), [allUsers]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // wraps ONLY the content (not the scrolling viewport) — with
   // overflow-y-auto, the viewport has a fixed size (doesn't grow with
@@ -423,6 +429,7 @@ export function ChatMessageList({ className, channelId, onReply }: ChatMessageLi
               showHeader={showHeader}
               isMod={isMod}
               isHighlighted={highlightedMsgId === message.msgId}
+              mentionLookup={mentionLookup}
               isEditing={editingMsgId === message.msgId}
               editText={editText}
               onEditTextChange={setEditText}

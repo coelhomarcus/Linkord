@@ -1,16 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
-import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent, SyntheticEvent } from 'react';
 import EmojiPicker, { Categories, EmojiStyle, Theme } from 'emoji-picker-react';
 import type { CategoryConfig, EmojiClickData } from 'emoji-picker-react';
 import { File as FileIcon, Plus, Send, Smile, Upload, X } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { MAX_ATTACHMENT_BYTES } from '../../types/protocol';
-import type { ChatMessage } from '../../types/protocol';
+import type { ChatMessage, PublicUser } from '../../types/protocol';
 import { Textarea } from '@/components/ui/textarea';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { UploadProgressBar } from '../../shared/UploadProgressBar';
 import { formatFileSize, formatSizeLimit } from '../../shared/lib/formatBytes';
+import { Avatar } from '../../shared/Avatar';
+import { cn } from '@/shared/lib/utils';
+
+const MAX_MENTION_RESULTS = 8;
+
+/** Finds the "@query" the cursor is currently sitting inside of, if any —
+ * "@" must start a token (preceded by whitespace or the start of the text),
+ * otherwise a plain email like "a@b.com" would trigger the dropdown too. */
+function getMentionQuery(text: string, cursor: number): { start: number; query: string } | null {
+  const upToCursor = text.slice(0, cursor);
+  const match = /@([A-Za-z0-9_.-]{0,20})$/.exec(upToCursor);
+  if (!match) return null;
+  const atIndex = match.index;
+  const charBefore = atIndex > 0 ? upToCursor[atIndex - 1] : ' ';
+  if (!/\s/.test(charBefore)) return null;
+  return { start: atIndex, query: match[1] ?? '' };
+}
 
 // category names in Portuguese — the library only ships English by
 // default, and the rest of the app is Portuguese too.
@@ -36,8 +53,12 @@ interface ChatComposerProps {
 /** Chat message field — Enter sends, Shift+Enter breaks a line, grows on
  * its own up to a cap (field-sizing-content, already built into Textarea). */
 export function ChatComposer({ className, channelId, replyingTo, onCancelReply }: ChatComposerProps) {
-  const { state, sendChatMessage, sendAttachment } = useRoom();
+  const { state, sendChatMessage, sendAttachment, allUsers } = useRoom();
   const [text, setText] = useState('');
+  // active "@query" under the cursor, or null when not mentioning anyone
+  // right now (see getMentionQuery) — drives the autocomplete dropdown.
+  const [mentionQuery, setMentionQuery] = useState<{ start: number; query: string } | null>(null);
+  const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
   // chosen/pasted file stays "attached" here — only actually uploads when
   // the message is sent (Enter/button), Discord-style: lets you type a
   // caption, change your mind (X), or swap the file before sending.
@@ -98,6 +119,7 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
       await sendAttachment(channelId, file, text.trim(), setUploadProgress);
       setPendingFile(null);
       setText('');
+      setMentionQuery(null);
       onCancelReply?.();
     } catch (err) {
       setAttachError(err instanceof Error ? err.message : 'Falha ao enviar o arquivo.');
@@ -114,7 +136,56 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
     if (!trimmed) return;
     sendChatMessage(channelId, trimmed, replyingTo?.msgId);
     setText('');
+    setMentionQuery(null);
     onCancelReply?.();
+  }
+
+  // users whose name starts with the active "@query" (case-insensitive) —
+  // capped so the dropdown never grows unreasonably tall for a big roster.
+  const mentionCandidates = useMemo(() => {
+    if (!mentionQuery) return [];
+    const q = mentionQuery.query.toLowerCase();
+    return [...allUsers.values()]
+      .filter((u) => u.username.toLowerCase().startsWith(q))
+      .sort((a, b) => a.username.localeCompare(b.username))
+      .slice(0, MAX_MENTION_RESULTS);
+  }, [allUsers, mentionQuery]);
+
+  // re-derives the active "@query" from wherever the cursor is now — called
+  // after every edit (handleTextChange) and every cursor move that ISN'T an
+  // edit (handleSelect: arrow keys, click), since either can start, change,
+  // or leave a mention.
+  function syncMentionQuery(value: string, cursor: number) {
+    setMentionQuery(getMentionQuery(value, cursor));
+    setMentionSelectedIndex(0);
+  }
+
+  function handleTextChange(e: ChangeEvent<HTMLTextAreaElement>) {
+    setText(e.target.value);
+    syncMentionQuery(e.target.value, e.target.selectionStart ?? e.target.value.length);
+  }
+
+  function handleSelect(e: SyntheticEvent<HTMLTextAreaElement>) {
+    const el = e.currentTarget;
+    syncMentionQuery(el.value, el.selectionStart ?? 0);
+  }
+
+  // replaces the "@query" itself (not the whole field) with "@username " —
+  // mirrors handleEmojiClick's cursor handling below.
+  function selectMention(user: PublicUser) {
+    const el = textareaRef.current;
+    if (!mentionQuery) return;
+    const before = text.slice(0, mentionQuery.start);
+    const after = text.slice(mentionQuery.start + 1 + mentionQuery.query.length);
+    const insertion = `@${user.username} `;
+    const next = before + insertion + after;
+    setText(next);
+    setMentionQuery(null);
+    const caret = before.length + insertion.length;
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(caret, caret);
+    });
   }
 
   function removePendingFile() {
@@ -134,6 +205,7 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
     const next = text.slice(0, start) + data.emoji + text.slice(end);
     setText(next);
     setEmojiOpen(false);
+    setMentionQuery(null);
     const caret = start + data.emoji.length;
     // the new value only exists in the DOM after the next render — setting
     // the selection in the same tick would still see the OLD text.
@@ -144,6 +216,15 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    // the mention dropdown intercepts navigation/confirm keys FIRST — while
+    // it's open, Enter picks a mention instead of sending the message, and
+    // arrows move the selection instead of the caret.
+    if (mentionQuery && mentionCandidates.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setMentionSelectedIndex((i) => (i + 1) % mentionCandidates.length); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setMentionSelectedIndex((i) => (i - 1 + mentionCandidates.length) % mentionCandidates.length); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selectMention(mentionCandidates[mentionSelectedIndex]!); return; }
+      if (e.key === 'Escape') { e.preventDefault(); setMentionQuery(null); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       formRef.current?.requestSubmit();
@@ -273,8 +354,33 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
       <form
         ref={formRef}
         onSubmit={handleSubmit}
-        className="flex items-end gap-1 rounded-xl border border-strong bg-bg-textarea py-1.5 pr-1.5 pl-1"
+        className="relative flex items-end gap-1 rounded-xl border border-strong bg-bg-textarea py-1.5 pr-1.5 pl-1"
       >
+        {/* absolute: positioned relative to the FORM, not the whole
+            composer, so it sits right above the input row even when a
+            reply banner or a pending attachment is showing above it. */}
+        {mentionQuery && mentionCandidates.length > 0 && (
+          <div className="absolute inset-x-0 bottom-full z-20 mb-1 max-h-56 overflow-y-auto rounded-md border border-strong bg-bg-floating py-1 shadow-popover">
+            <p className="select-none px-3 pb-1 pt-0.5 text-caption font-semibold uppercase text-text-muted">Mencionar alguém</p>
+            {mentionCandidates.map((user, i) => (
+              <button
+                key={user.id}
+                type="button"
+                // onMouseDown (not onClick) fires BEFORE the textarea's blur
+                // — preventDefault stops that blur from happening at all, so
+                // focus/caret position never leaves the field.
+                onMouseDown={(e) => { e.preventDefault(); selectMention(user); }}
+                className={cn(
+                  'flex w-full items-center gap-2 px-3 py-1.5 text-left text-label',
+                  i === mentionSelectedIndex ? 'bg-bg-selected text-text-primary' : 'text-text-secondary hover:bg-bg-hover'
+                )}
+              >
+                <Avatar id={user.id} name={user.username} avatar={user.avatar} size={24} />
+                <span className="truncate">{user.username}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} />
         <Button
           type="button"
@@ -289,7 +395,8 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
         <Textarea
           ref={textareaRef}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={handleTextChange}
+          onSelect={handleSelect}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder={pendingFile ? 'Adicionar uma legenda (opcional)' : 'Mandar mensagem'}
