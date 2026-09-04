@@ -8,22 +8,28 @@
   Chat em tempo real, canais e chamadas de voz/tela.
 </p>
 
+<p align="center">
+  <a href="https://github.com/coelhomarcus/Linkord/actions/workflows/test.yml?query=branch%3Amain">
+    <img src="https://github.com/coelhomarcus/Linkord/actions/workflows/test.yml/badge.svg?branch=main" alt="CI" />
+  </a>
+</p>
+
 ## O que é
 
-Linkord é uma plataforma de comunicação em tempo real com chamadas de voz, vídeo, texto e compartilhamento de tela.
+Linkord é uma plataforma de comunicação em tempo real com chamadas de voz, vídeo, texto e compartilhamento de tela — self-hosted, estilo Discord.
 
-- Chat por canal
-- Anexos (upload em chunks, até 2GB)
-- Embeds automáticos de YouTube/Twitch/mídia direta e Open Graph
-- Canal de voz com câmera e tela compartilhada (LiveKit)
-- Painel de moderação
-- Aba de mídias
+- Categorias e múltiplos canais de texto e voz, com reordenação por drag-and-drop (admin)
+- Chat: anexos (upload em chunks, até 2GB), embeds automáticos de YouTube/Twitch/mídia direta e Open Graph, reações, respostas, editar/apagar mensagem
+- Canais de voz com câmera e tela compartilhada (LiveKit)
+- Diretório de usuários (online/offline) e painel de moderação (apagar conta)
+- Aba de mídias — todo anexo/embed do projeto, de todos os canais
+- Preferências salvas por usuário (volume por chamada/pessoa, volume de notificações, qualidade de envio)
 - Notificação no Discord quando alguém entra na chamada ou compartilha tela (Webhook)
 
 ## Stack
 
 - **Frontend**: React + TypeScript + Vite, Tailwind
-- **Backend**: Node.js + TypeScript (ESM), sem framework HTTP — `http` puro + Socket.IO
+- **Backend**: Node.js + TypeScript (ESM) com Fastify + Socket.IO
 - **Banco**: PostgreSQL via Drizzle ORM
 - **Vídeo/áudio**: LiveKit Cloud (WebRTC)
 
@@ -50,6 +56,19 @@ O frontend sobe em `http://localhost:5173` (proxy pro backend em `:3000`).
 | `npm test` | Testes do backend (`node --test`) e do frontend (`vitest`) |
 | `npm run db:generate` | Gera uma migration nova a partir de `server/src/db/schema.ts` |
 | `npm run db:migrate` | Aplica as migrations pendentes |
+
+## Testes
+
+- **Backend**: `node --test` (`server/src/**/*.test.ts`) — não precisa de Postgres nem LiveKit de verdade rodando.
+- **Frontend**: Vitest + React Testing Library (`web/src/**/*.test.tsx`).
+
+```bash
+npm test              # backend + frontend
+npm run test:server   # só o backend
+npm run test:web      # só o frontend
+```
+
+Roda automaticamente em todo push/PR pra `main`/`develop` ([`.github/workflows/test.yml`](.github/workflows/test.yml)).
 
 ## Variáveis de ambiente
 
