@@ -1,0 +1,39 @@
+{
+  "name": "linkord",
+  "version": "1.0.0",
+  "description": "Sala de compartilhamento de tela, sem chat, self-hosted (WebSocket)",
+  "type": "module",
+  "main": "server/dist/index.js",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server/dist/index.js",
+    "dev": "concurrently -k -n server,web -c blue,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "node --watch --env-file-if-exists=.env --import tsx server/src/index.ts",
+    "dev:web": "npm run dev --prefix web",
+    "build": "npm run build:server && npm run build:web",
+    "build:server": "tsc -p server/tsconfig.json",
+    "build:web": "npm run build --prefix web",
+    "test": "npm run test:server && npm run test:web",
+    "test:server": "node --env-file-if-exists=.env.test --import tsx --test \"server/src/**/*.test.ts\"",
+    "test:web": "npm run test --prefix web",
+    "db:generate": "node --env-file-if-exists=.env ./node_modules/drizzle-kit/bin.cjs generate",
+    "db:migrate": "node --env-file-if-exists=.env --import tsx server/src/db/migrate.ts",
+    "db:studio": "node --env-file-if-exists=.env ./node_modules/drizzle-kit/bin.cjs studio"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "livekit-server-sdk": "^2.18.0",
+    "pg": "^8.23.0",
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "@types/pg": "^8.23.1",
+    "concurrently": "^9.2.1",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.23.13",
+    "typescript": "~6.0.2"
+  }
+}

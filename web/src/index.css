@@ -1,0 +1,309 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Paleta estilo Discord — sobrescreve as chaves nativas de radius do
+ * Tailwind (sm/md/xl) pra bater com a escala de 3 valores do app
+ * (4/8/16px); nao usar rounded-lg/2xl/3xl aqui.
+ *
+ * Vocabulario de cor: codigo de feature/shared (features/, shared/,
+ * LeftSidebar.tsx) usa SEMPRE as classes de paleta crua abaixo (bg-bg-*,
+ * text-text-*, bg-blurple, text-red...), nunca as classes semanticas do
+ * shadcn (bg-background, bg-muted...) definidas mais abaixo — o app e
+ * sempre escuro, entao "muted"/"accent" sao mais ambiguos aqui do que os
+ * nomes descritivos. A camada semantica fica reservada pros componentes
+ * gerados em components/ui/*, que devem continuar semanticos pra nao
+ * conflitar com futuros `shadcn add`/`shadcn diff`.
+ *
+ * SUPERFICIES — antes os tons eram amostrados um a um do kit "Discord UI -
+ * Free UI Kit (Recreated)" no Figma, e o resultado nao formava escada:
+ * bg-primary e bg-tertiary caiam no MESMO #202225, bg-hover e bg-selected
+ * no MESMO #4e5058 (4 tokens, 2 cores), e o salto do canvas pro hover era
+ * de ~19% de luminancia — o item praticamente acendia embaixo do mouse.
+ * Agora a rampa e DERIVADA, nao amostrada: uma escada uniforme de 6 degraus
+ * (surface-000..500), cada degrau uma camada visual, e os nomes descritivos
+ * antigos viraram apelidos que apontam pra ela. Isso mantem a API que os
+ * ~70 arquivos de feature ja usam (bg-bg-sidebar, bg-bg-floating...) e ao
+ * mesmo tempo garante que a distancia entre camadas seja regular.
+ *
+ * Cor de destaque: mantido o blurple (#5865f2) — e a propria cor de marca
+ * do Discord, ja usada em toda a app (botoes primarios, foco, mic ativo
+ * etc.), entao ja "combina" de fabrica com esses cinzas sem precisar
+ * reintroduzir contraste em todo lugar que ja depende dela. */
+@theme {
+  /* escada base: cada degrau e uma camada visual, distancia regular */
+  --color-surface-000: #0e0f11;
+  --color-surface-100: #131519;
+  --color-surface-200: #191c21;
+  --color-surface-300: #1f232a;
+  --color-surface-400: #262b33;
+  --color-surface-500: #2f353f;
+
+  /* apelidos por papel — o que o codigo de feature realmente escreve */
+  --color-bg-sidebar: var(--color-surface-000);
+  --color-bg-primary: var(--color-surface-100);
+  --color-bg-secondary: var(--color-surface-200);
+  --color-bg-tertiary: var(--color-surface-200);
+  --color-bg-panel: var(--color-surface-200);
+  /* campo de texto (Input/Textarea, o app inteiro): NAO pode ser
+   * surface-200 — o proprio container mais comum onde ele aparece
+   * (ChatComposer) e bg-bg-panel, que TAMBEM e surface-200, entao o campo
+   * ficava com a mesma cor exata do fundo ao redor (bug reportado: "textarea
+   * com o mesmo background da pagina de chat"). Reaproveita surface-000 (o
+   * degrau mais fundo) — da o efeito "campo encaixado/afundado", distinto
+   * de QUALQUER superficie que o cerque (200 no chat, 300 no login/modal). */
+  --color-bg-textarea: var(--color-surface-000);
+  --color-bg-floating: var(--color-surface-300);
+  --color-bg-modal: var(--color-surface-300);
+  --color-bg-hover: var(--color-surface-400);
+  --color-bg-selected: var(--color-surface-500);
+  --color-bg-channel-active: var(--color-surface-500);
+  /* preto puro na chamada e intencional: o video deve ser a unica luz */
+  --color-bg-call: #000000;
+
+  /* Hierarquia de texto. Estava INVERTIDA: "muted" (#b5bac1) era mais claro
+   * que "secondary" (#aaaaaa), entao o hover de canal ocioso
+   * (text-muted -> text-secondary, ChannelTree) ESCURECIA em vez de clarear.
+   * Agora primary > secondary > muted, do mais forte ao mais apagado. */
+  --color-text-primary: #f2f3f5;
+  --color-text-secondary: #c7ccd4;
+  --color-text-muted: #949ba4;
+
+  /* Bordas — UM tom so agora, #29292D, pedido explicito: toda borda de
+   * separacao (sidebar, header do chat, secoes do modal, aba Midias...)
+   * tem que bater com a mesma cor do contorno "forte" (chip/anexo/card),
+   * nao so uma parte delas. Os dois tokens continuam existindo separados
+   * (nomes semanticos diferentes — subtle=separador estrutural,
+   * strong=contorno de objeto) caso um dia precisem divergir nao, mas hoje
+   * apontam pro MESMO hex de proposito.
+   *
+   * Historico do subtle antes desse pedido (ja obsoleto, mantido so pra
+   * contexto): #0d0e12 -> #181c24 -> #101319, cada um calibrado pixel a
+   * pixel contra as superficies da rampa. Esse ajuste fino deixou de
+   * valer — agora e so o mesmo #29292D do strong. */
+  --color-border-subtle: #29292d;
+  --color-border-strong: #29292d;
+  --color-border-accent: #5865f2;
+
+  --color-blurple: #5865f2;
+  --color-blurple-hover: #4752c4;
+  /* sem confirmacao no kit atual ainda — mantem o valor do kit classico. */
+  --color-green: #3ba55c;
+  --color-red: #ed4245;
+  /* #da373c — confirmado no botao "Disable Account" do kit atual (Discord
+   * classico usava #c03537 aqui). */
+  --color-red-hover: #da373c;
+  --color-red-text: #ff8589;
+  --color-yellow: #fee75c;
+  --color-fuchsia: #eb459e;
+  /* #00a8fc — confirmado no link "Reveal" do kit atual (praticamente
+   * identico ao #00aff4 do kit classico, so ajustado pra bater exato). Anel
+   * de foco SO de Input/Textarea (ver components/ui/input.tsx e
+   * textarea.tsx) — nao mexe no --ring semantico global (blurple, dos
+   * botoes) de proposito. */
+  --color-input-focus: #00a8fc;
+
+  /* Escala tipografica nomeada. Antes 68 dos ~82 tamanhos da app eram
+   * text-xs (12px) ou text-sm (14px) — duas classes carregando 85% da UI,
+   * escolhidas caso a caso, e nenhuma entrelinha definida em texto corrido.
+   * Os nomes abaixo dizem o PAPEL, nao o tamanho, entao o proximo ajuste de
+   * escala acontece so aqui em vez de em 25 arquivos. Cada degrau ja carrega
+   * sua entrelinha (sufixo --line-height), coisa que o Tailwind aplica junto
+   * com o font-size.
+   *
+   * Sem colisao com as cores: --color-text-primary gera a classe
+   * `text-text-primary`, enquanto --text-body gera `text-body`. */
+  --text-caption: 0.75rem;    /* 12px — metadado discreto: timestamp, badge */
+  --text-caption--line-height: 1.4;
+  /* label e body subiram um degrau extra (13->14, 15->16) depois do feedback
+   * de que sidebar e chat ainda liam pequeno — esses dois carregam quase todo
+   * o conteudo real (nome de canal/participante, mensagem, usuario), entao
+   * um ajuste aqui se propaga sozinho pra ambos sem editar arquivo por
+   * arquivo. caption/title/display ficaram como estavam de proposito: caption
+   * e metadado que deve continuar discreto, title/display ja atendiam bem. */
+  --text-label: 0.875rem;     /* 14px — conteudo secundario que se le */
+  --text-label--line-height: 1.45;
+  --text-body: 1rem;          /* 16px — corpo: mensagem, canal, botao */
+  --text-body--line-height: 1.5;
+  --text-title: 1.0625rem;    /* 17px — titulo de modal, nome do app */
+  --text-title--line-height: 1.35;
+  --text-display: 1.375rem;   /* 22px — telas de entrada */
+  --text-display--line-height: 1.25;
+
+  /* Fonte como token (era uma declaracao solta em html,body) — assim
+   * `font-sans` deixa de divergir silenciosamente do corpo do texto. */
+  --font-sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Roboto, Arial, sans-serif;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-xl: 16px;
+
+  /* Elevacao em dois degraus. Com as bordas escuras a sombra passa a
+   * carregar mais peso na separacao entre camadas, entao ela vira token em
+   * vez de continuar sendo o default do Tailwind escolhido a esmo
+   * (shadow-md/lg/sm/2xl apareciam misturados). */
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-popover: 0 8px 24px rgb(0 0 0 / 0.45);
+
+  /* Uma unica duracao de hover pra app inteira — antes convivia
+   * duration-100/150/200 e, na maioria dos casos, nenhuma. */
+  --default-transition-duration: 150ms;
+
+  --animate-sweep: sweep 1.15s ease-in-out infinite;
+  --animate-float-up: float-up 3s ease-out forwards;
+}
+
+@keyframes sweep {
+  0% { transform: translateX(-105%); }
+  100% { transform: translateX(370%); }
+}
+
+/* reacoes: sobe devagar e suave, sem "pop" nenhum — so um fade-in rapido no
+   inicio e um fade-out no fim, a subida em si e uniforme (ease-out cuida de
+   desacelerar sozinha, sem keyframe extra de velocidade no meio). */
+@keyframes float-up {
+  0% { transform: translateY(0) scale(0.9); opacity: 0; }
+  8% { transform: translateY(-6px) scale(1); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(-55vh) scale(1); opacity: 0; }
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
+}
+
+#root {
+  height: 100dvh;
+}
+
+/* scrollbar fina e escura — o polegar sobe pro degrau 300 (era o mesmo tom
+   do painel, praticamente invisivel na rampa nova). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-surface-300) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--color-surface-300); border-radius: 8px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--color-surface-400); }
+
+/* tela cheia de um quadro: sem cantos arredondados */
+.tile-fullscreen-target:fullscreen {
+  border-radius: 0;
+}
+
+/* emoji-picker-react (ChatComposer): a lib re-declara os --epr-dark-* na
+ * PROPRIA raiz (classe .epr-dark-theme, que Theme.DARK aplica), entao um
+ * override via `style` num ancestral (o PopoverContent) perde — a mesma
+ * custom property redeclarada mais perto do elemento final vence, nao a de
+ * mais longe. Precisa de uma regra de verdade batendo nessa classe, e como
+ * a lib injeta seu proprio <style> em runtime (so quando o picker monta,
+ * DEPOIS deste arquivo), so ganha o empate de ordem com !important — unico
+ * lugar do app que usa isso, e por causa dessa particularidade da lib, nao
+ * por preguica de especificidade. */
+.epr-dark-theme {
+  --epr-dark-bg-color: var(--color-bg-floating) !important;
+  --epr-dark-category-label-bg-color: var(--color-bg-floating) !important;
+  --epr-dark-search-input-bg-color: var(--color-bg-textarea) !important;
+  --epr-dark-search-input-bg-color-active: var(--color-bg-textarea) !important;
+  --epr-dark-text-color: var(--color-text-primary) !important;
+  --epr-dark-category-icon-active-color: var(--color-blurple) !important;
+  --epr-dark-highlight-color: var(--color-blurple) !important;
+  --epr-dark-hover-bg-color: var(--color-bg-hover) !important;
+  --epr-dark-focus-bg-color: var(--color-bg-hover) !important;
+  --epr-dark-reactions-bg-color: var(--color-bg-hover) !important;
+  --epr-dark-picker-border-color: var(--color-border-strong) !important;
+  --epr-picker-border-radius: var(--radius-md) !important;
+  /* --epr-header-padding vira o padding vertical da barra de busca E da
+   * fileira de icones de categoria (as duas usam a MESMA var) — 15px por
+   * padrao deixava um vao grande em cima/embaixo dos icones, reclamado
+   * explicitamente. */
+  --epr-header-padding: 8px var(--epr-horizontal-padding) !important;
+}
+
+/* label de categoria vem com text-transform:capitalize embutido (via
+ * `style`, nao custom property — nao da pra resolver so com os overrides
+ * acima), que capitaliza CADA palavra — "Carinhas e pessoas" (as strings
+ * pt-BR passadas via `categories`) virava "Carinhas E Pessoas". Sobrescreve
+ * pra respeitar a grafia exata que a gente manda. */
+.epr-emoji-category-label {
+  text-transform: none !important;
+}
+
+/* Navegadores nao aplicam cursor:pointer a <button> por padrao (so a <a
+ * href>) — e todo componente interativo do Base UI (Button, Switch,
+ * MenuItem, SelectTrigger, PopoverTrigger, DialogClose...) renderiza um
+ * <button> nativo por baixo, entao um unico seletor cobre a app inteira. */
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+
+/* ---------------------------------------------------------------------------
+ * shadcn/ui: tokens semanticos, indiretos pros tokens acima (uma unica
+ * fonte de verdade pra paleta). Sem .dark e sem o @custom-variant que a
+ * declarava — o app e sempre escuro, a classe nunca era aplicada a nenhum
+ * ancestral, entao toda variante dark: dos componentes gerados era codigo
+ * morto (e em switch.tsx/avatar.tsx era pior que morto: eles dependiam dela
+ * pra pintar, e renderizavam o ramo claro sobre fundo escuro). Sem tokens
+ * de chart nem de sidebar (nada usa graficos nem o sistema de Sidebar do
+ * shadcn) nem rampa de radius (usa a de 3 niveis definida acima).
+ * --------------------------------------------------------------------------- */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+:root {
+  --background: var(--color-bg-primary);
+  --foreground: var(--color-text-primary);
+  --card: var(--color-bg-floating);
+  --card-foreground: var(--color-text-primary);
+  --popover: var(--color-bg-floating);
+  --popover-foreground: var(--color-text-primary);
+  --primary: var(--color-blurple);
+  --primary-foreground: #ffffff;
+  --secondary: var(--color-bg-selected);
+  --secondary-foreground: var(--color-text-primary);
+  --muted: var(--color-bg-hover);
+  --muted-foreground: var(--color-text-muted);
+  --accent: var(--color-bg-selected);
+  --accent-foreground: var(--color-text-primary);
+  --destructive: var(--color-red);
+  --destructive-foreground: #ffffff;
+  /* --border alimenta tambem o default global do @layer base abaixo, entao
+   * fica no nivel sutil: a borda "invisivel" que so marca fronteira. Quem
+   * precisa de contorno visivel pede border-strong explicitamente. */
+  --border: var(--color-border-subtle);
+  --input: var(--color-border-strong);
+  --ring: var(--color-blurple);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+}

@@ -1,0 +1,18 @@
+# Sobe a aplicacao sozinha (sem proxy/SSL aqui — em producao isso roda atras
+# do Dokploy, que ja tem seu proprio Traefik + certificado automatico).
+# Util pra rodar localmente: docker compose up -d.
+#
+#   1. cp .env.example .env e preencha DATABASE_URL/LIVEKIT_*/etc.
+#   2. docker compose up -d
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./uploads:/app/uploads
+    mem_reservation: 512m
