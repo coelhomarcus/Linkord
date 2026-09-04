@@ -48,7 +48,10 @@ function CallParticipantRow({ id, name, avatar, viewerInSameChannel }: {
   const micMuted = trustLiveKit ? media.micMuted : (participant?.micMuted ?? true);
   const cameraOn = trustLiveKit ? !!media.cameraTrack : (participant?.cameraOn ?? false);
   const sharing = trustLiveKit ? !!media.screenTrack : (participant?.sharing ?? false);
-  const isSpeaking = trustLiveKit ? isSpeakingLive : (participant?.speaking ?? false);
+  // speaking border only shows when I can actually verify it myself
+  // (LiveKit, same room) — the Socket.IO self-report is accurate but noisy
+  // to show for a call I'm not in, so it's ignored here on purpose.
+  const isSpeaking = trustLiveKit && isSpeakingLive;
   const tint = colorFor(id);
   // deafened has no LiveKit track (see protocol.ts) — for myself it's
   // local state (instant); for others it comes from the Participant the
