@@ -5,19 +5,20 @@
 <h1 align="center">Linkord</h1>
 
 <p align="center">
-  Chat em tempo real, canais e chamadas de voz/tela — self-hosted, sem link de convite, sem SaaS de terceiros pra hospedar seus dados.
+  Chat em tempo real, canais e chamadas de voz/tela.
 </p>
 
 ## O que é
 
-Linkord é uma sala privada estilo Discord que você hospeda sozinho: contas de usuário, canais de texto organizados em categorias, chat persistido no Postgres, e um canal de voz único com câmera/tela via WebRTC (LiveKit). Registro é fechado por código de convite — não existe cadastro aberto por padrão.
+Linkord é uma plataforma de comunicação em tempo real com chamadas de voz, vídeo, texto e compartilhamento de tela.
 
-- Chat por canal: editar, apagar, reagir com emoji, responder mensagens, histórico persistido
-- Anexos (upload em pedaços, até 2GB) e foto de perfil
-- Embeds automáticos de YouTube/Twitch/mídia direta e preview de link genérico (Open Graph)
-- Canal de voz com câmera/tela compartilhada via LiveKit (SFU gerenciado, sem porta UDP pra abrir)
-- Notificação opcional no Discord quando alguém entra na chamada ou compartilha tela
-- Painel de moderação (admin apaga contas) e aba de mídias (todo upload/embed do histórico, paginado)
+- Chat por canal
+- Anexos (upload em chunks, até 2GB)
+- Embeds automáticos de YouTube/Twitch/mídia direta e Open Graph
+- Canal de voz com câmera e tela compartilhada (LiveKit)
+- Painel de moderação
+- Aba de mídias
+- Notificação no Discord quando alguém entra na chamada ou compartilha tela (Webhook)
 
 ## Stack
 

@@ -3,7 +3,7 @@ import { Server, type Socket } from 'socket.io';
 import { config } from '../config/env.js';
 import {
   participants as participantsMap, join, send, broadcast, publicParticipant, handleClose, ipOf,
-  listOnlineUserIds, handlers as participantHandlers,
+  listOnlineUserIds, setVoiceChannelId, handlers as participantHandlers,
 } from './participants.js';
 import * as livekit from './livekit.js';
 import * as reactions from './reactions.js';
@@ -43,15 +43,10 @@ interface JoinMessage {
 async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
   const p = join(socket, msg);
   if (!p) return;
-  // chat/presenca nao devem cair junto se o LiveKit estiver mal configurado
-  // (aviso ja sai no boot, ver src/index.ts) — welcome vai com livekitToken
-  // null e o cliente so fica sem video nesse caso.
-  let livekitToken: string | null = null;
-  try {
-    livekitToken = await livekit.createToken(p);
-  } catch (err) {
-    console.warn(`[${p.id}] falha ao gerar token do LiveKit: ${err instanceof Error ? err.message : err}`);
-  }
+  // token do LiveKit NAO e mais mintado aqui — so ter a aba aberta/logada nao
+  // deve abrir uma sessao de voz de verdade. Isso agora acontece so em
+  // handleVoiceJoin, quando a pessoa clica de fato num canal de voz
+  // especifico (ver protocolo 'voice-join'/'voice-token').
   send(socket, {
     t: 'welcome',
     id: p.id,
@@ -66,12 +61,41 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
     users: await listAllUsers(),
     onlineUserIds: listOnlineUserIds(),
     storageUsage: await attachments.getUsage(),
-    livekitToken,
     livekitUrl: config.LIVEKIT_URL,
-    livekitRoomName: config.LIVEKIT_ROOM_NAME,
   });
   broadcast({ t: 'participant-joined', participant: publicParticipant(p) }, p.id);
   console.log(`[${p.id}] entrou (${p.name}) de ${socket.ip}`);
+}
+
+/** Entrar de fato num canal de voz especifico — minta um token do LiveKit
+ * pra sala DESSE canal (`${LIVEKIT_ROOM_NAME}-${channelId}`, uma sala por
+ * canal de voz) e marca `p.voiceChannelId`, so agora (nao mais em handleJoin)
+ * pra abrir uma sessao de voz de verdade so quando a pessoa realmente clica
+ * num canal de voz. Trocar de canal de voz e so chamar isso nele de novo —
+ * o cliente e quem desconecta da Room anterior antes de conectar na nova. */
+async function handleVoiceJoin(socket: AppSocket, msg: { channelId?: string }): Promise<void> {
+  const p = participantsMap.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  const channelId = String(msg.channelId || '');
+  if (!channelId) return;
+  const type = await channels.getChannelType(channelId);
+  if (type !== 'voice') return;
+  let livekitToken: string;
+  try {
+    livekitToken = await livekit.createToken(p, `${config.LIVEKIT_ROOM_NAME}-${channelId}`);
+  } catch (err) {
+    console.warn(`[${p.id}] falha ao gerar token do LiveKit: ${err instanceof Error ? err.message : err}`);
+    send(socket, { t: 'error', code: 'livekit-unavailable', message: 'Video/voz indisponivel no momento.' });
+    return;
+  }
+  setVoiceChannelId(p, channelId);
+  send(socket, { t: 'voice-token', channelId, livekitUrl: config.LIVEKIT_URL, livekitToken });
+}
+
+function handleVoiceLeave(socket: AppSocket): void {
+  const p = participantsMap.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  setVoiceChannelId(p, null);
 }
 
 /** Roda um handler (sincrono ou async) isolado de erro — sem isso, uma
@@ -126,6 +150,8 @@ export function createWsServer(httpServer: HttpServer): Server {
     socket.onAny((eventName: string, payload: unknown) => {
       if (eventName === 'join') return safeHandle('join', socket, payload || {}, (s, p) => handleJoin(s, (p || {}) as JoinMessage));
       if (eventName === 'ping') return safeHandle('ping', socket, payload || {}, (s) => send(s, { t: 'pong' }));
+      if (eventName === 'voice-join') return safeHandle('voice-join', socket, payload || {}, (s, m) => handleVoiceJoin(s, (m || {}) as { channelId?: string }));
+      if (eventName === 'voice-leave') return safeHandle('voice-leave', socket, payload || {}, (s) => handleVoiceLeave(s));
 
       const handler = handlers[eventName];
       if (handler) safeHandle(eventName, socket, payload || {}, handler);

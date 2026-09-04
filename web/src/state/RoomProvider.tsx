@@ -2,7 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { io } from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
-import { ConnectionState, Room, RoomEvent, Track } from 'livekit-client';
+import { Room, RoomEvent, Track } from 'livekit-client';
 import type { LocalTrackPublication } from 'livekit-client';
 import { RoomContext } from './RoomContext';
 import type { AnchorRect, AudioHandle, ReactionEvent, TileDomHandle } from './RoomContext';
@@ -106,6 +106,19 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeChannelId, setActiveChannelIdState] = useState<string | null>(null);
   const activeChannelIdRef = useRef<string | null>(null);
+  // canal de voz em que estou conectada agora (ou null) — mesmo motivo de
+  // activeChannelIdRef acima: handleServerMessage e registrado uma unica vez
+  // no mount (dentro de connect()), entao precisa ler isso por ref, nao por
+  // state fechado. pendingVoiceChannelIdRef existe so pra 'voice-token'
+  // conseguir descartar uma resposta atrasada de um voice-join anterior, se
+  // a pessoa trocar de canal de voz rapido antes da primeira resposta chegar.
+  const [activeVoiceChannelId, setActiveVoiceChannelIdState] = useState<string | null>(null);
+  const activeVoiceChannelIdRef = useRef<string | null>(null);
+  const pendingVoiceChannelIdRef = useRef<string | null>(null);
+  const setActiveVoiceChannelId = useCallback((id: string | null) => {
+    activeVoiceChannelIdRef.current = id;
+    setActiveVoiceChannelIdState(id);
+  }, []);
   // tela ativa (chat/call) — mora em Shell (App.tsx), nao aqui, mas o som de
   // mensagem nova (mais abaixo) precisa saber se a pessoa ja esta OLHANDO o
   // chat pra nao tocar a toa; mesmo motivo/padrao de activeChannelIdRef
@@ -171,7 +184,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const createCategory = useCallback((name: string) => sendWs({ t: 'category-create', name }), [sendWs]);
   const deleteCategory = useCallback((categoryId: string) => sendWs({ t: 'category-delete', categoryId }), [sendWs]);
   const renameCategory = useCallback((categoryId: string, name: string) => sendWs({ t: 'category-rename', categoryId, name }), [sendWs]);
-  const createChannel = useCallback((categoryId: string, name: string) => sendWs({ t: 'channel-create', categoryId, name }), [sendWs]);
+  const createChannel = useCallback((categoryId: string, name: string, type?: 'text' | 'voice') => sendWs({ t: 'channel-create', categoryId, name, type }), [sendWs]);
   const deleteChannel = useCallback((channelId: string) => sendWs({ t: 'channel-delete', channelId }), [sendWs]);
   const renameChannel = useCallback((channelId: string, name: string) => sendWs({ t: 'channel-rename', channelId, name }), [sendWs]);
   const reorderCategories = useCallback((orderedIds: string[]) => sendWs({ t: 'categories-reorder', orderedIds }), [sendWs]);
@@ -201,14 +214,39 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     sendWs({ t: 'deafened', value: next });
   }, [deafened, setMicMuted, sendWs]);
 
-  // "sair da chamada" de verdade: para camera/tela (ja desligam o hardware)
-  // e despublica o mic (leaveMic — diferente de mutar). Depois disso
-  // `inCall` (App.tsx, = micActivated) volta a false.
-  const leaveCall = useCallback(async () => {
+  // "sair do canal de voz" de verdade: para camera/tela (ja desligam o
+  // hardware), despublica o mic (leaveMic — diferente de mutar), desconecta
+  // da Room do LiveKit desse canal e avisa o servidor. Depois disso `inCall`
+  // (App.tsx, = micActivated) volta a false.
+  const leaveVoiceChannel = useCallback(async () => {
     if (state.me.cameraOn) stopCamera();
     if (state.me.sharing) stopSharing();
     await leaveMic();
-  }, [state.me.cameraOn, state.me.sharing, stopCamera, stopSharing, leaveMic]);
+    livekitRoom.disconnect();
+    sendWs({ t: 'voice-leave' });
+    pendingVoiceChannelIdRef.current = null;
+    setActiveVoiceChannelId(null);
+  }, [state.me.cameraOn, state.me.sharing, stopCamera, stopSharing, leaveMic, livekitRoom, sendWs, setActiveVoiceChannelId]);
+
+  // entrar de fato num canal de voz especifico — chamado ao clicar num canal
+  // de voz na sidebar (LeftSidebar.tsx#handleSelectChannel). Sai do canal
+  // atual primeiro se for um diferente (so um canal de voz por vez, igual o
+  // Discord); o resto (conectar a Room, ativar o mic) acontece ao receber a
+  // resposta 'voice-token', ver handleServerMessage abaixo.
+  const joinVoiceChannel = useCallback(async (channelId: string) => {
+    if (activeVoiceChannelIdRef.current === channelId) return;
+    if (activeVoiceChannelIdRef.current) await leaveVoiceChannel();
+    pendingVoiceChannelIdRef.current = channelId;
+    sendWs({ t: 'voice-join', channelId });
+  }, [sendWs, leaveVoiceChannel]);
+
+  // leaveVoiceChannel muda de identidade toda vez que cameraOn/sharing mudam
+  // (le state.me atual) — handleServerMessage abaixo e fechado uma unica vez
+  // no mount (mesmo motivo de activeChannelIdRef), entao precisa chamar essa
+  // versao SEMPRE ATUAL por ref, senao chamaria uma capturada no mount (com
+  // cameraOn/sharing sempre falsos) pro caso de "canal de voz apagado".
+  const leaveVoiceChannelRef = useRef(leaveVoiceChannel);
+  useEffect(() => { leaveVoiceChannelRef.current = leaveVoiceChannel; }, [leaveVoiceChannel]);
 
   // desliga camera/tela sozinho quando o usuario para pelo controle nativo
   // do navegador (ex: botao "Parar apresentacao" da barra do Chrome) — o
@@ -299,13 +337,21 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           const firstChannel = m.categories.flatMap((cat) => cat.channels).find((ch) => ch.type === 'text');
           if (firstChannel) openChannel(firstChannel.id);
         }
-        // a Room do LiveKit cuida da propria reconexao (ICE restart) entre
-        // quedas de rede curtas; so precisa (re)conectar aqui se ainda nao
-        // estiver conectada nem conectando (ex: primeiro welcome, ou um
-        // welcome apos a Room ter caido de vez).
-        if (m.livekitToken && livekitRoom.state === ConnectionState.Disconnected) {
-          livekitRoom.connect(m.livekitUrl, m.livekitToken).catch((err) => console.warn('LiveKit connect falhou', err));
-        }
+        // NAO conecta na Room do LiveKit aqui — so ter a aba aberta/logada
+        // nao deve abrir uma sessao de voz de verdade. Isso agora so
+        // acontece explicitamente em joinVoiceChannel (clicar num canal de
+        // voz), que pede um token novo pra CADA canal (ver 'voice-token').
+        break;
+      }
+      case 'voice-token': {
+        // corrida: um segundo voice-join (troca rapida de canal) pode
+        // responder depois de outro — so aplica se ainda for o canal que
+        // pedimos por ultimo.
+        if (m.channelId !== pendingVoiceChannelIdRef.current) break;
+        livekitRoom.connect(m.livekitUrl, m.livekitToken)
+          .then(() => activateMic())
+          .catch((err) => console.warn('LiveKit connect falhou', err));
+        setActiveVoiceChannelId(m.channelId);
         break;
       }
       case 'participant-joined':
@@ -399,6 +445,11 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           next.delete(m.channelId);
           return next;
         });
+        // canal de voz apagado enquanto eu estava nele — o servidor ja
+        // limpou meu voiceChannelId por baixo, so falta eu mesma desconectar
+        // da Room/parar mic-camera-tela (senao a UI ficaria "conectada" num
+        // canal que nem existe mais).
+        if (m.channelId === activeVoiceChannelIdRef.current) leaveVoiceChannelRef.current();
         break;
       case 'user-online':
         setOnlineUserIds((prev) => (prev.has(m.userId) ? prev : new Set(prev).add(m.userId)));
@@ -436,10 +487,13 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           intentionalCloseRef.current = true;
           try { socketRef.current?.disconnect(); } catch { /* ok */ }
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Sala cheia, tente mais tarde.' });
-        } else if (m.code === 'category-not-empty') {
+        } else if (m.code === 'category-not-empty' || m.code === 'cannot-delete-last-voice-channel') {
           setChannelsError(m.message);
         } else if (m.code === 'cannot-delete-self') {
           setModerationError(m.message);
+        } else if (m.code === 'livekit-unavailable') {
+          pendingVoiceChannelIdRef.current = null;
+          dispatch({ type: 'SET_SHARE_ERROR', message: m.message });
         } else {
           // codigo desconhecido — pelo menos aparece no console em vez de
           // falhar em silencio (aconteceu antes com esse mesmo handler).
@@ -448,7 +502,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         break;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, pushReaction, livekitRoom, openChannel]);
+  }, [dispatch, pushReaction, livekitRoom, openChannel, activateMic, setActiveVoiceChannelId]);
 
   const connect = useCallback(() => {
     intentionalCloseRef.current = false;
@@ -538,7 +592,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     <RoomContext.Provider
       value={{
         state, dispatch, sendWs, tileDomRegistry, audioRegistry, audioUnlocked, deafened, toggleDeafened, livekitRoom, notifyActiveView,
-        startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted, leaveCall, quality, setQuality,
+        activeVoiceChannelId, joinVoiceChannel,
+        startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted, leaveVoiceChannel, quality, setQuality,
         updateAvatar, uploadAvatarFile, menuTarget, openTileMenu, closeTileMenu,
         reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume,
         categories, activeChannelId, openChannel, messagesByChannel, unreadByChannel,

@@ -6,15 +6,16 @@ import { participants, broadcast, send } from '../realtime/participants.js';
 import type { AppSocket, HandlerTable, Participant } from '../types.js';
 
 // ---------------------------------------------------------------------------
-// Categorias e canais — de TEXTO (admin cria/apaga/reordena a vontade) ou de
-// VOZ (a Chamada: sempre existe exatamente UM, ensureVoiceChannelExists
-// garante isso no boot; criar outro ou apagar o unico que existe fica pra
-// depois). Quadro continua fixo, fora desse sistema (decisao ja tomada,
-// nao mencionado quando a Chamada entrou pra arvore). Toda mutacao
-// rebroadcast a ARVORE INTEIRA fresca (`channels-tree`) em vez de eventos
-// incrementais — a estrutura e pequena (gerenciada so pelo admin), entao
-// "buscar tudo de novo e reenviar" e mais simples e mais dificil de deixar
-// o cliente dessincronizado do que reconciliar diffs.
+// Categorias e canais — de TEXTO ou de VOZ, admin cria/apaga/reordena a
+// vontade (so trava apagar o ULTIMO canal de voz, ver handleChannelDelete —
+// a sala nunca pode ficar sem nenhum). ensureVoiceChannelExists (abaixo)
+// so garante que exista pelo menos um na primeira vez que o servidor sobe.
+// Quadro continua fixo, fora desse sistema (decisao ja tomada, nao
+// mencionado quando a Chamada entrou pra arvore). Toda mutacao rebroadcast
+// a ARVORE INTEIRA fresca (`channels-tree`) em vez de eventos incrementais —
+// a estrutura e pequena (gerenciada so pelo admin), entao "buscar tudo de
+// novo e reenviar" e mais simples e mais dificil de deixar o cliente
+// dessincronizado do que reconciliar diffs.
 // ---------------------------------------------------------------------------
 
 interface ChannelSummary {
@@ -91,6 +92,14 @@ export async function channelExists(channelId: string): Promise<boolean> {
   return !!row;
 }
 
+/** Usado por realtime/socket.ts#handleVoiceJoin pra validar que o canal
+ * escolhido existe e e mesmo de voz antes de mintar um token do LiveKit pra
+ * ele — null cobre tanto "nao existe" quanto qualquer erro de leitura. */
+export async function getChannelType(channelId: string): Promise<string | null> {
+  const [row] = await db.select({ type: channels.type }).from(channels).where(eq(channels.id, channelId)).limit(1);
+  return row?.type ?? null;
+}
+
 async function broadcastTree(): Promise<void> {
   broadcast({ t: 'channels-tree', categories: await listTree() });
 }
@@ -127,19 +136,18 @@ async function handleCategoryDelete(socket: AppSocket, msg: { categoryId?: strin
   await broadcastTree();
 }
 
-async function handleChannelCreate(socket: AppSocket, msg: { categoryId?: string; name?: string }): Promise<void> {
+async function handleChannelCreate(socket: AppSocket, msg: { categoryId?: string; name?: string; type?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket || !isAdmin(p)) return;
   const categoryId = String(msg.categoryId || '');
   const name = sanitizeChannelName(msg.name);
+  const type = msg.type === 'voice' ? 'voice' : 'text';
   if (!categoryId || !name) return;
   const [category] = await db.select({ id: categories.id }).from(categories).where(eq(categories.id, categoryId)).limit(1);
   if (!category) return;
   const rows = await db.select({ position: channels.position }).from(channels).where(eq(channels.categoryId, categoryId));
   const position = rows.length ? Math.max(...rows.map((r) => r.position)) + 1 : 0;
-  // sempre 'text' — criar outro canal de voz fica pro futuro (so pode existir
-  // UM, ver ensureVoiceChannelExists), entao o tipo nunca vem do cliente.
-  await db.insert(channels).values({ id: crypto.randomUUID(), categoryId, name, type: 'text', position });
+  await db.insert(channels).values({ id: crypto.randomUUID(), categoryId, name, type, position });
   await broadcastTree();
 }
 
@@ -151,11 +159,14 @@ async function handleChannelDelete(socket: AppSocket, msg: { channelId?: string 
   const [existing] = await db.select({ type: channels.type }).from(channels).where(eq(channels.id, channelId)).limit(1);
   if (!existing) return;
   if (existing.type === 'voice') {
-    // so existe UM canal de voz e ainda nao da pra criar outro — apagar o
-    // unico deixaria a sala sem chamada nenhuma ate um restart do servidor
-    // (ensureVoiceChannelExists so roda no boot).
-    send(socket, { t: 'error', code: 'cannot-delete-voice-channel', message: 'Ainda nao e possivel apagar o canal de voz.' });
-    return;
+    const voiceChannels = await db.select({ id: channels.id }).from(channels).where(eq(channels.type, 'voice'));
+    if (voiceChannels.length <= 1) {
+      // a sala nunca pode ficar sem NENHUM canal de voz — apagar o ultimo
+      // deixaria isso so recuperavel com um restart do servidor
+      // (ensureVoiceChannelExists so roda no boot).
+      send(socket, { t: 'error', code: 'cannot-delete-last-voice-channel', message: 'Precisa existir pelo menos um canal de voz.' });
+      return;
+    }
   }
   // import() dinamico (nao no topo do arquivo) so pra quebrar o ciclo —
   // modules/attachments.ts ja importa channelExists DESTE arquivo, um

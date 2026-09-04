@@ -43,7 +43,7 @@ function ControlButton({ onClick, label, icon, iconColorClass }: {
  * do estado "ainda nao ativado": isso ja aconteceu antes dela existir (ver
  * o clique em "Chamada" na sidebar). */
 export function CallControlBar() {
-  const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, toggleMicMuted, deafened, toggleDeafened, leaveCall, sendReaction } = useRoom();
+  const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, toggleMicMuted, deafened, toggleDeafened, leaveVoiceChannel, sendReaction } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
   const cameraOn = state.me.cameraOn;
   const sharing = state.me.sharing;
@@ -130,7 +130,7 @@ export function CallControlBar() {
 
         <Tooltip>
           <TooltipTrigger
-            onClick={leaveCall}
+            onClick={leaveVoiceChannel}
             aria-label="Sair da chamada"
             className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), 'h-11 w-11 rounded-full bg-red text-white hover:bg-red-hover')}
           >

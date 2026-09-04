@@ -18,7 +18,6 @@ import { sectionLabelClass } from '../shared/SectionLabel';
 import { cn } from '@/shared/lib/utils';
 import { useParticipantMedia, useIsSpeaking } from '../features/sharing/useLiveKitTrack';
 import { Avatar, colorFor } from '../shared/Avatar';
-import type { AppView } from './LeftSidebar';
 import type { Category, Channel } from '../types/protocol';
 
 /** Uma linha de participante conectado na chamada — decide sozinha se
@@ -125,12 +124,10 @@ function SortableChannelRow({ channel, categoryId, active, unread, isAdmin, onSe
               <Pencil size={14} />
               <span>Renomear</span>
             </DropdownMenuItem>
-            {channel.type !== 'voice' && (
-              <DropdownMenuItem variant="destructive" onClick={() => setConfirmOpen(true)}>
-                <Trash2 size={14} />
-                <span>Apagar</span>
-              </DropdownMenuItem>
-            )}
+            <DropdownMenuItem variant="destructive" onClick={() => setConfirmOpen(true)}>
+              <Trash2 size={14} />
+              <span>Apagar</span>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       )}
@@ -147,7 +144,11 @@ function SortableChannelRow({ channel, categoryId, active, unread, isAdmin, onSe
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title="Apagar canal"
-        description={`Isso apaga "${channel.name}" e TODAS as mensagens dele pra sempre. Essa acao nao pode ser desfeita.`}
+        description={
+          channel.type === 'voice'
+            ? `Isso apaga o canal de voz "${channel.name}" pra sempre. Essa acao nao pode ser desfeita.`
+            : `Isso apaga "${channel.name}" e TODAS as mensagens dele pra sempre. Essa acao nao pode ser desfeita.`
+        }
         confirmLabel="Apagar"
         destructive
         onConfirm={onDelete}
@@ -156,14 +157,13 @@ function SortableChannelRow({ channel, categoryId, active, unread, isAdmin, onSe
   );
 }
 
-function CategoryBlock({ category, activeView, activeChannelId, isAdmin, onSelectChannel }: {
+function CategoryBlock({ category, activeChannelId, isAdmin, onSelectChannel }: {
   category: Category;
-  activeView: AppView;
   activeChannelId: string | null;
   isAdmin: boolean;
   onSelectChannel: (channel: Channel) => void;
 }) {
-  const { state, unreadByChannel, deleteChannel, deleteCategory, renameCategory } = useRoom();
+  const { state, activeVoiceChannelId, unreadByChannel, deleteChannel, deleteCategory, renameCategory } = useRoom();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: category.id,
     data: { type: 'category' as const },
@@ -223,7 +223,7 @@ function CategoryBlock({ category, activeView, activeChannelId, isAdmin, onSelec
               <SortableChannelRow
                 channel={ch}
                 categoryId={category.id}
-                active={ch.type === 'voice' ? activeView === 'call' : ch.id === activeChannelId}
+                active={ch.type === 'voice' ? ch.id === activeVoiceChannelId : ch.id === activeChannelId}
                 unread={unreadByChannel.get(ch.id) ?? 0}
                 isAdmin={isAdmin}
                 onSelect={() => onSelectChannel(ch)}
@@ -231,8 +231,10 @@ function CategoryBlock({ category, activeView, activeChannelId, isAdmin, onSelec
               />
               {ch.type === 'voice' && (
                 <div className="ml-4 flex flex-col gap-0.5 py-0.5 pl-2">
-                  {state.me.id && <CallParticipantRow id={state.me.id} name={state.me.name} avatar={state.me.avatar} />}
-                  {[...state.participants.values()].map((p) => (
+                  {state.me.id && activeVoiceChannelId === ch.id && (
+                    <CallParticipantRow id={state.me.id} name={state.me.name} avatar={state.me.avatar} />
+                  )}
+                  {[...state.participants.values()].filter((p) => p.voiceChannelId === ch.id).map((p) => (
                     <CallParticipantRow key={p.id} id={p.id} name={p.name} avatar={p.avatar} />
                   ))}
                 </div>
@@ -265,7 +267,6 @@ function CategoryBlock({ category, activeView, activeChannelId, isAdmin, onSelec
 }
 
 interface ChannelTreeProps {
-  activeView: AppView;
   activeChannelId: string | null;
   onSelectChannel: (channel: Channel) => void;
 }
@@ -278,7 +279,7 @@ interface ChannelTreeProps {
  * outra categoria antes do servidor confirmar, e onDragEnd manda o pedido
  * final — a proxima `channels-tree` do servidor (fonte de verdade) sincroniza
  * de volta assim que chegar. */
-export function ChannelTree({ activeView, activeChannelId, onSelectChannel }: ChannelTreeProps) {
+export function ChannelTree({ activeChannelId, onSelectChannel }: ChannelTreeProps) {
   const { state, categories, reorderCategories, reorderChannels, channelsError, clearChannelsError } = useRoom();
   const isAdmin = state.me.role === 'admin';
   const [localCategories, setLocalCategories] = useState<Category[]>(categories);
@@ -368,7 +369,7 @@ export function ChannelTree({ activeView, activeChannelId, onSelectChannel }: Ch
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
         <SortableContext items={localCategories.map((c) => c.id)} strategy={verticalListSortingStrategy}>
           {localCategories.map((cat) => (
-            <CategoryBlock key={cat.id} category={cat} activeView={activeView} activeChannelId={activeChannelId} isAdmin={isAdmin} onSelectChannel={onSelectChannel} />
+            <CategoryBlock key={cat.id} category={cat} activeChannelId={activeChannelId} isAdmin={isAdmin} onSelectChannel={onSelectChannel} />
           ))}
         </SortableContext>
       </DndContext>
@@ -383,11 +384,13 @@ export function NewChannelDialog({ open, onOpenChange }: { open: boolean; onOpen
   const { categories, createChannel } = useRoom();
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [type, setType] = useState<'text' | 'voice'>('text');
 
   useEffect(() => {
     if (open) {
       setName('');
       setCategoryId(categories[0]?.id ?? '');
+      setType('text');
     }
   }, [open, categories]);
 
@@ -395,7 +398,7 @@ export function NewChannelDialog({ open, onOpenChange }: { open: boolean; onOpen
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed || !categoryId) return;
-    createChannel(categoryId, trimmed);
+    createChannel(categoryId, trimmed, type);
     onOpenChange(false);
   }
 
@@ -406,6 +409,19 @@ export function NewChannelDialog({ open, onOpenChange }: { open: boolean; onOpen
       <DialogContent className="max-w-90 bg-bg-modal p-6">
         <DialogTitle className="text-title font-bold text-text-primary">Novo canal</DialogTitle>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label className={sectionLabelClass}>Tipo</Label>
+            <div className="flex gap-2">
+              <Button type="button" variant={type === 'text' ? 'default' : 'outline'} className="flex-1" onClick={() => setType('text')}>
+                <Hash size={16} />
+                <span>Texto</span>
+              </Button>
+              <Button type="button" variant={type === 'voice' ? 'default' : 'outline'} className="flex-1" onClick={() => setType('voice')}>
+                <Volume2 size={16} />
+                <span>Voz</span>
+              </Button>
+            </div>
+          </div>
           <div className="flex flex-col gap-1.5">
             <Label className={sectionLabelClass}>Categoria</Label>
             <Select value={categoryId} onValueChange={(v) => v && setCategoryId(v)}>

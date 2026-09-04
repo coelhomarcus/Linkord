@@ -17,6 +17,11 @@ export interface Participant {
   // proprio cliente anuncia (ver ClientMessage 'deafened') pra quem mais
   // puder mostrar o icone, igual o Discord mostra nos outros da call.
   deafened: boolean;
+  // canal de voz em que esta agora, ou null se nao esta em nenhum — setado
+  // pelo servidor so em 'voice-join'/'voice-leave' explicitos, nunca so por
+  // ter a aba aberta. Usado pra sidebar mostrar quem esta em CADA canal de
+  // voz (o LiveKit em si so da participantes da MINHA sala atual).
+  voiceChannelId: string | null;
 }
 
 // Lista curta e fixa — evita aceitar texto arbitrario como "reacao".
@@ -81,10 +86,10 @@ export interface StorageUsage {
   maxBytes: number;
 }
 
-// Categorias/canais — 'text' (chat, o admin cria/apaga/reordena a vontade) ou
-// 'voice' (a Chamada — sempre existe exatamente UM, servidor garante isso;
-// criar outro/apagar o unico fica pro futuro). Quadro continua fixo, fora
-// desse sistema (nao foi mencionado quando a Chamada entrou pra arvore).
+// Categorias/canais — 'text' ou 'voice', o admin cria/apaga/reordena os dois
+// a vontade (so trava apagar o ULTIMO canal de voz — a sala nunca pode ficar
+// sem nenhum). Quadro continua fixo, fora desse sistema (nao foi mencionado
+// quando a Chamada entrou pra arvore).
 export interface Channel {
   id: string;
   name: string;
@@ -122,7 +127,7 @@ export type ClientMessage =
   | { t: 'category-create'; name: string }
   | { t: 'category-delete'; categoryId: string }
   | { t: 'category-rename'; categoryId: string; name: string }
-  | { t: 'channel-create'; categoryId: string; name: string }
+  | { t: 'channel-create'; categoryId: string; name: string; type?: 'text' | 'voice' }
   | { t: 'channel-delete'; channelId: string }
   | { t: 'channel-rename'; channelId: string; name: string }
   // apagar conta — aba Moderacao dos Ajustes, admin-only (servidor
@@ -137,6 +142,11 @@ export type ClientMessage =
   // servidor nao tem visibilidade de quem esta na chamada/compartilhando
   // tela (isso vive so no LiveKit, ver useParticipantMedia.ts).
   | { t: 'call-event'; kind: 'joined' | 'screenshare' }
+  // entrar/sair de um canal de voz especifico — so isso minta um token do
+  // LiveKit (ver ServerMessage 'voice-token') e marca voiceChannelId no
+  // participante; so ter a aba aberta/logada NAO faz isso mais sozinho.
+  | { t: 'voice-join'; channelId: string }
+  | { t: 'voice-leave' }
   | { t: 'leave' }
   | { t: 'ping' };
 
@@ -148,12 +158,16 @@ export type ServerMessage =
       maxParticipants: number; participants: Participant[];
       categories: Category[]; users: PublicUser[]; onlineUserIds: string[];
       storageUsage: StorageUsage;
-      // credenciais pra conectar na Room unica do LiveKit (camera/tela) —
-      // mesma identidade (id) do participante no Socket.IO. null quando o
-      // servidor nao tem LIVEKIT_API_KEY/SECRET configurados — o resto da
-      // sala (chat, quadro, presenca) continua funcionando sem video.
-      livekitToken: string | null; livekitUrl: string; livekitRoomName: string;
+      // so o endpoint do LiveKit (nao e segredo) — o TOKEN de acesso agora so
+      // vem depois, em resposta a um 'voice-join' explicito pra um canal de
+      // voz especifico (ver 'voice-token' abaixo), nao mais automatico aqui.
+      livekitUrl: string;
     }
+  // resposta a 'voice-join' — credenciais pra conectar na Room do LiveKit
+  // desse canal especifico. Ausente (nunca chega) se o servidor nao tem
+  // LIVEKIT_API_KEY/SECRET configurados ou o canal e invalido; nesse caso o
+  // cliente recebe um 'error' em vez disso.
+  | { t: 'voice-token'; channelId: string; livekitUrl: string; livekitToken: string }
   | { t: 'participant-joined'; participant: Participant }
   | { t: 'participant-updated'; participant: Participant }
   | { t: 'participant-left'; id: string }

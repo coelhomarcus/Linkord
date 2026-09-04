@@ -77,19 +77,28 @@ export interface RoomContextValue {
    * nova saber se a pessoa ja esta olhando o chat (Shell, em App.tsx, chama
    * isso sempre que activeView muda). */
   notifyActiveView: (view: 'chat' | 'call') => void;
+  /** Canal de voz em que estou conectada agora, ou null — so muda por
+   * joinVoiceChannel/leaveVoiceChannel (nunca automatico so por abrir o
+   * site), ver RoomProvider.tsx. */
+  activeVoiceChannelId: string | null;
+  /** Entra de fato num canal de voz especifico: sai do canal atual se
+   * houver um diferente, pede um token do LiveKit pra ESSE canal, conecta a
+   * Room e ativa o mic — tudo isso e o que hoje "clicar na Chamada" faz. */
+  joinVoiceChannel: (channelId: string) => void;
   startSharing: () => Promise<void>;
   stopSharing: () => void;
   startCamera: () => Promise<void>;
   stopCamera: () => void;
-  /** Pede permissao + publica o mic, ja desmutado — chamado ao clicar em
-   * "Chamada" na sidebar (App.tsx), nao mais automatico. Idempotente:
-   * seguro chamar de novo (ex: retry apos permissao negada). */
+  /** Pede permissao + publica o mic, ja desmutado — chamado por
+   * joinVoiceChannel depois que a Room conecta. Idempotente: seguro chamar
+   * de novo (ex: retry apos permissao negada). */
   activateMic: () => Promise<void>;
   /** So alterna mudo/desmutado — assume que activateMic ja rodou. */
   toggleMicMuted: () => Promise<void>;
-  /** Sai da chamada de verdade (despublica mic, para camera/tela) — ver
-   * useMicrophone.ts. Depois disso, ativar de novo pede o mic de novo. */
-  leaveCall: () => Promise<void>;
+  /** Sai do canal de voz atual de verdade (despublica mic, para camera/tela,
+   * desconecta a Room e avisa o servidor) — ver useMicrophone.ts. Depois
+   * disso, entrar de novo (ou noutro canal) pede o mic de novo. */
+  leaveVoiceChannel: () => Promise<void>;
   quality: Quality;
   setQuality: (q: Quality) => void;
   /** So o avatar e editavel em sessao — nome e o username da conta, imutavel. */
@@ -151,7 +160,7 @@ export interface RoomContextValue {
   createCategory: (name: string) => void;
   deleteCategory: (categoryId: string) => void;
   renameCategory: (categoryId: string, name: string) => void;
-  createChannel: (categoryId: string, name: string) => void;
+  createChannel: (categoryId: string, name: string, type?: 'text' | 'voice') => void;
   deleteChannel: (channelId: string) => void;
   renameChannel: (channelId: string, name: string) => void;
   reorderCategories: (orderedIds: string[]) => void;

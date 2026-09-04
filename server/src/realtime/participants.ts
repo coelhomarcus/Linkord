@@ -31,7 +31,17 @@ function sanitizeAvatar(url: unknown): string {
 }
 
 export function publicParticipant(p: Participant): PublicParticipant {
-  return { id: p.id, userId: p.userId, name: p.name, avatar: p.avatar, role: p.role, deafened: p.deafened };
+  return { id: p.id, userId: p.userId, name: p.name, avatar: p.avatar, role: p.role, deafened: p.deafened, voiceChannelId: p.voiceChannelId };
+}
+
+/** Muda em qual canal de voz `p` esta (ou tira de todos, com null) e avisa
+ * todo mundo — chamado por realtime/socket.ts (handleVoiceJoin/Leave), que e
+ * quem sabe validar o canal (channels.ts) e mintar o token (livekit.ts) antes
+ * de chegar aqui. Mora aqui (nao em socket.ts) pra mutacao de Participant
+ * ficar centralizada num lugar so, igual handleDeafened acima. */
+export function setVoiceChannelId(p: Participant, channelId: string | null): void {
+  p.voiceChannelId = channelId;
+  broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
 }
 
 /** Endereco de quem conectou — usado so em log. Mora aqui (nao num util.ts
@@ -149,6 +159,7 @@ export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
       // (useState local, nao persistido). Um resume (rede caiu e voltou,
       // mesma aba) reusa o `p` existente e PRESERVA o valor, ver join() acima.
       deafened: false,
+      voiceChannelId: null,
       graceTimer: null,
     };
     participants.set(p.id, p);

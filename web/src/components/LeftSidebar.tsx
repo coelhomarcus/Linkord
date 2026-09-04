@@ -33,14 +33,17 @@ interface LeftSidebarProps {
  * indentado embaixo dela — ver ChannelTree), e area do usuario fixa no
  * rodape. */
 export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings }: LeftSidebarProps) {
-  const { state, livekitRoom, toggleMicMuted, deafened, toggleDeafened, leaveCall, openChannel, activeChannelId } = useRoom();
+  const { state, livekitRoom, toggleMicMuted, deafened, toggleDeafened, leaveVoiceChannel, joinVoiceChannel, openChannel, activeChannelId } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
   const mics = useMediaDevices(livekitRoom, 'audioinput');
 
   // selecionar um canal de texto tambem troca pra tela de Chat, caso ainda
-  // nao esteja nela; selecionar a Chamada troca pra tela de call.
+  // nao esteja nela; selecionar um canal de voz entra nele de fato (conecta
+  // a Room desse canal especifico, sai de outro se eu estiver em algum) e
+  // troca pra tela de call.
   function handleSelectChannel(channel: Channel) {
     if (channel.type === 'voice') {
+      joinVoiceChannel(channel.id);
       onViewChange('call');
     } else {
       onViewChange('chat');
@@ -63,7 +66,7 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings }
           {/* sem rotulo "Comunicação" aqui de proposito — as categorias que
               o proprio admin cria (ChannelTree, Chamada inclusa) ja rotulam
               esse grupo, um segundo label por cima delas seria peso morto. */}
-          <ChannelTree activeView={activeView} activeChannelId={activeView === 'chat' ? activeChannelId : null} onSelectChannel={handleSelectChannel} />
+          <ChannelTree activeChannelId={activeView === 'chat' ? activeChannelId : null} onSelectChannel={handleSelectChannel} />
         </div>
       </div>
 
@@ -172,7 +175,7 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings }
         {inCall && (
           <Tooltip>
             <TooltipTrigger
-              onClick={leaveCall}
+              onClick={leaveVoiceChannel}
               aria-label="Sair da chamada"
               className="flex h-8 w-8 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-red/12 hover:text-red focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             >

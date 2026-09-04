@@ -24,6 +24,14 @@ export interface Participant {
   avatar: string;
   role: Role;
   deafened: boolean;
+  // canal de voz em que esta agora, ou null se nao esta em nenhum — setado
+  // explicitamente por 'voice-join'/'voice-leave' (ver realtime/socket.ts),
+  // nunca automatico so por ter o socket conectado. Ver useCallVolume... nao,
+  // ver o comentario em web/src/state/RoomContext.tsx sobre `deafened`: mesmo
+  // padrao, so que aqui o valor tambem precisa existir no servidor porque a
+  // sidebar mostra quem esta em CADA canal de voz, nao so no que eu estou
+  // conectada agora (o LiveKit em si so me da participantes da MINHA sala).
+  voiceChannelId: string | null;
   graceTimer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -35,6 +43,7 @@ export interface PublicParticipant {
   avatar: string;
   role: Role;
   deafened: boolean;
+  voiceChannelId: string | null;
 }
 
 /** O `Socket` do socket.io com os campos que ws.js/socket.ts anexa

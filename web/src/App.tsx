@@ -26,7 +26,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 const SettingsModal = lazy(() => import('./features/settings/SettingsModal').then((m) => ({ default: m.SettingsModal })));
 
 function Shell() {
-  const { state, dispatch, livekitRoom, closeTileMenu, sendWs, activateMic, notifyActiveView } = useRoom();
+  const { state, dispatch, livekitRoom, closeTileMenu, sendWs, notifyActiveView } = useRoom();
   const [activeView, setActiveView] = useState<AppView>('chat');
   const roomError = state.roomError;
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -57,10 +57,11 @@ function Shell() {
     return ids;
   }, [state.participants, state.me.id]);
 
-  // clicar em "Chamada" pela primeira vez e o que "entra" na call agora —
-  // antes disso o mic nunca ativa sozinho.
+  // so troca a tela visivel — entrar de fato num canal de voz (conectar a
+  // Room, ativar o mic) e disparado por joinVoiceChannel, chamado ao clicar
+  // no canal especifico na sidebar (LeftSidebar.tsx#handleSelectChannel),
+  // nao mais aqui so por trocar de aba.
   function handleViewChange(next: AppView) {
-    if (next === 'call' && !inCall) activateMic();
     setActiveView(next);
   }
 
