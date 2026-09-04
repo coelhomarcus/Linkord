@@ -142,15 +142,18 @@ async function handleChatReact(socket: AppSocket, msg: { msgId?: unknown; emoji?
   broadcast({ t: 'chat-reaction-updated', channelId: existing.channelId, msgId, emoji, userIds: reactions[emoji] || [] });
 }
 
-// admin-only — deletes ONE message. "Clear all" no longer exists: deleting
-// the whole channel (modules/channels.ts) covers that now.
+// the original author OR an admin can delete — same split as
+// handleChatEdit, except admin gets delete too (never edit, see above).
+// "Clear all" no longer exists: deleting the whole channel
+// (modules/channels.ts) covers that now.
 async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
-  if (!p || p.socket !== socket || p.role !== 'admin') return;
+  if (!p || p.socket !== socket) return;
   const msgId = Number(msg.msgId);
   if (!Number.isFinite(msgId)) return;
-  const [existing] = await db.select({ channelId: messages.channelId }).from(messages).where(eq(messages.id, msgId)).limit(1);
+  const [existing] = await db.select({ channelId: messages.channelId, authorId: messages.authorId }).from(messages).where(eq(messages.id, msgId)).limit(1);
   if (!existing) return;
+  if (existing.authorId !== p.userId && p.role !== 'admin') return;
   // delete the file on disk before the row — after the delete below, the
   // attachments row disappears via CASCADE, but nothing would know which
   // file to delete anymore (see modules/attachments.ts).
