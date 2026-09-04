@@ -1,6 +1,7 @@
-import { ChevronDown, Headphones, HeadphoneOff, Mic, MicOff, PhoneOff, Settings } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, FolderPlus, Hash, Headphones, HeadphoneOff, Mic, MicOff, PhoneOff, Plus, Settings } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { buttonVariants } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,7 +17,8 @@ import { useRoom } from '../state/RoomContext';
 import { useParticipantMedia } from '../features/sharing/useLiveKitTrack';
 import { useMediaDevices } from '../features/settings/useMediaDevices';
 import { Avatar } from '../shared/Avatar';
-import { ChannelTree } from './ChannelTree';
+import { PromptDialog } from '../shared/PromptDialog';
+import { ChannelTree, NewChannelDialog } from './ChannelTree';
 import type { Channel } from '../types/protocol';
 
 export type AppView = 'chat' | 'call';
@@ -26,16 +28,25 @@ interface LeftSidebarProps {
   onViewChange: (view: AppView) => void;
   inCall: boolean;
   onOpenSettings: () => void;
+  /** Below md, this pane and the content pane show one at a time — true
+   * shows this one. Ignored from md up, where both are always visible. */
+  mobileVisible: boolean;
+  /** Notifies the Shell to switch to the content pane on mobile once a
+   * channel is picked — irrelevant from md up. */
+  onSelectChannelMobile: () => void;
 }
 
 /** App's center, Discord-style: channels grouped by category (a voice
  * channel is just another channel in the tree, with connected people
  * indented under it — see ChannelTree), and a fixed user area at the
  * bottom. */
-export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings }: LeftSidebarProps) {
-  const { state, livekitRoom, toggleMicMuted, deafened, toggleDeafened, leaveVoiceChannel, joinVoiceChannel, openChannel, activeChannelId } = useRoom();
+export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, mobileVisible, onSelectChannelMobile }: LeftSidebarProps) {
+  const { state, livekitRoom, toggleMicMuted, deafened, toggleDeafened, leaveVoiceChannel, joinVoiceChannel, openChannel, activeChannelId, categories, createCategory } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
   const mics = useMediaDevices(livekitRoom, 'audioinput');
+  const isAdmin = state.me.role === 'admin';
+  const [newCategoryOpen, setNewCategoryOpen] = useState(false);
+  const [newChannelOpen, setNewChannelOpen] = useState(false);
 
   // selecting a text channel also switches to the Chat screen if not
   // already there; selecting a voice channel actually joins it (connects
@@ -49,13 +60,36 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings }
       onViewChange('chat');
       openChannel(channel.id);
     }
+    onSelectChannelMobile();
   }
 
   return (
-    <aside className="flex w-60 flex-none flex-col border-r border-subtle bg-bg-sidebar">
+    <aside className={cn('w-full flex-none flex-col border-r border-subtle bg-bg-sidebar md:flex md:w-60', mobileVisible ? 'flex' : 'hidden')}>
       <div className="flex flex-none select-none items-center gap-2 px-4 py-3.5">
         <img src="/logo.svg" alt="" className="h-8 w-8 flex-none" />
-        <span className="text-title font-bold tracking-tight text-text-primary">Linkord</span>
+        <span className="min-w-0 flex-1 truncate text-title font-bold tracking-tight text-text-primary">Linkord</span>
+        {/* right-click for this same menu isn't reliable on touch — this
+            covers admins on mobile (desktop already has it via
+            GlobalContextMenu's right-click on this panel). */}
+        {isAdmin && (
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-sm" aria-label="Criar categoria ou canal" className="flex-none text-text-muted hover:text-text-secondary md:hidden" />}>
+              <Plus size={18} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setNewCategoryOpen(true)}>
+                <FolderPlus size={14} />
+                <span>Nova categoria</span>
+              </DropdownMenuItem>
+              {categories.length > 0 && (
+                <DropdownMenuItem onClick={() => setNewChannelOpen(true)}>
+                  <Hash size={14} />
+                  <span>Novo canal</span>
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       {/* data-sidebar-channels: marks the area where right-click opens the
@@ -172,6 +206,17 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings }
           <TooltipContent side="top">Ajustes</TooltipContent>
         </Tooltip>
       </div>
+
+      <PromptDialog
+        open={newCategoryOpen}
+        onOpenChange={setNewCategoryOpen}
+        title="Nova categoria"
+        label="Nome da categoria"
+        placeholder="Ex: Anúncios"
+        confirmLabel="Criar"
+        onConfirm={createCategory}
+      />
+      <NewChannelDialog open={newChannelOpen} onOpenChange={setNewChannelOpen} />
     </aside>
   );
 }

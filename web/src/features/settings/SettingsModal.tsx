@@ -119,24 +119,27 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           overriding the unprefixed max-w isn't enough, `sm:` still applies
           on any screen >=640px and wins by specificity, clipping content.
           Both must be overridden. */}
-      <DialogContent className="grid-rows-[auto_1fr] min-h-130 max-h-[85vh] w-full max-w-3xl sm:max-w-3xl overflow-hidden rounded-xl bg-bg-modal p-0 gap-0">
-        <DialogTitle className="border-b border-subtle px-6 pt-5 pb-2 text-display font-bold text-text-primary">Ajustes</DialogTitle>
-        <Tabs defaultValue="profile" orientation="vertical" className="min-h-0 flex-1 items-stretch">
-          <TabsList className="h-auto w-44 flex-none flex-col items-stretch gap-1 rounded-none bg-bg-primary p-3">
+      {/* full-screen sheet below md (no room for a floating card + a
+          left-hand tab column); reverts to the original centered card from
+          md up. */}
+      <DialogContent className="inset-0 h-full max-h-full w-full max-w-full translate-x-0 translate-y-0 grid-rows-[auto_1fr] overflow-hidden rounded-none bg-bg-modal p-0 gap-0 md:inset-auto md:top-1/2 md:left-1/2 md:h-auto md:min-h-130 md:max-h-[85vh] md:w-full md:max-w-3xl md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl">
+        <DialogTitle className="border-b border-subtle px-4 pt-5 pb-2 text-display font-bold text-text-primary md:px-6">Ajustes</DialogTitle>
+        <Tabs defaultValue="profile" orientation="vertical" className="min-h-0 flex-1 flex-col items-stretch md:flex-row">
+          <TabsList className="h-auto w-full flex-none flex-row items-stretch gap-1 overflow-x-auto rounded-none bg-bg-primary p-2 md:w-44 md:flex-col md:overflow-visible md:p-3">
             <TabsIndicator />
-            <TabsTrigger value="profile" className="justify-start gap-2 px-2.5"><User size={16} /><span>Perfil</span></TabsTrigger>
-            <TabsTrigger value="av" className="justify-start gap-2 px-2.5"><SlidersHorizontal size={16} /><span>Audio e video</span></TabsTrigger>
-            <TabsTrigger value="prefs" className="justify-start gap-2 px-2.5"><Settings2 size={16} /><span>Preferencias</span></TabsTrigger>
-            <TabsTrigger value="media" className="justify-start gap-2 px-2.5"><Images size={16} /><span>Midias</span></TabsTrigger>
+            <TabsTrigger value="profile" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><User size={16} /><span>Perfil</span></TabsTrigger>
+            <TabsTrigger value="av" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><SlidersHorizontal size={16} /><span>Audio e video</span></TabsTrigger>
+            <TabsTrigger value="prefs" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Settings2 size={16} /><span>Preferencias</span></TabsTrigger>
+            <TabsTrigger value="media" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Images size={16} /><span>Midias</span></TabsTrigger>
             {/* only admins see this tab — the server also revalidates the
                 role on EVERY action (moderation.ts), this check just
                 avoids showing UI to someone who can't use it. */}
             {state.me.role === 'admin' && (
-              <TabsTrigger value="moderation" className="justify-start gap-2 px-2.5"><ShieldCheck size={16} /><span>Moderacao</span></TabsTrigger>
+              <TabsTrigger value="moderation" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><ShieldCheck size={16} /><span>Moderacao</span></TabsTrigger>
             )}
           </TabsList>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
             <TabsPanel value="profile" className="flex flex-col gap-6">
               <div className="flex items-center gap-3">
                 <Avatar id={state.me.id || 'preview'} name={state.me.name} avatar={avatar} size={48} />

@@ -27,7 +27,7 @@ function ControlButton({ onClick, label, icon, iconColorClass }: {
         aria-label={label}
         className={cn(
           buttonVariants({ variant: 'ghost', size: 'icon-lg' }),
-          'h-11 w-11 rounded-full bg-bg-tertiary hover:bg-bg-selected',
+          'h-9 w-9 rounded-full bg-bg-tertiary hover:bg-bg-selected md:h-11 md:w-11',
           iconColorClass
         )}
       >
@@ -61,7 +61,7 @@ export function CallControlBar() {
     // distance between them.
     <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
       {state.shareError && (
-        <div className="flex max-w-100 items-start gap-2 rounded-md border border-strong bg-bg-floating px-3 py-2 text-label text-text-secondary shadow-popover">
+        <div className="flex max-w-[calc(100vw-2rem)] items-start gap-2 rounded-md border border-strong bg-bg-floating px-3 py-2 text-label text-text-secondary shadow-popover md:max-w-100">
           <span className="min-w-0 flex-1">{state.shareError}</span>
           <button
             type="button"
@@ -73,13 +73,13 @@ export function CallControlBar() {
           </button>
         </div>
       )}
-      <div className="flex items-center gap-1 rounded-full border border-strong bg-bg-floating/90 px-4 py-2.5 shadow-popover backdrop-blur">
+      <div className="flex max-w-[calc(100vw-1rem)] items-center gap-0.5 rounded-full border border-strong bg-bg-floating/90 px-2 py-2 shadow-popover backdrop-blur md:gap-1 md:px-4 md:py-2.5">
         <Popover open={reactionsOpen} onOpenChange={setReactionsOpen}>
           <PopoverTrigger
             aria-label="Reagir"
             className={cn(
               buttonVariants({ variant: 'ghost', size: 'icon-lg' }),
-              'h-11 w-11 rounded-full',
+              'h-9 w-9 rounded-full md:h-11 md:w-11',
               reactionsOpen ? 'bg-bg-selected text-text-primary' : 'bg-bg-tertiary text-text-secondary hover:bg-bg-selected hover:text-text-primary'
             )}
           >
@@ -132,7 +132,7 @@ export function CallControlBar() {
           <TooltipTrigger
             onClick={leaveVoiceChannel}
             aria-label="Sair da chamada"
-            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), 'h-11 w-11 rounded-full bg-red text-white hover:bg-red-hover')}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), 'h-9 w-9 rounded-full bg-red text-white hover:bg-red-hover md:h-11 md:w-11')}
           >
             <PhoneOff size={18} />
           </TooltipTrigger>

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { config } from '../config/env.js';
 import type { AppSocket } from '../types.js';
 import {
-  participants, join, removeParticipant, handleClose, isUserOnline, setVoiceChannelId, publicParticipant,
+  participants, join, removeParticipant, handleClose, isUserOnline, setVoiceChannelId, publicParticipant, handlers,
 } from './participants.js';
 
 /** Fake minimo de AppSocket — so os campos que participants.ts de fato le
@@ -145,5 +145,69 @@ describe('setVoiceChannelId', () => {
 
     setVoiceChannelId(p, null);
     assert.equal(p.voiceChannelId, null);
+  });
+
+  test('reseta os flags de midia auto-reportados a cada join/leave — nao deixa fantasma de um canal anterior', () => {
+    const p = join(fakeSocket(`u-${Math.random()}`), {})!;
+    createdIds.push(p.id);
+
+    setVoiceChannelId(p, 'canal-voz-1');
+    p.micActivated = true;
+    p.micMuted = false;
+    p.cameraOn = true;
+    p.sharing = true;
+    p.speaking = true;
+
+    setVoiceChannelId(p, 'canal-voz-2');
+    assert.equal(p.micActivated, false);
+    assert.equal(p.micMuted, true);
+    assert.equal(p.cameraOn, false);
+    assert.equal(p.sharing, false);
+    assert.equal(p.speaking, false);
+  });
+});
+
+describe('estado de midia auto-reportado (mic-state / camera / screen-share / speaking)', () => {
+  test('mic-state muda micActivated/micMuted e reflete em publicParticipant', () => {
+    const socket = fakeSocket(`u-${Math.random()}`);
+    const p = join(socket, {})!;
+    createdIds.push(p.id);
+
+    handlers['mic-state'](socket, { activated: true, muted: false });
+    assert.equal(p.micActivated, true);
+    assert.equal(p.micMuted, false);
+    assert.equal(publicParticipant(p).micActivated, true);
+    assert.equal(publicParticipant(p).micMuted, false);
+  });
+
+  test('camera e screen-share mudam cameraOn/sharing', () => {
+    const socket = fakeSocket(`u-${Math.random()}`);
+    const p = join(socket, {})!;
+    createdIds.push(p.id);
+
+    handlers.camera(socket, { on: true });
+    assert.equal(p.cameraOn, true);
+
+    handlers['screen-share'](socket, { on: true });
+    assert.equal(p.sharing, true);
+  });
+
+  test('speaking muda o campo speaking', () => {
+    const socket = fakeSocket(`u-${Math.random()}`);
+    const p = join(socket, {})!;
+    createdIds.push(p.id);
+
+    handlers.speaking(socket, { value: true });
+    assert.equal(p.speaking, true);
+  });
+
+  test('mensagem de um socket que nao e o dono da participante e ignorada', () => {
+    const socket = fakeSocket(`u-${Math.random()}`);
+    const p = join(socket, {})!;
+    createdIds.push(p.id);
+
+    const outroSocket = fakeSocket(`u-${Math.random()}`);
+    handlers.camera(outroSocket, { on: true });
+    assert.equal(p.cameraOn, false);
   });
 });

@@ -18,6 +18,7 @@ import { TileMenu } from './features/sharing/TileMenu';
 import { ReactionsOverlay } from './features/reactions/ReactionsOverlay';
 import { GlobalContextMenu } from './components/GlobalContextMenu';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { cn } from '@/shared/lib/utils';
 
 // lazy: SettingsModal pulls in MediaTab/ModerationTab (which in turn pull
 // LinkPreview/GenericEmbed/react-player) — a lot of weight for something
@@ -30,6 +31,11 @@ function Shell() {
   const [activeView, setActiveView] = useState<AppView>('chat');
   const roomError = state.roomError;
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // mobile-only: below md there's no room for sidebar + content side by
+  // side, so they become two panels shown one at a time (see LeftSidebar's
+  // and the content wrapper's `md:flex` below, which ignores this and
+  // always shows both from md up).
+  const [mobileShowSidebar, setMobileShowSidebar] = useState(true);
 
   // only so the new-message sound (RoomProvider) knows if the person is
   // already looking at chat.
@@ -64,6 +70,12 @@ function Shell() {
   // by switching tabs.
   function handleViewChange(next: AppView) {
     setActiveView(next);
+  }
+
+  // picking a channel on mobile should show its content right away, not
+  // leave the person staring at the sidebar they just tapped in.
+  function handleSelectChannelMobile() {
+    setMobileShowSidebar(false);
   }
 
   useEffect(() => {
@@ -111,10 +123,12 @@ function Shell() {
           onViewChange={handleViewChange}
           inCall={inCall}
           onOpenSettings={() => setSettingsOpen(true)}
+          mobileVisible={mobileShowSidebar}
+          onSelectChannelMobile={handleSelectChannelMobile}
         />
-        <div className="relative flex min-h-0 flex-1">
-          {activeView === 'chat' && <ChatPage />}
-          {activeView === 'call' && <Stage allIds={allIds} />}
+        <div className={cn('relative min-h-0 flex-1 md:flex', mobileShowSidebar ? 'hidden' : 'flex')}>
+          {activeView === 'chat' && <ChatPage onBackMobile={() => setMobileShowSidebar(true)} />}
+          {activeView === 'call' && <Stage allIds={allIds} onBackMobile={() => setMobileShowSidebar(true)} />}
           {/* full floating bar (mic/camera/screen/reactions) only on the
               Call tab itself — elsewhere the LeftSidebar's compact panel
               covers it. */}
