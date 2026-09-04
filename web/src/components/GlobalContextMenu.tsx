@@ -108,7 +108,7 @@ export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMen
                 checked={hideAudioOnlyTiles}
                 onCheckedChange={setHideAudioOnlyTiles}
               >
-                <span>Mostrar apenas cameras e transmissoes</span>
+                <span>Ocultar sem video</span>
               </ContextMenuCheckboxItem>
               <ContextMenuSeparator />
             </>
