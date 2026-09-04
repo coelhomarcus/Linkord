@@ -38,5 +38,8 @@
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.23.13",
     "typescript": "~6.0.2"
+  },
+  "overrides": {
+    "@livekit/protocol": "1.45.7"
   }
 }
