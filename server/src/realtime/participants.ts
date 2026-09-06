@@ -20,10 +20,16 @@ function sanitizeAvatar(url: unknown): string {
 }
 
 const DEFAULT_AVATAR_COLOR = 'blurple';
-const AVATAR_COLOR_VALUES = new Set([DEFAULT_AVATAR_COLOR, 'green', 'red', 'fuchsia']);
+// preset keys — kept in sync with web/src/shared/Avatar.tsx#AVATAR_COLOR_OPTIONS
+// (no shared package between server/web, see that file's comment).
+const AVATAR_COLOR_VALUES = new Set([DEFAULT_AVATAR_COLOR, 'green', 'red', 'fuchsia', 'orange', 'purple', 'teal', 'blue']);
+// beyond the presets, the color picker (Settings > Perfil) lets someone save
+// ANY color as a plain 6-digit hex.
+const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
 function sanitizeAvatarColor(value: unknown): string {
   const key = String(value == null ? '' : value).trim().slice(0, 32);
-  return AVATAR_COLOR_VALUES.has(key) ? key : DEFAULT_AVATAR_COLOR;
+  if (AVATAR_COLOR_VALUES.has(key)) return key;
+  return HEX_COLOR_RE.test(key) ? key.toLowerCase() : DEFAULT_AVATAR_COLOR;
 }
 
 // free-form (no allowed-values set, unlike avatarColor) — just trimmed,

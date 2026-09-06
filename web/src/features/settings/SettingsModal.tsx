@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { Check, HardDrive, Images, LogOut, Settings2, ShieldCheck, SlidersHorizontal, Upload, User, Volume2, VolumeX } from 'lucide-react';
+import { Check, HardDrive, Images, LogOut, Palette, Settings2, ShieldCheck, SlidersHorizontal, Upload, User, Volume2, VolumeX } from 'lucide-react';
 import { MediaTab } from './MediaTab';
 import { ModerationTab } from './ModerationTab';
 import { useRoom } from '../../state/RoomContext';
@@ -107,6 +107,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     const permission = Notification.permission === 'default' ? await requestNotificationPermission() : Notification.permission;
     if (permission === 'granted') setNotificationsEnabled(true);
   }
+
+  // true once a color OUTSIDE the curated presets was picked via the custom
+  // color input below — drives which swatch shows the "selected" ring.
+  const isCustomAvatarColor = !AVATAR_COLOR_OPTIONS.some((option) => option.value === avatarColor);
 
   function handleProfileSubmit(e: FormEvent) {
     e.preventDefault();
@@ -224,6 +228,31 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                         </button>
                       );
                     })}
+                    {/* custom color, beyond the presets above — a native
+                        color picker reshaped into the same circular swatch
+                        (see index.css#.avatar-color-custom-input). Shows a
+                        neutral gray + palette icon until a non-preset color
+                        is actually picked, so it doesn't look like a
+                        duplicate of one of the presets. */}
+                    <label
+                      title="Cor personalizada"
+                      className={cn(
+                        'relative flex h-8 w-8 items-center justify-center rounded-full border transition focus-within:outline-none focus-within:ring-3 focus-within:ring-ring/50',
+                        isCustomAvatarColor ? 'border-text-primary ring-2 ring-ring/50 ring-offset-2 ring-offset-bg-tertiary' : 'border-strong hover:border-text-muted'
+                      )}
+                    >
+                      <input
+                        type="color"
+                        aria-label="Escolher cor personalizada"
+                        aria-pressed={isCustomAvatarColor}
+                        value={isCustomAvatarColor ? avatarColor : '#6b7280'}
+                        onChange={(e) => setAvatarColor(e.target.value)}
+                        className="avatar-color-custom-input h-8 w-8 cursor-pointer"
+                      />
+                      <span className="pointer-events-none absolute inset-0 m-auto flex h-4 w-4 items-center justify-center">
+                        {isCustomAvatarColor ? <Check size={16} className="text-white drop-shadow" /> : <Palette size={14} className="text-white/90 drop-shadow" />}
+                      </span>
+                    </label>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

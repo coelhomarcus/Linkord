@@ -1,12 +1,18 @@
 import { Avatar as AvatarRoot, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 // Discord-ish palette (no yellow: white text on it is illegible). The saved
-// value is a stable key; only this component knows the CSS token behind it.
+// value is a stable key; only this component knows the CSS token behind it —
+// keeping it a token (not a hardcoded hex) means these stay theme-adaptive,
+// unlike a custom hex picked below.
 export const AVATAR_COLOR_OPTIONS = [
   { value: 'blurple', label: 'Blurple', css: 'var(--color-blurple)' },
   { value: 'green', label: 'Verde', css: 'var(--color-green)' },
   { value: 'red', label: 'Vermelho', css: 'var(--color-red)' },
   { value: 'fuchsia', label: 'Fuchsia', css: 'var(--color-fuchsia)' },
+  { value: 'orange', label: 'Laranja', css: 'var(--color-orange)' },
+  { value: 'purple', label: 'Roxo', css: 'var(--color-purple)' },
+  { value: 'teal', label: 'Verde-azulado', css: 'var(--color-teal)' },
+  { value: 'blue', label: 'Azul', css: 'var(--color-blue)' },
 ] as const;
 
 export type AvatarColorValue = (typeof AVATAR_COLOR_OPTIONS)[number]['value'];
@@ -15,9 +21,18 @@ export const DEFAULT_AVATAR_COLOR: AvatarColorValue = AVATAR_COLOR_OPTIONS[0].va
 const AVATAR_COLORS = AVATAR_COLOR_OPTIONS.map((c) => c.css);
 const AVATAR_COLOR_BY_VALUE = new Map<string, string>(AVATAR_COLOR_OPTIONS.map((c) => [c.value, c.css]));
 
-export function normalizeAvatarColor(value: unknown): AvatarColorValue | '' {
-  const key = String(value == null ? '' : value).trim();
-  return AVATAR_COLOR_BY_VALUE.has(key) ? (key as AvatarColorValue) : '';
+// beyond the curated presets above, the color picker (Settings > Perfil)
+// lets someone save ANY color — stored as a plain 6-digit hex, sibling to
+// the preset keys (mirrors server/src/realtime/participants.ts#sanitizeAvatarColor).
+const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
+
+/** A known preset key, OR a custom "#rrggbb" hex — '' for anything else
+ * (including legacy/invalid data), same "fall back to the id color"
+ * contract as before this function grew hex support. */
+export function normalizeAvatarColor(value: unknown): AvatarColorValue | string | '' {
+  const raw = String(value == null ? '' : value).trim();
+  if (AVATAR_COLOR_BY_VALUE.has(raw)) return raw as AvatarColorValue;
+  return HEX_COLOR_RE.test(raw) ? raw.toLowerCase() : '';
 }
 
 function initialsOf(name: string): string {
@@ -44,8 +59,11 @@ function fallbackColorFor(id: string): string {
 // picking a random one. `avatarColor` is the persisted user choice; empty or
 // unknown values intentionally fall back to the old deterministic id color.
 export function colorFor(id: string, avatarColor?: string | null): string {
-  const selected = AVATAR_COLOR_BY_VALUE.get(normalizeAvatarColor(avatarColor));
-  return selected ?? fallbackColorFor(id);
+  const normalized = normalizeAvatarColor(avatarColor);
+  if (!normalized) return fallbackColorFor(id);
+  // a preset key resolves to its CSS token; a custom hex has no token to
+  // look up, so it's already the final CSS value as-is.
+  return AVATAR_COLOR_BY_VALUE.get(normalized) ?? normalized;
 }
 
 interface AvatarProps {

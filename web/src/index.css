@@ -96,6 +96,13 @@
   --color-red-text: #ff8589;
   --color-yellow: #fee75c;
   --color-fuchsia: #eb459e;
+  /* extra avatar-background presets (see shared/Avatar.tsx#AVATAR_COLOR_OPTIONS)
+   * — picked dark/saturated enough for white initials text on top, same
+   * legibility bar that already excludes yellow above. */
+  --color-orange: #e67e22;
+  --color-purple: #9b59b6;
+  --color-teal: #11806a;
+  --color-blue: #206694;
   /* #00a8fc — confirmado no link "Reveal" do kit atual (praticamente
    * identico ao #00aff4 do kit classico, so ajustado pra bater exato). Anel
    * de foco SO de Input/Textarea (ver components/ui/input.tsx e
@@ -243,6 +250,22 @@ html, body {
 button:not(:disabled) {
   cursor: pointer;
 }
+
+/* Custom avatar-color swatch (Settings > Perfil, see
+ * shared/Avatar.tsx#AVATAR_COLOR_OPTIONS) — a native <input type="color">
+ * reshaped into the same circular swatch as the preset buttons next to it.
+ * The pseudo-elements differ per engine (Chrome/Edge vs Firefox), both
+ * needed for the same visual result. */
+.avatar-color-custom-input {
+  -webkit-appearance: none;
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+}
+.avatar-color-custom-input::-webkit-color-swatch-wrapper { padding: 0; border-radius: 9999px; }
+.avatar-color-custom-input::-webkit-color-swatch { border: none; border-radius: 9999px; }
+.avatar-color-custom-input::-moz-color-swatch { border: none; border-radius: 9999px; }
 
 
 /* ---------------------------------------------------------------------------

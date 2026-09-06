@@ -74,6 +74,20 @@ describe('join', () => {
     assert.equal(p.avatarColor, 'blurple');
   });
 
+  test('aceita uma cor de avatar personalizada em hex (fora dos presets)', () => {
+    const p = join(fakeSocket(`u-${Math.random()}`, { avatarColor: '#A1B2C3' }), {})!;
+    createdIds.push(p.id);
+
+    assert.equal(p.avatarColor, '#a1b2c3');
+  });
+
+  test('hex mal formado cai para o default seguro (nao vaza pro CSS)', () => {
+    const p = join(fakeSocket(`u-${Math.random()}`, { avatarColor: '#zzzzzz' }), {})!;
+    createdIds.push(p.id);
+
+    assert.equal(p.avatarColor, 'blurple');
+  });
+
   test('usa o nome de exibicao persistido na conta', () => {
     const p = join(fakeSocket(`u-${Math.random()}`, { displayName: 'Apelido' }), {})!;
     createdIds.push(p.id);

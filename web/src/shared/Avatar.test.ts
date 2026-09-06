@@ -33,10 +33,17 @@ describe('colorFor', () => {
     expect(colorFor('qualquer-id', 'fuchsia')).toBe('var(--color-fuchsia)');
   });
 
-  it('normaliza somente chaves permitidas de cor de avatar', () => {
+  it('normaliza somente chaves permitidas de cor de avatar, ou um hex valido', () => {
     expect(normalizeAvatarColor('red')).toBe('red');
     expect(normalizeAvatarColor('  blurple  ')).toBe('blurple');
     expect(normalizeAvatarColor('hotpink')).toBe('');
     expect(normalizeAvatarColor('')).toBe('');
+    expect(normalizeAvatarColor('#A1B2C3')).toBe('#a1b2c3');
+    expect(normalizeAvatarColor('#zzzzzz')).toBe('');
+    expect(normalizeAvatarColor('#fff')).toBe('');
+  });
+
+  it('cor personalizada (hex fora dos presets) vira o proprio valor CSS, sem token', () => {
+    expect(colorFor('qualquer-id', '#a1b2c3')).toBe('#a1b2c3');
   });
 });
