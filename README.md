@@ -5,7 +5,7 @@
 <h1 align="center">Linkord</h1>
 
 <p align="center">
-  Chat em tempo real, canais e chamadas de voz/tela.
+  Real-time chat, channels, and voice/screen calls.
 </p>
 
 <p align="center">
@@ -14,84 +14,70 @@
   </a>
 </p>
 
-## O que é
+## What it is
 
-Linkord é uma plataforma de comunicação em tempo real com chamadas de voz, vídeo, texto e compartilhamento de tela — auto-hospedável, estilo Discord. O app e seus dados ficam na sua infraestrutura; a mídia usa um servidor LiveKit, que pode ser o LiveKit Cloud ou uma instalação própria compatível.
+Self-hostable, Discord-style real-time communication platform with voice, video, text, and screen sharing. The app and its data live on your own infrastructure; media goes through a LiveKit server (LiveKit Cloud or a compatible self-hosted instance).
 
-- Categorias e múltiplos canais de texto e voz, com reordenação por drag-and-drop (admin)
-- Chat: anexos (upload em chunks, até 2GB), embeds automáticos de YouTube/Twitch/mídia direta e Open Graph, reações, respostas, editar/apagar mensagem
-- Canais de voz com câmera e tela compartilhada (LiveKit)
-- Diretório de usuários (online/offline) e painel de moderação (apagar conta)
-- Aba de mídias — todo anexo/embed do projeto, de todos os canais
-- Preferências salvas neste navegador (volume por chamada/pessoa, volume de notificações, qualidade de envio)
-- Notificação no Discord quando alguém entra na chamada ou compartilha tela (Webhook)
+- Categories and multiple text/voice channels, drag-and-drop reordering (admin)
+- Chat: chunked uploads (up to 2GB), automatic YouTube/Twitch/media embeds and Open Graph, reactions, replies, edit/delete messages
+- Voice channels with camera and screen sharing (LiveKit)
+- User directory (online/offline) and moderation panel (delete account)
+- Media tab with every attachment/embed across all channels
+- Per-browser preferences (call/user volume, notification volume, upload quality)
+- Discord webhook notification when someone joins a call or shares their screen
 
 ## Stack
 
-- **Frontend**: React + TypeScript + Vite, Tailwind
-- **Backend**: Node.js + TypeScript (ESM) com Fastify + Socket.IO
-- **Banco**: PostgreSQL via Drizzle ORM
-- **Vídeo/áudio**: LiveKit Cloud (WebRTC)
+React + TypeScript + Vite + Tailwind · Node.js + Fastify + Socket.IO · PostgreSQL (Drizzle ORM) · LiveKit (WebRTC)
 
-## Rodando localmente
+## Running locally
 
-Requer Node.js 22+ e um Postgres acessível (`DATABASE_URL`).
+Requires Node.js 22+ and a reachable Postgres (`DATABASE_URL`).
 
 ```bash
 npm ci
 npm ci --prefix web
-cp .env.example .env   # preencha DATABASE_URL, códigos de cadastro, LIVEKIT_*, etc.
+cp .env.example .env   # fill in DATABASE_URL, registration codes, LIVEKIT_*, etc.
 npm run db:migrate
-npm run dev             # server (watch) + web (Vite) juntos
+npm run dev             # server (watch) + web (Vite) together
 ```
 
-O frontend sobe em `http://localhost:5173` (proxy pro backend em `:3000`).
+Frontend runs on `http://localhost:5173` (proxies to the backend on `:3000`).
 
-### Scripts principais
-
-| Script | O que faz |
+| Script | Does |
 |---|---|
-| `npm run dev` | Backend (`tsx --watch`) + frontend (Vite) em paralelo |
-| `npm run build` | Compila o backend (`tsc`) e builda o frontend (`vite build`) |
-| `npm start` | Roda o backend já compilado (`server/dist/index.js`) |
-| `npm test` | Testes do backend (`node --test`) e do frontend (`vitest`) |
-| `npm run db:generate` | Gera uma migration nova a partir de `server/src/db/schema.ts` |
-| `npm run db:migrate` | Aplica as migrations pendentes |
+| `npm run dev` | Backend + frontend in parallel |
+| `npm run build` | Compiles backend and builds frontend |
+| `npm start` | Runs the compiled backend |
+| `npm test` | Backend + frontend tests |
+| `npm run db:generate` | Generates a migration from `server/src/db/schema.ts` |
+| `npm run db:migrate` | Applies pending migrations |
 
-## Testes
-
-- **Backend**: `node --test` (`server/src/**/*.test.ts`) — não precisa de Postgres nem LiveKit de verdade rodando.
-- **Frontend**: Vitest + React Testing Library (`web/src/**/*.test.tsx`).
+## Tests
 
 ```bash
 npm test              # backend + frontend
-npm run test:server   # só o backend
-npm run test:web      # só o frontend
+npm run test:server   # backend only
+npm run test:web      # frontend only
 ```
 
-Roda automaticamente em todo push/PR pra `main`/`develop` ([`.github/workflows/test.yml`](.github/workflows/test.yml)).
+Runs automatically on every push/PR to `main`/`develop` ([`.github/workflows/test.yml`](.github/workflows/test.yml)).
 
-## Variáveis de ambiente
+## Environment variables
 
-Veja [`.env.example`](.env.example) — cobre servidor, banco, contas/sessão, LiveKit, upload e a integração opcional com Discord.
+See [`.env.example`](.env.example).
 
 ## Deploy
 
-A imagem é construída pelo [`Dockerfile`](Dockerfile) (multi-stage: builda o frontend, compila o backend TypeScript, e monta um runtime enxuto sem devDependencies nem código-fonte). Produção roda via [Dokploy](https://dokploy.com) a partir desse `Dockerfile` — sem proxy reverso nem systemd no repositório, o Dokploy já cuida de domínio, HTTPS e do proxy na frente. Nesse cenário, configure `TRUST_PROXY=1` no Dokploy; mantenha o padrão `0` quando a aplicação estiver diretamente acessível.
-
-Pra rodar localmente com Docker, o Compose já inclui um PostgreSQL privado e persistente. Preencha no `.env` `ADMIN_REGISTRATION_CODE` para criar o primeiro administrador, `REGISTRATION_CODE` para os demais usuários e as credenciais do LiveKit; o `DATABASE_URL` é configurado internamente pelo Compose. Remova ou rotacione o código de administrador após o primeiro cadastro.
+Image built via [`Dockerfile`](Dockerfile) (multi-stage: builds frontend, compiles backend, lean runtime). Production runs on [Dokploy](https://dokploy.com); set `TRUST_PROXY=1` there (keep `0` when directly exposed).
 
 ```bash
 cp .env.example .env
 docker compose up -d --build
 ```
 
-Os anexos continuam em `./uploads` e o banco fica no volume nomeado `postgres-data`. Em Linux, se `./uploads` já existir com outro proprietário, garanta que o UID 1000 possa escrever nessa pasta antes de subir o container.
+Attachments persist in `./uploads`, database in the `postgres-data` volume. On Linux, ensure UID 1000 can write to an existing `./uploads` folder before starting.
 
-## Nota sobre áudios
-
-Os áudios de notificação usados atualmente no projeto são de autoria do Discord e estão presentes apenas para fins de teste durante o desenvolvimento — serão substituídos em breve.
-
-## Licença
+## License
 
 [MIT](LICENSE)
