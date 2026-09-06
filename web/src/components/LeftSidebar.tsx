@@ -16,12 +16,10 @@ import { cn } from '@/shared/lib/utils';
 import { useRoom } from '../state/RoomContext';
 import { useParticipantMedia } from '../features/sharing/useLiveKitTrack';
 import { useMediaDevices } from '../features/settings/useMediaDevices';
-import { PreCallDialog } from '../features/sharing/PreCallDialog';
 import { Avatar } from '../shared/Avatar';
 import { PromptDialog } from '../shared/PromptDialog';
 import { ChannelTree, NewChannelDialog } from './ChannelTree';
 import type { Channel } from '../types/protocol';
-import type { VoiceJoinOptions } from '../state/RoomContext';
 
 export type AppView = 'chat' | 'call';
 
@@ -53,32 +51,23 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
   const isAdmin = state.me.role === 'admin';
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
   const [newChannelOpen, setNewChannelOpen] = useState(false);
-  const [preCallChannel, setPreCallChannel] = useState<Channel | null>(null);
 
   // selecting a text channel also switches to the Chat screen if not
   // already there; selecting a voice channel actually joins it (connects
-  // to that specific channel's Room, leaving another if already in one)
-  // and switches to the call screen.
+  // to that specific channel's Room, leaving another if already in one,
+  // mic activated but muted until the user unmutes) and switches to the
+  // call screen. A second click on the channel already being joined/used
+  // just reveals its Stage.
   function handleSelectChannel(channel: Channel) {
     if (channel.type === 'voice') {
-      // A second click on the channel already being joined/used just reveals
-      // its Stage. A new channel goes through the explicit pre-call choice.
       if (voiceConnection.channelId !== channel.id || voiceConnection.status === 'idle') {
-        setPreCallChannel(channel);
-        return;
+        void joinVoiceChannel(channel.id);
       }
       onViewChange('call');
     } else {
       onViewChange('chat');
       openChannel(channel.id);
     }
-    onSelectChannelMobile();
-  }
-
-  function handleConfirmVoiceJoin(options: VoiceJoinOptions) {
-    if (!preCallChannel) return;
-    void joinVoiceChannel(preCallChannel.id, options);
-    onViewChange('call');
     onSelectChannelMobile();
   }
 
@@ -91,7 +80,6 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
   const microphoneActionLabel = !myMedia.micActivated
     ? 'Ativar microfone'
     : myMedia.micMuted ? 'Desmutar' : 'Mutar';
-  const activeMicrophoneLabel = mics.devices.find((device) => device.deviceId === mics.activeDeviceId)?.label;
 
   return (
     <aside className={cn('w-full flex-none flex-col border-r border-subtle bg-bg-sidebar md:flex md:w-60', mobileVisible ? 'flex' : 'hidden')}>
@@ -248,14 +236,6 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
         onConfirm={createCategory}
       />
       <NewChannelDialog open={newChannelOpen} onOpenChange={setNewChannelOpen} />
-      <PreCallDialog
-        open={!!preCallChannel}
-        channelName={preCallChannel?.name ?? 'canal de voz'}
-        microphoneLabel={activeMicrophoneLabel}
-        permissionNeeded={mics.permissionNeeded}
-        onOpenChange={(open) => { if (!open) setPreCallChannel(null); }}
-        onJoin={handleConfirmVoiceJoin}
-      />
     </aside>
   );
 }
