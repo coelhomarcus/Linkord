@@ -106,6 +106,10 @@ export interface RoomContextValue {
   leaveVoiceChannel: () => Promise<void>;
   quality: Quality;
   setQuality: (q: Quality) => void;
+  /** AI background noise removal (Krisp) applied on top of the mic track —
+   * on by default, toggleable live and persisted across sessions. */
+  noiseSuppression: boolean;
+  setNoiseSuppressionEnabled: (enabled: boolean) => Promise<void>;
   /** Only the avatar is editable — name is the account's immutable username. */
   updateAvatar: (avatar: string) => void;
   /** Uploads a local file and applies it as the account avatar. Throws on

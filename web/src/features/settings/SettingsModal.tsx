@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { HardDrive, Images, LogOut, Settings2, ShieldCheck, SlidersHorizontal, Upload, User, Volume2, VolumeX } from 'lucide-react';
+import { HardDrive, Images, LogOut, Settings2, ShieldCheck, SlidersHorizontal, Sparkles, Upload, User, Volume2, VolumeX } from 'lucide-react';
 import { MediaTab } from './MediaTab';
 import { ModerationTab } from './ModerationTab';
 import { useRoom } from '../../state/RoomContext';
@@ -71,6 +71,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const {
     state, updateAvatar, uploadAvatarFile, quality, setQuality, showStats, setShowStats,
     notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled, livekitRoom, storageUsage,
+    noiseSuppression, setNoiseSuppressionEnabled,
   } = useRoom();
   const { logout } = useAuth();
   const [avatar, setAvatar] = useState(state.me.avatar);
@@ -240,6 +241,19 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
               <div className={settingsCardClass}>
                 <DevicePicker label="Microfone" room={livekitRoom} kind="audioinput" />
+              </div>
+
+              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
+                <div className="min-w-0">
+                  <p className="flex select-none items-center gap-1.5 text-body font-medium text-text-primary"><Sparkles size={14} /> Supressão de ruído</p>
+                  <p className="select-none text-label text-text-muted">Remove ruído de fundo (teclado, ventilador, etc.) da sua voz com IA. Vale na hora, mesmo durante uma chamada.</p>
+                </div>
+                <Switch
+                  checked={noiseSuppression}
+                  onCheckedChange={setNoiseSuppressionEnabled}
+                  aria-label="Supressão de ruído"
+                  className="mt-0.5 flex-none"
+                />
               </div>
 
               <div className={settingsCardClass}>

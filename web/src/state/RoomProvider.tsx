@@ -364,7 +364,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
   const { startSharing, stopSharing, quality, setQuality } = useScreenShare(livekitRoom, dispatch);
   const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch, quality);
-  const { activateMic, toggleMicMuted: toggleMicTrack, setMicMuted, leaveMic } = useMicrophone(livekitRoom, dispatch);
+  const {
+    activateMic, toggleMicMuted: toggleMicTrack, setMicMuted, leaveMic,
+    noiseSuppression, setNoiseSuppressionEnabled,
+  } = useMicrophone(livekitRoom, dispatch);
 
   const toggleMicMuted = useCallback(async () => {
     if (voiceConnectionRef.current.status !== 'connected') return;
@@ -1023,6 +1026,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         registerRequestChatView,
         activeVoiceChannelId, voiceConnection, joinVoiceChannel, retryVoiceChannel, cancelVoiceJoin,
         startSharing, stopSharing, startCamera, stopCamera, enableMicrophone, toggleMicMuted, leaveVoiceChannel, quality, setQuality,
+        noiseSuppression, setNoiseSuppressionEnabled,
         updateAvatar, uploadAvatarFile, menuTarget, openTileMenu, closeTileMenu,
         reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
         hideAudioOnlyTiles, setHideAudioOnlyTiles,
