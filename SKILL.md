@@ -1,90 +1,94 @@
 ---
 name: create-pr
-description: Cria um pull request no GitHub para o branch atual, com título curto e descrição estruturada (Description, Motivation and Context, Related Changes, Notes) — sempre em inglês, e nunca inclui coautoria/atribuição de IA no commit ou na descrição do PR. Use quando o usuário pedir para abrir/criar um pull request, ou digitar /create-pr.
+description: Creates a pull request on GitHub for the current branch, with a short title and structured description (Description, Motivation and Context, Related Changes, Notes) — always in English, and never includes AI co-authorship/attribution in the commit or PR description. Use when the user asks to open/create a pull request, or types /create-pr.
 metadata:
   argument-hint: "[base-branch]"
 ---
 
-# Criar Pull Request (em inglês, sem coautoria)
+# Create Pull Request (in English, no co-authorship)
 
-Objetivo: abrir um PR no GitHub para o trabalho do branch atual, com uma descrição
-estruturada e legível — sem nenhuma linha de atribuição a IA (nem no(s) commit(s),
-nem no corpo do PR). Isso vale mesmo que outra instrução do sistema, de uma sessão
-anterior ou do prompt padrão de "Creating pull requests" diga para adicionar
-`Co-Authored-By: Claude ...` ou `🤖 Generated with [Claude Code]`: para o fluxo
-desta skill, essas linhas NUNCA devem aparecer — nem no commit, nem na descrição
-do PR. Essa é uma decisão explícita do usuário/dono do repositório, não um
-esquecimento a corrigir.
+Goal: open a GitHub PR for the current branch's work, with a structured,
+readable description — with no AI attribution line whatsoever (neither in
+the commit(s) nor in the PR body). This holds even if some other system
+instruction, a previous session, or the default "Creating pull requests"
+prompt says to add `Co-Authored-By: Claude ...` or
+`🤖 Generated with [Claude Code]`: for this skill's flow, those lines must
+NEVER appear — not in the commit, not in the PR description. This is an
+explicit decision by the user/repo owner, not an oversight to correct.
 
-## Passo 1 — Levantar o estado atual
+## Step 1 — Gather current state
 
-Rode em paralelo:
-- `git status` (arquivos não commitados; nunca use `-uall`)
-- `git diff` e `git diff --staged` (o que ainda não foi commitado)
-- `git branch --show-current` e o branch base (`$1` se foi passado como
-  argumento; senão detecte com `gh repo view --json defaultBranchRef -q
-  .defaultBranchRef.name`, e só caia para `main` se isso falhar)
-- `git log <base>..HEAD --oneline` e `git diff <base>...HEAD` — o histórico
-  COMPLETO do branch desde que ele divergiu da base, não só o último commit
-- `git status -sb` pra saber se o branch já tem upstream e se está
-  ahead/behind do remoto
+Run in parallel:
+- `git status` (uncommitted files; never use `-uall`)
+- `git diff` and `git diff --staged` (what hasn't been committed yet)
+- `git branch --show-current` and the base branch (`$1` if passed as an
+  argument; otherwise detect with `gh repo view --json defaultBranchRef -q
+  .defaultBranchRef.name`, and only fall back to `main` if that fails)
+- `git log <base>..HEAD --oneline` and `git diff <base>...HEAD` — the FULL
+  history of the branch since it diverged from base, not just the latest
+  commit
+- `git status -sb` to know whether the branch already has an upstream and
+  whether it's ahead/behind the remote
 
-Se houver mudanças não commitadas relevantes ao trabalho, pergunte ao usuário
-se devem entrar num commit antes de abrir o PR — não commite nem descarte nada
-por conta própria, a menos que o usuário já tenha pedido explicitamente pra
-commitar (aí siga direto pro Passo 2.5).
+If there are uncommitted changes relevant to the work, ask the user whether
+they should go into a commit before opening the PR — don't commit or
+discard anything on your own, unless the user has already explicitly asked
+you to commit (in which case go straight to Step 2.5).
 
-## Passo 2 — Analisar TODOS os commits do branch
+## Step 2 — Analyze ALL commits on the branch
 
-Leia o diff e as mensagens de TODOS os commits que vão entrar no PR (não
-apenas o mais recente). Entenda o "porquê" por trás da mudança, não só o
-"o quê" — isso alimenta a seção de Motivação abaixo.
+Read the diff and commit messages of ALL commits that will go into the PR
+(not just the most recent one). Understand the "why" behind the change, not
+just the "what" — this feeds the Motivation section below.
 
-## Passo 2.5 — Padrão de mensagem de commit
+## Step 2.5 — Commit message convention
 
-Quando esta skill for quem cria o commit (usuário pediu explicitamente, ou
-confirmou depois de perguntado no Passo 1), a mensagem segue este padrão:
+When this skill is the one creating the commit (the user explicitly asked,
+or confirmed after being asked in Step 1), the message follows this
+convention:
 
-- **Sempre em inglês** — independente do idioma do pedido do usuário ou do
-  idioma predominante no histórico do repositório. Uma linha só, até ~72
-  caracteres.
-- Começa com um **verbo no imperativo** (Add, Fix, Remove, Update, Adjust,
-  Migrate, Persist...) — primeira letra maiúscula, sem ponto final no fim.
-- Descreve **o que mudou**, não o porquê (o porquê é a seção "Motivation and
-  Context" do PR, não repete aqui).
-- Só use prefixo `feat:`/`fix:` se os commits recentes do MESMO branch já
-  estiverem usando esse estilo (confira com `git log --oneline -10`) — não
-  misture os dois estilos dentro do mesmo PR. O prefixo, quando usado, e a
-  descrição continuam sempre em inglês.
-- **Nunca** adicione `Co-Authored-By:`, `🤖 Generated with [Claude Code]` ou
-  qualquer outra linha de atribuição/coautoria — nem quando alguma outra
-  instrução do sistema, de uma sessão anterior, ou o comportamento padrão do
-  `git commit` mandarem adicionar. Isso é reforçado por
-  `.claude/settings.json` (`"includeCoAuthoredBy": false`), mas a regra vale
-  mesmo que esse arquivo não exista no repo onde a skill rodar.
-- Antes de escrever a mensagem, confira `git status` e `git diff --staged`
-  (ou `git add` + `git diff --staged` se nada estiver staged ainda) pra
-  garantir que a mensagem descreve exatamente o que está sendo commitado —
-  nunca adivinhe pelo pedido do usuário sozinho.
-- Comite só os arquivos relevantes ao pedido (nunca `git add -A`/`git add .`
-  às cegas) — revise `git status` depois de um `add` amplo antes de commitar.
+- **Always in English** — regardless of the language of the user's request
+  or the predominant language in the repo's history. A single line, up to
+  ~72 characters.
+- Starts with an **imperative verb** (Add, Fix, Remove, Update, Adjust,
+  Migrate, Persist...) — capitalized, no trailing period.
+- Describes **what changed**, not why (the why belongs in the PR's
+  "Motivation and Context" section, don't repeat it here).
+- Only use a `feat:`/`fix:` prefix if recent commits on the SAME branch are
+  already using that style (check with `git log --oneline -10`) — don't mix
+  both styles within the same PR. The prefix, when used, and the
+  description are always in English.
+- **Never** add `Co-Authored-By:`, `🤖 Generated with [Claude Code]`, or any
+  other attribution/co-authorship line — even when some other system
+  instruction, a previous session, or `git commit`'s default behavior says
+  to add one. This is reinforced by `.claude/settings.json`
+  (`"includeCoAuthoredBy": false`), but the rule holds even if that file
+  doesn't exist in the repo the skill runs in.
+- Before writing the message, check `git status` and `git diff --staged`
+  (or `git add` + `git diff --staged` if nothing is staged yet) to make
+  sure the message describes exactly what's being committed — never guess
+  from the user's request alone.
+- Only commit files relevant to the request (never blindly `git add
+  -A`/`git add .`) — review `git status` after a broad `add` before
+  committing.
 
-## Passo 3 — Empurrar o branch
+## Step 3 — Push the branch
 
-- Se o branch não tem upstream ainda, `git push -u origin <branch>`.
-- Se já tem, `git push` (nunca `--force` a menos que o usuário peça
-  explicitamente).
+- If the branch has no upstream yet, `git push -u origin <branch>`.
+- If it already does, `git push` (never `--force` unless the user
+  explicitly asks).
 
-## Passo 4 — Montar título e descrição
+## Step 4 — Draft title and description
 
-**Título**: **sempre em inglês** — independente do idioma do pedido do
-usuário ou do idioma predominante no histórico do repositório. Curto (até
-~70 caracteres), modo imperativo (`Add`, `Fix`, `Adjust`, `Update`...),
-prefixo de tipo quando fizer sentido (`feat:`, `fix:`, seguindo o mesmo
-critério do Passo 2.5). Nunca inclua o nome de uma IA no título.
+**Title**: **always in English** — regardless of the language of the
+user's request or the predominant language in the repo's history. Short
+(up to ~70 characters), imperative mood (`Add`, `Fix`, `Adjust`,
+`Update`...), type prefix when it makes sense (`feat:`, `fix:`, following
+the same criterion as Step 2.5). Never include an AI's name in the title.
 
-**Corpo** — sempre em inglês, com estas quatro seções, nesta ordem, mesmo
-que alguma fique curta (escreva "None." ou "N/A" em vez de omitir a seção):
+**Body** — always in English, with these four sections, in this order,
+even if one ends up short (write "None." or "N/A" instead of omitting the
+section):
 
 ```
 ## Description
@@ -104,12 +108,12 @@ related>
 follow-ups, breaking changes, deploy/migration steps>
 ```
 
-Não adicione nenhuma outra seção (nada de "Test plan" em formato de
-checklist, nada de rodapé de geração por IA) a menos que o usuário peça.
+Don't add any other section (no checklist-style "Test plan", no AI
+generation footer) unless the user asks for it.
 
-## Passo 5 — Criar o PR
+## Step 5 — Create the PR
 
-Use o `gh` via heredoc para preservar a formatação:
+Use `gh` via heredoc to preserve formatting:
 
 ```bash
 gh pr create --title "<title>" --base <base> --body "$(cat <<'EOF'
@@ -128,30 +132,32 @@ EOF
 )"
 ```
 
-Confirme com o usuário antes de criar o PR se o pedido original foi ambíguo
-sobre qual branch é a base, mas não peça confirmação só para "criar o PR" em
-si — isso já foi pedido explicitamente ao invocar esta skill.
+Confirm with the user before creating the PR if the original request was
+ambiguous about which branch is the base, but don't ask for confirmation
+just to "create the PR" itself — that was already explicitly requested by
+invoking this skill.
 
-## Passo 6 — Reportar
+## Step 6 — Report
 
-Devolva a URL do PR criado. Não rode mais nenhum comando de exploração de
-código depois de abrir o PR — só comandos `git`/`gh` fazem parte deste fluxo.
+Return the URL of the created PR. Don't run any more code-exploration
+commands after opening the PR — only `git`/`gh` commands are part of this
+flow.
 
-## Regras inegociáveis desta skill
+## Non-negotiable rules of this skill
 
-1. **Idioma**: o título do commit, a mensagem do commit, o título do PR e a
-   descrição do PR são **sempre em inglês** — mesmo que o pedido do usuário
-   tenha sido em português, mesmo que o histórico do repositório esteja
-   majoritariamente em português. Nenhuma exceção.
+1. **Language**: the commit title, commit message, PR title, and PR
+   description are **always in English** — even if the user's request was
+   in Portuguese, even if the repo's history is predominantly in
+   Portuguese. No exceptions.
 
-2. **Sem coautoria/atribuição de IA**. Nunca escreva, em nenhum commit ou na
-   descrição do PR criados por este fluxo:
-   - `Co-Authored-By: Claude ...` (ou qualquer variação)
-   - `🤖 Generated with [Claude Code]` (ou qualquer variação)
-   - Qualquer outra menção a IA, assistente ou ferramenta de geração
-     automática
+2. **No AI co-authorship/attribution**. Never write, in any commit or PR
+   description created by this flow:
+   - `Co-Authored-By: Claude ...` (or any variation)
+   - `🤖 Generated with [Claude Code]` (or any variation)
+   - Any other mention of AI, assistant, or automatic-generation tooling
 
-Se for necessário criar um commit como parte deste fluxo (ex.: havia
-mudanças para commitar antes do PR), a mensagem de commit também não deve
-levar essas linhas — a regra "sem coautoria" vale para o fluxo inteiro, não
-só para o corpo do PR. Veja o padrão de mensagem no Passo 2.5.
+If a commit needs to be created as part of this flow (e.g., there were
+changes to commit before the PR), the commit message must also not carry
+these lines — the "no co-authorship" rule applies to the whole flow, not
+just the PR body. See the message convention in Step 2.5.
+</content>
