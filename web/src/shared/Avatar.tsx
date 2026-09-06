@@ -1,8 +1,24 @@
 import { Avatar as AvatarRoot, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
-// Discord's palette (no yellow: white text on it is illegible) — references
-// index.css's tokens instead of repeating the hex values
-const AVATAR_COLORS = ['var(--color-blurple)', 'var(--color-green)', 'var(--color-red)', 'var(--color-fuchsia)'];
+// Discord-ish palette (no yellow: white text on it is illegible). The saved
+// value is a stable key; only this component knows the CSS token behind it.
+export const AVATAR_COLOR_OPTIONS = [
+  { value: 'blurple', label: 'Blurple', css: 'var(--color-blurple)' },
+  { value: 'green', label: 'Verde', css: 'var(--color-green)' },
+  { value: 'red', label: 'Vermelho', css: 'var(--color-red)' },
+  { value: 'fuchsia', label: 'Fuchsia', css: 'var(--color-fuchsia)' },
+] as const;
+
+export type AvatarColorValue = (typeof AVATAR_COLOR_OPTIONS)[number]['value'];
+export const DEFAULT_AVATAR_COLOR: AvatarColorValue = AVATAR_COLOR_OPTIONS[0].value;
+
+const AVATAR_COLORS = AVATAR_COLOR_OPTIONS.map((c) => c.css);
+const AVATAR_COLOR_BY_VALUE = new Map<string, string>(AVATAR_COLOR_OPTIONS.map((c) => [c.value, c.css]));
+
+export function normalizeAvatarColor(value: unknown): AvatarColorValue | '' {
+  const key = String(value == null ? '' : value).trim();
+  return AVATAR_COLOR_BY_VALUE.has(key) ? (key as AvatarColorValue) : '';
+}
 
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -11,9 +27,7 @@ function initialsOf(name: string): string {
   const b = parts.length > 1 ? parts[parts.length - 1][0] : '';
   return (a + b).toUpperCase();
 }
-// exported so other places can reuse a person's avatar color instead of
-// picking a random one
-export function colorFor(id: string): string {
+function fallbackColorFor(id: string): string {
   // defensive guard: `id` "should" always be a real string (the type says
   // so), but a message's authorId becomes NULL when the sender's account
   // is deleted (see server/src/modules/moderation.ts and ChatMessage.id in
@@ -26,23 +40,32 @@ export function colorFor(id: string): string {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
+// exported so other places can reuse a person's avatar color instead of
+// picking a random one. `avatarColor` is the persisted user choice; empty or
+// unknown values intentionally fall back to the old deterministic id color.
+export function colorFor(id: string, avatarColor?: string | null): string {
+  const selected = AVATAR_COLOR_BY_VALUE.get(normalizeAvatarColor(avatarColor));
+  return selected ?? fallbackColorFor(id);
+}
+
 interface AvatarProps {
   id: string;
   name: string;
   avatar: string;
+  avatarColor?: string | null;
   size: number;
 }
 
 /** shadcn's Avatar (Base UI underneath) already tracks image loading and
  * shows the fallback on its own on error or an empty URL — no longer needs
  * the manual useState/onError the previous version had. */
-export function Avatar({ id, name, avatar, size }: AvatarProps) {
+export function Avatar({ id, name, avatar, avatarColor, size }: AvatarProps) {
   return (
     <AvatarRoot style={{ width: size, height: size }}>
       {avatar && <AvatarImage src={avatar} alt="" />}
       <AvatarFallback
         className="font-bold text-white"
-        style={{ background: colorFor(id), fontSize: Math.round(size * 0.4) }}
+        style={{ background: colorFor(id, avatarColor), fontSize: Math.round(size * 0.4) }}
       >
         {initialsOf(name)}
       </AvatarFallback>

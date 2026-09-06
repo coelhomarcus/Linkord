@@ -38,6 +38,7 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     quality: 'standard',
     setQuality: noop,
     updateAvatar: noop,
+    updateProfile: noop,
     uploadAvatarFile: async () => '',
     menuTarget: null,
     openTileMenu: noop,

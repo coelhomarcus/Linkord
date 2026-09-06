@@ -15,7 +15,7 @@ function UserRow({ user, online, isMe, onDeleteRequest }: {
   return (
     <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-bg-hover">
       <div className="relative flex-none">
-        <Avatar id={user.id} name={user.username} avatar={user.avatar} size={32} />
+        <Avatar id={user.id} name={user.username} avatar={user.avatar} avatarColor={user.avatarColor} size={32} />
         <span
           className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-bg-tertiary ${online ? 'bg-green' : 'bg-text-muted'}`}
         />

@@ -53,6 +53,7 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
     userId: p.userId,
     name: p.name,
     avatar: p.avatar,
+    avatarColor: p.avatarColor,
     role: p.role,
     maxParticipants: config.MAX_PARTICIPANTS,
     participants: [...participantsMap.values()].filter((o) => o.id !== p.id).map(publicParticipant),

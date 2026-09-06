@@ -375,7 +375,7 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
                   i === mentionSelectedIndex ? 'bg-bg-selected text-text-primary' : 'text-text-secondary hover:bg-bg-hover'
                 )}
               >
-                <Avatar id={user.id} name={user.username} avatar={user.avatar} size={24} />
+                <Avatar id={user.id} name={user.username} avatar={user.avatar} avatarColor={user.avatarColor} size={24} />
                 <span className="truncate">{user.username}</span>
               </button>
             ))}

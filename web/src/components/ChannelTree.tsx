@@ -33,8 +33,8 @@ import type { Category, Channel } from '../types/protocol';
  * 'screen-share'/'speaking'), always available but one broadcast round-trip
  * behind. `viewerInSameChannel` picks which one to trust — never both, to
  * avoid a stale value from one leaking through when the other should win. */
-function CallParticipantRow({ id, name, avatar, viewerInSameChannel }: {
-  id: string; name: string; avatar: string; viewerInSameChannel: boolean;
+function CallParticipantRow({ id, name, avatar, avatarColor, viewerInSameChannel }: {
+  id: string; name: string; avatar: string; avatarColor: string; viewerInSameChannel: boolean;
 }) {
   const { state, deafened } = useRoom();
   const media = useParticipantMedia(id);
@@ -52,7 +52,7 @@ function CallParticipantRow({ id, name, avatar, viewerInSameChannel }: {
   // (LiveKit, same room) — the Socket.IO self-report is accurate but noisy
   // to show for a call I'm not in, so it's ignored here on purpose.
   const isSpeaking = trustLiveKit && isSpeakingLive;
-  const tint = colorFor(id);
+  const tint = colorFor(id, avatarColor);
   // deafened has no LiveKit track (see protocol.ts) — for myself it's
   // local state (instant); for others it comes from the Participant the
   // server relays (participant-updated).
@@ -61,7 +61,7 @@ function CallParticipantRow({ id, name, avatar, viewerInSameChannel }: {
   return (
     <div className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-bg-hover">
       <div className="rounded-full transition-shadow" style={{ boxShadow: isSpeaking ? `0 0 0 2px ${tint}` : 'none' }}>
-        <Avatar id={id} name={name} avatar={avatar} size={26} />
+        <Avatar id={id} name={name} avatar={avatar} avatarColor={avatarColor} size={26} />
       </div>
       <span className="min-w-0 flex-1 truncate text-body text-text-secondary">{name}</span>
       {cameraOn && <Video size={15} className="flex-none text-green" />}
@@ -253,10 +253,10 @@ function CategoryBlock({ category, activeChannelId, isAdmin, onSelectChannel }: 
               {ch.type === 'voice' && (
                 <div className="ml-4 flex flex-col gap-0.5 py-0.5 pl-2">
                   {state.me.id && activeVoiceChannelId === ch.id && (
-                    <CallParticipantRow id={state.me.id} name={state.me.name} avatar={state.me.avatar} viewerInSameChannel />
+                    <CallParticipantRow id={state.me.id} name={state.me.name} avatar={state.me.avatar} avatarColor={state.me.avatarColor} viewerInSameChannel />
                   )}
                   {[...state.participants.values()].filter((p) => p.voiceChannelId === ch.id).map((p) => (
-                    <CallParticipantRow key={p.id} id={p.id} name={p.name} avatar={p.avatar} viewerInSameChannel={activeVoiceChannelId === ch.id} />
+                    <CallParticipantRow key={p.id} id={p.id} name={p.name} avatar={p.avatar} avatarColor={p.avatarColor} viewerInSameChannel={activeVoiceChannelId === ch.id} />
                   ))}
                 </div>
               )}

@@ -8,6 +8,7 @@ export interface Participant {
   userId: string;
   name: string; // account username — unique, immutable
   avatar: string; // '' when none
+  avatarColor: string; // palette key; '' only appears for legacy fallback data
   role: 'user' | 'admin';
   // no LiveKit track equivalent — a flag the client announces (see
   // ClientMessage 'deafened') so others can show the icon.
@@ -99,6 +100,7 @@ export interface PublicUser {
   id: string;
   username: string;
   avatar: string;
+  avatarColor: string;
   role: 'user' | 'admin';
 }
 
@@ -106,8 +108,8 @@ export type ClientMessage =
   // identity comes from the session cookie resolved at handshake — id/token
   // here are only a per-tab RECONNECT resume, never a claim of identity.
   | { t: 'join'; id?: string; token?: string }
-  // name isn't editable (it's the account's immutable username) — avatar only.
-  | { t: 'profile'; avatar: string }
+  // name isn't editable (it's the account's immutable username).
+  | { t: 'profile'; avatar: string; avatarColor: string }
   | { t: 'reaction'; emoji: ReactionEmoji }
   | { t: 'deafened'; value: boolean }
   // self-reported media state — same pattern as 'deafened' above, just
@@ -153,7 +155,7 @@ export type ServerMessage =
   | {
       t: 'welcome'; id: string; token: string;
       // authoritative account identity — from the session, not the client
-      userId: string; name: string; avatar: string; role: 'user' | 'admin';
+      userId: string; name: string; avatar: string; avatarColor: string; role: 'user' | 'admin';
       maxParticipants: number; participants: Participant[];
       categories: Category[]; users: PublicUser[]; onlineUserIds: string[];
       storageUsage: StorageUsage;

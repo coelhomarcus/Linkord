@@ -10,6 +10,7 @@ export interface SessionUser {
   userId: string;
   username: string;
   avatar: string;
+  avatarColor: string;
   role: Role;
 }
 
@@ -23,6 +24,7 @@ export interface Participant {
   socket: AppSocket | null;
   name: string;
   avatar: string;
+  avatarColor: string;
   role: Role;
   deafened: boolean;
   // which voice channel they're in now, or null — set explicitly by
@@ -51,6 +53,7 @@ export interface PublicParticipant {
   userId: string;
   name: string;
   avatar: string;
+  avatarColor: string;
   role: Role;
   deafened: boolean;
   voiceChannelId: string | null;

@@ -12,6 +12,7 @@ export interface ApiUser {
   id: string;
   username: string;
   avatar: string;
+  avatarColor: string;
   role: 'user' | 'admin';
 }
 

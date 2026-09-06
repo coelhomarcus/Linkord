@@ -145,7 +145,7 @@ async function handleMe(request: FastifyRequest, reply: FastifyReply): Promise<v
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
   if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
-  sendJson(reply, 200, { user: { id: sess.userId, username: sess.username, avatar: sess.avatar, role: sess.role } });
+  sendJson(reply, 200, { user: { id: sess.userId, username: sess.username, avatar: sess.avatar, avatarColor: sess.avatarColor, role: sess.role } });
 }
 
 export function registerAuthRoutes(fastify: FastifyInstance): void {

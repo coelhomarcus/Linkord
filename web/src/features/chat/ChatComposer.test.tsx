@@ -11,9 +11,9 @@ import type { PublicUser } from '../../types/protocol';
 const joinedState = { ...initialRoomState, joined: true };
 
 const allUsers = new Map<string, PublicUser>([
-  ['u1', { id: 'u1', username: 'Luanzera', avatar: '', role: 'user' }],
-  ['u2', { id: 'u2', username: 'Lune', avatar: '', role: 'admin' }],
-  ['u3', { id: 'u3', username: 'mamaepapai', avatar: '', role: 'user' }],
+  ['u1', { id: 'u1', username: 'Luanzera', avatar: '', avatarColor: 'blurple', role: 'user' }],
+  ['u2', { id: 'u2', username: 'Lune', avatar: '', avatarColor: 'fuchsia', role: 'admin' }],
+  ['u3', { id: 'u3', username: 'mamaepapai', avatar: '', avatarColor: 'green', role: 'user' }],
 ]);
 
 describe('ChatComposer — @mencoes', () => {

@@ -93,6 +93,7 @@ function ChatMessageRow({
   // own messages never "highlight for being mentioned" — mentioning
   // yourself isn't a notification.
   const mentionsMe = !isMine && mentionsUser(message.text, mentionLookup, state.me.userId);
+  const author = message.id ? mentionLookup.get(message.id) : undefined;
 
   function handleEditKeyDown(e: ReactKeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSaveEdit(); }
@@ -115,7 +116,7 @@ function ChatMessageRow({
             deleted — falls back to the frozen name as the color seed, just
             so every deleted author doesn't get the SAME color. */}
         {showHeader ? (
-          <Avatar id={message.id ?? message.name} name={message.name} avatar={message.avatar} size={40} />
+          <Avatar id={message.id ?? message.name} name={message.name} avatar={message.avatar} avatarColor={author?.avatarColor} size={40} />
         ) : (
           <span className="hidden select-none text-center text-caption text-text-muted group-hover/msg:block">
             {formatTime(message.ts)}

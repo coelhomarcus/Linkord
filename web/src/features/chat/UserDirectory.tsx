@@ -10,7 +10,7 @@ function UserRow({ user, online }: { user: PublicUser; online: boolean }) {
   return (
     <div className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-bg-hover">
       <div className="relative flex-none">
-        <Avatar id={user.id} name={user.username} avatar={user.avatar} size={44} />
+        <Avatar id={user.id} name={user.username} avatar={user.avatar} avatarColor={user.avatarColor} size={44} />
         {/* status dot — solid gray for offline, not bg-text-muted/40: the
             opacity read as almost transparent on a dark background instead
             of an actual gray dot. */}

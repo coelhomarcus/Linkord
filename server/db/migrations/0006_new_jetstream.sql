@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "avatar_color" varchar(32) DEFAULT 'blurple' NOT NULL;

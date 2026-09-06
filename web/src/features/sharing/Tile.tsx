@@ -45,6 +45,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
   const participant = isMine ? null : state.participants.get(participantId);
   const name = isMine ? state.me.name : (participant?.name ?? '');
   const avatar = isMine ? state.me.avatar : (participant?.avatar ?? '');
+  const avatarColor = isMine ? state.me.avatarColor : (participant?.avatarColor ?? '');
   // deafened has no LiveKit track — for myself it's local state (instant),
   // for others it comes from the Participant the server relays.
   const isDeafened = isMine ? deafened : (participant?.deafened ?? false);
@@ -59,7 +60,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
   // reactive speaking border: only on the "person" tile (camera/avatar) —
   // speaking shouldn't highlight the shared screen.
   const showSpeakingBorder = kind !== 'screen' && isSpeaking;
-  const tint = colorFor(participantId);
+  const tint = colorFor(participantId, avatarColor);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -142,7 +143,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
         <video ref={videoRef} autoPlay playsInline muted={isMine} className={`h-full w-full object-cover ${kind === 'screen' ? 'bg-black' : ''}`} />
       ) : (
         <div className="flex h-full w-full flex-col items-center justify-center gap-2.5">
-          <Avatar id={participantId} name={name} avatar={avatar} size={avatarSize} />
+          <Avatar id={participantId} name={name} avatar={avatar} avatarColor={avatarColor} size={avatarSize} />
         </div>
       )}
 
@@ -157,7 +158,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
             the only visual reference to who it is in those cases. On a
             kind==='avatar' tile the LARGE avatar already fills the whole
             body above, repeating it here (small) would be redundant. */}
-        {showsVideo && <Avatar id={participantId} name={name} avatar={avatar} size={20} />}
+        {showsVideo && <Avatar id={participantId} name={name} avatar={avatar} avatarColor={avatarColor} size={20} />}
         <span className={cn('select-none truncate font-medium text-text-primary', nameSize === 'label' ? 'text-label' : 'text-body')}>{name}</span>
         {/* "meta" icons — only show when NOT redundant with what this
             specific tile already displays (e.g. doesn't repeat camera-on

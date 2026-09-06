@@ -4,7 +4,7 @@ import type { Participant } from '../types/protocol';
 
 function participant(overrides: Partial<Participant> = {}): Participant {
   return {
-    id: 'p1', userId: 'u1', name: 'Fulana', avatar: '', role: 'user', deafened: false, voiceChannelId: null,
+    id: 'p1', userId: 'u1', name: 'Fulana', avatar: '', avatarColor: 'green', role: 'user', deafened: false, voiceChannelId: null,
     micActivated: false, micMuted: true, cameraOn: false, sharing: false, speaking: false,
     ...overrides,
   };
@@ -19,10 +19,11 @@ describe('roomReducer', () => {
       userId: 'u1',
       name: 'Fulana',
       avatar: 'a.png',
+      avatarColor: 'fuchsia',
       role: 'admin',
       participants: [participant({ id: 'p2', userId: 'u2' })],
     });
-    expect(next.me).toEqual({ ...initialRoomState.me, id: 'conn1', userId: 'u1', name: 'Fulana', avatar: 'a.png', role: 'admin' });
+    expect(next.me).toEqual({ ...initialRoomState.me, id: 'conn1', userId: 'u1', name: 'Fulana', avatar: 'a.png', avatarColor: 'fuchsia', role: 'admin' });
     expect(next.participants.get('p2')?.userId).toBe('u2');
     expect(next.joined).toBe(true);
     expect(next.roomError).toBeNull();
@@ -82,9 +83,17 @@ describe('roomReducer', () => {
   });
 
   it('SET_LOCAL_AVATAR atualiza so o avatar de "me", sem mexer no resto', () => {
-    const next = roomReducer(initialRoomState, { type: 'SET_LOCAL_AVATAR', avatar: 'novo.png' });
+    const state = { ...initialRoomState, me: { ...initialRoomState.me, avatarColor: 'green' } };
+    const next = roomReducer(state, { type: 'SET_LOCAL_AVATAR', avatar: 'novo.png' });
     expect(next.me.avatar).toBe('novo.png');
-    expect(next.me.name).toBe(initialRoomState.me.name);
+    expect(next.me.avatarColor).toBe('green');
+    expect(next.me.name).toBe(state.me.name);
+  });
+
+  it('SET_LOCAL_PROFILE atualiza foto e cor do fundo de "me"', () => {
+    const next = roomReducer(initialRoomState, { type: 'SET_LOCAL_PROFILE', avatar: 'novo.png', avatarColor: 'red' });
+    expect(next.me.avatar).toBe('novo.png');
+    expect(next.me.avatarColor).toBe('red');
   });
 
   it('SET_ROOM_ERROR seta e limpa (null) a mensagem de erro de sala', () => {

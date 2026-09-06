@@ -8,14 +8,21 @@ import {
 
 /** Fake minimo de AppSocket — so os campos que participants.ts de fato le
  * (nunca uma Socket.IO de verdade, sem conexao nenhuma). */
-function fakeSocket(userId: string, overrides: Partial<{ username: string; avatar: string; role: 'user' | 'admin' }> = {}): AppSocket {
+function fakeSocket(userId: string, overrides: Partial<{ username: string; avatar: string; avatarColor: string; role: 'user' | 'admin' }> = {}): AppSocket {
   return {
     participantId: null,
     ip: '127.0.0.1',
     connected: true,
     emit: () => {},
     disconnect: () => {},
-    user: { tokenHash: 'x', userId, username: overrides.username ?? userId, avatar: overrides.avatar ?? '', role: overrides.role ?? 'user' },
+    user: {
+      tokenHash: 'x',
+      userId,
+      username: overrides.username ?? userId,
+      avatar: overrides.avatar ?? '',
+      avatarColor: overrides.avatarColor ?? 'blurple',
+      role: overrides.role ?? 'user',
+    },
   } as unknown as AppSocket;
 }
 
@@ -42,9 +49,25 @@ describe('join', () => {
     createdIds.push(p!.id);
     assert.equal(socket.participantId, p!.id);
     assert.equal(p!.userId, userId);
+    assert.equal(p!.avatarColor, 'blurple');
     assert.equal(p!.deafened, false);
     assert.equal(p!.voiceChannelId, null);
     assert.equal(participants.get(p!.id), p);
+  });
+
+  test('usa a cor de avatar persistida no perfil da conta', () => {
+    const p = join(fakeSocket(`u-${Math.random()}`, { avatarColor: 'fuchsia' }), {})!;
+    createdIds.push(p.id);
+
+    assert.equal(p.avatarColor, 'fuchsia');
+    assert.equal(publicParticipant(p).avatarColor, 'fuchsia');
+  });
+
+  test('cor de avatar invalida cai para o default seguro', () => {
+    const p = join(fakeSocket(`u-${Math.random()}`, { avatarColor: 'url(javascript:alert(1))' }), {})!;
+    createdIds.push(p.id);
+
+    assert.equal(p.avatarColor, 'blurple');
   });
 
   test('primeira conexao de uma conta vira "online"; segunda aba da MESMA conta nao duplica o status', () => {

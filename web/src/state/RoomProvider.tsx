@@ -24,6 +24,7 @@ import {
 import { mentionsUsername } from '../shared/lib/mentions';
 import { uploadWithProgress } from '../shared/lib/uploadWithProgress';
 import { uploadFileInChunks } from '../shared/lib/chunkedUpload';
+import { DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../shared/Avatar';
 import type { Category, ChatMessage, ClientMessage, Participant, PublicUser, ReactionEmoji, ServerMessage, StorageUsage } from '../types/protocol';
 
 const REACTION_DURATION_MS = 3000; // must match --animate-float-up in index.css
@@ -34,9 +35,13 @@ const CHAT_CLIENT_LIMIT = 300; // client-side cap only — server already limits
  * a reload. */
 function mergeUserFromParticipant(prev: Map<string, PublicUser>, participant: Participant): Map<string, PublicUser> {
   const existing = prev.get(participant.userId);
-  if (!existing || (existing.avatar === participant.avatar && existing.role === participant.role)) return prev;
+  if (!existing || (
+    existing.avatar === participant.avatar
+    && existing.avatarColor === participant.avatarColor
+    && existing.role === participant.role
+  )) return prev;
   const next = new Map(prev);
-  next.set(participant.userId, { ...existing, avatar: participant.avatar, role: participant.role });
+  next.set(participant.userId, { ...existing, avatar: participant.avatar, avatarColor: participant.avatarColor, role: participant.role });
   return next;
 }
 
@@ -351,7 +356,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         myUsernameRef.current = m.name;
         tokenRef.current = m.token;
         saveIdentity(m.id, m.token);
-        dispatch({ type: 'WELCOME', id: m.id, userId: m.userId, name: m.name, avatar: m.avatar, role: m.role, participants: m.participants });
+        dispatch({ type: 'WELCOME', id: m.id, userId: m.userId, name: m.name, avatar: m.avatar, avatarColor: m.avatarColor, role: m.role, participants: m.participants });
         setCategories(m.categories);
         categoriesRef.current = m.categories;
         setAllUsers(new Map(m.users.map((u) => [u.id, u])));
@@ -559,24 +564,38 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, sendWs, handleServerMessage, auth]);
 
-  const updateAvatar = useCallback((avatar: string) => {
-    const finalAvatar = avatar.trim().slice(0, 500);
-    dispatch({ type: 'SET_LOCAL_AVATAR', avatar: finalAvatar });
-    sendWs({ t: 'profile', avatar: finalAvatar });
+  const updateProfile = useCallback((profile: { avatar: string; avatarColor: string }) => {
+    const finalAvatar = profile.avatar.trim().slice(0, 500);
+    const finalAvatarColor = normalizeAvatarColor(profile.avatarColor) || DEFAULT_AVATAR_COLOR;
+    dispatch({ type: 'SET_LOCAL_PROFILE', avatar: finalAvatar, avatarColor: finalAvatarColor });
+    setAllUsers((prev) => {
+      const userId = myUserIdRef.current;
+      if (!userId) return prev;
+      const existing = prev.get(userId);
+      if (!existing || (existing.avatar === finalAvatar && existing.avatarColor === finalAvatarColor)) return prev;
+      const next = new Map(prev);
+      next.set(userId, { ...existing, avatar: finalAvatar, avatarColor: finalAvatarColor });
+      return next;
+    });
+    sendWs({ t: 'profile', avatar: finalAvatar, avatarColor: finalAvatarColor });
   }, [dispatch, sendWs]);
 
+  const updateAvatar = useCallback((avatar: string) => {
+    updateProfile({ avatar, avatarColor: state.me.avatarColor });
+  }, [state.me.avatarColor, updateProfile]);
+
   // same upload folder/route as chat attachments — this only gets the URL
-  // back; updateAvatar (shared with pasting an external URL) applies it.
-  const uploadAvatarFile = useCallback(async (file: File, onProgress?: (fraction: number) => void) => {
+  // back; updateProfile applies it together with the chosen background.
+  const uploadAvatarFile = useCallback(async (file: File, onProgress?: (fraction: number) => void, avatarColor?: string) => {
     const body = await uploadWithProgress<{ avatar: string }>({
       url: '/api/avatar',
       file,
       headers: { 'Content-Type': file.type || 'application/octet-stream' },
       onProgress,
     });
-    updateAvatar(body.avatar);
+    updateProfile({ avatar: body.avatar, avatarColor: avatarColor ?? state.me.avatarColor });
     return body.avatar;
-  }, [updateAvatar]);
+  }, [state.me.avatarColor, updateProfile]);
 
   // menuOpenRef exists so closeTileMenu can answer synchronously whether it
   // actually closed something (setState isn't synchronous enough for that).
@@ -620,7 +639,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         registerRequestChatView,
         activeVoiceChannelId, joinVoiceChannel,
         startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted, leaveVoiceChannel, quality, setQuality,
-        updateAvatar, uploadAvatarFile, menuTarget, openTileMenu, closeTileMenu,
+        updateAvatar, updateProfile, uploadAvatarFile, menuTarget, openTileMenu, closeTileMenu,
         reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
         hideAudioOnlyTiles, setHideAudioOnlyTiles,
         categories, activeChannelId, openChannel, messagesByChannel, unreadByChannel,

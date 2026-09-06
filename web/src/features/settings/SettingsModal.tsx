@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { HardDrive, Images, LogOut, Settings2, ShieldCheck, SlidersHorizontal, Upload, User, Volume2, VolumeX } from 'lucide-react';
+import { Check, HardDrive, Images, LogOut, Settings2, ShieldCheck, SlidersHorizontal, Upload, User, Volume2, VolumeX } from 'lucide-react';
 import { MediaTab } from './MediaTab';
 import { ModerationTab } from './ModerationTab';
 import { useRoom } from '../../state/RoomContext';
@@ -9,7 +9,7 @@ import { QUALITY_LABELS } from './useQualityPreference';
 import type { Quality } from './useQualityPreference';
 import { useMediaDevices } from './useMediaDevices';
 import { requestNotificationPermission } from '../../shared/notifications';
-import { Avatar } from '../../shared/Avatar';
+import { Avatar, AVATAR_COLOR_OPTIONS, DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../../shared/Avatar';
 import { UploadProgressBar } from '../../shared/UploadProgressBar';
 import { SectionLabel, sectionLabelClass } from '../../shared/SectionLabel';
 import { cn } from '@/shared/lib/utils';
@@ -69,19 +69,23 @@ function DevicePicker({ label, room, kind }: { label: string; room: import('live
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const {
-    state, updateAvatar, uploadAvatarFile, quality, setQuality, showStats, setShowStats,
+    state, updateProfile, uploadAvatarFile, quality, setQuality, showStats, setShowStats,
     notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled, livekitRoom, storageUsage,
   } = useRoom();
   const { logout } = useAuth();
   const [avatar, setAvatar] = useState(state.me.avatar);
+  const [avatarColor, setAvatarColor] = useState(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (open) setAvatar(state.me.avatar);
-  }, [open, state.me.avatar]);
+    if (open) {
+      setAvatar(state.me.avatar);
+      setAvatarColor(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
+    }
+  }, [open, state.me.avatar, state.me.avatarColor]);
 
   function handleVolumeChange(value: number | readonly number[]) {
     const v = Array.isArray(value) ? (value[0] ?? 0) : (value as number);
@@ -103,7 +107,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   function handleProfileSubmit(e: FormEvent) {
     e.preventDefault();
-    updateAvatar(avatar);
+    updateProfile({ avatar, avatarColor });
   }
 
   async function handleAvatarFileChange(e: ChangeEvent<HTMLInputElement>) {
@@ -118,7 +122,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setAvatarUploadProgress(0);
     setUploadingAvatar(true);
     try {
-      const url = await uploadAvatarFile(file, setAvatarUploadProgress);
+      const url = await uploadAvatarFile(file, setAvatarUploadProgress, avatarColor);
       setAvatar(url);
     } catch (err) {
       setAvatarError(err instanceof Error ? err.message : 'Falha ao enviar a foto.');
@@ -156,7 +160,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
             <TabsPanel value="profile" className="flex flex-col gap-6">
               <div className="flex items-center gap-3">
-                <Avatar id={state.me.id || 'preview'} name={state.me.name} avatar={avatar} size={48} />
+                <Avatar id={state.me.id || 'preview'} name={state.me.name} avatar={avatar} avatarColor={avatarColor} size={48} />
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <p className="truncate text-title font-semibold text-text-primary">{state.me.name}</p>
                   {state.me.role === 'admin' && (
@@ -179,9 +183,33 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                     onChange={(e) => setAvatar(e.target.value)}
                   />
                 </div>
+                <div className="flex flex-col gap-2">
+                  <Label className="text-label text-text-muted">Cor do fundo</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {AVATAR_COLOR_OPTIONS.map((option) => {
+                      const selected = avatarColor === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          aria-label={`Usar ${option.label}`}
+                          aria-pressed={selected}
+                          onClick={() => setAvatarColor(option.value)}
+                          className={cn(
+                            'relative h-8 w-8 rounded-full border transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+                            selected ? 'border-text-primary ring-2 ring-ring/50 ring-offset-2 ring-offset-bg-tertiary' : 'border-strong hover:border-text-muted'
+                          )}
+                          style={{ background: option.css }}
+                        >
+                          {selected && <Check size={16} className="absolute inset-0 m-auto text-white drop-shadow" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 <div className="flex items-center gap-2">
                   <Button type="submit" size="sm">
-                    <span>Salvar URL</span>
+                    <span>Salvar perfil</span>
                   </Button>
                   <input
                     ref={avatarFileInputRef}

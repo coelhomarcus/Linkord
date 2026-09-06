@@ -67,7 +67,7 @@ describe('CallParticipantRow (via ChannelTree)', () => {
 
   function fakeParticipant(overrides: Partial<Participant> = {}): Participant {
     return {
-      id: 'user-2', userId: 'user-2', name: 'Fulano', avatar: '', role: 'user',
+      id: 'user-2', userId: 'user-2', name: 'Fulano', avatar: '', avatarColor: 'green', role: 'user',
       deafened: false, voiceChannelId: 'voice1',
       micActivated: false, micMuted: true, cameraOn: false, sharing: false, speaking: false,
       ...overrides,

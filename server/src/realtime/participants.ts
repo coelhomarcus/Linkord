@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { config } from '../config/env.js';
-import { updateAvatar } from '../modules/auth/users.js';
+import { updateProfile } from '../modules/auth/users.js';
 import type { AppSocket, HandlerTable, Participant, PublicParticipant } from '../types.js';
 
 // Presence for the single shared room. `id` is per-CONNECTION (used as the
@@ -19,9 +19,16 @@ function sanitizeAvatar(url: unknown): string {
   return /^https?:\/\/\S+$/i.test(s) || UPLOADED_AVATAR_RE.test(s) ? s : '';
 }
 
+const DEFAULT_AVATAR_COLOR = 'blurple';
+const AVATAR_COLOR_VALUES = new Set([DEFAULT_AVATAR_COLOR, 'green', 'red', 'fuchsia']);
+function sanitizeAvatarColor(value: unknown): string {
+  const key = String(value == null ? '' : value).trim().slice(0, 32);
+  return AVATAR_COLOR_VALUES.has(key) ? key : DEFAULT_AVATAR_COLOR;
+}
+
 export function publicParticipant(p: Participant): PublicParticipant {
   return {
-    id: p.id, userId: p.userId, name: p.name, avatar: p.avatar, role: p.role,
+    id: p.id, userId: p.userId, name: p.name, avatar: p.avatar, avatarColor: p.avatarColor, role: p.role,
     deafened: p.deafened, voiceChannelId: p.voiceChannelId,
     micActivated: p.micActivated, micMuted: p.micMuted, cameraOn: p.cameraOn, sharing: p.sharing, speaking: p.speaking,
   };
@@ -141,6 +148,7 @@ export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
       socket,
       name: u.username,
       avatar: sanitizeAvatar(u.avatar),
+      avatarColor: sanitizeAvatarColor(u.avatarColor),
       role: u.role,
       // always starts undeafened on a brand NEW connection (client starts
       // the same way); a resume above reuses the existing `p` and
@@ -161,17 +169,27 @@ export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
   return p;
 }
 
-/** Only the avatar is editable — name is the account's immutable username.
- * Persisted to survive reconnects/other tabs (the session cache can take up
- * to 60s to reflect this for a tab that hasn't reconnected yet — the
- * editing tab updates immediately via participant-updated below). */
-function handleProfile(socket: AppSocket, msg: { avatar?: string }): void {
+/** Avatar and avatar background color are editable — name is the account's
+ * immutable username. Persisted to survive reconnects/other tabs. */
+function handleProfile(socket: AppSocket, msg: { avatar?: string; avatarColor?: string } | null | undefined): void {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
+  const body = msg && typeof msg === 'object' ? msg : {};
   const oldAvatar = p.avatar;
-  p.avatar = sanitizeAvatar(msg.avatar);
-  broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
-  updateAvatar(p.userId, p.avatar).catch((err) => console.error(`[${p.id}] falha ao salvar avatar:`, err instanceof Error ? err.stack : err));
+  const nextAvatar = Object.prototype.hasOwnProperty.call(body, 'avatar')
+    ? sanitizeAvatar(body.avatar)
+    : p.avatar;
+  const nextAvatarColor = Object.prototype.hasOwnProperty.call(body, 'avatarColor')
+    ? sanitizeAvatarColor(body.avatarColor)
+    : p.avatarColor;
+  for (const other of participants.values()) {
+    if (other.userId !== p.userId) continue;
+    other.avatar = nextAvatar;
+    other.avatarColor = nextAvatarColor;
+    broadcast({ t: 'participant-updated', participant: publicParticipant(other) });
+  }
+  updateProfile(p.userId, { avatar: nextAvatar, avatarColor: nextAvatarColor })
+    .catch((err) => console.error(`[${p.id}] falha ao salvar perfil:`, err instanceof Error ? err.stack : err));
   // deletes the OLD photo file if it was one of our uploads and changed —
   // otherwise each photo change would leave the previous one orphaned.
   // Dynamic import to avoid a cycle: modules/attachments.ts already imports

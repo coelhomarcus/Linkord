@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { colorFor } from './Avatar';
+import { colorFor, normalizeAvatarColor } from './Avatar';
 
 describe('colorFor', () => {
   it('e deterministico — o mesmo id sempre devolve a mesma cor', () => {
@@ -11,7 +11,7 @@ describe('colorFor', () => {
   });
 
   it('ids diferentes tendem a cores diferentes (nao trava tudo na mesma)', () => {
-    const colors = new Set(['a', 'b', 'c', 'd', 'e', 'f'].map(colorFor));
+    const colors = new Set(['a', 'b', 'c', 'd', 'e', 'f'].map((id) => colorFor(id)));
     expect(colors.size).toBeGreaterThan(1);
   });
 
@@ -26,5 +26,17 @@ describe('colorFor', () => {
   it('devolve sempre um dos tokens de cor esperados (nunca undefined)', () => {
     const color = colorFor('qualquer-id');
     expect(color).toMatch(/^var\(--color-/);
+  });
+
+  it('prioriza a cor escolhida pelo usuario quando ela e valida', () => {
+    expect(colorFor('qualquer-id', 'green')).toBe('var(--color-green)');
+    expect(colorFor('qualquer-id', 'fuchsia')).toBe('var(--color-fuchsia)');
+  });
+
+  it('normaliza somente chaves permitidas de cor de avatar', () => {
+    expect(normalizeAvatarColor('red')).toBe('red');
+    expect(normalizeAvatarColor('  blurple  ')).toBe('blurple');
+    expect(normalizeAvatarColor('hotpink')).toBe('');
+    expect(normalizeAvatarColor('')).toBe('');
   });
 });

@@ -4,6 +4,7 @@ import { db } from '../../db/client.js';
 import { users, type User } from '../../db/schema.js';
 import { config } from '../../config/env.js';
 import type { Role } from '../../types.js';
+import { invalidateSessionsForUser } from './session.js';
 
 // Account CRUD. Username uniqueness is case-insensitive (index on
 // lower(username) in the schema) — every username lookup must use the
@@ -13,7 +14,8 @@ export interface PublicUser {
   id: string;
   username: string;
   avatar: string;
-  role: string;
+  avatarColor: string;
+  role: Role;
 }
 
 export interface UsernameTakenError extends Error {
@@ -21,7 +23,7 @@ export interface UsernameTakenError extends Error {
 }
 
 export function publicUser(u: User): PublicUser {
-  return { id: u.id, username: u.username, avatar: u.avatar, role: u.role };
+  return { id: u.id, username: u.username, avatar: u.avatar, avatarColor: u.avatarColor, role: u.role as Role };
 }
 
 export async function findByUsernameLower(username: string): Promise<User | null> {
@@ -63,8 +65,19 @@ export async function createUser({ username, passwordHash, role }: { username: s
   }
 }
 
+export async function updateProfile(id: string, profile: { avatar: string; avatarColor: string }): Promise<User | null> {
+  const [row] = await db
+    .update(users)
+    .set({ avatar: profile.avatar, avatarColor: profile.avatarColor, updatedAt: new Date() })
+    .where(eq(users.id, id))
+    .returning();
+  invalidateSessionsForUser(id);
+  return row || null;
+}
+
 export async function updateAvatar(id: string, avatar: string): Promise<User | null> {
   const [row] = await db.update(users).set({ avatar, updatedAt: new Date() }).where(eq(users.id, id)).returning();
+  invalidateSessionsForUser(id);
   return row || null;
 }
 

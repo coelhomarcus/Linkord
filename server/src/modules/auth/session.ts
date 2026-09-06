@@ -10,9 +10,8 @@ import type { SessionUser } from '../../types.js';
 //
 // The DB is remote, so resolving the session on every Socket.IO handshake/
 // HTTP request would be a WAN round-trip per reconnect. Hence a 60s
-// in-memory cache — cheap to get wrong in one direction (an avatar change
-// or logout from another tab can lag up to 60s), expensive in the other
-// (a WAN call on every flaky-network reconnect).
+// in-memory cache; profile saves and logout/account deletion invalidate the
+// affected entries explicitly.
 
 const SESSION_CACHE_TTL_MS = 60 * 1000;
 const LAST_SEEN_STALE_MS = 60 * 60 * 1000; // only rewrites lastSeenAt if older than 1h
@@ -69,6 +68,7 @@ export async function resolveSession(rawToken: string | undefined | null): Promi
       userId: users.id,
       username: users.username,
       avatar: users.avatar,
+      avatarColor: users.avatarColor,
       role: users.role,
     })
     .from(sessions)
@@ -86,7 +86,14 @@ export async function resolveSession(rawToken: string | undefined | null): Promi
     db.update(sessions).set({ lastSeenAt: new Date() }).where(eq(sessions.tokenHash, tokenHash)).catch(() => {});
   }
 
-  const value: SessionUser = { tokenHash, userId: row.userId, username: row.username, avatar: row.avatar, role: row.role as SessionUser['role'] };
+  const value: SessionUser = {
+    tokenHash,
+    userId: row.userId,
+    username: row.username,
+    avatar: row.avatar,
+    avatarColor: row.avatarColor,
+    role: row.role as SessionUser['role'],
+  };
   cacheSet(tokenHash, value);
   return value;
 }
