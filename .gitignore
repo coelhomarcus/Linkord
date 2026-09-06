@@ -29,3 +29,8 @@ npm-debug.log*
 .claude
 
 bun.lock
+
+# Runtime uploads are user data, never source. Keep only the directory marker
+# so a fresh checkout has a writable bind-mount target for Docker Compose.
+uploads/*
+!uploads/.gitkeep

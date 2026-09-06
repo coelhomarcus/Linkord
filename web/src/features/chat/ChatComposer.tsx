@@ -13,6 +13,7 @@ import { UploadProgressBar } from '../../shared/UploadProgressBar';
 import { formatFileSize, formatSizeLimit } from '../../shared/lib/formatBytes';
 import { Avatar } from '../../shared/Avatar';
 import { cn } from '@/shared/lib/utils';
+import { clearChatDraft, loadChatDraft, saveChatDraft } from './chatDrafts';
 
 const MAX_MENTION_RESULTS = 8;
 
@@ -54,7 +55,7 @@ interface ChatComposerProps {
  * its own up to a cap (field-sizing-content, already built into Textarea). */
 export function ChatComposer({ className, channelId, replyingTo, onCancelReply }: ChatComposerProps) {
   const { state, sendChatMessage, sendAttachment, allUsers } = useRoom();
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() => loadChatDraft(channelId));
   // active "@query" under the cursor, or null when not mentioning anyone
   // right now (see getMentionQuery) — drives the autocomplete dropdown.
   const [mentionQuery, setMentionQuery] = useState<{ start: number; query: string } | null>(null);
@@ -78,6 +79,10 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
   // flicker every time the drag passed over anything inside the composer.
   // Only goes back to false once the counter truly hits zero.
   const dragCounterRef = useRef(0);
+
+  useEffect(() => {
+    saveChatDraft(channelId, text);
+  }, [channelId, text]);
 
   // local preview (images only) via object URL — never uploads anything,
   // just reads the file already on disk. Revoked on change/removal to
@@ -119,6 +124,7 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
       await sendAttachment(channelId, file, text.trim(), setUploadProgress);
       setPendingFile(null);
       setText('');
+      clearChatDraft(channelId);
       setMentionQuery(null);
       onCancelReply?.();
     } catch (err) {
@@ -297,6 +303,10 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
     if (file) attachFile(file);
   }
 
+  // Not gated on state.reconnecting: sendChatMessage now queues locally and
+  // flushes on reconnect (see RoomProvider.tsx), and attachments already go
+  // over their own HTTP upload, independent of the socket — blocking the
+  // whole composer during a brief reconnect no longer buys anything.
   const disabled = !state.joined || sendingFile;
 
   return (
@@ -400,6 +410,7 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder={pendingFile ? 'Adicionar uma legenda (opcional)' : 'Mandar mensagem'}
+          aria-label="Mensagem"
           maxLength={2000}
           disabled={disabled}
           rows={1}
@@ -427,7 +438,7 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
             />
           </PopoverContent>
         </Popover>
-        <Button type="submit" size="icon-lg" disabled={disabled || (!text.trim() && !pendingFile)}>
+        <Button type="submit" size="icon-lg" aria-label="Enviar mensagem" disabled={disabled || (!text.trim() && !pendingFile)}>
           <Send size={16} />
         </Button>
       </form>

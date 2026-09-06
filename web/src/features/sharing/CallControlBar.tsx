@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Headphones, HeadphoneOff, Mic, MicOff, Monitor, MonitorX, PhoneOff, Smile, Video, VideoOff, X } from 'lucide-react';
+import { Headphones, HeadphoneOff, LoaderCircle, Mic, MicOff, Monitor, MonitorX, PhoneOff, Smile, Video, VideoOff, X } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { useParticipantMedia } from './useLiveKitTrack';
 import { ALLOWED_REACTIONS } from '../../types/protocol';
@@ -14,45 +14,96 @@ import { cn } from '@/shared/lib/utils';
  * meaning (mic muted = red, camera on = green, etc.). Subtler than painting
  * the whole button, and lets several controls' state be read at a glance
  * without each becoming a big colored blob. */
-function ControlButton({ onClick, label, icon, iconColorClass }: {
+function ControlButton({ onClick, label, icon, iconColorClass, disabled = false, busy = false }: {
   onClick: () => void;
   label: string;
   icon: ReactNode;
   iconColorClass: string;
+  disabled?: boolean;
+  busy?: boolean;
 }) {
   return (
     <Tooltip>
       <TooltipTrigger
         onClick={onClick}
+        disabled={disabled}
         aria-label={label}
+        aria-busy={busy || undefined}
         className={cn(
           buttonVariants({ variant: 'ghost', size: 'icon-lg' }),
           'h-9 w-9 rounded-full bg-bg-tertiary hover:bg-bg-selected md:h-11 md:w-11',
           iconColorClass
         )}
       >
-        {icon}
+        {busy ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : icon}
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );
 }
 
-/** Discord-style floating bar with mic/camera/screen controls — only mounts
- * when `inCall` is true (App.tsx), so the mic here never needs a "not yet
- * activated" state: that already happened before this existed (see the
- * click on a voice channel in the sidebar). */
-export function CallControlBar() {
-  const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, toggleMicMuted, deafened, toggleDeafened, leaveVoiceChannel, sendReaction } = useRoom();
+interface CallControlBarProps {
+  onLeave: () => void;
+}
+
+/** Discord-style floating bar with mic/camera/screen controls. A connected
+ * participant may intentionally have no mic publication (listen-only), so
+ * the microphone control can also request permission and activate it. */
+export function CallControlBar({ onLeave }: CallControlBarProps) {
+  const {
+    state, dispatch, startCamera, stopCamera, startSharing, stopSharing,
+    enableMicrophone, toggleMicMuted, deafened, toggleDeafened,
+    leaveVoiceChannel, sendReaction, voiceConnection,
+  } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
   const cameraOn = state.me.cameraOn;
   const sharing = state.me.sharing;
   const [reactionsOpen, setReactionsOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'microphone' | 'camera' | 'screen' | null>(null);
 
   function pickReaction(emoji: ReactionEmoji) {
     sendReaction(emoji);
     setReactionsOpen(false);
   }
+
+  async function runMediaAction(action: 'microphone' | 'camera' | 'screen', task: () => Promise<void>) {
+    if (pendingAction) return;
+    setPendingAction(action);
+    try {
+      await task();
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  function handleMicrophone() {
+    void runMediaAction('microphone', myMedia.micActivated ? toggleMicMuted : enableMicrophone);
+  }
+
+  function handleCamera() {
+    void runMediaAction('camera', async () => {
+      if (cameraOn) stopCamera();
+      else await startCamera();
+    });
+  }
+
+  function handleScreenShare() {
+    void runMediaAction('screen', async () => {
+      if (sharing) stopSharing();
+      else await startSharing();
+    });
+  }
+
+  async function handleLeave() {
+    await leaveVoiceChannel();
+    onLeave();
+  }
+
+  const microphoneLabel = pendingAction === 'microphone'
+    ? 'Ativando microfone'
+    : !myMedia.micActivated
+      ? 'Ativar microfone'
+      : myMedia.micMuted ? 'Desmutar' : 'Mutar';
 
   return (
     // column: the sharing warning (when present) STACKS on top of the
@@ -60,8 +111,21 @@ export function CallControlBar() {
     // (bottom-6/centered) instead of two absolute blocks computing the
     // distance between them.
     <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
+      {voiceConnection.mode === 'listen-only' && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-md border border-strong bg-bg-floating px-3 py-2 text-label text-text-secondary shadow-popover md:max-w-100"
+        >
+          <Headphones className="size-4 flex-none text-blurple" aria-hidden="true" />
+          <span>Modo somente ouvir. Ative o microfone quando quiser falar.</span>
+        </div>
+      )}
       {state.shareError && (
-        <div className="flex max-w-[calc(100vw-2rem)] items-start gap-2 rounded-md border border-strong bg-bg-floating px-3 py-2 text-label text-text-secondary shadow-popover md:max-w-100">
+        <div
+          role="alert"
+          className="flex max-w-[calc(100vw-2rem)] items-start gap-2 rounded-md border border-strong bg-bg-floating px-3 py-2 text-label text-text-secondary shadow-popover md:max-w-100"
+        >
           <span className="min-w-0 flex-1">{state.shareError}</span>
           <button
             type="button"
@@ -102,12 +166,14 @@ export function CallControlBar() {
         </Popover>
 
         <ControlButton
-          onClick={toggleMicMuted}
-          label={myMedia.micMuted ? 'Desmutar' : 'Mutar'}
-          icon={myMedia.micMuted ? <MicOff size={18} /> : <Mic size={18} />}
+          onClick={handleMicrophone}
+          label={microphoneLabel}
+          icon={!myMedia.micActivated || myMedia.micMuted ? <MicOff size={18} /> : <Mic size={18} />}
           // muted: red (warning — no one hears you). unmuted: normal gray,
           // the expected state while talking.
-          iconColorClass={myMedia.micMuted ? 'text-red' : 'text-text-secondary'}
+          iconColorClass={!myMedia.micActivated || myMedia.micMuted ? 'text-red' : 'text-text-secondary'}
+          disabled={pendingAction !== null}
+          busy={pendingAction === 'microphone'}
         />
         <ControlButton
           onClick={toggleDeafened}
@@ -116,21 +182,25 @@ export function CallControlBar() {
           iconColorClass={deafened ? 'text-red' : 'text-text-secondary'}
         />
         <ControlButton
-          onClick={() => (cameraOn ? stopCamera() : startCamera())}
-          label={cameraOn ? 'Parar camera' : 'Ligar camera'}
+          onClick={handleCamera}
+          label={pendingAction === 'camera' ? 'Ativando camera' : cameraOn ? 'Parar camera' : 'Ligar camera'}
           icon={cameraOn ? <Video size={18} /> : <VideoOff size={18} />}
           iconColorClass={cameraOn ? 'text-green' : 'text-text-secondary'}
+          disabled={pendingAction !== null}
+          busy={pendingAction === 'camera'}
         />
         <ControlButton
-          onClick={() => (sharing ? stopSharing() : startSharing())}
-          label={sharing ? 'Parar compartilhamento' : 'Compartilhar tela'}
+          onClick={handleScreenShare}
+          label={pendingAction === 'screen' ? 'Iniciando compartilhamento' : sharing ? 'Parar compartilhamento' : 'Compartilhar tela'}
           icon={sharing ? <MonitorX size={18} /> : <Monitor size={18} />}
           iconColorClass={sharing ? 'text-blurple' : 'text-text-secondary'}
+          disabled={pendingAction !== null}
+          busy={pendingAction === 'screen'}
         />
 
         <Tooltip>
           <TooltipTrigger
-            onClick={leaveVoiceChannel}
+            onClick={() => void handleLeave()}
             aria-label="Sair da chamada"
             className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), 'h-9 w-9 rounded-full bg-red text-white hover:bg-red-hover md:h-11 md:w-11')}
           >

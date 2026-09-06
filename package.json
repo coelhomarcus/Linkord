@@ -1,7 +1,7 @@
 {
   "name": "linkord",
   "version": "1.0.0",
-  "description": "Sala de compartilhamento de tela, sem chat, self-hosted (WebSocket)",
+  "description": "Chat, canais e chamadas de voz, vídeo e compartilhamento de tela self-hosted",
   "type": "module",
   "main": "server/dist/index.js",
   "scripts": {

@@ -1,6 +1,5 @@
 import crypto from 'node:crypto';
 import { config } from '../config/env.js';
-import { updateAvatar } from '../modules/auth/users.js';
 import type { AppSocket, HandlerTable, Participant, PublicParticipant } from '../types.js';
 
 // Presence for the single shared room. `id` is per-CONNECTION (used as the
@@ -91,6 +90,18 @@ export function removeParticipant(p: Participant): void {
   if (!isUserOnline(p.userId)) broadcast({ t: 'user-offline', userId: p.userId });
 }
 
+/** Immediately disconnects every socket authenticated with one login
+ * session. Used by HTTP logout so an already-open realtime connection can't
+ * keep acting after its cookie/session row has been revoked. */
+export function disconnectSession(tokenHash: string): void {
+  for (const p of [...participants.values()]) {
+    if (p.socket?.user.tokenHash !== tokenHash) continue;
+    const socket = p.socket;
+    removeParticipant(p);
+    try { socket.disconnect(true); } catch { /* socket dying */ }
+  }
+}
+
 /** Removes ghosts (socket=null, stuck in the reconnect grace window) for
  * the SAME account before creating a new connection — otherwise a crashed
  * tab would hold the slot for up to RECONNECT_GRACE_MS. */
@@ -165,20 +176,32 @@ export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
  * Persisted to survive reconnects/other tabs (the session cache can take up
  * to 60s to reflect this for a tab that hasn't reconnected yet — the
  * editing tab updates immediately via participant-updated below). */
-function handleProfile(socket: AppSocket, msg: { avatar?: string }): void {
+async function handleProfile(socket: AppSocket, msg: { avatar?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
-  const oldAvatar = p.avatar;
-  p.avatar = sanitizeAvatar(msg.avatar);
-  broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
-  updateAvatar(p.userId, p.avatar).catch((err) => console.error(`[${p.id}] falha ao salvar avatar:`, err instanceof Error ? err.stack : err));
+  const avatar = sanitizeAvatar(msg.avatar);
+  // Dynamic import avoids a cycle: attachments.ts imports this module for
+  // broadcasts, while ownership/persistence belongs to the upload module.
+  const { applyAvatarForUser, deleteAvatarFile } = await import('../modules/attachments.js');
+  const applied = await applyAvatarForUser(p.userId, avatar);
+  if (!applied.applied) {
+    send(socket, { t: 'error', code: 'invalid-avatar', message: 'Essa foto nao pertence a sua conta ou nao existe mais.' });
+    return;
+  }
+
+  // One account may have several live tabs. Keep every connection and its
+  // cached handshake user consistent, rather than letting an older tab
+  // overwrite the directory on its next media-state update.
+  for (const other of participants.values()) {
+    if (other.userId !== p.userId) continue;
+    other.avatar = avatar;
+    if (other.socket) other.socket.user.avatar = avatar;
+    broadcast({ t: 'participant-updated', participant: publicParticipant(other) });
+  }
   // deletes the OLD photo file if it was one of our uploads and changed —
   // otherwise each photo change would leave the previous one orphaned.
-  // Dynamic import to avoid a cycle: modules/attachments.ts already imports
-  // from this file.
-  if (oldAvatar && oldAvatar !== p.avatar) {
-    import('../modules/attachments.js')
-      .then(({ deleteAvatarFile }) => deleteAvatarFile(oldAvatar))
+  if (applied.oldAvatar && applied.oldAvatar !== avatar) {
+    await deleteAvatarFile(applied.oldAvatar, p.userId)
       .catch((err) => console.error(`[${p.id}] falha ao apagar foto de perfil antiga:`, err instanceof Error ? err.stack : err));
   }
 }

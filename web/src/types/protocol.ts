@@ -61,6 +61,13 @@ export interface ChatMessage {
   // off, never stored as an empty array.
   reactions?: Partial<Record<ReactionEmoji, string[]>>;
   attachment?: ChatAttachment;
+  // Wire field: round-tripped on the sender's own 'chat' broadcast reply so
+  // RoomProvider can reconcile the optimistic bubble it created on send.
+  // Absent on every other message (history, other people's messages, edits).
+  clientId?: string;
+  // Client-only rendering state — the server never sets this. Absent once
+  // the server has confirmed the message (or it was loaded from history).
+  pending?: 'sending' | 'failed';
 }
 
 // max one per message. `id` doubles as the download/display path:
@@ -119,7 +126,7 @@ export type ClientMessage =
   | { t: 'screen-share'; on: boolean }
   | { t: 'speaking'; value: boolean }
   | { t: 'channel-open'; channelId: string }
-  | { t: 'chat'; channelId: string; text: string; replyTo?: number }
+  | { t: 'chat'; channelId: string; text: string; replyTo?: number; clientId?: string }
   | { t: 'chat-delete'; msgId: number }
   | { t: 'chat-edit'; msgId: number; text: string }
   | { t: 'chat-react'; msgId: number; emoji: ReactionEmoji }

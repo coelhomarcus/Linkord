@@ -52,6 +52,27 @@ async function runWithConcurrency(count: number, limit: number, task: (i: number
 const MAX_CHUNK_RETRIES = 3;
 const MAX_CONCURRENT_CHUNKS = 3;
 
+function retryDelayMs(attempt: number, response?: Response): number {
+  const retryAfter = response?.headers.get('Retry-After');
+  const seconds = retryAfter == null ? Number.NaN : Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds * 1000, 10_000);
+  return Math.min(250 * 2 ** attempt, 2000);
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function cancelUpload(uploadId: string): Promise<void> {
+  try {
+    await fetch(`/api/attachments/${uploadId}`, { method: 'DELETE', credentials: 'same-origin' });
+  } catch { /* best effort — the server's stale-session sweep is the fallback */ }
+}
+
 export async function uploadFileInChunks({ channelId, file, caption, onProgress }: ChunkedUploadOptions): Promise<void> {
   const initRes = await fetch('/api/attachments/init', {
     method: 'POST',
@@ -78,20 +99,28 @@ export async function uploadFileInChunks({ channelId, file, caption, onProgress 
     const end = Math.min(start + chunkSize, file.size);
     const blob = file.slice(start, end);
     for (let attempt = 0; ; attempt++) {
+      let response: Response;
       try {
-        const res = await fetch(`/api/attachments/${uploadId}/chunk/${index}`, {
+        response = await fetch(`/api/attachments/${uploadId}/chunk/${index}`, {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/octet-stream' },
           body: blob,
         });
-        if (!res.ok) throw await toApiError(res);
-        sentPerChunk[index] = blob.size;
-        reportProgress();
-        return;
       } catch (err) {
         if (attempt >= MAX_CHUNK_RETRIES) throw err;
+        await wait(retryDelayMs(attempt));
+        continue;
       }
+      if (!response.ok) {
+        const error = await toApiError(response);
+        if (attempt >= MAX_CHUNK_RETRIES || !isRetryableStatus(response.status)) throw error;
+        await wait(retryDelayMs(attempt, response));
+        continue;
+      }
+      sentPerChunk[index] = blob.size;
+      reportProgress();
+      return;
     }
   }
 
@@ -100,10 +129,29 @@ export async function uploadFileInChunks({ channelId, file, caption, onProgress 
   } catch (err) {
     // best-effort: frees the chunks on the server right away instead of
     // waiting for the periodic sweep (attachments.ts#sweepStaleUploads).
-    fetch(`/api/attachments/${uploadId}`, { method: 'DELETE', credentials: 'same-origin' }).catch(() => {});
+    void cancelUpload(uploadId);
     throw err;
   }
 
-  const completeRes = await fetch(`/api/attachments/${uploadId}/complete`, { method: 'POST', credentials: 'same-origin' });
-  if (!completeRes.ok) throw await toApiError(completeRes);
+  for (let attempt = 0; ; attempt += 1) {
+    let completeRes: Response;
+    try {
+      completeRes = await fetch(`/api/attachments/${uploadId}/complete`, { method: 'POST', credentials: 'same-origin' });
+    } catch (err) {
+      if (attempt < MAX_CHUNK_RETRIES) {
+        await wait(retryDelayMs(attempt));
+        continue;
+      }
+      await cancelUpload(uploadId);
+      throw err;
+    }
+    if (completeRes.ok) break;
+    const error = await toApiError(completeRes);
+    if (attempt < MAX_CHUNK_RETRIES && isRetryableStatus(completeRes.status)) {
+      await wait(retryDelayMs(attempt, completeRes));
+      continue;
+    }
+    await cancelUpload(uploadId);
+    throw error;
+  }
 }

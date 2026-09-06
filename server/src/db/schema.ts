@@ -78,7 +78,9 @@ export const messages = pgTable('messages', {
   replyTo: jsonb('reply_to'),
   reactions: jsonb('reactions').notNull().default({}),
 }, (t) => [
-  index('messages_channel_id_idx').on(t.channelId),
+  // History always filters by channel and walks newest ids first. Postgres
+  // can scan this btree backwards for ORDER BY id DESC.
+  index('messages_channel_id_id_idx').on(t.channelId, t.id),
 ]);
 
 /** A file on disk (config.UPLOAD_DIR) — either a message attachment or an

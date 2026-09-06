@@ -1,6 +1,16 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { expectedChunkLength, contentDispositionFor, sanitizeFileName } from './attachments.js';
+import {
+  FixedWindowRateLimiter,
+  avatarStorageBelongsTo,
+  avatarStorageName,
+  contentDispositionFor,
+  expectedChunkLength,
+  ifRangeMatches,
+  parseByteRange,
+  sanitizeFileName,
+  uploadEtag,
+} from './attachments.js';
 
 describe('expectedChunkLength', () => {
   const manifest = { totalSize: 20_000_000, chunkSize: 8_000_000, totalChunks: 3 } as Parameters<typeof expectedChunkLength>[0];
@@ -61,5 +71,68 @@ describe('sanitizeFileName', () => {
 
   test('espacos nas pontas sao removidos', () => {
     assert.equal(sanitizeFileName('  nome.txt  '), 'nome.txt');
+  });
+});
+
+describe('parseByteRange', () => {
+  test('interpreta inicio/fim, range aberto e sufixo', () => {
+    assert.deepEqual(parseByteRange('bytes=10-19', 100), { start: 10, end: 19 });
+    assert.deepEqual(parseByteRange('bytes=90-', 100), { start: 90, end: 99 });
+    assert.deepEqual(parseByteRange('bytes=-10', 100), { start: 90, end: 99 });
+  });
+
+  test('limita fim ao EOF e sufixo maior ao arquivo inteiro', () => {
+    assert.deepEqual(parseByteRange('bytes=90-999', 100), { start: 90, end: 99 });
+    assert.deepEqual(parseByteRange('bytes=-999', 100), { start: 0, end: 99 });
+  });
+
+  test('rejeita ranges malformados, multiplos e impossiveis', () => {
+    for (const value of ['items=0-1', 'bytes=', 'bytes=10-9', 'bytes=100-101', 'bytes=-0', 'bytes=0-1,4-5']) {
+      assert.equal(parseByteRange(value, 100), null, value);
+    }
+  });
+});
+
+describe('ETag / If-Range', () => {
+  const mtimeMs = Date.parse('2026-01-02T03:04:05.250Z');
+  const etag = uploadEtag(1234, mtimeMs);
+
+  test('aceita ETag forte igual e rejeita diferente/fraco', () => {
+    assert.equal(ifRangeMatches(etag, etag, mtimeMs), true);
+    assert.equal(ifRangeMatches('"outro"', etag, mtimeMs), false);
+    assert.equal(ifRangeMatches(`W/${etag}`, etag, mtimeMs), false);
+  });
+
+  test('aceita data atual/nova e rejeita data antiga ou invalida', () => {
+    assert.equal(ifRangeMatches(new Date(mtimeMs).toUTCString(), etag, mtimeMs), true);
+    assert.equal(ifRangeMatches(new Date(mtimeMs + 60_000).toUTCString(), etag, mtimeMs), true);
+    assert.equal(ifRangeMatches(new Date(mtimeMs - 60_000).toUTCString(), etag, mtimeMs), false);
+    assert.equal(ifRangeMatches('nao-e-data', etag, mtimeMs), false);
+  });
+});
+
+describe('FixedWindowRateLimiter', () => {
+  test('aceita ate o limite e informa Retry-After depois', () => {
+    const limiter = new FixedWindowRateLimiter(2, 10_000);
+    assert.equal(limiter.consume('u', 1_000), null);
+    assert.equal(limiter.consume('u', 2_000), null);
+    assert.equal(limiter.consume('u', 3_000), 8);
+    assert.equal(limiter.consume('u', 11_000), null);
+  });
+
+  test('usuarios possuem janelas independentes', () => {
+    const limiter = new FixedWindowRateLimiter(1, 10_000);
+    assert.equal(limiter.consume('a', 1_000), null);
+    assert.equal(limiter.consume('b', 1_000), null);
+    assert.equal(limiter.consume('a', 1_001), 10);
+  });
+});
+
+describe('ownership de avatar', () => {
+  test('nome de storage vincula exatamente ao dono', () => {
+    const stored = avatarStorageName('user-1');
+    assert.equal(avatarStorageBelongsTo(stored, 'user-1'), true);
+    assert.equal(avatarStorageBelongsTo(stored, 'user-2'), false);
+    assert.equal(avatarStorageBelongsTo('avatar', 'user-1'), false);
   });
 });

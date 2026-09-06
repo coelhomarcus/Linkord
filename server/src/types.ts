@@ -11,6 +11,9 @@ export interface SessionUser {
   username: string;
   avatar: string;
   role: Role;
+  /** Absolute session expiry copied from the DB so a connected socket can
+   * close itself at the same boundary without trusting the cookie again. */
+  expiresAtMs: number;
 }
 
 /** The single room's participant (see realtime/participants.ts). `id` is
@@ -69,6 +72,7 @@ export type AppSocket = Socket & {
   participantId: string | null;
   ip: string;
   user: SessionUser;
+  sessionExpiryTimer?: ReturnType<typeof setTimeout>;
 };
 
 /** Socket.IO message handler signature — each feature exports a

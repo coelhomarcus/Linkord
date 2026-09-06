@@ -5,7 +5,14 @@ import type { Socket } from 'socket.io-client';
 import { Room, RoomEvent, Track } from 'livekit-client';
 import type { LocalTrackPublication, Track as LKTrack } from 'livekit-client';
 import { RoomContext } from './RoomContext';
-import type { AnchorRect, AudioHandle, ReactionEvent, TileDomHandle } from './RoomContext';
+import type {
+  AnchorRect,
+  AudioHandle,
+  ReactionEvent,
+  TileDomHandle,
+  VoiceConnectionState,
+  VoiceJoinOptions,
+} from './RoomContext';
 import { roomReducer, initialRoomState } from './roomReducer';
 import { useAuth } from './AuthContext';
 import { loadIdentity, saveIdentity } from './useIdentitySession';
@@ -22,6 +29,21 @@ import type { Category, ChatMessage, ClientMessage, Participant, PublicUser, Rea
 
 const REACTION_DURATION_MS = 3000; // must match --animate-float-up in index.css
 const CHAT_CLIENT_LIMIT = 300; // client-side cap only — server already limits history sent on welcome
+const VOICE_TOKEN_TIMEOUT_MS = 15000;
+// How long a sent-but-unconfirmed message waits before showing as failed —
+// generous enough to absorb normal latency, but short enough that a
+// silently-rejected send (e.g. the channel was deleted mid-flight) doesn't
+// leave "Enviando..." up indefinitely. Never fires while offline (see
+// armChatSendTimeout) — that's a queued send, not a failure.
+const CHAT_SEND_TIMEOUT_MS = 12000;
+
+const IDLE_VOICE_CONNECTION: VoiceConnectionState = {
+  status: 'idle',
+  channelId: null,
+  mode: 'voice',
+  joinMuted: true,
+  error: null,
+};
 
 /** Syncs allUsers (account directory) with a participant's current avatar/
  * role — otherwise avatar changes only reached other users' sidebars after
@@ -43,6 +65,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const myUserIdRef = useRef<string | null>(null);
   const tokenRef = useRef<string | null>(null);
   const intentionalCloseRef = useRef(false);
+  // A server-initiated Socket.IO disconnect does not auto-reconnect. Keep
+  // session expiry separate: it must return to login instead of showing an
+  // endless reconnect banner or reconnecting with the same expired cookie.
+  const sessionExpiredRef = useRef(false);
   const tileDomRegistry = useRef<Map<string, TileDomHandle>>(new Map());
   const audioRegistry = useRef<Map<string, AudioHandle>>(new Map());
 
@@ -63,6 +89,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   // real toggleDeafened (which also mutes the mic) is defined after
   // useMicrophone exists below.
   const [deafened, setDeafened] = useState(false);
+  const deafenedRef = useRef(false);
 
   const [livekitRoom] = useState(() => new Room());
 
@@ -81,8 +108,13 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     setVolume(value);
   }, []);
 
-  const sendWs = useCallback((msg: ClientMessage) => {
-    if (socketRef.current?.connected) socketRef.current.emit(msg.t, msg);
+  // Returns whether it actually went out — callers that need to track
+  // delivery (see the pending chat-send machinery below) use this to know
+  // whether to arm a confirmation timeout or just leave the send queued.
+  const sendWs = useCallback((msg: ClientMessage): boolean => {
+    if (!socketRef.current?.connected) return false;
+    socketRef.current.emit(msg.t, msg);
+    return true;
   }, []);
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -96,6 +128,18 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   // switched again before it arrived.
   const activeVoiceChannelIdRef = useRef<string | null>(null);
   const pendingVoiceChannelIdRef = useRef<string | null>(null);
+  const voiceJoinTimeoutRef = useRef<number | null>(null);
+  const voiceJoinOptionsRef = useRef<Required<VoiceJoinOptions>>({ muted: true, listenOnly: false });
+  const voiceConnectionRef = useRef<VoiceConnectionState>(IDLE_VOICE_CONNECTION);
+  const [voiceConnection, setVoiceConnectionState] = useState<VoiceConnectionState>(IDLE_VOICE_CONNECTION);
+  const setVoiceConnection = useCallback((next: VoiceConnectionState) => {
+    voiceConnectionRef.current = next;
+    setVoiceConnectionState(next);
+  }, []);
+  const clearVoiceJoinTimeout = useCallback(() => {
+    if (voiceJoinTimeoutRef.current != null) window.clearTimeout(voiceJoinTimeoutRef.current);
+    voiceJoinTimeoutRef.current = null;
+  }, []);
   const setActiveVoiceChannelId = useCallback((id: string | null) => {
     activeVoiceChannelIdRef.current = id;
     setActiveVoiceChannelIdState(id);
@@ -105,6 +149,21 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const activeViewRef = useRef<'chat' | 'call'>('chat');
   const notifyActiveView = useCallback((view: 'chat' | 'call') => { activeViewRef.current = view; }, []);
   const [messagesByChannel, setMessagesByChannel] = useState<Map<string, ChatMessage[]>>(new Map());
+  // Bookkeeping for sends not yet confirmed by the server — the source of
+  // truth for WHAT to (re)send; `pending` on the ChatMessage objects above
+  // is only the rendering reflection of `status` here. A plain ref (not
+  // state): everything that reads/writes it is either an event handler or
+  // the mount-frozen handleServerMessage closure below, never render itself.
+  const pendingChatSendsRef = useRef<Map<string, {
+    channelId: string;
+    text: string;
+    replyToMsgId?: number;
+    status: 'sending' | 'failed';
+    timeoutId: number | null;
+  }>>(new Map());
+  // Negative, decrementing — real message ids are Postgres serials (always
+  // positive), so these can never collide with a confirmed message.
+  const nextOptimisticMsgIdRef = useRef(-1);
   const [unreadByChannel, setUnreadByChannel] = useState<Map<string, number>>(new Map());
   const [allUsers, setAllUsers] = useState<Map<string, PublicUser>>(new Map());
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
@@ -129,10 +188,119 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     sendWs({ t: 'channel-open', channelId });
   }, [sendWs]);
 
+  // Marks one pending send as failed — both in the bookkeeping map (so a
+  // later reconnect flush skips it; only an explicit retry resends it) and
+  // in the rendered message (so ChatMessageList can show it). A no-op if it
+  // was confirmed (or already failed) in the meantime.
+  const markChatSendFailed = useCallback((channelId: string, clientId: string) => {
+    const pending = pendingChatSendsRef.current.get(clientId);
+    if (!pending || pending.status !== 'sending') return;
+    pending.status = 'failed';
+    setMessagesByChannel((prev) => {
+      const existing = prev.get(channelId);
+      const index = existing?.findIndex((msg) => msg.clientId === clientId) ?? -1;
+      if (!existing || index === -1) return prev;
+      const next = [...existing];
+      next[index] = { ...next[index], pending: 'failed' };
+      return new Map(prev).set(channelId, next);
+    });
+  }, []);
+
+  const clearChatSendTimeout = useCallback((clientId: string) => {
+    const pending = pendingChatSendsRef.current.get(clientId);
+    if (pending?.timeoutId != null) window.clearTimeout(pending.timeoutId);
+  }, []);
+
+  const armChatSendTimeout = useCallback((clientId: string, channelId: string) => {
+    clearChatSendTimeout(clientId);
+    const pending = pendingChatSendsRef.current.get(clientId);
+    if (!pending) return;
+    pending.timeoutId = window.setTimeout(() => {
+      // Still offline when this fires means the send is correctly queued
+      // for the next reconnect flush, not failed — only a confirmation
+      // that never arrives WHILE CONNECTED is a real failure.
+      if (socketRef.current?.connected) markChatSendFailed(channelId, clientId);
+    }, CHAT_SEND_TIMEOUT_MS);
+  }, [clearChatSendTimeout, markChatSendFailed]);
+
+  // Shared by the initial send, an explicit retry, and the reconnect flush
+  // — emits (or, offline, just leaves queued) whatever is recorded for this
+  // clientId.
+  const emitPendingChatSend = useCallback((clientId: string) => {
+    const pending = pendingChatSendsRef.current.get(clientId);
+    if (!pending) return;
+    const sent = sendWs({
+      t: 'chat', channelId: pending.channelId, text: pending.text, clientId,
+      ...(pending.replyToMsgId ? { replyTo: pending.replyToMsgId } : {}),
+    });
+    if (sent) armChatSendTimeout(clientId, pending.channelId);
+  }, [armChatSendTimeout, sendWs]);
+
   const sendChatMessage = useCallback((channelId: string, text: string, replyTo?: number) => {
     const trimmed = text.trim();
-    if (trimmed) sendWs({ t: 'chat', channelId, text: trimmed, ...(replyTo ? { replyTo } : {}) });
-  }, [sendWs]);
+    if (!trimmed) return;
+    const clientId = crypto.randomUUID();
+    pendingChatSendsRef.current.set(clientId, { channelId, text: trimmed, replyToMsgId: replyTo, status: 'sending', timeoutId: null });
+    // Optimistic bubble, shown immediately instead of waiting for the round
+    // trip. `replyTo` here only carries the numeric id forward for resend —
+    // the reply preview banner (name/text snippet) only appears once the
+    // server confirms, same as attachments never appearing on this bubble.
+    const optimistic: ChatMessage = {
+      msgId: nextOptimisticMsgIdRef.current--,
+      channelId,
+      id: myUserIdRef.current,
+      name: state.me.name,
+      avatar: state.me.avatar,
+      text: trimmed,
+      ts: Date.now(),
+      clientId,
+      pending: 'sending',
+    };
+    setMessagesByChannel((prev) => {
+      const existing = prev.get(channelId) || [];
+      return new Map(prev).set(channelId, [...existing, optimistic]);
+    });
+    emitPendingChatSend(clientId);
+  }, [emitPendingChatSend, state.me.avatar, state.me.name]);
+
+  /** Re-sends a message stuck in `pending: 'failed'` — same clientId, so the
+   * eventual confirmation still reconciles the same bubble. */
+  const retryChatMessage = useCallback((channelId: string, clientId: string) => {
+    const pending = pendingChatSendsRef.current.get(clientId);
+    if (!pending) return;
+    pending.status = 'sending';
+    setMessagesByChannel((prev) => {
+      const existing = prev.get(channelId);
+      const index = existing?.findIndex((msg) => msg.clientId === clientId) ?? -1;
+      if (!existing || index === -1) return prev;
+      const next = [...existing];
+      next[index] = { ...next[index], pending: 'sending' };
+      return new Map(prev).set(channelId, next);
+    });
+    emitPendingChatSend(clientId);
+  }, [emitPendingChatSend]);
+
+  const discardFailedChatMessage = useCallback((channelId: string, clientId: string) => {
+    clearChatSendTimeout(clientId);
+    pendingChatSendsRef.current.delete(clientId);
+    setMessagesByChannel((prev) => {
+      const existing = prev.get(channelId);
+      if (!existing) return prev;
+      return new Map(prev).set(channelId, existing.filter((msg) => msg.clientId !== clientId));
+    });
+  }, [clearChatSendTimeout]);
+
+  /** Re-emits every send still marked 'sending' — the ones a disconnect
+   * interrupted before the server could reply. Called once the socket is
+   * back and re-authenticated (see the 'welcome' case below). Sends already
+   * marked 'failed' wait for an explicit retry — auto-resending those could
+   * surprise someone who'd already decided to edit or abandon the message. */
+  const flushPendingChatSends = useCallback(() => {
+    for (const [clientId, pending] of pendingChatSendsRef.current) {
+      if (pending.status === 'sending') emitPendingChatSend(clientId);
+    }
+  }, [emitPendingChatSend]);
+
   const deleteChatMessage = useCallback((msgId: number) => sendWs({ t: 'chat-delete', msgId }), [sendWs]);
   const editChatMessage = useCallback((msgId: number, text: string) => {
     const trimmed = text.trim();
@@ -160,48 +328,220 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
   const { startSharing, stopSharing, quality, setQuality } = useScreenShare(livekitRoom, dispatch);
   const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch, quality);
-  const { activateMic, toggleMicMuted, setMicMuted, leaveMic } = useMicrophone(livekitRoom, dispatch);
+  const { activateMic, toggleMicMuted: toggleMicTrack, setMicMuted, leaveMic } = useMicrophone(livekitRoom, dispatch);
 
-  // deafening also force-mutes (otherwise others still hear you while you
-  // hear no one); undeafening does NOT auto-unmute (deliberate).
+  const toggleMicMuted = useCallback(async () => {
+    if (voiceConnectionRef.current.status !== 'connected') return;
+    // Deafen must imply mute at all times, not only at the instant deafen is
+    // toggled. This also closes the rapid-click race before React rerenders.
+    if (deafenedRef.current) {
+      await setMicMuted(true);
+      dispatch({ type: 'SET_SHARE_ERROR', message: 'Volte a ouvir a chamada antes de desmutar o microfone.' });
+      return;
+    }
+    await toggleMicTrack();
+  }, [dispatch, setMicMuted, toggleMicTrack]);
+
+  /** Promotes a connected listen-only session to normal voice. If deafen is
+   * active, the track is still created muted — it must never transmit while
+   * the user cannot hear the room. */
+  const enableMicrophone = useCallback(async () => {
+    if (voiceConnectionRef.current.status !== 'connected') return;
+    const result = await activateMic({ muted: deafenedRef.current });
+    if (voiceConnectionRef.current.status !== 'connected') {
+      if (result.ok) await leaveMic();
+      return;
+    }
+    if (!result.ok) {
+      setVoiceConnection({ ...voiceConnectionRef.current, mode: 'listen-only' });
+      dispatch({ type: 'SET_SHARE_ERROR', message: `${result.error} Voce continua conectado somente para ouvir.` });
+      return;
+    }
+    setVoiceConnection({ ...voiceConnectionRef.current, mode: 'voice' });
+    if (deafenedRef.current) {
+      dispatch({ type: 'SET_SHARE_ERROR', message: 'Microfone ativado, mas mantido mutado enquanto voce estiver sem ouvir a chamada.' });
+    }
+  }, [activateMic, dispatch, leaveMic, setVoiceConnection]);
+
+  // Deafening also force-mutes (otherwise others still hear you while they
+  // cannot be heard). Outside a connected call it is a no-op; leaving also
+  // resets it, so a later join cannot accidentally publish an unmuted mic
+  // behind a stale "deafened" indicator.
   const toggleDeafened = useCallback(() => {
+    if (voiceConnectionRef.current.status !== 'connected') return;
     // read directly, not the setState updater form — needed outside the
     // updater to play the sound once; the updater form re-runs in dev
     // StrictMode and would double it.
-    const next = !deafened;
+    const next = !deafenedRef.current;
+    deafenedRef.current = next;
     setDeafened(next);
     if (next) setMicMuted(true);
     playSound(next ? 'deafened' : 'undeafened');
     // no LiveKit track equivalent for deafened — must announce it
     // explicitly so others can show the icon.
     sendWs({ t: 'deafened', value: next });
-  }, [deafened, setMicMuted, sendWs]);
+  }, [setMicMuted, sendWs]);
 
   const leaveVoiceChannel = useCallback(async () => {
+    const hadVoiceSession = voiceConnectionRef.current.status !== 'idle'
+      || activeVoiceChannelIdRef.current !== null
+      || pendingVoiceChannelIdRef.current !== null;
+    // Capture this now. If this leave was triggered because Socket.IO is
+    // already down, a later reconnect must not receive a stale voice-leave.
+    const shouldNotifyServer = hadVoiceSession && !!socketRef.current?.connected;
+    clearVoiceJoinTimeout();
+    pendingVoiceChannelIdRef.current = null;
+    // Set this before disconnect(): RoomEvent.Disconnected must not turn an
+    // intentional leave into a visible failure.
+    setVoiceConnection({ ...IDLE_VOICE_CONNECTION });
     if (state.me.cameraOn) stopCamera();
     if (state.me.sharing) stopSharing();
-    await leaveMic();
+    // Disconnect synchronously before waiting on any track cleanup. This is
+    // important for server-forced socket disconnects (logout in another tab):
+    // no camera/mic/audio should linger during the authentication retry.
     livekitRoom.disconnect();
-    sendWs({ t: 'voice-leave' });
-    pendingVoiceChannelIdRef.current = null;
+    try { await leaveMic(); } catch { /* disconnect already stopped local tracks */ }
+    if (shouldNotifyServer) sendWs({ t: 'voice-leave' });
     setActiveVoiceChannelId(null);
-  }, [state.me.cameraOn, state.me.sharing, stopCamera, stopSharing, leaveMic, livekitRoom, sendWs, setActiveVoiceChannelId]);
+    deafenedRef.current = false;
+    setDeafened(false);
+    dispatch({ type: 'SET_SHARE_ERROR', message: null });
+  }, [clearVoiceJoinTimeout, dispatch, state.me.cameraOn, state.me.sharing, stopCamera, stopSharing, leaveMic, livekitRoom, sendWs, setActiveVoiceChannelId, setVoiceConnection]);
 
   // only one voice channel at a time — leaves the current one first if
   // switching. Connect + mic activation continue in the 'voice-token' case
   // in handleServerMessage below.
-  const joinVoiceChannel = useCallback(async (channelId: string) => {
-    if (activeVoiceChannelIdRef.current === channelId) return;
-    if (activeVoiceChannelIdRef.current) await leaveVoiceChannel();
+  const joinVoiceChannel = useCallback(async (channelId: string, options: VoiceJoinOptions = {}) => {
+    const current = voiceConnectionRef.current;
+    if (current.status === 'connected' && current.channelId === channelId) return;
+    if (current.status === 'joining' && current.channelId === channelId) return;
+    if (current.status !== 'idle' || activeVoiceChannelIdRef.current) await leaveVoiceChannel();
+
+    const normalized = { muted: options.muted ?? true, listenOnly: options.listenOnly ?? false };
+    voiceJoinOptionsRef.current = normalized;
+    dispatch({ type: 'SET_SHARE_ERROR', message: null });
+    if (!socketRef.current?.connected) {
+      setVoiceConnection({
+        status: 'failed', channelId, mode: normalized.listenOnly ? 'listen-only' : 'voice',
+        joinMuted: normalized.muted, error: 'Sem conexao com o servidor. Aguarde a reconexao e tente novamente.',
+      });
+      return;
+    }
+
     pendingVoiceChannelIdRef.current = channelId;
+    setVoiceConnection({
+      status: 'joining', channelId, mode: normalized.listenOnly ? 'listen-only' : 'voice',
+      joinMuted: normalized.muted, error: null,
+    });
     sendWs({ t: 'voice-join', channelId });
-  }, [sendWs, leaveVoiceChannel]);
+    clearVoiceJoinTimeout();
+    voiceJoinTimeoutRef.current = window.setTimeout(() => {
+      if (pendingVoiceChannelIdRef.current !== channelId || voiceConnectionRef.current.status !== 'joining') return;
+      pendingVoiceChannelIdRef.current = null;
+      sendWs({ t: 'voice-leave' });
+      setVoiceConnection({
+        status: 'failed', channelId, mode: normalized.listenOnly ? 'listen-only' : 'voice',
+        joinMuted: normalized.muted, error: 'O servidor de voz demorou demais para responder.',
+      });
+    }, VOICE_TOKEN_TIMEOUT_MS);
+  }, [clearVoiceJoinTimeout, dispatch, leaveVoiceChannel, sendWs, setVoiceConnection]);
+
+  const retryVoiceChannel = useCallback(() => {
+    const current = voiceConnectionRef.current;
+    if (current.status !== 'failed' || !current.channelId) return;
+    void joinVoiceChannel(current.channelId, {
+      muted: current.joinMuted,
+      listenOnly: current.mode === 'listen-only',
+    });
+  }, [joinVoiceChannel]);
+
+  const cancelVoiceJoin = leaveVoiceChannel;
 
   // leaveVoiceChannel's identity changes with cameraOn/sharing, but it's
   // called from the mount-only handleServerMessage closure below — without
   // this ref it would run with stale (always-false) values.
   const leaveVoiceChannelRef = useRef(leaveVoiceChannel);
   useEffect(() => { leaveVoiceChannelRef.current = leaveVoiceChannel; }, [leaveVoiceChannel]);
+
+  const connectVoiceChannel = useCallback(async (channelId: string, livekitUrl: string, livekitToken: string) => {
+    clearVoiceJoinTimeout();
+    if (pendingVoiceChannelIdRef.current !== channelId) return;
+    const options = voiceJoinOptionsRef.current;
+
+    try {
+      await livekitRoom.connect(livekitUrl, livekitToken);
+    } catch (err) {
+      if (pendingVoiceChannelIdRef.current !== channelId) return;
+      pendingVoiceChannelIdRef.current = null;
+      livekitRoom.disconnect();
+      sendWs({ t: 'voice-leave' });
+      setActiveVoiceChannelId(null);
+      setVoiceConnection({
+        status: 'failed',
+        channelId,
+        mode: options.listenOnly ? 'listen-only' : 'voice',
+        joinMuted: options.muted,
+        error: `Nao foi possivel conectar a chamada: ${(err as Error)?.message || 'verifique sua conexao.'}`,
+      });
+      return;
+    }
+
+    // Cancel/switch may happen while connect() or the browser permission
+    // prompt is pending. Never resurrect a stale attempt.
+    if (pendingVoiceChannelIdRef.current !== channelId) {
+      livekitRoom.disconnect();
+      return;
+    }
+
+    let mode: VoiceConnectionState['mode'] = options.listenOnly ? 'listen-only' : 'voice';
+    if (!options.listenOnly) {
+      const micResult = await activateMic({ muted: options.muted });
+      if (pendingVoiceChannelIdRef.current !== channelId) {
+        if (micResult.ok) await leaveMic();
+        livekitRoom.disconnect();
+        return;
+      }
+      if (!micResult.ok) {
+        mode = 'listen-only';
+        dispatch({ type: 'SET_SHARE_ERROR', message: `${micResult.error} Voce entrou somente para ouvir.` });
+      }
+    }
+
+    pendingVoiceChannelIdRef.current = null;
+    setActiveVoiceChannelId(channelId);
+    setVoiceConnection({
+      status: 'connected',
+      channelId,
+      mode,
+      joinMuted: options.muted,
+      error: null,
+    });
+  }, [activateMic, clearVoiceJoinTimeout, dispatch, leaveMic, livekitRoom, sendWs, setActiveVoiceChannelId, setVoiceConnection]);
+
+  // LiveKit retries transient transport failures internally. A final
+  // Disconnected event, however, needs a recoverable UI instead of silently
+  // leaving an empty black stage.
+  useEffect(() => {
+    const onDisconnected = () => {
+      const current = voiceConnectionRef.current;
+      if (current.status !== 'connected') return;
+      clearVoiceJoinTimeout();
+      pendingVoiceChannelIdRef.current = null;
+      sendWs({ t: 'voice-leave' });
+      setActiveVoiceChannelId(null);
+      deafenedRef.current = false;
+      setDeafened(false);
+      dispatch({ type: 'SET_LOCAL_CAMERA', on: false });
+      dispatch({ type: 'SET_LOCAL_SHARING', sharing: false });
+      setVoiceConnection({
+        ...current,
+        status: 'failed',
+        error: 'A conexao de voz foi encerrada. Tente entrar novamente.',
+      });
+    };
+    livekitRoom.on(RoomEvent.Disconnected, onDisconnected);
+    return () => { livekitRoom.off(RoomEvent.Disconnected, onDisconnected); };
+  }, [clearVoiceJoinTimeout, dispatch, livekitRoom, sendWs, setActiveVoiceChannelId, setVoiceConnection]);
 
   // syncs state when camera/screen stop via the browser's native controls
   // (e.g. Chrome's "Stop sharing" button) — LiveKit already unpublishes the
@@ -333,16 +673,16 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         // does NOT connect to LiveKit here — just having the tab open
         // shouldn't open a real voice session. That only happens in
         // joinVoiceChannel (see 'voice-token' below).
+        // Re-sends whatever a previous disconnect interrupted mid-flight.
+        // Harmless (a no-op loop over an empty map) on the very first join.
+        flushPendingChatSends();
         break;
       }
       case 'voice-token': {
         // race: a second voice-join (fast channel switch) can reply out of
         // order — only apply if this is still the most recent request.
         if (m.channelId !== pendingVoiceChannelIdRef.current) break;
-        livekitRoom.connect(m.livekitUrl, m.livekitToken)
-          .then(() => activateMic())
-          .catch((err) => console.warn('LiveKit connect falhou', err));
-        setActiveVoiceChannelId(m.channelId);
+        void connectVoiceChannel(m.channelId, m.livekitUrl, m.livekitToken);
         break;
       }
       case 'participant-joined':
@@ -360,21 +700,42 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         pushReaction(m.id, m.emoji);
         break;
       case 'channel-history':
-        setMessagesByChannel((prev) => new Map(prev).set(m.channelId, m.messages));
+        setMessagesByChannel((prev) => {
+          // A still-unconfirmed local send has no row in the server's
+          // history yet — keep it, appended after the real history, instead
+          // of letting a channel-open refresh (switching tabs away and back,
+          // or the automatic re-open on reconnect above) silently erase it.
+          const stillPending = (prev.get(m.channelId) || []).filter((msg) => msg.pending);
+          const messages = stillPending.length ? [...m.messages, ...stillPending] : m.messages;
+          return new Map(prev).set(m.channelId, messages);
+        });
         break;
       case 'chat': {
         const channelId = m.message.channelId;
+        const amLookingAtIt = document.hasFocus() && activeViewRef.current === 'chat' && channelId === activeChannelIdRef.current;
+        const confirmedClientId = m.message.clientId;
+        if (confirmedClientId) {
+          // Own optimistic bubble confirmed — stop tracking it as pending
+          // and swap it in place for the real (server-assigned id, possibly
+          // server-rewritten reply preview) message, instead of appending a
+          // second copy.
+          clearChatSendTimeout(confirmedClientId);
+          pendingChatSendsRef.current.delete(confirmedClientId);
+        }
         setMessagesByChannel((prev) => {
           const existing = prev.get(channelId) || [];
-          const next = [...existing, m.message];
+          const pendingIndex = confirmedClientId ? existing.findIndex((msg) => msg.clientId === confirmedClientId) : -1;
+          const next = pendingIndex === -1 ? [...existing, m.message] : existing.with(pendingIndex, m.message);
           return new Map(prev).set(channelId, next.length > CHAT_CLIENT_LIMIT ? next.slice(next.length - CHAT_CLIENT_LIMIT) : next);
         });
-        if (channelId !== activeChannelIdRef.current) {
+        // The selected text channel remains selected while the call view is
+        // open. It is only "read" when that exact chat is actually visible
+        // and the document has focus.
+        if (!amLookingAtIt) {
           setUnreadByChannel((prev) => new Map(prev).set(channelId, (prev.get(channelId) || 0) + 1));
         }
         // skip the sound for my own messages (echoed back) and when I'm
         // already looking at this exact channel.
-        const amLookingAtIt = document.hasFocus() && activeViewRef.current === 'chat' && channelId === activeChannelIdRef.current;
         if (m.message.id !== myUserIdRef.current && !amLookingAtIt) playSound('newMessage');
         break;
       }
@@ -466,7 +827,19 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         setStorageUsage({ totalBytes: m.totalBytes, totalFiles: m.totalFiles, maxBytes: m.maxBytes });
         break;
       case 'error':
-        if (m.code === 'full') {
+        if (m.code === 'session-expired') {
+          sessionExpiredRef.current = true;
+          dispatch({ type: 'SET_RECONNECTING', value: false });
+          // Stop WebRTC immediately while /api/auth/me confirms the expired
+          // session and AuthGate returns to the login screen.
+          void leaveVoiceChannelRef.current();
+          void auth.refresh();
+        } else if (m.code === 'join-timeout') {
+          // The following `io server disconnect` is not auto-retried by the
+          // Socket.IO client. Its disconnect handler reconnects explicitly;
+          // show honest status during that short retry.
+          dispatch({ type: 'SET_RECONNECTING', value: true });
+        } else if (m.code === 'full') {
           intentionalCloseRef.current = true;
           try { socketRef.current?.disconnect(); } catch { /* ok */ }
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Sala cheia, tente mais tarde.' });
@@ -475,8 +848,18 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         } else if (m.code === 'cannot-delete-self') {
           setModerationError(m.message);
         } else if (m.code === 'livekit-unavailable') {
+          clearVoiceJoinTimeout();
+          const channelId = pendingVoiceChannelIdRef.current ?? voiceConnectionRef.current.channelId;
+          const options = voiceJoinOptionsRef.current;
           pendingVoiceChannelIdRef.current = null;
-          dispatch({ type: 'SET_SHARE_ERROR', message: m.message });
+          setActiveVoiceChannelId(null);
+          setVoiceConnection({
+            status: 'failed',
+            channelId,
+            mode: options.listenOnly ? 'listen-only' : 'voice',
+            joinMuted: options.muted,
+            error: m.message,
+          });
         } else {
           // unknown code — log it instead of failing silently (happened
           // before with this handler).
@@ -485,7 +868,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         break;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, pushReaction, livekitRoom, openChannel, activateMic, setActiveVoiceChannelId]);
+  }, [clearChatSendTimeout, clearVoiceJoinTimeout, connectVoiceChannel, dispatch, flushPendingChatSends, openChannel, pushReaction, setActiveVoiceChannelId, setVoiceConnection]);
 
   const connect = useCallback(() => {
     intentionalCloseRef.current = false;
@@ -501,9 +884,22 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
     socket.onAny((_eventName: string, payload: ServerMessage) => handleServerMessage(payload));
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason) => {
       if (intentionalCloseRef.current) return;
+      if (sessionExpiredRef.current) {
+        dispatch({ type: 'SET_RECONNECTING', value: false });
+        return;
+      }
       dispatch({ type: 'SET_RECONNECTING', value: true });
+      // Transport failures reconnect automatically. A server-forced
+      // disconnect explicitly does not, so restart this same authenticated
+      // socket and let the normal `connect` listener send `join` again. Tear
+      // down LiveKit first: this path also covers logout/account deletion in
+      // another tab, whose session will be rejected by the next handshake.
+      if (reason === 'io server disconnect') {
+        void leaveVoiceChannelRef.current();
+        socket.connect();
+      }
     });
 
     // io.use rejection (invalid/expired session) sets socket.active=false
@@ -557,6 +953,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     setVolume(notifyVolume);
     connect();
     return () => {
+      clearVoiceJoinTimeout();
       intentionalCloseRef.current = true;
       socketRef.current?.disconnect();
       livekitRoom.disconnect();
@@ -568,14 +965,14 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     <RoomContext.Provider
       value={{
         state, dispatch, sendWs, tileDomRegistry, audioRegistry, audioUnlocked, deafened, toggleDeafened, livekitRoom, notifyActiveView,
-        activeVoiceChannelId, joinVoiceChannel,
-        startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted, leaveVoiceChannel, quality, setQuality,
+        activeVoiceChannelId, voiceConnection, joinVoiceChannel, retryVoiceChannel, cancelVoiceJoin,
+        startSharing, stopSharing, startCamera, stopCamera, enableMicrophone, toggleMicMuted, leaveVoiceChannel, quality, setQuality,
         updateAvatar, uploadAvatarFile, menuTarget, openTileMenu, closeTileMenu,
         reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume,
         categories, activeChannelId, openChannel, messagesByChannel, unreadByChannel,
         allUsers, onlineUserIds, channelsError, clearChannelsError: () => setChannelsError(null),
         deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null),
-        sendChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,
+        sendChatMessage, retryChatMessage, discardFailedChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,
         storageUsage, sendAttachment,
         createCategory, deleteCategory, renameCategory, createChannel, deleteChannel, renameChannel, reorderCategories, reorderChannels,
       }}

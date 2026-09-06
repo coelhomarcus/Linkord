@@ -86,16 +86,24 @@ export async function resolveSession(rawToken: string | undefined | null): Promi
     db.update(sessions).set({ lastSeenAt: new Date() }).where(eq(sessions.tokenHash, tokenHash)).catch(() => {});
   }
 
-  const value: SessionUser = { tokenHash, userId: row.userId, username: row.username, avatar: row.avatar, role: row.role as SessionUser['role'] };
+  const value: SessionUser = {
+    tokenHash,
+    userId: row.userId,
+    username: row.username,
+    avatar: row.avatar,
+    role: row.role as SessionUser['role'],
+    expiresAtMs: row.expiresAt.getTime(),
+  };
   cacheSet(tokenHash, value);
   return value;
 }
 
-export async function destroySession(rawToken: string | undefined | null): Promise<void> {
-  if (!rawToken) return;
+export async function destroySession(rawToken: string | undefined | null): Promise<string | null> {
+  if (!rawToken) return null;
   const tokenHash = hashToken(rawToken);
   cacheInvalidate(tokenHash);
   await db.delete(sessions).where(eq(sessions.tokenHash, tokenHash));
+  return tokenHash;
 }
 
 /** Clears expired sessions from the DB — called periodically at boot

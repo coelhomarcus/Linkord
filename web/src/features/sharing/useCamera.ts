@@ -34,8 +34,19 @@ export function useCamera(room: Room, dispatch: Dispatch<RoomAction>, quality: Q
       );
     } catch (err) {
       const name = (err as DOMException)?.name;
-      const denied = name === 'NotAllowedError' || name === 'NotFoundError' || name === 'AbortError';
-      if (!denied) dispatch({ type: 'SET_SHARE_ERROR', message: `Nao foi possivel acessar a camera: ${(err as Error)?.message}` });
+      let message: string;
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        message = 'Acesso a camera negado. Libere a permissao do site e tente novamente.';
+      } else if (name === 'NotFoundError') {
+        message = 'Nenhuma camera foi encontrada neste dispositivo.';
+      } else if (name === 'NotReadableError') {
+        message = 'A camera esta sendo usada por outro aplicativo. Feche-o e tente novamente.';
+      } else if (name === 'AbortError') {
+        message = 'A ativacao da camera foi cancelada.';
+      } else {
+        message = `Nao foi possivel acessar a camera: ${(err as Error)?.message || 'erro desconhecido'}`;
+      }
+      dispatch({ type: 'SET_SHARE_ERROR', message });
       return;
     }
 

@@ -63,7 +63,12 @@ export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): Scre
         true,
         {
           audio: audioConstraints,
-          resolution: { width: 1920, height: 1080, frameRate: 30 },
+          // Capture at the SAME framerate the encoding will actually publish
+          // (see QUALITY_ENCODINGS) — otherwise "high" could never reach 60
+          // (the browser would still hand LiveKit a 30fps source to encode),
+          // and the lower tiers would waste CPU capturing frames only to
+          // have the encoder's maxFramerate cap throw them away.
+          resolution: { width: 1920, height: 1080, frameRate: QUALITY_ENCODINGS[quality].maxFramerate },
           // keeps the Linkord tab itself out of the share picker. Without
           // this, someone could pick the call tab, whose audio (via
           // ParticipantAudioLayer) already includes everyone else's voice —
@@ -108,17 +113,18 @@ export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): Scre
     const gotAudio = !!room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio);
 
     if (!gotAudio) {
-      // no audio at all: not a problem for the room (only the sharer
-      // misses out on sound), so just log it — no need to surface a
-      // warning to every screen/window sharer.
+      // Sharing still succeeds, but the sharer needs visible confirmation:
+      // otherwise it looks like Linkord is transmitting sound while the
+      // audience actually hears silence.
       let reason: string;
       if (displaySurface === 'window') {
-        reason = 'compartilhar uma JANELA nunca inclui audio, em nenhum navegador.';
+        reason = 'uma janela isolada nao inclui audio. Compartilhe uma aba do navegador para transmitir som.';
       } else if (displaySurface === 'monitor') {
-        reason = 'tela inteira so vem com audio se a caixa "Tambem compartilhar audio do sistema" estiver marcada (nao existe essa opcao no macOS).';
+        reason = 'a tela inteira so inclui audio quando "Tambem compartilhar audio do sistema" esta marcado (essa opcao pode nao existir no macOS).';
       } else {
-        reason = 'a pessoa desmarcou a opcao de audio, ou o navegador nao suporta audio de tela (ex.: Firefox).';
+        reason = 'ative "Compartilhar audio da aba" no seletor do navegador ou use um navegador compativel.';
       }
+      dispatch({ type: 'SET_SHARE_ERROR', message: `Tela compartilhada sem audio: ${reason}` });
       console.log(`[screen-share] compartilhado sem audio (displaySurface=${displaySurface ?? 'desconhecido'}): ${reason}`);
     }
   }, [dispatch, room, quality]);

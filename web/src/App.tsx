@@ -13,7 +13,6 @@ import { Stage } from './features/sharing/Stage';
 import { CallControlBar } from './features/sharing/CallControlBar';
 import { ParticipantAudioLayer } from './features/sharing/ParticipantAudioLayer';
 import { FloatingPip } from './features/sharing/FloatingPip';
-import { useParticipantMedia } from './features/sharing/useLiveKitTrack';
 import { TileMenu } from './features/sharing/TileMenu';
 import { ReactionsOverlay } from './features/reactions/ReactionsOverlay';
 import { GlobalContextMenu } from './components/GlobalContextMenu';
@@ -27,7 +26,7 @@ import { cn } from '@/shared/lib/utils';
 const SettingsModal = lazy(() => import('./features/settings/SettingsModal').then((m) => ({ default: m.SettingsModal })));
 
 function Shell() {
-  const { state, dispatch, livekitRoom, closeTileMenu, sendWs, notifyActiveView } = useRoom();
+  const { state, dispatch, livekitRoom, closeTileMenu, sendWs, notifyActiveView, voiceConnection } = useRoom();
   const [activeView, setActiveView] = useState<AppView>('chat');
   const roomError = state.roomError;
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -47,15 +46,15 @@ function Shell() {
   // are still things that really "stop" if the tab closes unintentionally.
   const publishing = state.me.sharing || state.me.cameraOn;
 
-  // "am I in the call" = my mic was activated this session — LiveKit
-  // (micActivated) is already the source of truth, like the rest of the app.
-  const myMedia = useParticipantMedia(state.me.id ?? '');
-  const inCall = myMedia.micActivated;
+  // A microphone is optional: listen-only participants are still fully
+  // connected to LiveKit and must keep hearing/seeing the room. The explicit
+  // connection state, not a published mic track, is the source of truth.
+  const inCall = voiceConnection.status === 'connected';
 
   // everyone in the room (me + participants) — passed down to whoever
-  // filters who's actually in the call (useCallTiles already only makes a
-  // tile for a published mic; ParticipantAudioLayer only mounts once I'm
-  // in the call, see below).
+  // filters who's actually in this LiveKit room (useCallTiles only resolves
+  // identities present there; ParticipantAudioLayer only mounts once I'm
+  // connected, see below).
   const allIds = useMemo(() => {
     const ids: string[] = [];
     if (state.me.id) ids.push(state.me.id);
@@ -70,6 +69,11 @@ function Shell() {
   // by switching tabs.
   function handleViewChange(next: AppView) {
     setActiveView(next);
+  }
+
+  function handleExitCallView() {
+    setActiveView('chat');
+    setMobileShowSidebar(true);
   }
 
   // picking a channel on mobile should show its content right away, not
@@ -128,11 +132,17 @@ function Shell() {
         />
         <div className={cn('relative min-h-0 flex-1 md:flex', mobileShowSidebar ? 'hidden' : 'flex')}>
           {activeView === 'chat' && <ChatPage onBackMobile={() => setMobileShowSidebar(true)} />}
-          {activeView === 'call' && <Stage allIds={allIds} onBackMobile={() => setMobileShowSidebar(true)} />}
+          {activeView === 'call' && (
+            <Stage
+              allIds={allIds}
+              onBackMobile={() => setMobileShowSidebar(true)}
+              onExitVoice={handleExitCallView}
+            />
+          )}
           {/* full floating bar (mic/camera/screen/reactions) only on the
               Call tab itself — elsewhere the LeftSidebar's compact panel
               covers it. */}
-          {activeView === 'call' && inCall && <CallControlBar />}
+          {activeView === 'call' && inCall && <CallControlBar onLeave={handleExitCallView} />}
           {/* only hears others if I'm in the call myself — like Discord,
               seeing/knowing who's connected (LeftSidebar) isn't the same
               as hearing their audio. */}

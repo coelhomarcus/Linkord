@@ -43,6 +43,13 @@
       "when": 1787927502507,
       "tag": "0005_silky_masked_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788713403688,
+      "tag": "0006_message_history_index",
+      "breakpoints": true
     }
   ]
 }

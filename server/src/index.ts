@@ -7,17 +7,6 @@ import { sweepExpiredSessions } from './modules/auth/session.js';
 import { ensureSeeded, ensureVoiceChannelExists } from './modules/channels.js';
 import { ensureUploadDir, sweepStaleUploads } from './modules/attachments.js';
 
-// backstop behind the try/catch in each handler in realtime/socket.ts —
-// covers any async error escaping the normal message cycle (a timer, a
-// stray promise) that would otherwise kill the process (Node exits on
-// unhandledRejection/uncaughtException by default), disconnecting the room.
-process.on('unhandledRejection', (err) => {
-  console.error('[process] unhandledRejection:', err instanceof Error ? err.stack : err);
-});
-process.on('uncaughtException', (err) => {
-  console.error('[process] uncaughtException:', err instanceof Error ? err.stack : err);
-});
-
 async function bootstrap(): Promise<void> {
   // neither the Docker CMD nor systemd ExecStart go through an npm script —
   // without migrating here, nobody applies migrations in production. Fail
@@ -84,16 +73,47 @@ async function bootstrap(): Promise<void> {
   }, 60 * 60 * 1000);
   uploadSweepTimer.unref();
 
-  for (const sig of ['SIGINT', 'SIGTERM'] as const) {
-    process.on(sig, () => {
-      console.log(`\n${sig} recebido, encerrando...`);
+  let shuttingDown = false;
+  async function shutdown(exitCode: number, reason: string): Promise<void> {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`\n${reason}, encerrando...`);
+    const forceTimer = setTimeout(() => process.exit(exitCode), 3000);
+    forceTimer.unref();
+    try {
       broadcast({ t: 'server-restart' });
-      for (const p of participantsMap.values()) { try { p.socket && p.socket.disconnect(true); } catch { /* socket ja morrendo */ } }
+      for (const p of participantsMap.values()) {
+        try { p.socket?.disconnect(true); } catch { /* socket ja morrendo */ }
+      }
       io.close();
-      fastify.close().then(() => process.exit(0)).catch(() => process.exit(1));
-      setTimeout(() => process.exit(0), 3000).unref();
-    });
+      await fastify.close();
+    } catch (err) {
+      console.error('[process] falha durante encerramento:', err instanceof Error ? err.stack : err);
+      exitCode = 1;
+    } finally {
+      clearTimeout(forceTimer);
+      process.exit(exitCode);
+    }
   }
+
+  for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+    process.on(sig, () => { void shutdown(0, `${sig} recebido`); });
+  }
+
+  // Continuing after an uncaught exception can leave in-memory presence,
+  // locks or upload state inconsistent. Drain briefly and let the service
+  // manager restart a clean process instead.
+  process.on('unhandledRejection', (err) => {
+    console.error('[process] unhandledRejection:', err instanceof Error ? err.stack : err);
+    void shutdown(1, 'Falha fatal');
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('[process] uncaughtException:', err instanceof Error ? err.stack : err);
+    void shutdown(1, 'Falha fatal');
+  });
 }
 
-bootstrap();
+bootstrap().catch((err) => {
+  console.error('[bootstrap] falha fatal:', err instanceof Error ? err.stack : err);
+  process.exit(1);
+});

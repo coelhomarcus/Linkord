@@ -24,9 +24,8 @@ async function handleUserDelete(socket: AppSocket, msg: { userId?: string }): Pr
   const targetId = String(msg.userId || '');
   if (!targetId) return;
 
-  // no "promote to admin" screen exists — the only way back to admin would
-  // be re-registering with ADMIN_USERNAME, so it's safer to just never
-  // allow deleting your OWN account here.
+  // no "promote to admin" screen exists, so it's safer to never allow an
+  // administrator to delete their OWN account from this panel.
   if (targetId === p.userId) {
     send(socket, { t: 'error', code: 'cannot-delete-self', message: 'Voce nao pode apagar a propria conta por aqui.' });
     return;
@@ -35,19 +34,18 @@ async function handleUserDelete(socket: AppSocket, msg: { userId?: string }): Pr
   const target = await findById(targetId);
   if (!target) return; // already deleted (race with another admin, or invalid id)
 
-  // delete the avatar FILE before the row — after the delete below there's
-  // no way to know which one it was (users.avatar only exists on this row;
-  // attachments has no userId column). Only matters for our own uploads
-  // (`/uploads/<id>`) — deleteAvatarFile already silently ignores an
-  // external/empty URL.
+  const result = await db.delete(users).where(eq(users.id, targetId));
+  if (result.rowCount === 0) return;
+
+  // Keep the saved URL from `target`, but delete only after the user row is
+  // gone. deleteAvatarFile refuses to remove an avatar still referenced by
+  // any account, which closes a concurrent profile-change race. A failed
+  // file cleanup is recoverable by the orphan sweeper.
   if (target.avatar) {
-    await deleteAvatarFile(target.avatar).catch((err) => {
+    await deleteAvatarFile(target.avatar, targetId).catch((err) => {
       console.error(`[moderation] falha ao apagar foto de perfil de ${targetId}:`, err instanceof Error ? err.stack : err);
     });
   }
-
-  const result = await db.delete(users).where(eq(users.id, targetId));
-  if (result.rowCount === 0) return;
 
   // closes the up-to-60s window the session cache (modules/auth/session.ts)
   // would otherwise leave open — without this, a recently-resolved session

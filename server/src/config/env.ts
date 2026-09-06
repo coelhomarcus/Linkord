@@ -1,16 +1,26 @@
 import path from 'node:path';
 
-const PORT = Number(process.env.PORT || 3000);
+function numberEnv(name: string, fallback: number, options: { min: number; max: number; integer?: boolean }): number {
+  const raw = process.env[name];
+  const value = raw == null || raw === '' ? fallback : Number(raw);
+  const mustBeInteger = options.integer !== false;
+  if (!Number.isFinite(value) || (mustBeInteger && !Number.isInteger(value)) || value < options.min || value > options.max) {
+    throw new Error(`${name} deve ser um numero${mustBeInteger ? ' inteiro' : ''} entre ${options.min} e ${options.max}.`);
+  }
+  return value;
+}
+
+const PORT = numberEnv('PORT', 3000, { min: 1, max: 65535 });
 const HOST_BIND = process.env.HOST_BIND || '0.0.0.0';
-const MAX_PARTICIPANTS = Number(process.env.MAX_PARTICIPANTS || 50);
+const MAX_PARTICIPANTS = numberEnv('MAX_PARTICIPANTS', 50, { min: 1, max: 10_000 });
 const TRUST_PROXY = process.env.TRUST_PROXY === '1';
 // Socket.IO TRANSPORT cap (kills the connection if exceeded), not app
 // validation — video/uploads don't go through the socket, so 64KB is
 // plenty for signaling.
-const MAX_MSG_BYTES = Number(process.env.MAX_MSG_BYTES || 64 * 1024);
+const MAX_MSG_BYTES = numberEnv('MAX_MSG_BYTES', 64 * 1024, { min: 1024, max: 1024 * 1024 });
 // how long a dropped connection's identity is held for reconnection before
 // counting as "left".
-const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS || 30000);
+const RECONNECT_GRACE_MS = numberEnv('RECONNECT_GRACE_MS', 30_000, { min: 0, max: 5 * 60 * 1000 });
 const MAX_AVATAR_LEN = 500;
 const MAX_CHAT_LEN = 2000;
 const CHAT_HISTORY_LIMIT = 50; // messages kept to give context to whoever joins later
@@ -43,13 +53,20 @@ const DATABASE_SSL = process.env.DATABASE_SSL === '1';
 const MIGRATE_ON_BOOT = process.env.MIGRATE_ON_BOOT !== '0';
 
 const SESSION_COOKIE = process.env.SESSION_COOKIE || 'ss_session';
-const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS || 30);
+const SESSION_TTL_DAYS = numberEnv('SESSION_TTL_DAYS', 30, { min: 1, max: 365 });
 // closed by default: fail-closed so a deploy that forgot to set this
 // doesn't become open registration.
 const REGISTRATION_CODE = process.env.REGISTRATION_CODE || '';
-// registering with this username becomes admin; a unique index makes it a
-// one-time claim.
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'lune';
+// Separate, optional bootstrap secret. Supplying this in the existing
+// registration code field creates the FIRST administrator only. A public,
+// predictable username must never grant privileges by itself.
+const ADMIN_REGISTRATION_CODE = process.env.ADMIN_REGISTRATION_CODE || '';
+if (ADMIN_REGISTRATION_CODE && ADMIN_REGISTRATION_CODE.length < 16) {
+  throw new Error('ADMIN_REGISTRATION_CODE deve ter pelo menos 16 caracteres aleatorios.');
+}
+if (ADMIN_REGISTRATION_CODE && ADMIN_REGISTRATION_CODE === REGISTRATION_CODE) {
+  throw new Error('ADMIN_REGISTRATION_CODE deve ser diferente de REGISTRATION_CODE.');
+}
 // 'auto' reads X-Forwarded-Proto (set by Caddy/nginx); '1'/'0' force it —
 // otherwise the Secure cookie attribute breaks local http:// dev.
 const COOKIE_SECURE = process.env.COOKIE_SECURE || 'auto';
@@ -79,7 +96,7 @@ export const config = {
   UPLOAD_DIR, MAX_ATTACHMENT_BYTES, MAX_STORAGE_BYTES, MAX_AVATAR_BYTES,
   UPLOAD_CHUNK_BYTES, UPLOAD_SESSION_TTL_MS,
   DATABASE_URL, DATABASE_SSL, MIGRATE_ON_BOOT,
-  SESSION_COOKIE, SESSION_TTL_DAYS, REGISTRATION_CODE, ADMIN_USERNAME,
+  SESSION_COOKIE, SESSION_TTL_DAYS, REGISTRATION_CODE, ADMIN_REGISTRATION_CODE,
   COOKIE_SECURE, MAX_BODY_BYTES,
   MIN_USERNAME_LEN, MAX_USERNAME_LEN, MIN_PASSWORD_LEN, MAX_PASSWORD_LEN,
   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_ROOM_NAME,

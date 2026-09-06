@@ -1,0 +1,26 @@
+.git
+.github
+.agents
+.codex
+
+.env
+.env.*
+!.env.example
+
+node_modules
+**/node_modules
+dist
+**/dist
+build
+**/build
+coverage
+**/coverage
+*.tsbuildinfo
+*.log
+
+# User data must never become part of an image or remote build context.
+uploads
+
+.DS_Store
+.idea
+.vscode
