@@ -26,7 +26,7 @@ import { cn } from '@/shared/lib/utils';
 const SettingsModal = lazy(() => import('./features/settings/SettingsModal').then((m) => ({ default: m.SettingsModal })));
 
 function Shell() {
-  const { state, dispatch, livekitRoom, closeTileMenu, sendWs, notifyActiveView, voiceConnection } = useRoom();
+  const { state, dispatch, livekitRoom, closeTileMenu, sendWs, notifyActiveView, registerRequestChatView, voiceConnection } = useRoom();
   const [activeView, setActiveView] = useState<AppView>('chat');
   const roomError = state.roomError;
   const [settingsOpen, setSettingsOpen] = useState(false);

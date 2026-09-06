@@ -118,6 +118,24 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     setVolume(value);
   }, []);
 
+  // Opt-in desktop notifications — off by default (see notifications.ts).
+  // The permission prompt itself is requested by SettingsModal (only in
+  // direct response to the checkbox, and only turns this on if granted) —
+  // this setter is just persistence + keeping the notifications module's
+  // mirror in sync, same shape as setShowStats/setHideAudioOnlyTiles below.
+  const [notificationsEnabled, setNotificationsEnabledState] = useState(loadNotificationsEnabled);
+  const setNotificationsEnabled = useCallback((value: boolean) => {
+    setNotificationsEnabledState(value);
+    saveNotificationsEnabled(value);
+    setNotificationsModuleEnabled(value);
+  }, []);
+
+  const [hideAudioOnlyTiles, setHideAudioOnlyTilesState] = useState(loadHideAudioOnlyTiles);
+  const setHideAudioOnlyTiles = useCallback((value: boolean) => {
+    setHideAudioOnlyTilesState(value);
+    saveHideAudioOnlyTiles(value);
+  }, []);
+
   // Returns whether it actually went out — callers that need to track
   // delivery (see the pending chat-send machinery below) use this to know
   // whether to arm a confirmation timeout or just leave the send queued.
@@ -754,9 +772,20 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         if (!amLookingAtIt) {
           setUnreadByChannel((prev) => new Map(prev).set(channelId, (prev.get(channelId) || 0) + 1));
         }
-        // skip the sound for my own messages (echoed back) and when I'm
-        // already looking at this exact channel.
-        if (m.message.id !== myUserIdRef.current && !amLookingAtIt) playSound('newMessage');
+        // skip the sound/notification for my own messages (echoed back) and
+        // when I'm already looking at this exact channel.
+        if (m.message.id !== myUserIdRef.current && !amLookingAtIt) {
+          playSound('newMessage');
+          const channelName = categoriesRef.current.flatMap((c) => c.channels).find((ch) => ch.id === channelId)?.name ?? 'canal';
+          notifyIncomingChatMessage({
+            channelId,
+            channelName,
+            senderId: m.message.id,
+            senderName: m.message.name,
+            text: m.message.text,
+            mentioned: mentionsUsername(m.message.text, myUsernameRef.current),
+          });
+        }
         break;
       }
       case 'chat-deleted':
@@ -991,6 +1020,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     <RoomContext.Provider
       value={{
         state, dispatch, sendWs, tileDomRegistry, audioRegistry, audioUnlocked, deafened, toggleDeafened, livekitRoom, notifyActiveView,
+        registerRequestChatView,
         activeVoiceChannelId, voiceConnection, joinVoiceChannel, retryVoiceChannel, cancelVoiceJoin,
         startSharing, stopSharing, startCamera, stopCamera, enableMicrophone, toggleMicMuted, leaveVoiceChannel, quality, setQuality,
         updateAvatar, uploadAvatarFile, menuTarget, openTileMenu, closeTileMenu,

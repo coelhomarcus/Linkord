@@ -109,7 +109,7 @@ function ChatMessageRow({
     <div
       id={`chat-msg-${message.msgId}`}
       onMouseEnter={() => setIsRowActive(true)}
-      onMouseLeave={() => { if (!reactOpen) setIsRowActive(false); }}
+      onMouseLeave={() => { if (!reactOpen && !moreOpen) setIsRowActive(false); }}
       className={cn(
         'group/msg relative flex gap-3 rounded-md border-l-2 border-transparent px-3 transition-colors',
         showHeader ? 'mt-3' : '',
