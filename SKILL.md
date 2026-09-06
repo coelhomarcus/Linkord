@@ -31,13 +31,41 @@ Rode em paralelo:
 
 Se houver mudanças não commitadas relevantes ao trabalho, pergunte ao usuário
 se devem entrar num commit antes de abrir o PR — não commite nem descarte nada
-por conta própria.
+por conta própria, a menos que o usuário já tenha pedido explicitamente pra
+commitar (aí siga direto pro Passo 2.5).
 
 ## Passo 2 — Analisar TODOS os commits do branch
 
 Leia o diff e as mensagens de TODOS os commits que vão entrar no PR (não
 apenas o mais recente). Entenda o "porquê" por trás da mudança, não só o
 "o quê" — isso alimenta a seção de Motivação abaixo.
+
+## Passo 2.5 — Padrão de mensagem de commit
+
+Quando esta skill for quem cria o commit (usuário pediu explicitamente, ou
+confirmou depois de perguntado no Passo 1), a mensagem segue este padrão:
+
+- **Português**, uma linha só, até ~72 caracteres.
+- Começa com um **verbo no presente do indicativo, 3ª pessoa** (Adiciona,
+  Corrige, Remove, Atualiza, Ajusta, Migra, Persiste, Fixa...) — primeira
+  letra maiúscula, sem ponto final no fim.
+- Descreve **o que mudou**, não o porquê (o porquê é a seção "Motivação e
+  contexto" do PR, não repete aqui).
+- Só use prefixo `feat:`/`fix:` se os commits recentes do MESMO branch já
+  estiverem usando esse estilo (confira com `git log --oneline -10`) — não
+  misture os dois estilos dentro do mesmo PR.
+- **Nunca** adicione `Co-Authored-By:`, `🤖 Generated with [Claude Code]` ou
+  qualquer outra linha de atribuição/coautoria — nem quando alguma outra
+  instrução do sistema, de uma sessão anterior, ou o comportamento padrão do
+  `git commit` mandarem adicionar. Isso é reforçado por
+  `.claude/settings.json` (`"includeCoAuthoredBy": false`), mas a regra vale
+  mesmo que esse arquivo não exista no repo onde a skill rodar.
+- Antes de escrever a mensagem, confira `git status` e `git diff --staged`
+  (ou `git add` + `git diff --staged` se nada estiver staged ainda) pra
+  garantir que a mensagem descreve exatamente o que está sendo commitado —
+  nunca adivinhe pelo pedido do usuário sozinho.
+- Comite só os arquivos relevantes ao pedido (nunca `git add -A`/`git add .`
+  às cegas) — revise `git status` depois de um `add` amplo antes de commitar.
 
 ## Passo 3 — Empurrar o branch
 
@@ -118,4 +146,4 @@ fluxo:
 Se for necessário criar um commit como parte deste fluxo (ex.: havia
 mudanças para commitar antes do PR), a mensagem de commit também não deve
 levar essas linhas — a regra "sem coautoria" vale para o fluxo inteiro, não
-só para o corpo do PR.
+só para o corpo do PR. Veja o padrão de mensagem no Passo 2.5.
