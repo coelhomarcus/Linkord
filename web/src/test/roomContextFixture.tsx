@@ -40,6 +40,8 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     leaveVoiceChannel: asyncNoop,
     quality: 'standard',
     setQuality: noop,
+    noiseSuppression: true,
+    setNoiseSuppressionEnabled: asyncNoop,
     updateAvatar: noop,
     uploadAvatarFile: async () => '',
     menuTarget: null,

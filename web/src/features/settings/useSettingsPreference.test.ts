@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { loadShowStats, saveShowStats, loadNotifyVolume, saveNotifyVolume } from './useSettingsPreference';
+import {
+  loadShowStats, saveShowStats, loadNotifyVolume, saveNotifyVolume,
+  loadNoiseSuppression, saveNoiseSuppression,
+} from './useSettingsPreference';
 
 beforeEach(() => {
   localStorage.clear();
@@ -42,5 +45,22 @@ describe('loadNotifyVolume / saveNotifyVolume', () => {
     expect(loadNotifyVolume()).toBe(1);
     localStorage.setItem('ss-notify-volume', '-2');
     expect(loadNotifyVolume()).toBe(0);
+  });
+});
+
+describe('loadNoiseSuppression / saveNoiseSuppression', () => {
+  it('sem valor salvo, default e true (so "0" explicito desliga)', () => {
+    expect(loadNoiseSuppression()).toBe(true);
+  });
+
+  it('save(false) depois load() devolve false', () => {
+    saveNoiseSuppression(false);
+    expect(loadNoiseSuppression()).toBe(false);
+  });
+
+  it('save(true) depois load() devolve true', () => {
+    saveNoiseSuppression(false);
+    saveNoiseSuppression(true);
+    expect(loadNoiseSuppression()).toBe(true);
   });
 });

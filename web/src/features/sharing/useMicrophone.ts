@@ -1,9 +1,11 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { Dispatch } from 'react';
 import { ConnectionState, RoomEvent, Track, createLocalAudioTrack } from 'livekit-client';
 import type { Room } from 'livekit-client';
 import type { RoomAction } from '../../state/roomReducer';
 import { playSound } from '../../shared/sounds';
+import { applyNoiseSuppression, removeNoiseSuppression } from './noiseSuppression';
+import { loadNoiseSuppression, saveNoiseSuppression } from '../settings/useSettingsPreference';
 
 export interface MicrophoneApi {
   /** Requests permission and publishes the mic once per session in the
@@ -22,6 +24,10 @@ export interface MicrophoneApi {
    * goes back to false; activating again requests the mic again
    * (already-granted permission doesn't prompt the browser again). */
   leaveMic: () => Promise<void>;
+  /** Current preference — read by SettingsModal to render the switch.
+   * Applied on the next activateMic, and live on an already-published mic. */
+  noiseSuppression: boolean;
+  setNoiseSuppressionEnabled: (enabled: boolean) => Promise<void>;
 }
 
 export interface MicrophoneActivationOptions {
@@ -69,6 +75,13 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
   // prompt is still open) and lets every caller receive the same result.
   const activatingRef = useRef<Promise<MicrophoneActivationResult> | null>(null);
 
+  const [noiseSuppression, setNoiseSuppressionState] = useState(loadNoiseSuppression);
+  // mirrors noiseSuppression state — activateMic reads this instead of the
+  // state value directly so its identity doesn't need to change (and
+  // re-trigger connectVoiceChannel/enableMicrophone) every time the
+  // preference is toggled.
+  const noiseSuppressionRef = useRef(noiseSuppression);
+
   const activateMic = useCallback(async (options: MicrophoneActivationOptions = {}): Promise<MicrophoneActivationResult> => {
     if (activatingRef.current) return activatingRef.current;
     const existing = room.localParticipant.getTrackPublication(Track.Source.Microphone);
@@ -90,6 +103,9 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
         await waitForConnection(room);
         const deviceId = room.getActiveDevice('audioinput');
         localTrack = await createLocalAudioTrack(deviceId ? { deviceId } : undefined);
+        // Best-effort — falls back to the unprocessed track on unsupported
+        // browsers/devices, never blocks activation.
+        if (noiseSuppressionRef.current) await applyNoiseSuppression(localTrack);
         // Muting BEFORE publish is important: setMicrophoneEnabled(true)
         // followed by mute can transmit a brief audible burst.
         if (options.muted) await localTrack.mute();
@@ -153,5 +169,17 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
     if (pub?.track) await room.localParticipant.unpublishTrack(pub.track, true);
   }, [room]);
 
-  return { activateMic, toggleMicMuted, setMicMuted, leaveMic };
+  const setNoiseSuppressionEnabled = useCallback(async (enabled: boolean) => {
+    noiseSuppressionRef.current = enabled;
+    setNoiseSuppressionState(enabled);
+    saveNoiseSuppression(enabled);
+    // no mic activated yet (or anymore) — nothing to apply live, it'll pick
+    // up the new preference on the next activateMic.
+    const track = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.audioTrack;
+    if (!track) return;
+    if (enabled) await applyNoiseSuppression(track);
+    else await removeNoiseSuppression(track);
+  }, [room]);
+
+  return { activateMic, toggleMicMuted, setMicMuted, leaveMic, noiseSuppression, setNoiseSuppressionEnabled };
 }

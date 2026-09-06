@@ -28,3 +28,17 @@ export function loadNotifyVolume(): number {
 export function saveNotifyVolume(value: number): void {
   localStorage.setItem(NOTIFY_VOLUME_KEY, String(value));
 }
+
+// AI-based background noise removal (Krisp, via @livekit/krisp-noise-filter)
+// applied on top of the mic track — see useMicrophone.ts#activateMic.
+// Defaults to on: it's the biggest audible improvement for most people, and
+// costs nothing until a mic is actually activated (the model loads lazily).
+const NOISE_SUPPRESSION_KEY = 'ss-noise-suppression';
+
+export function loadNoiseSuppression(): boolean {
+  return localStorage.getItem(NOISE_SUPPRESSION_KEY) !== '0';
+}
+
+export function saveNoiseSuppression(value: boolean): void {
+  localStorage.setItem(NOISE_SUPPRESSION_KEY, value ? '1' : '0');
+}
