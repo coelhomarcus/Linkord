@@ -6,8 +6,8 @@ import { sendJson, sendError, jsonBody } from '../../http/respond.js';
 import { parseCookies, serializeCookie, clearCookie, isSecureRequest } from '../../http/cookies.js';
 import { hashPassword, verifyPassword, needsRehash, DUMMY_HASH } from './password.js';
 import { createSession, resolveSession, destroySession } from './session.js';
-import { findByUsernameLower, createUser, isAdminUsername, publicUser } from './users.js';
-import { broadcast } from '../../realtime/participants.js';
+import { findByUsernameLower, createInitialAdmin, createUser, publicUser } from './users.js';
+import { broadcast, disconnectSession } from '../../realtime/participants.js';
 import * as ratelimit from './ratelimit.js';
 import { db } from '../../db/client.js';
 import { users } from '../../db/schema.js';
@@ -48,16 +48,33 @@ function setSessionCookie(request: FastifyRequest, reply: FastifyReply, rawToken
 }
 
 async function handleRegister(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const attemptKey = `register:${ipOfRequest(request)}`;
+  const blockedSec = ratelimit.checkBlocked(attemptKey);
+  if (blockedSec) {
+    reply.header('Retry-After', String(blockedSec));
+    return sendError(reply, 429, 'rate_limited', 'Muitas tentativas. Tente novamente mais tarde.');
+  }
+  // Registration hashes a password and writes to the database, so cap all
+  // attempts (not just wrong invite codes) per IP within the limiter window.
+  ratelimit.recordFailure(attemptKey);
+
   const body = jsonBody(request.body);
   const username = String(body.username == null ? '' : body.username).trim();
   const password = String(body.password == null ? '' : body.password);
   const confirmPassword = String(body.confirmPassword == null ? '' : body.confirmPassword);
   const code = String(body.code == null ? '' : body.code);
 
-  // fail closed: no code configured means registration is closed — never
-  // "open by a forgotten config."
-  if (!config.REGISTRATION_CODE) return sendError(reply, 403, 'registration_closed', 'Registro fechado.');
-  if (!safeCompare(code, config.REGISTRATION_CODE)) return sendError(reply, 403, 'invalid_code', 'Codigo de convite invalido.');
+  // A separate bootstrap code creates the first admin. A username alone can
+  // never grant privileges. Both paths fail closed when their secret is
+  // absent, so a forgotten deploy variable never opens registration.
+  const usesAdminCode = !!config.ADMIN_REGISTRATION_CODE && safeCompare(code, config.ADMIN_REGISTRATION_CODE);
+  const usesInviteCode = !!config.REGISTRATION_CODE && safeCompare(code, config.REGISTRATION_CODE);
+  if (!config.REGISTRATION_CODE && !config.ADMIN_REGISTRATION_CODE) {
+    return sendError(reply, 403, 'registration_closed', 'Registro fechado.');
+  }
+  if (!usesAdminCode && !usesInviteCode) {
+    return sendError(reply, 403, 'invalid_code', 'Codigo de convite invalido.');
+  }
 
   if (!USERNAME_RE.test(username)) {
     return sendError(reply, 400, 'invalid_username', `Nome de usuario deve ter entre ${config.MIN_USERNAME_LEN} e ${config.MAX_USERNAME_LEN} caracteres (letras, numeros, . _ -).`);
@@ -70,13 +87,16 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
   }
 
   const passwordHash = await hashPassword(password);
-  const role = isAdminUsername(username) ? 'admin' : 'user';
-
   let user;
   try {
-    user = await createUser({ username, passwordHash, role });
+    user = usesAdminCode
+      ? await createInitialAdmin({ username, passwordHash })
+      : await createUser({ username, passwordHash, role: 'user' });
   } catch (err: unknown) {
     if (err && (err as { code?: string }).code === 'username_taken') return sendError(reply, 409, 'username_taken', 'Esse nome de usuario ja esta em uso.');
+    if (err && (err as { code?: string }).code === 'admin_already_exists') {
+      return sendError(reply, 403, 'admin_code_used', 'O administrador inicial ja foi criado. Use um codigo de convite comum.');
+    }
     throw err;
   }
 
@@ -136,7 +156,8 @@ async function handleLogin(request: FastifyRequest, reply: FastifyReply): Promis
 
 async function handleLogout(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const cookies = parseCookies(request.headers.cookie || '');
-  await destroySession(cookies[config.SESSION_COOKIE]);
+  const tokenHash = await destroySession(cookies[config.SESSION_COOKIE]);
+  if (tokenHash) disconnectSession(tokenHash);
   reply.header('Set-Cookie', clearCookie(config.SESSION_COOKIE, { secure: isSecureRequest(request.raw) }));
   reply.code(204).header('Cache-Control', 'no-store').send();
 }

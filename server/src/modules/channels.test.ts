@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { canDeleteChannel, sanitizeChannelName } from './channels.js';
+import { canDeleteChannel, isTextChannelType, sanitizeChannelName } from './channels.js';
 
 describe('canDeleteChannel', () => {
   test('canal de texto sempre pode ser apagado, mesmo sendo o unico', () => {
@@ -37,5 +37,15 @@ describe('sanitizeChannelName', () => {
   test('corta em 60 caracteres', () => {
     const longName = 'a'.repeat(100);
     assert.equal(sanitizeChannelName(longName)?.length, 60);
+  });
+});
+
+describe('isTextChannelType', () => {
+  test('aceita somente canal de texto para chat, historico e anexos', () => {
+    assert.equal(isTextChannelType('text'), true);
+    assert.equal(isTextChannelType('voice'), false);
+    assert.equal(isTextChannelType('qualquer-outro'), false);
+    assert.equal(isTextChannelType(null), false);
+    assert.equal(isTextChannelType(undefined), false);
   });
 });

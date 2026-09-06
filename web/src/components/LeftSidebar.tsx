@@ -16,10 +16,12 @@ import { cn } from '@/shared/lib/utils';
 import { useRoom } from '../state/RoomContext';
 import { useParticipantMedia } from '../features/sharing/useLiveKitTrack';
 import { useMediaDevices } from '../features/settings/useMediaDevices';
+import { PreCallDialog } from '../features/sharing/PreCallDialog';
 import { Avatar } from '../shared/Avatar';
 import { PromptDialog } from '../shared/PromptDialog';
 import { ChannelTree, NewChannelDialog } from './ChannelTree';
 import type { Channel } from '../types/protocol';
+import type { VoiceJoinOptions } from '../state/RoomContext';
 
 export type AppView = 'chat' | 'call';
 
@@ -41,12 +43,17 @@ interface LeftSidebarProps {
  * indented under it — see ChannelTree), and a fixed user area at the
  * bottom. */
 export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, mobileVisible, onSelectChannelMobile }: LeftSidebarProps) {
-  const { state, livekitRoom, toggleMicMuted, deafened, toggleDeafened, leaveVoiceChannel, joinVoiceChannel, openChannel, activeChannelId, categories, createCategory } = useRoom();
+  const {
+    state, livekitRoom, toggleMicMuted, enableMicrophone, deafened, toggleDeafened,
+    leaveVoiceChannel, joinVoiceChannel, voiceConnection,
+    openChannel, activeChannelId, categories, createCategory,
+  } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
   const mics = useMediaDevices(livekitRoom, 'audioinput');
   const isAdmin = state.me.role === 'admin';
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
   const [newChannelOpen, setNewChannelOpen] = useState(false);
+  const [preCallChannel, setPreCallChannel] = useState<Channel | null>(null);
 
   // selecting a text channel also switches to the Chat screen if not
   // already there; selecting a voice channel actually joins it (connects
@@ -54,7 +61,12 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
   // and switches to the call screen.
   function handleSelectChannel(channel: Channel) {
     if (channel.type === 'voice') {
-      joinVoiceChannel(channel.id);
+      // A second click on the channel already being joined/used just reveals
+      // its Stage. A new channel goes through the explicit pre-call choice.
+      if (voiceConnection.channelId !== channel.id || voiceConnection.status === 'idle') {
+        setPreCallChannel(channel);
+        return;
+      }
       onViewChange('call');
     } else {
       onViewChange('chat');
@@ -62,6 +74,24 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
     }
     onSelectChannelMobile();
   }
+
+  function handleConfirmVoiceJoin(options: VoiceJoinOptions) {
+    if (!preCallChannel) return;
+    void joinVoiceChannel(preCallChannel.id, options);
+    onViewChange('call');
+    onSelectChannelMobile();
+  }
+
+  function handleMicrophoneClick() {
+    if (!inCall) return;
+    if (myMedia.micActivated) void toggleMicMuted();
+    else void enableMicrophone();
+  }
+
+  const microphoneActionLabel = !myMedia.micActivated
+    ? 'Ativar microfone'
+    : myMedia.micMuted ? 'Desmutar' : 'Mutar';
+  const activeMicrophoneLabel = mics.devices.find((device) => device.deviceId === mics.activeDeviceId)?.label;
 
   return (
     <aside className={cn('w-full flex-none flex-col border-r border-subtle bg-bg-sidebar md:flex md:w-60', mobileVisible ? 'flex' : 'hidden')}>
@@ -109,20 +139,20 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
             mute before joining (avoids publishing the mic without going
             through joining a voice channel first) — device switching
             itself still works outside a call. */}
-        <div className={cn('ml-auto flex items-center rounded-md', myMedia.micMuted && inCall && 'bg-red/12')}>
+        <div className={cn('ml-auto flex items-center rounded-md', myMedia.micActivated && myMedia.micMuted && inCall && 'bg-red/12')}>
           <Tooltip>
             <TooltipTrigger
-              onClick={toggleMicMuted}
+              onClick={handleMicrophoneClick}
               disabled={!inCall}
-              aria-label={myMedia.micMuted ? 'Desmutar' : 'Mutar'}
+              aria-label={microphoneActionLabel}
               className={cn(
                 'flex h-8 w-8 items-center justify-center rounded-md transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
-                myMedia.micMuted && inCall ? 'text-red' : 'text-text-secondary hover:bg-bg-hover'
+                myMedia.micActivated && myMedia.micMuted && inCall ? 'text-red' : 'text-text-secondary hover:bg-bg-hover'
               )}
             >
-              {myMedia.micMuted ? <MicOff size={18} /> : <Mic size={18} />}
+              {!myMedia.micActivated || myMedia.micMuted ? <MicOff size={18} /> : <Mic size={18} />}
             </TooltipTrigger>
-            <TooltipContent side="top">{myMedia.micMuted ? 'Desmutar' : 'Mutar'}</TooltipContent>
+            <TooltipContent side="top">{microphoneActionLabel}</TooltipContent>
           </Tooltip>
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -132,7 +162,7 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
                   aria-label="Escolher microfone"
                   className={cn(
                     'flex h-8 w-5 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
-                    myMedia.micMuted && inCall ? 'text-red' : 'text-text-secondary hover:bg-bg-hover'
+                    myMedia.micActivated && myMedia.micMuted && inCall ? 'text-red' : 'text-text-secondary hover:bg-bg-hover'
                   )}
                 />
               }
@@ -171,9 +201,10 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
         <Tooltip>
           <TooltipTrigger
             onClick={toggleDeafened}
+            disabled={!inCall}
             aria-label={deafened ? 'Voltar a ouvir' : 'Parar de ouvir'}
             className={cn(
-              'flex h-8 w-8 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+              'flex h-8 w-8 items-center justify-center rounded-md transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
               deafened ? 'bg-red/12 text-red' : 'text-text-secondary hover:bg-bg-hover'
             )}
           >
@@ -217,6 +248,14 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
         onConfirm={createCategory}
       />
       <NewChannelDialog open={newChannelOpen} onOpenChange={setNewChannelOpen} />
+      <PreCallDialog
+        open={!!preCallChannel}
+        channelName={preCallChannel?.name ?? 'canal de voz'}
+        microphoneLabel={activeMicrophoneLabel}
+        permissionNeeded={mics.permissionNeeded}
+        onOpenChange={(open) => { if (!open) setPreCallChannel(null); }}
+        onJoin={handleConfirmVoiceJoin}
+      />
     </aside>
   );
 }

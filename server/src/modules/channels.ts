@@ -2,7 +2,8 @@ import crypto from 'node:crypto';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { categories, channels } from '../db/schema.js';
-import { participants, broadcast, send } from '../realtime/participants.js';
+import { participants, broadcast, send, setVoiceChannelId } from '../realtime/participants.js';
+import { deleteVoiceRoom } from '../realtime/livekit.js';
 import type { AppSocket, HandlerTable, Participant } from '../types.js';
 
 // Categories/channels — text or voice, admins create/delete/reorder either
@@ -22,6 +23,15 @@ interface CategoryTree {
   id: string;
   name: string;
   channels: ChannelSummary[];
+}
+
+// External LiveKit deletion and the Postgres row deletion cannot share one
+// transaction. This marker closes the interval in which voice-join could
+// mint a token while those two operations are in flight.
+const deletingChannelIds = new Set<string>();
+
+export function isChannelBeingDeleted(channelId: string): boolean {
+  return deletingChannelIds.has(channelId);
 }
 
 export function sanitizeChannelName(name: unknown): string | null {
@@ -87,6 +97,16 @@ export async function listTree(): Promise<CategoryTree[]> {
 export async function channelExists(channelId: string): Promise<boolean> {
   const [row] = await db.select({ id: channels.id }).from(channels).where(eq(channels.id, channelId)).limit(1);
   return !!row;
+}
+
+/** Whether a channel type may carry chat/history/attachments. Kept as a
+ * small pure predicate so every entry point applies the exact same rule. */
+export function isTextChannelType(type: string | null | undefined): boolean {
+  return type === 'text';
+}
+
+export async function textChannelExists(channelId: string): Promise<boolean> {
+  return isTextChannelType(await getChannelType(channelId));
 }
 
 /** Used by realtime/socket.ts#handleVoiceJoin to check the channel exists
@@ -161,20 +181,53 @@ async function handleChannelDelete(socket: AppSocket, msg: { channelId?: string 
       send(socket, { t: 'error', code: 'cannot-delete-last-voice-channel', message: 'Precisa existir pelo menos um canal de voz.' });
       return;
     }
+    if (deletingChannelIds.has(channelId)) {
+      send(socket, { t: 'error', code: 'channel-delete-in-progress', message: 'Esse canal ja esta sendo apagado.' });
+      return;
+    }
+    deletingChannelIds.add(channelId);
   }
-  // dynamic import to avoid a cycle (modules/attachments.ts already imports
-  // channelExists from this file). Called before the delete below: the
-  // channel's messages/attachments go via CASCADE in Postgres without going
-  // through handleChatDelete, so this is what prevents orphaned files on disk.
-  const { deleteForChannel } = await import('./attachments.js');
-  await deleteForChannel(channelId);
-  const result = await db.delete(channels).where(eq(channels.id, channelId));
-  if (result.rowCount === 0) return;
-  // messages already gone via CASCADE — this is what "permanently deleted"
-  // means here. Explicit notice (besides the fresh tree) for whoever was in
-  // exactly this channel.
-  broadcast({ t: 'channel-deleted', channelId });
-  await broadcastTree();
+  try {
+    if (existing.type === 'voice') {
+      try {
+        // Do this before deleting the DB row: an infrastructure failure leaves
+        // the visible channel intact instead of an unreachable ghost room.
+        await deleteVoiceRoom(channelId);
+      } catch (err) {
+        console.error(`[channels] falha ao encerrar sala LiveKit ${channelId}:`, err instanceof Error ? err.stack : err);
+        send(socket, { t: 'error', code: 'livekit-room-delete-failed', message: 'Nao foi possivel encerrar a chamada. Tente apagar o canal novamente.' });
+        return;
+      }
+    }
+
+    // dynamic import to avoid a cycle (modules/attachments.ts imports channel
+    // helpers). Called before the delete below: message/attachment rows go via
+    // CASCADE, so this prevents orphaned files on disk.
+    const { deleteForChannel } = await import('./attachments.js');
+    await deleteForChannel(channelId);
+    const result = await db.delete(channels).where(eq(channels.id, channelId));
+    if (result.rowCount === 0) return;
+    if (existing.type === 'voice') {
+      for (const participant of participants.values()) {
+        if (participant.voiceChannelId === channelId) setVoiceChannelId(participant, null);
+      }
+      // Catch a join that obtained a token immediately before the deletion
+      // marker was installed and connected while the DB row was removed.
+      try {
+        await deleteVoiceRoom(channelId);
+      } catch (err) {
+        console.error(`[channels] canal ${channelId} apagado, mas a segunda limpeza LiveKit falhou:`, err instanceof Error ? err.stack : err);
+        send(socket, { t: 'error', code: 'livekit-room-cleanup-incomplete', message: 'O canal foi apagado, mas a chamada pode demorar para encerrar por completo.' });
+      }
+    }
+    // messages already gone via CASCADE — this is what "permanently deleted"
+    // means here. Explicit notice (besides the fresh tree) for whoever was in
+    // exactly this channel.
+    broadcast({ t: 'channel-deleted', channelId });
+    await broadcastTree();
+  } finally {
+    deletingChannelIds.delete(channelId);
+  }
 }
 
 async function handleCategoryRename(socket: AppSocket, msg: { categoryId?: string; name?: string }): Promise<void> {

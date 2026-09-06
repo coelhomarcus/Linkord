@@ -1,15 +1,15 @@
 import { useCallback, useRef } from 'react';
 import type { Dispatch } from 'react';
-import { ConnectionState, RoomEvent, Track } from 'livekit-client';
+import { ConnectionState, RoomEvent, Track, createLocalAudioTrack } from 'livekit-client';
 import type { Room } from 'livekit-client';
 import type { RoomAction } from '../../state/roomReducer';
 import { playSound } from '../../shared/sounds';
 
 export interface MicrophoneApi {
-  /** Requests permission and publishes the mic once per session, already
-   * unmuted. Idempotent — safe to call again (e.g. retry after permission
-   * denied, or the caller remounting). */
-  activateMic: () => Promise<void>;
+  /** Requests permission and publishes the mic once per session in the
+   * requested initial mute state. Idempotent — safe to call again (e.g.
+   * retry after permission denied, or the caller remounting). */
+  activateMic: (options?: MicrophoneActivationOptions) => Promise<MicrophoneActivationResult>;
   /** Only toggles muted/unmuted — assumes activateMic already ran. */
   toggleMicMuted: () => Promise<void>;
   /** Forces a specific state (doesn't toggle) — used by "deafen", which
@@ -23,6 +23,16 @@ export interface MicrophoneApi {
    * (already-granted permission doesn't prompt the browser again). */
   leaveMic: () => Promise<void>;
 }
+
+export interface MicrophoneActivationOptions {
+  /** Publishes the track already muted, so joining muted never leaks a short
+   * burst of audio while the UI catches up. */
+  muted?: boolean;
+}
+
+export type MicrophoneActivationResult =
+  | { ok: true; muted: boolean }
+  | { ok: false; error: string; permissionDenied: boolean };
 
 const CONNECT_TIMEOUT_MS = 15000;
 
@@ -48,49 +58,80 @@ function waitForConnection(room: Room): Promise<void> {
  * "Native" Discord-style mic: not something you turn on/off, it's
  * activated once per session (on first joining a voice channel) and after
  * that only muted/unmuted — the hardware/getUserMedia stays alive the
- * whole time, no new permission prompt. Starts unmuted (everyone joins
- * talking, no need to manually unmute). "Activated" and "muted" don't live
- * in any state here or in the reducer — they're read directly from
- * LiveKit (useParticipantMedia), the same source of truth used for remote
- * participants.
+ * whole time, no new permission prompt. The caller chooses whether it is
+ * published already muted (the pre-call default) or ready to talk.
+ * "Activated" and "muted" don't live in any state here or in the reducer —
+ * they're read directly from LiveKit (useParticipantMedia), the same source
+ * of truth used for remote participants.
  */
 export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): MicrophoneApi {
-  // guards only against calling setMicrophoneEnabled twice in parallel if
-  // activateMic is called again before the first activation finishes — not
-  // the "micActivated" the UI uses (that comes from LiveKit).
-  const activatingRef = useRef(false);
+  // Dedupes parallel attempts (double click / retry while the permission
+  // prompt is still open) and lets every caller receive the same result.
+  const activatingRef = useRef<Promise<MicrophoneActivationResult> | null>(null);
 
-  const activateMic = useCallback(async () => {
-    if (activatingRef.current) return;
-    if (room.localParticipant.getTrackPublication(Track.Source.Microphone)) return; // already activated
-    if (!navigator.mediaDevices?.getUserMedia) {
-      dispatch({ type: 'SET_SHARE_ERROR', message: 'Seu navegador nao suporta acesso ao microfone.' });
-      return;
-    }
-
-    activatingRef.current = true;
-    try {
-      await waitForConnection(room);
-      await room.localParticipant.setMicrophoneEnabled(true); // already starts unmuted
-    } catch (err) {
-      if (err instanceof Error && err.message === 'timeout') {
-        dispatch({ type: 'SET_SHARE_ERROR', message: 'Nao foi possivel conectar ao servidor de video. Verifique sua conexao e tente de novo.' });
-        return;
+  const activateMic = useCallback(async (options: MicrophoneActivationOptions = {}): Promise<MicrophoneActivationResult> => {
+    if (activatingRef.current) return activatingRef.current;
+    const existing = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+    if (existing) {
+      if (existing.isMuted !== !!options.muted) {
+        await room.localParticipant.setMicrophoneEnabled(!options.muted);
       }
-      const name = (err as DOMException)?.name;
-      const denied = name === 'NotAllowedError' || name === 'NotFoundError' || name === 'AbortError';
-      if (!denied) dispatch({ type: 'SET_SHARE_ERROR', message: `Nao foi possivel acessar o microfone: ${(err as Error)?.message}` });
-    } finally {
-      activatingRef.current = false;
+      return { ok: true, muted: !!options.muted };
     }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      const error = 'Seu navegador nao suporta acesso ao microfone. Voce ainda pode entrar somente para ouvir.';
+      dispatch({ type: 'SET_SHARE_ERROR', message: error });
+      return { ok: false, error, permissionDenied: false };
+    }
+
+    const attempt = (async (): Promise<MicrophoneActivationResult> => {
+      let localTrack: Awaited<ReturnType<typeof createLocalAudioTrack>> | null = null;
+      try {
+        await waitForConnection(room);
+        const deviceId = room.getActiveDevice('audioinput');
+        localTrack = await createLocalAudioTrack(deviceId ? { deviceId } : undefined);
+        // Muting BEFORE publish is important: setMicrophoneEnabled(true)
+        // followed by mute can transmit a brief audible burst.
+        if (options.muted) await localTrack.mute();
+        await room.localParticipant.publishTrack(localTrack, { source: Track.Source.Microphone });
+        dispatch({ type: 'SET_SHARE_ERROR', message: null });
+        return { ok: true, muted: !!options.muted };
+      } catch (err) {
+        localTrack?.stop();
+        let error: string;
+        let permissionDenied = false;
+        if (err instanceof Error && err.message === 'timeout') {
+          error = 'Nao foi possivel conectar ao servidor de video. Verifique sua conexao e tente de novo.';
+        } else {
+          const name = (err as DOMException)?.name;
+          permissionDenied = name === 'NotAllowedError' || name === 'SecurityError';
+          if (permissionDenied) {
+            error = 'Acesso ao microfone negado. Libere a permissao do site para falar; voce pode continuar somente ouvindo.';
+          } else if (name === 'NotFoundError') {
+            error = 'Nenhum microfone foi encontrado. Voce pode continuar somente ouvindo.';
+          } else if (name === 'NotReadableError') {
+            error = 'O microfone esta sendo usado por outro aplicativo. Feche-o ou continue somente ouvindo.';
+          } else if (name === 'AbortError') {
+            error = 'A ativacao do microfone foi cancelada. Voce pode continuar somente ouvindo.';
+          } else {
+            error = `Nao foi possivel acessar o microfone: ${(err as Error)?.message || 'erro desconhecido'}`;
+          }
+        }
+        dispatch({ type: 'SET_SHARE_ERROR', message: error });
+        return { ok: false, error, permissionDenied };
+      } finally {
+        activatingRef.current = null;
+      }
+    })();
+    activatingRef.current = attempt;
+    return attempt;
   }, [dispatch, room]);
 
   const toggleMicMuted = useCallback(async () => {
     const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
     // no publication yet (mic never activated) means there's nothing to
-    // mute/unmute here — without this guard, `pub?.isMuted ?? true` would
-    // fall into the same setMicrophoneEnabled(true) activateMic uses,
-    // actually joining the call just by clicking "unmute" outside of it.
+    // mute/unmute here. Device capture belongs exclusively to activateMic;
+    // a mute control must never request permission or publish by accident.
     if (!pub) return;
     // reads pub.isMuted BEFORE the await — once it resolves, the
     // publication already reflects the NEW state, and the sound needs to

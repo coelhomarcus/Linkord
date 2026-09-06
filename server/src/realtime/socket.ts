@@ -15,7 +15,11 @@ import * as moderation from '../modules/moderation.js';
 import { listAllUsers } from '../modules/auth/users.js';
 import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from '../modules/auth/session.js';
+import { consumeWsEvent } from './rateLimit.js';
 import type { AppSocket, HandlerTable } from '../types.js';
+
+const JOIN_TIMEOUT_MS = 10_000;
+const MAX_TIMER_DELAY_MS = 2_147_000_000;
 
 // {message type: handler(socket, msg)} combining what each feature exports
 // — register a new feature's `handlers` here, no dispatch changes needed.
@@ -76,15 +80,33 @@ async function handleVoiceJoin(socket: AppSocket, msg: { channelId?: string }): 
   const p = participantsMap.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   const channelId = String(msg.channelId || '');
-  if (!channelId) return;
+  if (!channelId) {
+    send(socket, { t: 'error', code: 'invalid-channel', message: 'Canal de voz invalido.' });
+    return;
+  }
+  if (channels.isChannelBeingDeleted(channelId)) {
+    send(socket, { t: 'error', code: 'invalid-channel', message: 'Esse canal de voz esta sendo apagado.' });
+    return;
+  }
   const type = await channels.getChannelType(channelId);
-  if (type !== 'voice') return;
+  if (type !== 'voice' || channels.isChannelBeingDeleted(channelId)) {
+    send(socket, { t: 'error', code: 'invalid-channel', message: 'Canal de voz invalido.' });
+    return;
+  }
   let livekitToken: string;
   try {
-    livekitToken = await livekit.createToken(p, `${config.LIVEKIT_ROOM_NAME}-${channelId}`);
+    livekitToken = await livekit.createToken(p, livekit.voiceRoomName(channelId));
   } catch (err) {
     console.warn(`[${p.id}] falha ao gerar token do LiveKit: ${err instanceof Error ? err.message : err}`);
     send(socket, { t: 'error', code: 'livekit-unavailable', message: 'Video/voz indisponivel no momento.' });
+    return;
+  }
+  // Token creation is asynchronous. Re-check both the marker and the row so
+  // a deletion that completed during signing cannot publish a stale token or
+  // restore in-memory presence to the removed channel.
+  const currentType = await channels.getChannelType(channelId);
+  if (currentType !== 'voice' || channels.isChannelBeingDeleted(channelId)) {
+    send(socket, { t: 'error', code: 'invalid-channel', message: 'Esse canal de voz nao esta mais disponivel.' });
     return;
   }
   setVoiceChannelId(p, channelId);
@@ -107,11 +129,30 @@ function safeHandle(eventName: string, socket: AppSocket, payload: unknown, hand
     if (result && typeof (result as Promise<unknown>).catch === 'function') {
       (result as Promise<unknown>).catch((err: unknown) => {
         console.error(`[ws] erro no handler '${eventName}' (participantId=${socket.participantId}): ${err instanceof Error ? err.stack : err}`);
+        send(socket, { t: 'error', code: 'internal-error', message: 'Nao foi possivel concluir essa acao.' });
       });
     }
   } catch (err) {
     console.error(`[ws] erro no handler '${eventName}' (participantId=${socket.participantId}): ${err instanceof Error ? err.stack : err}`);
+    send(socket, { t: 'error', code: 'internal-error', message: 'Nao foi possivel concluir essa acao.' });
   }
+}
+
+function scheduleSessionExpiry(socket: AppSocket): void {
+  const remaining = socket.user.expiresAtMs - Date.now();
+  if (remaining <= 0) {
+    send(socket, { t: 'error', code: 'session-expired', message: 'Sua sessao expirou. Entre novamente.' });
+    socket.disconnect(true);
+    return;
+  }
+  socket.sessionExpiryTimer = setTimeout(() => scheduleSessionExpiry(socket), Math.min(remaining, MAX_TIMER_DELAY_MS));
+  socket.sessionExpiryTimer.unref();
+}
+
+function isSameOrigin(origin: string | undefined, host: string | undefined): boolean {
+  if (!origin) return true; // non-browser clients still need a valid session cookie
+  if (!host) return false;
+  try { return new URL(origin).host === host; } catch { return false; }
 }
 
 export function createWsServer(httpServer: HttpServer): Server {
@@ -122,6 +163,12 @@ export function createWsServer(httpServer: HttpServer): Server {
     path: '/ws',
     transports: ['websocket'],
     maxHttpBufferSize: config.MAX_MSG_BYTES,
+    // Browsers always send Origin on the WebSocket handshake. Refuse a
+    // different host to prevent another site from driving an authenticated
+    // Linkord socket with the victim's cookies.
+    allowRequest(req, callback) {
+      callback(null, isSameOrigin(req.headers.origin, req.headers.host));
+    },
   });
 
   // no anonymous socket ever exists: the handshake carries the cookie, so
@@ -144,8 +191,30 @@ export function createWsServer(httpServer: HttpServer): Server {
     const socket = rawSocket as AppSocket;
     socket.participantId = null;
     socket.ip = ipOf(socket);
+    scheduleSessionExpiry(socket);
+
+    const joinTimer = setTimeout(() => {
+      if (socket.connected && !socket.participantId) {
+        send(socket, { t: 'error', code: 'join-timeout', message: 'A conexao nao concluiu a entrada na sala.' });
+        socket.disconnect(true);
+      }
+    }, JOIN_TIMEOUT_MS);
+    joinTimer.unref();
 
     socket.onAny((eventName: string, payload: unknown) => {
+      const retryAfterSec = consumeWsEvent(socket.user.userId, eventName);
+      if (retryAfterSec) {
+        send(socket, { t: 'error', code: 'rate-limited', message: `Muitas acoes. Tente novamente em ${retryAfterSec}s.` });
+        return;
+      }
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        send(socket, { t: 'error', code: 'invalid-payload', message: 'Dados da acao invalidos.' });
+        return;
+      }
+      if (!socket.participantId && eventName !== 'join' && eventName !== 'ping') {
+        send(socket, { t: 'error', code: 'join-required', message: 'Entre na sala antes de executar essa acao.' });
+        return;
+      }
       if (eventName === 'join') return safeHandle('join', socket, payload || {}, (s, p) => handleJoin(s, (p || {}) as JoinMessage));
       if (eventName === 'ping') return safeHandle('ping', socket, payload || {}, (s) => send(s, { t: 'pong' }));
       if (eventName === 'voice-join') return safeHandle('voice-join', socket, payload || {}, (s, m) => handleVoiceJoin(s, (m || {}) as { channelId?: string }));
@@ -153,9 +222,14 @@ export function createWsServer(httpServer: HttpServer): Server {
 
       const handler = handlers[eventName];
       if (handler) safeHandle(eventName, socket, payload || {}, handler);
+      else send(socket, { t: 'error', code: 'unsupported-event', message: 'Acao nao suportada.' });
     });
 
-    socket.on('disconnect', () => handleClose(socket));
+    socket.on('disconnect', () => {
+      clearTimeout(joinTimer);
+      if (socket.sessionExpiryTimer) clearTimeout(socket.sessionExpiryTimer);
+      handleClose(socket);
+    });
   });
 
   return io;

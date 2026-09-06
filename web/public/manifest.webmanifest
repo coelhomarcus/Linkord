@@ -1,7 +1,7 @@
 {
   "name": "Linkord",
   "short_name": "Linkord",
-  "description": "Linkord: compartilhamento de tela e chat em tempo real, sem cadastro e sem link.",
+  "description": "Chat, canais e chamadas de voz, vídeo e compartilhamento de tela em tempo real.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

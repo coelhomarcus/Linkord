@@ -11,13 +11,10 @@ function buildDescriptors(room: Room, participantIds: string[]): TileDescriptor[
   for (const id of participantIds) {
     const participant = getParticipant(room, id);
     if (!participant) continue;
-    // participantIds includes everyone in the ROOM (chat/presence), not
-    // just who's in the call — without this filter, anyone who never
-    // activated their mic (or already left the call for real, see
-    // leaveMic) would show up as an avatar tile on stage, as if connected.
-    // "In the call" = has a published mic, the same source of truth used
-    // in App.tsx (inCall) and LeftSidebar (CallParticipantRow).
-    if (!participant.getTrackPublication(Track.Source.Microphone)) continue;
+    // participantIds includes everyone in chat/presence, but getParticipant
+    // only resolves identities connected to THIS LiveKit room. Do not use a
+    // mic publication as membership: listen-only users intentionally have
+    // no mic track and still need an avatar tile.
     // !!track alone isn't enough: turning off camera/screen MUTES the
     // publication (doesn't unpublish), so the Track object keeps existing
     // forever after the first activation — activeTrack already filters that.
@@ -35,11 +32,9 @@ function buildDescriptors(room: Room, participantIds: string[]): TileDescriptor[
 }
 
 const CALL_TILE_EVENTS = [
-  // Published/Unpublished fire as soon as someone joins/leaves the call
-  // (the "inCall" filter above depends on this) — without them, this hook
-  // would only "discover" someone joined/left by accident, whenever some
-  // other event triggered a refresh (same root cause as a bug fixed
-  // earlier in useLiveKitTrack.ts).
+  // Publication events update camera/screen tile kinds. Actual call
+  // membership, including listen-only participants, is covered by the
+  // ParticipantConnected/Disconnected events below.
   RoomEvent.TrackPublished,
   RoomEvent.TrackUnpublished,
   RoomEvent.TrackSubscribed,

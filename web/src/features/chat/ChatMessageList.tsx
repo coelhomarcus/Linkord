@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { MoreHorizontal, Pencil, Reply, SmilePlus, Trash2 } from 'lucide-react';
+import { LoaderCircle, MoreHorizontal, Pencil, Reply, RotateCcw, SmilePlus, Trash2, TriangleAlert } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { Avatar } from '../../shared/Avatar';
 import { ChatMessageText } from './ChatMessageText';
@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/shared/lib/utils';
+import { ConfirmDialog } from '../../shared/ConfirmDialog';
 
 // consecutive messages from the same author within this window group
 // together (avatar/name only on the first) — same idea as Discord.
@@ -75,8 +76,15 @@ function ChatMessageRow({
   message, showHeader, isMod, isHighlighted, mentionLookup, isEditing, editText, onEditTextChange,
   onStartEdit, onSaveEdit, onCancelEdit, onReply, onJumpTo,
 }: ChatMessageRowProps) {
-  const { state, deleteChatMessage, reactToChatMessage } = useRoom();
+  const { state, deleteChatMessage, reactToChatMessage, retryChatMessage, discardFailedChatMessage } = useRoom();
   const [reactOpen, setReactOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  // A pending/failed message only exists on this client — it has no real
+  // msgId yet, so reacting/replying/editing/deleting it server-side is
+  // meaningless. Its own retry/discard controls replace the usual actions.
+  const isSending = message.pending === 'sending';
+  const isFailed = message.pending === 'failed';
   // a CSS-only bar (group-hover) would close as soon as the mouse left the
   // row to reach the popover/dropdown — those portal outside the row's DOM
   // tree, so ":hover" on the row stops applying partway there. Hover
@@ -87,8 +95,6 @@ function ChatMessageRow({
   // against state.me.userId, not state.me.id, or "is this my message?"
   // breaks after reconnecting/reloading (connection id changes, userId doesn't).
   const isMine = message.id === state.me.userId;
-  // author deletes their own message; admin deletes anyone's — same split
-  // the server enforces in handleChatDelete (modules/chat.ts).
   const canDelete = isMine || isMod;
   // own messages never "highlight for being mentioned" — mentioning
   // yourself isn't a notification.
@@ -103,7 +109,7 @@ function ChatMessageRow({
     <div
       id={`chat-msg-${message.msgId}`}
       onMouseEnter={() => setIsRowActive(true)}
-      onMouseLeave={() => { if (!reactOpen) setIsRowActive(false); }}
+      onMouseLeave={() => { if (!reactOpen && !moreOpen) setIsRowActive(false); }}
       className={cn(
         'group/msg relative flex gap-3 rounded-md border-l-2 border-transparent px-3 transition-colors',
         showHeader ? 'mt-3' : '',
@@ -161,10 +167,40 @@ function ChatMessageRow({
             <p className="select-none text-caption text-text-muted">escape pra cancelar · enter pra salvar</p>
           </div>
         ) : (
-          <div className="text-body text-text-primary">
+          <div className={cn('text-body text-text-primary', isSending && 'opacity-60')}>
             <ChatMessageText text={message.text} mentionLookup={mentionLookup} myUserId={state.me.userId} />
             {message.editedAt && <span className="ml-1 select-none text-caption text-text-muted">(editado)</span>}
             {message.attachment && <ChatAttachment attachment={message.attachment} />}
+          </div>
+        )}
+
+        {isSending && (
+          <div className="mt-0.5 flex items-center gap-1 text-caption text-text-muted">
+            <LoaderCircle size={12} className="animate-spin" aria-hidden="true" />
+            <span>Enviando...</span>
+          </div>
+        )}
+        {isFailed && (
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-red">
+            <span className="flex items-center gap-1">
+              <TriangleAlert size={12} aria-hidden="true" />
+              Falha ao enviar
+            </span>
+            <button
+              type="button"
+              onClick={() => retryChatMessage(message.channelId, message.clientId!)}
+              className="flex items-center gap-1 font-medium hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              <RotateCcw size={12} aria-hidden="true" />
+              Tentar novamente
+            </button>
+            <button
+              type="button"
+              onClick={() => discardFailedChatMessage(message.channelId, message.clientId!)}
+              className="text-text-muted hover:text-text-secondary hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              Descartar
+            </button>
           </div>
         )}
 
@@ -194,93 +230,113 @@ function ChatMessageRow({
 
       {/* desktop only — hover-revealed (see isRowActive above); touch has
           no hover, so mobile gets a single always-visible trigger instead
-          (below) that opens the same actions in one menu. */}
-      <div className={cn(
-        'absolute right-2 top-0 z-10 hidden -translate-y-1/2 items-center gap-0.5 rounded-md border border-strong bg-bg-floating p-0.5 shadow-popover',
-        isRowActive && 'md:flex'
-      )}>
-        <Popover open={reactOpen} onOpenChange={(open) => { setReactOpen(open); if (!open) setIsRowActive(false); }}>
-          <PopoverTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Reagir" />}>
-            <SmilePlus size={14} />
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-1.5" side="top" align="end">
-            <div className="flex gap-1">
-              {ALLOWED_REACTIONS.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => { reactToChatMessage(message.msgId, emoji); setReactOpen(false); setIsRowActive(false); }}
-                  className="rounded-md p-1.5 text-[18px] leading-none transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          </PopoverContent>
-        </Popover>
-        {canDelete && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Apagar"
-            className="text-text-muted hover:bg-red/12 hover:text-red"
-            onClick={() => deleteChatMessage(message.msgId)}
-          >
-            <Trash2 size={14} />
+          (below) that opens the same actions in one menu. Neither bar makes
+          sense for a message that has no real msgId yet (see isSending/
+          isFailed above and their own retry/discard controls). */}
+      {!isSending && !isFailed && (
+        <div className={cn(
+          'absolute right-2 top-0 z-10 hidden -translate-y-1/2 items-center gap-0.5 rounded-md border border-strong bg-bg-floating p-0.5 shadow-popover',
+          isRowActive && 'md:flex'
+        )}>
+          <Popover open={reactOpen} onOpenChange={(open) => { setReactOpen(open); if (!open) setIsRowActive(false); }}>
+            <PopoverTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Reagir" />}>
+              <SmilePlus size={14} />
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-1.5" side="top" align="end">
+              <div className="flex gap-1">
+                {ALLOWED_REACTIONS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => { reactToChatMessage(message.msgId, emoji); setReactOpen(false); setIsRowActive(false); }}
+                    className="rounded-md p-1.5 text-[18px] leading-none transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+          <Button type="button" variant="ghost" size="icon-xs" aria-label="Responder" onClick={onReply}>
+            <Reply size={14} />
           </Button>
-        )}
-        <Button type="button" variant="ghost" size="icon-xs" aria-label="Responder" onClick={onReply}>
-          <Reply size={14} />
-        </Button>
-        {isMine && (
-          <Button type="button" variant="ghost" size="icon-xs" aria-label="Editar" onClick={onStartEdit}>
-            <Pencil size={14} />
-          </Button>
-        )}
-      </div>
+          {isMine && (
+            <Button type="button" variant="ghost" size="icon-xs" aria-label="Editar" onClick={onStartEdit}>
+              <Pencil size={14} />
+            </Button>
+          )}
+          {canDelete && (
+            <DropdownMenu onOpenChange={(open) => { setMoreOpen(open); if (!open) setIsRowActive(false); }}>
+              <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Mais opcoes" />}>
+                <MoreHorizontal size={14} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem variant="destructive" onClick={() => setDeleteConfirmOpen(true)}>
+                  <Trash2 size={14} />
+                  <span>Apagar</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      )}
 
       {/* mobile only — one always-visible trigger (no hover on touch)
           bundling react/reply/edit/delete into a single menu instead of
           four separate hover buttons. */}
-      <div className="absolute right-1 top-1 z-10 md:hidden">
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Acoes da mensagem" className="bg-bg-floating/90" />}>
-            <MoreHorizontal size={14} />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <div className="flex gap-1 px-1 py-1">
-              {ALLOWED_REACTIONS.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => reactToChatMessage(message.msgId, emoji)}
-                  className="rounded-md p-1.5 text-[18px] leading-none transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onReply}>
-              <Reply size={14} />
-              <span>Responder</span>
-            </DropdownMenuItem>
-            {isMine && (
-              <DropdownMenuItem onClick={onStartEdit}>
-                <Pencil size={14} />
-                <span>Editar</span>
+      {!isSending && !isFailed && (
+        <div className="absolute right-1 top-1 z-10 md:hidden">
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Acoes da mensagem" className="bg-bg-floating/90" />}>
+              <MoreHorizontal size={14} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <div className="flex gap-1 px-1 py-1">
+                {ALLOWED_REACTIONS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => reactToChatMessage(message.msgId, emoji)}
+                    className="rounded-md p-1.5 text-[18px] leading-none transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onReply}>
+                <Reply size={14} />
+                <span>Responder</span>
               </DropdownMenuItem>
-            )}
-            {canDelete && (
-              <DropdownMenuItem variant="destructive" onClick={() => deleteChatMessage(message.msgId)}>
-                <Trash2 size={14} />
-                <span>Apagar</span>
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+              {isMine && (
+                <DropdownMenuItem onClick={onStartEdit}>
+                  <Pencil size={14} />
+                  <span>Editar</span>
+                </DropdownMenuItem>
+              )}
+              {canDelete && (
+                <DropdownMenuItem variant="destructive" onClick={() => setDeleteConfirmOpen(true)}>
+                  <Trash2 size={14} />
+                  <span>Apagar</span>
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="Apagar mensagem"
+        description={
+          isMine
+            ? 'Sua mensagem sera apagada para todos. Essa acao nao pode ser desfeita.'
+            : `A mensagem de ${message.name} sera apagada para todos. Essa acao nao pode ser desfeita.`
+        }
+        confirmLabel="Apagar"
+        destructive
+        onConfirm={() => deleteChatMessage(message.msgId)}
+      />
     </div>
   );
 }

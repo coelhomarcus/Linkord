@@ -10,7 +10,9 @@ describe('loadQuality / saveQuality', () => {
     expect(loadQuality()).toBe('standard');
   });
 
-  it('save/load faz round-trip pras 3 opcoes', () => {
+  it('save/load faz round-trip pras 4 opcoes', () => {
+    saveQuality('high');
+    expect(loadQuality()).toBe('high');
     saveQuality('reduced');
     expect(loadQuality()).toBe('reduced');
     saveQuality('minimum');

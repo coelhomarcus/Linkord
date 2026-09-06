@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { config } from '../config/env.js';
 import type { AppSocket } from '../types.js';
 import {
-  participants, join, removeParticipant, handleClose, isUserOnline, setVoiceChannelId, publicParticipant, handlers,
+  participants, join, removeParticipant, disconnectSession, handleClose, isUserOnline, setVoiceChannelId, publicParticipant, handlers,
 } from './participants.js';
 
 /** Fake minimo de AppSocket — so os campos que participants.ts de fato le
@@ -15,7 +15,14 @@ function fakeSocket(userId: string, overrides: Partial<{ username: string; avata
     connected: true,
     emit: () => {},
     disconnect: () => {},
-    user: { tokenHash: 'x', userId, username: overrides.username ?? userId, avatar: overrides.avatar ?? '', role: overrides.role ?? 'user' },
+    user: {
+      tokenHash: 'x',
+      userId,
+      username: overrides.username ?? userId,
+      avatar: overrides.avatar ?? '',
+      role: overrides.role ?? 'user',
+      expiresAtMs: Date.now() + 60_000,
+    },
   } as unknown as AppSocket;
 }
 
@@ -130,6 +137,29 @@ describe('removeParticipant', () => {
     const p = join(fakeSocket(`u-${Math.random()}`), {})!;
     removeParticipant(p);
     assert.doesNotThrow(() => removeParticipant(p));
+  });
+});
+
+describe('disconnectSession', () => {
+  test('remove e desconecta apenas sockets da sessao revogada', () => {
+    const socket1 = fakeSocket(`u-${Math.random()}`);
+    const socket2 = fakeSocket(`u-${Math.random()}`);
+    socket1.user.tokenHash = 'sessao-revogada';
+    socket2.user.tokenHash = 'outra-sessao';
+    let disconnected1 = false;
+    let disconnected2 = false;
+    socket1.disconnect = (() => { disconnected1 = true; }) as AppSocket['disconnect'];
+    socket2.disconnect = (() => { disconnected2 = true; }) as AppSocket['disconnect'];
+    const p1 = join(socket1, {})!;
+    const p2 = join(socket2, {})!;
+    createdIds.push(p1.id, p2.id);
+
+    disconnectSession('sessao-revogada');
+
+    assert.equal(disconnected1, true);
+    assert.equal(disconnected2, false);
+    assert.equal(participants.has(p1.id), false);
+    assert.equal(participants.has(p2.id), true);
   });
 });
 

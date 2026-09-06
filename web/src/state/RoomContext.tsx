@@ -41,6 +41,26 @@ export interface AnchorRect {
   bottom: number;
 }
 
+export type VoiceConnectionStatus = 'idle' | 'joining' | 'connected' | 'failed';
+export type VoiceConnectionMode = 'voice' | 'listen-only';
+
+export interface VoiceJoinOptions {
+  /** Start with a published, muted mic. Ignored in listen-only mode. */
+  muted?: boolean;
+  /** Connect to LiveKit without requesting microphone permission. */
+  listenOnly?: boolean;
+}
+
+export interface VoiceConnectionState {
+  status: VoiceConnectionStatus;
+  /** Target while joining/failed; current channel while connected. */
+  channelId: string | null;
+  mode: VoiceConnectionMode;
+  /** Retained so retry repeats the user's pre-call choice. */
+  joinMuted: boolean;
+  error: string | null;
+}
+
 export interface RoomContextValue {
   state: RoomState;
   dispatch: Dispatch<RoomAction>;
@@ -65,17 +85,21 @@ export interface RoomContextValue {
   /** Voice channel I'm connected to right now, or null — only changes via
    * joinVoiceChannel/leaveVoiceChannel, never automatically. */
   activeVoiceChannelId: string | null;
+  /** Explicit LiveKit entry state, including recoverable failures. */
+  voiceConnection: VoiceConnectionState;
   /** Joins a specific voice channel: leaves the current one if different,
-   * requests a LiveKit token for it, connects, and activates the mic. */
-  joinVoiceChannel: (channelId: string) => void;
+   * requests a LiveKit token and honors pre-call mic/listen-only options. */
+  joinVoiceChannel: (channelId: string, options?: VoiceJoinOptions) => Promise<void>;
+  retryVoiceChannel: () => void;
+  cancelVoiceJoin: () => Promise<void>;
   startSharing: () => Promise<void>;
   stopSharing: () => void;
   startCamera: () => Promise<void>;
   stopCamera: () => void;
-  /** Requests permission and publishes the mic, unmuted — called by
-   * joinVoiceChannel once the Room connects. Idempotent. */
-  activateMic: () => Promise<void>;
-  /** Assumes activateMic already ran. */
+  /** Requests permission after a listen-only join and promotes the session
+   * to normal voice mode. Honors deafen by activating muted. */
+  enableMicrophone: () => Promise<void>;
+  /** Toggles an already-published microphone; no-op outside a call. */
   toggleMicMuted: () => Promise<void>;
   /** Leaves the current voice channel for real (unpublishes mic, stops
    * camera/screen, disconnects the Room, notifies the server). */
@@ -135,6 +159,12 @@ export interface RoomContextValue {
   moderationError: string | null;
   clearModerationError: () => void;
   sendChatMessage: (channelId: string, text: string, replyTo?: number) => void;
+  /** Re-sends a message stuck in `pending: 'failed'` with the same content
+   * and clientId. No-op if it isn't pending anymore (already confirmed). */
+  retryChatMessage: (channelId: string, clientId: string) => void;
+  /** Removes a failed send from the local list only — nothing to tell the
+   * server, it never has a row for this message. */
+  discardFailedChatMessage: (channelId: string, clientId: string) => void;
   deleteChatMessage: (msgId: number) => void;
   /** Only the original author can edit — not even admin (server revalidates). */
   editChatMessage: (msgId: number, text: string) => void;

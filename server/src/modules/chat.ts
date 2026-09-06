@@ -4,9 +4,9 @@ import { db } from '../db/client.js';
 import { messages, type Message, type Attachment } from '../db/schema.js';
 import { participants, broadcast, send } from '../realtime/participants.js';
 import { ALLOWED_REACTIONS } from '../realtime/reactions.js';
-import { channelExists } from './channels.js';
+import { textChannelExists } from './channels.js';
 import * as attachments from './attachments.js';
-import type { AppSocket, HandlerTable } from '../types.js';
+import type { AppSocket, HandlerTable, Participant } from '../types.js';
 
 // Deleting a channel (modules/channels.ts) CASCADEs here.
 //
@@ -35,10 +35,41 @@ interface ChatMessagePayload {
   replyTo?: unknown;
   reactions?: Record<string, string[]>;
   attachment?: { id: string; name: string; mime: string; size: number };
+  // Echoed back only on the live broadcast reply to the message that
+  // carried it — never persisted, never present on history/edit payloads.
+  // Lets the SENDER's own client reconcile its optimistic bubble (see
+  // RoomProvider.tsx) without depending on `id === myUserId`, which would
+  // also match the same account's other tabs/devices.
+  clientId?: string;
 }
 
 function sanitizeChatText(text: unknown): string {
   return String(text == null ? '' : text).trim().slice(0, config.MAX_CHAT_LEN);
+}
+
+/** A client-generated correlation id for one send attempt — arbitrary
+ * opaque string, never stored or trusted beyond this one round trip. */
+export function sanitizeClientId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed && trimmed.length <= 100 ? trimmed : undefined;
+}
+
+export function canDeleteChatMessage(actor: Pick<Participant, 'userId' | 'role'>, authorId: string | null): boolean {
+  return actor.role === 'admin' || authorId === actor.userId;
+}
+
+export function toggleMessageReaction(
+  current: Record<string, string[]> | null | undefined,
+  emoji: string,
+  userId: string,
+): Record<string, string[]> {
+  const reactions: Record<string, string[]> = { ...(current || {}) };
+  const list = reactions[emoji] ? [...reactions[emoji]] : [];
+  const index = list.indexOf(userId);
+  if (index === -1) list.push(userId); else list.splice(index, 1);
+  if (list.length === 0) delete reactions[emoji]; else reactions[emoji] = list;
+  return reactions;
 }
 
 /** `attachment` (optional) is the raw attachments-table row — the
@@ -81,7 +112,7 @@ async function handleChannelOpen(socket: AppSocket, msg: { channelId?: string })
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   const channelId = String(msg.channelId || '');
-  if (!channelId || !(await channelExists(channelId))) return;
+  if (!channelId || !(await textChannelExists(channelId))) return;
   const rows = await db.select().from(messages).where(eq(messages.channelId, channelId)).orderBy(desc(messages.id)).limit(config.CHAT_HISTORY_LIMIT);
   rows.reverse();
   // one query for all history messages' attachments, not one per message
@@ -90,18 +121,21 @@ async function handleChannelOpen(socket: AppSocket, msg: { channelId?: string })
   send(socket, { t: 'channel-history', channelId, messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id))) });
 }
 
-async function handleChat(socket: AppSocket, msg: { channelId?: string; text?: string; replyTo?: unknown }): Promise<void> {
+async function handleChat(socket: AppSocket, msg: { channelId?: string; text?: string; replyTo?: unknown; clientId?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   const channelId = String(msg.channelId || '');
   const text = sanitizeChatText(msg.text);
-  if (!channelId || !text || !(await channelExists(channelId))) return;
+  if (!channelId || !text || !(await textChannelExists(channelId))) return;
   const replyTo = await buildReplyRef(channelId, msg.replyTo);
   const [row] = await db.insert(messages).values({
     channelId, authorId: p.userId, authorName: p.name, authorAvatar: p.avatar, text,
     replyTo: replyTo || null,
   }).returning();
-  broadcast({ t: 'chat', message: rowToMessage(row!) });
+  const payload = rowToMessage(row!);
+  const clientId = sanitizeClientId(msg.clientId);
+  if (clientId) payload.clientId = clientId;
+  broadcast({ t: 'chat', message: payload });
 }
 
 /** Only the original author edits — not even admin (Discord-like; admin
@@ -131,29 +165,28 @@ async function handleChatReact(socket: AppSocket, msg: { msgId?: unknown; emoji?
   const msgId = Number(msg.msgId);
   const emoji = String(msg.emoji || '');
   if (!Number.isFinite(msgId) || !ALLOWED_REACTIONS.has(emoji)) return;
-  const [existing] = await db.select().from(messages).where(eq(messages.id, msgId)).limit(1);
-  if (!existing) return;
-  const reactions: Record<string, string[]> = { ...(existing.reactions as Record<string, string[]> | null || {}) };
-  const list = reactions[emoji] ? [...reactions[emoji]] : [];
-  const idx = list.indexOf(p.userId);
-  if (idx === -1) list.push(p.userId); else list.splice(idx, 1);
-  if (list.length === 0) delete reactions[emoji]; else reactions[emoji] = list;
-  await db.update(messages).set({ reactions }).where(eq(messages.id, msgId));
-  broadcast({ t: 'chat-reaction-updated', channelId: existing.channelId, msgId, emoji, userIds: reactions[emoji] || [] });
+  // Row lock makes the read/toggle/write atomic across simultaneous sockets
+  // and even across future app replicas, without a reaction-table migration.
+  const result = await db.transaction(async (tx) => {
+    const [existing] = await tx.select().from(messages).where(eq(messages.id, msgId)).limit(1).for('update');
+    if (!existing) return null;
+    const reactions = toggleMessageReaction(existing.reactions as Record<string, string[]> | null, emoji, p.userId);
+    await tx.update(messages).set({ reactions }).where(eq(messages.id, msgId));
+    return { channelId: existing.channelId, userIds: reactions[emoji] || [] };
+  });
+  if (!result) return;
+  broadcast({ t: 'chat-reaction-updated', channelId: result.channelId, msgId, emoji, userIds: result.userIds });
 }
 
-// the original author OR an admin can delete — same split as
-// handleChatEdit, except admin gets delete too (never edit, see above).
-// "Clear all" no longer exists: deleting the whole channel
-// (modules/channels.ts) covers that now.
+// Author may delete their own message; admin may delete any. "Clear all" no
+// longer exists: deleting the whole channel covers that now.
 async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   const msgId = Number(msg.msgId);
   if (!Number.isFinite(msgId)) return;
   const [existing] = await db.select({ channelId: messages.channelId, authorId: messages.authorId }).from(messages).where(eq(messages.id, msgId)).limit(1);
-  if (!existing) return;
-  if (existing.authorId !== p.userId && p.role !== 'admin') return;
+  if (!existing || !canDeleteChatMessage(p, existing.authorId)) return;
   // delete the file on disk before the row — after the delete below, the
   // attachments row disappears via CASCADE, but nothing would know which
   // file to delete anymore (see modules/attachments.ts).
