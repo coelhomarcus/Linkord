@@ -140,14 +140,16 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
     onCancelReply?.();
   }
 
-  // users whose name starts with the active "@query" (case-insensitive) —
-  // capped so the dropdown never grows unreasonably tall for a big roster.
+  // users whose USERNAME or display name starts with the active "@query"
+  // (case-insensitive) — capped so the dropdown never grows unreasonably
+  // tall for a big roster. Matching on displayName too lets you find someone
+  // by the name you actually recognize, even without remembering their handle.
   const mentionCandidates = useMemo(() => {
     if (!mentionQuery) return [];
     const q = mentionQuery.query.toLowerCase();
     return [...allUsers.values()]
-      .filter((u) => u.username.toLowerCase().startsWith(q))
-      .sort((a, b) => a.username.localeCompare(b.username))
+      .filter((u) => u.username.toLowerCase().startsWith(q) || u.displayName.toLowerCase().startsWith(q))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName))
       .slice(0, MAX_MENTION_RESULTS);
   }, [allUsers, mentionQuery]);
 
@@ -316,7 +318,9 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
       {replyingTo && (
         <div className="flex items-center gap-2 rounded-md border border-strong bg-bg-tertiary px-3 py-1.5 text-label">
           <span className="text-text-muted">Respondendo a</span>
-          <span className="min-w-0 flex-1 truncate font-medium text-text-secondary">{replyingTo.name}</span>
+          <span className="min-w-0 flex-1 truncate font-medium text-text-secondary">
+            {(replyingTo.id ? allUsers.get(replyingTo.id)?.displayName : undefined) ?? replyingTo.name}
+          </span>
           <Button type="button" variant="ghost" size="icon-xs" aria-label="Cancelar resposta" onClick={onCancelReply} className="text-text-muted">
             <X size={14} />
           </Button>
@@ -375,8 +379,11 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
                   i === mentionSelectedIndex ? 'bg-bg-selected text-text-primary' : 'text-text-secondary hover:bg-bg-hover'
                 )}
               >
-                <Avatar id={user.id} name={user.username} avatar={user.avatar} avatarColor={user.avatarColor} size={24} />
-                <span className="truncate">{user.username}</span>
+                <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={24} />
+                <span className="min-w-0 flex-1 truncate">
+                  {user.displayName}
+                  {user.displayName !== user.username && <span className="ml-1 text-text-muted">@{user.username}</span>}
+                </span>
               </button>
             ))}
           </div>

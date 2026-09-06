@@ -13,6 +13,7 @@ import { invalidateSessionsForUser } from './session.js';
 export interface PublicUser {
   id: string;
   username: string;
+  displayName: string;
   avatar: string;
   avatarColor: string;
   role: Role;
@@ -22,8 +23,18 @@ export interface UsernameTakenError extends Error {
   code: 'username_taken';
 }
 
+/** '' (never set, or explicitly cleared) falls back to the immutable
+ * username — every read of a user's displayName goes through this, so a
+ * legacy row (from before this column existed) never surfaces as blank. */
+export function resolveDisplayName(displayName: string, username: string): string {
+  return displayName.trim() || username;
+}
+
 export function publicUser(u: User): PublicUser {
-  return { id: u.id, username: u.username, avatar: u.avatar, avatarColor: u.avatarColor, role: u.role as Role };
+  return {
+    id: u.id, username: u.username, displayName: resolveDisplayName(u.displayName, u.username),
+    avatar: u.avatar, avatarColor: u.avatarColor, role: u.role as Role,
+  };
 }
 
 export async function findByUsernameLower(username: string): Promise<User | null> {
@@ -65,10 +76,10 @@ export async function createUser({ username, passwordHash, role }: { username: s
   }
 }
 
-export async function updateProfile(id: string, profile: { avatar: string; avatarColor: string }): Promise<User | null> {
+export async function updateProfile(id: string, profile: { avatar: string; avatarColor: string; displayName: string }): Promise<User | null> {
   const [row] = await db
     .update(users)
-    .set({ avatar: profile.avatar, avatarColor: profile.avatarColor, updatedAt: new Date() })
+    .set({ avatar: profile.avatar, avatarColor: profile.avatarColor, displayName: profile.displayName, updatedAt: new Date() })
     .where(eq(users.id, id))
     .returning();
   invalidateSessionsForUser(id);

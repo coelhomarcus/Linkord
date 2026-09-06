@@ -10,7 +10,7 @@ function UserRow({ user, online }: { user: PublicUser; online: boolean }) {
   return (
     <div className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-bg-hover">
       <div className="relative flex-none">
-        <Avatar id={user.id} name={user.username} avatar={user.avatar} avatarColor={user.avatarColor} size={44} />
+        <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={44} />
         {/* status dot — solid gray for offline, not bg-text-muted/40: the
             opacity read as almost transparent on a dark background instead
             of an actual gray dot. */}
@@ -18,7 +18,10 @@ function UserRow({ user, online }: { user: PublicUser; online: boolean }) {
           className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-bg-secondary ${online ? 'bg-green' : 'bg-text-muted'}`}
         />
       </div>
-      <span className={`min-w-0 flex-1 truncate text-body ${online ? 'text-text-secondary' : 'text-text-muted'}`}>{user.username}</span>
+      <span className={`min-w-0 flex-1 truncate text-body ${online ? 'text-text-secondary' : 'text-text-muted'}`}>
+        {user.displayName}
+        {user.displayName !== user.username && <span className="ml-1 text-caption text-text-muted">@{user.username}</span>}
+      </span>
       {user.role === 'admin' && <ShieldCheck size={16} className="flex-none text-blurple" />}
     </div>
   );
@@ -37,7 +40,7 @@ interface UserDirectoryProps {
 export function UserDirectory({ mobileOpen, onMobileClose }: UserDirectoryProps) {
   const { allUsers, onlineUserIds } = useRoom();
 
-  const users = [...allUsers.values()].sort((a, b) => a.username.localeCompare(b.username));
+  const users = [...allUsers.values()].sort((a, b) => a.displayName.localeCompare(b.displayName) || a.username.localeCompare(b.username));
   const online = users.filter((u) => onlineUserIds.has(u.id));
   const offline = users.filter((u) => !onlineUserIds.has(u.id));
 

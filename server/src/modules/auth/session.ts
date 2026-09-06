@@ -67,6 +67,7 @@ export async function resolveSession(rawToken: string | undefined | null): Promi
       lastSeenAt: sessions.lastSeenAt,
       userId: users.id,
       username: users.username,
+      displayName: users.displayName,
       avatar: users.avatar,
       avatarColor: users.avatarColor,
       role: users.role,
@@ -90,6 +91,10 @@ export async function resolveSession(rawToken: string | undefined | null): Promi
     tokenHash,
     userId: row.userId,
     username: row.username,
+    // '' (never set) falls back to username — mirrors publicUser() in
+    // auth/users.ts, duplicated here (not imported) to avoid a session.ts
+    // <-> users.ts import cycle (users.ts already imports from this file).
+    displayName: row.displayName.trim() || row.username,
     avatar: row.avatar,
     avatarColor: row.avatarColor,
     role: row.role as SessionUser['role'],

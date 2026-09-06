@@ -57,6 +57,11 @@ interface ChatMessageRowProps {
   isMod: boolean;
   isHighlighted: boolean;
   mentionLookup: Map<string, PublicUser>;
+  /** Keyed by userId (unlike mentionLookup, keyed by username) — used to
+   * resolve the author's CURRENT displayName/avatarColor for a historical
+   * message, since those are mutable but never re-frozen on the row (see
+   * modules/chat.ts). */
+  allUsers: Map<string, PublicUser>;
   isEditing: boolean;
   editText: string;
   onEditTextChange: (text: string) => void;
@@ -72,7 +77,7 @@ interface ChatMessageRowProps {
  * author) or stay compact (just the time, on hover, where the avatar
  * would be). */
 function ChatMessageRow({
-  message, showHeader, isMod, isHighlighted, mentionLookup, isEditing, editText, onEditTextChange,
+  message, showHeader, isMod, isHighlighted, mentionLookup, allUsers, isEditing, editText, onEditTextChange,
   onStartEdit, onSaveEdit, onCancelEdit, onReply, onJumpTo,
 }: ChatMessageRowProps) {
   const { state, deleteChatMessage, reactToChatMessage } = useRoom();
@@ -93,7 +98,13 @@ function ChatMessageRow({
   // own messages never "highlight for being mentioned" — mentioning
   // yourself isn't a notification.
   const mentionsMe = !isMine && mentionsUser(message.text, mentionLookup, state.me.userId);
-  const author = message.id ? mentionLookup.get(message.id) : undefined;
+  // `allUsers` is keyed by userId (message.id) — NOT mentionLookup, which is
+  // keyed by username and would never match here. Falls back to the frozen
+  // name/color (message.name, colorFor's own id-based default) once the
+  // account no longer exists in the directory.
+  const author = message.id ? allUsers.get(message.id) : undefined;
+  const displayedName = author?.displayName ?? message.name;
+  const replyAuthor = message.replyTo ? mentionLookup.get(message.replyTo.name.toLowerCase()) : undefined;
 
   function handleEditKeyDown(e: ReactKeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSaveEdit(); }
@@ -116,7 +127,7 @@ function ChatMessageRow({
             deleted — falls back to the frozen name as the color seed, just
             so every deleted author doesn't get the SAME color. */}
         {showHeader ? (
-          <Avatar id={message.id ?? message.name} name={message.name} avatar={message.avatar} avatarColor={author?.avatarColor} size={40} />
+          <Avatar id={message.id ?? message.name} name={displayedName} avatar={message.avatar} avatarColor={author?.avatarColor} size={40} />
         ) : (
           <span className="hidden select-none text-center text-caption text-text-muted group-hover/msg:block">
             {formatTime(message.ts)}
@@ -137,14 +148,14 @@ function ChatMessageRow({
             <svg width="14" height="5" viewBox="0 0 25 8.5" fill="none" className="flex-none -translate-y-px" xmlns="http://www.w3.org/2000/svg">
               <path d="M0.5 8.5V5.5C0.5 2.73858 2.73858 0.5 5.5 0.5H25" stroke="currentColor" />
             </svg>
-            <span className="flex-none font-medium">{message.replyTo.name}</span>
+            <span className="flex-none font-medium">{replyAuthor?.displayName ?? message.replyTo.name}</span>
             <span className="truncate">{message.replyTo.text}</span>
           </button>
         )}
 
         {showHeader && (
           <div className="flex items-baseline gap-2">
-            <span className="text-body font-semibold text-text-primary">{message.name}</span>
+            <span className="text-body font-semibold text-text-primary">{displayedName}</span>
             <span className="text-caption text-text-muted">{formatTime(message.ts)}</span>
           </div>
         )}
@@ -432,6 +443,7 @@ export function ChatMessageList({ className, channelId, onReply }: ChatMessageLi
               isMod={isMod}
               isHighlighted={highlightedMsgId === message.msgId}
               mentionLookup={mentionLookup}
+              allUsers={allUsers}
               isEditing={editingMsgId === message.msgId}
               editText={editText}
               onEditTextChange={setEditText}

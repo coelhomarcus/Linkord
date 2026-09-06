@@ -253,10 +253,10 @@ function CategoryBlock({ category, activeChannelId, isAdmin, onSelectChannel }: 
               {ch.type === 'voice' && (
                 <div className="ml-4 flex flex-col gap-0.5 py-0.5 pl-2">
                   {state.me.id && activeVoiceChannelId === ch.id && (
-                    <CallParticipantRow id={state.me.id} name={state.me.name} avatar={state.me.avatar} avatarColor={state.me.avatarColor} viewerInSameChannel />
+                    <CallParticipantRow id={state.me.id} name={state.me.displayName} avatar={state.me.avatar} avatarColor={state.me.avatarColor} viewerInSameChannel />
                   )}
                   {[...state.participants.values()].filter((p) => p.voiceChannelId === ch.id).map((p) => (
-                    <CallParticipantRow key={p.id} id={p.id} name={p.name} avatar={p.avatar} avatarColor={p.avatarColor} viewerInSameChannel={activeVoiceChannelId === ch.id} />
+                    <CallParticipantRow key={p.id} id={p.id} name={p.displayName} avatar={p.avatar} avatarColor={p.avatarColor} viewerInSameChannel={activeVoiceChannelId === ch.id} />
                   ))}
                 </div>
               )}

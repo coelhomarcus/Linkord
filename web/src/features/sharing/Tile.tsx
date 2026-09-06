@@ -43,7 +43,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
   const [containSize, setContainSize] = useState<{ w: number; h: number } | null>(null);
 
   const participant = isMine ? null : state.participants.get(participantId);
-  const name = isMine ? state.me.name : (participant?.name ?? '');
+  const name = isMine ? state.me.displayName : (participant?.displayName ?? '');
   const avatar = isMine ? state.me.avatar : (participant?.avatar ?? '');
   const avatarColor = isMine ? state.me.avatarColor : (participant?.avatarColor ?? '');
   // deafened has no LiveKit track — for myself it's local state (instant),

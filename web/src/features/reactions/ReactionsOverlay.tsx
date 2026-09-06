@@ -16,7 +16,7 @@ export function ReactionsOverlay() {
     // banner (z-[60]) on purpose — those stay on top.
     <div className="pointer-events-none absolute inset-0 z-40 overflow-hidden">
       {reactions.map((r) => {
-        const name = r.id === state.me.id ? state.me.name : (state.participants.get(r.id)?.name ?? '');
+        const name = r.id === state.me.id ? state.me.displayName : (state.participants.get(r.id)?.displayName ?? '');
         return (
           <div
             key={r.key}

@@ -102,7 +102,7 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
       </div>
 
       <div className="mx-2 mb-2 flex flex-none items-center gap-2 rounded-xl border border-strong bg-bg-tertiary px-2 py-2">
-        <Avatar id={state.me.id ?? 'me'} name={state.me.name} avatar={state.me.avatar} avatarColor={state.me.avatarColor} size={36} />
+        <Avatar id={state.me.id ?? 'me'} name={state.me.displayName} avatar={state.me.avatar} avatarColor={state.me.avatarColor} size={36} />
 
         {/* mic + arrow: the arrow switches MICROPHONE (the PC's actual
             input device); disabled outside a call since there's no mic to

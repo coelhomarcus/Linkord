@@ -10,6 +10,7 @@ import type { Quality } from './useQualityPreference';
 import { useMediaDevices } from './useMediaDevices';
 import { requestNotificationPermission } from '../../shared/notifications';
 import { Avatar, AVATAR_COLOR_OPTIONS, DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../../shared/Avatar';
+import { MAX_DISPLAY_NAME_LEN } from '../../shared/lib/displayName';
 import { UploadProgressBar } from '../../shared/UploadProgressBar';
 import { SectionLabel, sectionLabelClass } from '../../shared/SectionLabel';
 import { cn } from '@/shared/lib/utils';
@@ -75,6 +76,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const { logout } = useAuth();
   const [avatar, setAvatar] = useState(state.me.avatar);
   const [avatarColor, setAvatarColor] = useState(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
+  const [displayName, setDisplayName] = useState(state.me.displayName);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
   const [avatarError, setAvatarError] = useState<string | null>(null);
@@ -84,8 +86,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     if (open) {
       setAvatar(state.me.avatar);
       setAvatarColor(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
+      setDisplayName(state.me.displayName);
     }
-  }, [open, state.me.avatar, state.me.avatarColor]);
+  }, [open, state.me.avatar, state.me.avatarColor, state.me.displayName]);
 
   function handleVolumeChange(value: number | readonly number[]) {
     const v = Array.isArray(value) ? (value[0] ?? 0) : (value as number);
@@ -107,7 +110,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   function handleProfileSubmit(e: FormEvent) {
     e.preventDefault();
-    updateProfile({ avatar, avatarColor });
+    updateProfile({ avatar, avatarColor, displayName });
   }
 
   async function handleAvatarFileChange(e: ChangeEvent<HTMLInputElement>) {
@@ -122,7 +125,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setAvatarUploadProgress(0);
     setUploadingAvatar(true);
     try {
-      const url = await uploadAvatarFile(file, setAvatarUploadProgress, avatarColor);
+      const url = await uploadAvatarFile(file, setAvatarUploadProgress, avatarColor, displayName);
       setAvatar(url);
     } catch (err) {
       setAvatarError(err instanceof Error ? err.message : 'Falha ao enviar a foto.');
@@ -160,9 +163,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
             <TabsPanel value="profile" className="flex flex-col gap-6">
               <div className="flex items-center gap-3">
-                <Avatar id={state.me.id || 'preview'} name={state.me.name} avatar={avatar} avatarColor={avatarColor} size={48} />
+                <Avatar id={state.me.id || 'preview'} name={displayName || state.me.name} avatar={avatar} avatarColor={avatarColor} size={48} />
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <p className="truncate text-title font-semibold text-text-primary">{state.me.name}</p>
+                  <p className="truncate text-title font-semibold text-text-primary">{displayName || state.me.name}</p>
+                  <p className="truncate text-label text-text-muted">@{state.me.name}</p>
                   {state.me.role === 'admin' && (
                     <span className="flex w-fit items-center gap-1 rounded-sm bg-blurple/15 px-1.5 py-0.5 text-caption font-medium text-blurple">
                       <ShieldCheck size={14} /> Admin
@@ -172,6 +176,21 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               </div>
 
               <form onSubmit={handleProfileSubmit} className={settingsCardClass}>
+                <SectionLabel>Nome de exibição</SectionLabel>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="settingsDisplayName" className="text-label text-text-muted">Como voce aparece pra todo mundo</Label>
+                  <Input
+                    id="settingsDisplayName"
+                    maxLength={MAX_DISPLAY_NAME_LEN}
+                    placeholder={state.me.name}
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                  />
+                  <p className="select-none text-caption text-text-muted">
+                    Nao precisa ser unico e pode trocar quando quiser. Deixe em branco pra usar seu nome de usuario (@{state.me.name}).
+                  </p>
+                </div>
+
                 <SectionLabel>Foto de perfil</SectionLabel>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="settingsAvatar" className="text-label text-text-muted">URL de uma imagem (opcional)</Label>

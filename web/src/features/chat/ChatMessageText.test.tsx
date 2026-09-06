@@ -29,7 +29,7 @@ describe('ChatMessageText', () => {
 
 describe('ChatMessageText — @mencoes', () => {
   const allUsers = new Map<string, PublicUser>([
-    ['u1', { id: 'u1', username: 'Lune', avatar: '', avatarColor: 'fuchsia', role: 'admin' }],
+    ['u1', { id: 'u1', username: 'Lune', displayName: 'Lune', avatar: '', avatarColor: 'fuchsia', role: 'admin' }],
   ]);
   const mentionLookup = buildMentionLookup(allUsers);
 

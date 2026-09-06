@@ -1,14 +1,16 @@
 import { pgTable, text, varchar, timestamp, integer, bigint, jsonb, serial, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
-/** An account. `username` is the display name (immutable after
- * registration) — there's no separate nickname, so it's also the room's
- * visible uniqueness key. */
+/** An account. `username` is immutable and the room's unique login/mention
+ * handle. `displayName` is the free-form, non-unique name shown everywhere
+ * else — '' means "not set", every read site falls back to `username` (see
+ * auth/users.ts#resolveDisplayName). */
 export const users = pgTable('users', {
   // app-generated via crypto.randomUUID() instead of gen_random_uuid() to
   // avoid depending on the pgcrypto extension being installed.
   id: text('id').primaryKey(),
   username: varchar('username', { length: 20 }).notNull(),
+  displayName: varchar('display_name', { length: 32 }).notNull().default(''),
   passwordHash: text('password_hash').notNull(),
   avatar: text('avatar').notNull().default(''),
   avatarColor: varchar('avatar_color', { length: 32 }).notNull().default('blurple'),

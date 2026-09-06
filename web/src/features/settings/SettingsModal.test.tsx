@@ -20,6 +20,7 @@ describe('SettingsModal — perfil', () => {
         id: 'conn-1',
         userId: 'user-1',
         name: 'Fulana',
+        displayName: 'Fulana',
         avatar: '',
         avatarColor: 'green',
       },
@@ -30,6 +31,32 @@ describe('SettingsModal — perfil', () => {
     await user.click(screen.getByRole('button', { name: 'Usar Fuchsia' }));
     await user.click(screen.getByRole('button', { name: 'Salvar perfil' }));
 
-    expect(updateProfile).toHaveBeenCalledWith({ avatar: '', avatarColor: 'fuchsia' });
+    expect(updateProfile).toHaveBeenCalledWith({ avatar: '', avatarColor: 'fuchsia', displayName: 'Fulana' });
+  });
+
+  it('salva um nome de exibicao novo, diferente do username', async () => {
+    const user = userEvent.setup();
+    const updateProfile = vi.fn();
+    const state = {
+      ...initialRoomState,
+      me: {
+        ...initialRoomState.me,
+        id: 'conn-1',
+        userId: 'user-1',
+        name: 'Fulana',
+        displayName: 'Fulana',
+        avatar: '',
+        avatarColor: 'green',
+      },
+    };
+
+    renderWithRoom(<SettingsModal open onClose={vi.fn()} />, { state, updateProfile });
+
+    const input = screen.getByLabelText('Como voce aparece pra todo mundo');
+    await user.clear(input);
+    await user.type(input, 'Apelido Legal');
+    await user.click(screen.getByRole('button', { name: 'Salvar perfil' }));
+
+    expect(updateProfile).toHaveBeenCalledWith({ avatar: '', avatarColor: 'green', displayName: 'Apelido Legal' });
   });
 });

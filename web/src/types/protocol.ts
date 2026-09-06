@@ -7,6 +7,9 @@ export interface Participant {
   // (allUsers) in sync when avatar/role change mid-session.
   userId: string;
   name: string; // account username — unique, immutable
+  // editable, non-unique — what's shown everywhere in the UI instead of
+  // `name`. Always non-empty (falls back to `name` server-side).
+  displayName: string;
   avatar: string; // '' when none
   avatarColor: string; // palette key; '' only appears for legacy fallback data
   role: 'user' | 'admin';
@@ -99,6 +102,7 @@ export interface Category {
 export interface PublicUser {
   id: string;
   username: string;
+  displayName: string;
   avatar: string;
   avatarColor: string;
   role: 'user' | 'admin';
@@ -108,8 +112,9 @@ export type ClientMessage =
   // identity comes from the session cookie resolved at handshake — id/token
   // here are only a per-tab RECONNECT resume, never a claim of identity.
   | { t: 'join'; id?: string; token?: string }
-  // name isn't editable (it's the account's immutable username).
-  | { t: 'profile'; avatar: string; avatarColor: string }
+  // username isn't editable — displayName is (free-form, falls back to
+  // username server-side when blank).
+  | { t: 'profile'; avatar: string; avatarColor: string; displayName: string }
   | { t: 'reaction'; emoji: ReactionEmoji }
   | { t: 'deafened'; value: boolean }
   // self-reported media state — same pattern as 'deafened' above, just
@@ -155,7 +160,7 @@ export type ServerMessage =
   | {
       t: 'welcome'; id: string; token: string;
       // authoritative account identity — from the session, not the client
-      userId: string; name: string; avatar: string; avatarColor: string; role: 'user' | 'admin';
+      userId: string; name: string; displayName: string; avatar: string; avatarColor: string; role: 'user' | 'admin';
       maxParticipants: number; participants: Participant[];
       categories: Category[]; users: PublicUser[]; onlineUserIds: string[];
       storageUsage: StorageUsage;

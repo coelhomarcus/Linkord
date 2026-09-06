@@ -84,11 +84,13 @@ export interface RoomContextValue {
   setQuality: (q: Quality) => void;
   /** Avatar/photo helper kept for upload and legacy callers. */
   updateAvatar: (avatar: string) => void;
-  /** Profile fields editable by the user — name is the account's immutable username. */
-  updateProfile: (profile: { avatar: string; avatarColor: string }) => void;
+  /** Profile fields editable by the user — username stays the account's
+   * immutable handle; displayName resets to it when left blank. */
+  updateProfile: (profile: { avatar: string; avatarColor: string; displayName: string }) => void;
   /** Uploads a local file and applies it as the account avatar. Throws on
-   * error (too large, invalid type). `onProgress` (0 to 1) is optional. */
-  uploadAvatarFile: (file: File, onProgress?: (fraction: number) => void, avatarColor?: string) => Promise<string>;
+   * error (too large, invalid type). `onProgress` (0 to 1), `avatarColor`
+   * and `displayName` are optional — omitted, the current value is kept. */
+  uploadAvatarFile: (file: File, onProgress?: (fraction: number) => void, avatarColor?: string, displayName?: string) => Promise<string>;
   menuTarget: { key: string; participantId: string; kind: TileKind; rect: AnchorRect } | null;
   openTileMenu: (key: string, participantId: string, kind: TileKind, rect: AnchorRect) => void;
   /** Returns true if it actually closed an open menu — used by the Escape

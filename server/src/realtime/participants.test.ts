@@ -8,7 +8,7 @@ import {
 
 /** Fake minimo de AppSocket — so os campos que participants.ts de fato le
  * (nunca uma Socket.IO de verdade, sem conexao nenhuma). */
-function fakeSocket(userId: string, overrides: Partial<{ username: string; avatar: string; avatarColor: string; role: 'user' | 'admin' }> = {}): AppSocket {
+function fakeSocket(userId: string, overrides: Partial<{ username: string; displayName: string; avatar: string; avatarColor: string; role: 'user' | 'admin' }> = {}): AppSocket {
   return {
     participantId: null,
     ip: '127.0.0.1',
@@ -19,6 +19,10 @@ function fakeSocket(userId: string, overrides: Partial<{ username: string; avata
       tokenHash: 'x',
       userId,
       username: overrides.username ?? userId,
+      // '' mirrors an account that never set one — session.ts resolves this
+      // to the username before it ever reaches join(), but join() also
+      // falls back defensively (see sanitizeDisplayName usage there).
+      displayName: overrides.displayName ?? '',
       avatar: overrides.avatar ?? '',
       avatarColor: overrides.avatarColor ?? 'blurple',
       role: overrides.role ?? 'user',
@@ -68,6 +72,22 @@ describe('join', () => {
     createdIds.push(p.id);
 
     assert.equal(p.avatarColor, 'blurple');
+  });
+
+  test('usa o nome de exibicao persistido na conta', () => {
+    const p = join(fakeSocket(`u-${Math.random()}`, { displayName: 'Apelido' }), {})!;
+    createdIds.push(p.id);
+
+    assert.equal(p.displayName, 'Apelido');
+    assert.equal(publicParticipant(p).displayName, 'Apelido');
+  });
+
+  test('nome de exibicao vazio (conta que nunca escolheu um) cai pro username', () => {
+    const userId = `u-${Math.random()}`;
+    const p = join(fakeSocket(userId, { username: 'Fulana', displayName: '' }), {})!;
+    createdIds.push(p.id);
+
+    assert.equal(p.displayName, 'Fulana');
   });
 
   test('primeira conexao de uma conta vira "online"; segunda aba da MESMA conta nao duplica o status', () => {

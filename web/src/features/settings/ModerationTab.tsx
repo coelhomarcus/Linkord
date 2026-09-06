@@ -15,14 +15,15 @@ function UserRow({ user, online, isMe, onDeleteRequest }: {
   return (
     <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-bg-hover">
       <div className="relative flex-none">
-        <Avatar id={user.id} name={user.username} avatar={user.avatar} avatarColor={user.avatarColor} size={32} />
+        <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={32} />
         <span
           className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-bg-tertiary ${online ? 'bg-green' : 'bg-text-muted'}`}
         />
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-body font-medium text-text-primary">
-          {user.username}
+          {user.displayName}
+          {user.displayName !== user.username && <span className="ml-1.5 text-label font-normal text-text-muted">@{user.username}</span>}
           {isMe && <span className="ml-1.5 text-label font-normal text-text-muted">(voce)</span>}
         </p>
         <p className="select-none text-caption text-text-muted">{online ? 'Online' : 'Offline'}</p>
@@ -57,7 +58,7 @@ export function ModerationTab() {
   const [confirmTarget, setConfirmTarget] = useState<PublicUser | null>(null);
 
   const users = useMemo(
-    () => [...allUsers.values()].sort((a, b) => a.username.localeCompare(b.username)),
+    () => [...allUsers.values()].sort((a, b) => a.displayName.localeCompare(b.displayName) || a.username.localeCompare(b.username)),
     [allUsers]
   );
 

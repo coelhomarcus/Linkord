@@ -11,6 +11,7 @@ import type { DetectedEmbed } from './chatEmbeds';
 export interface ApiUser {
   id: string;
   username: string;
+  displayName: string;
   avatar: string;
   avatarColor: string;
   role: 'user' | 'admin';

@@ -4,7 +4,7 @@ import type { Participant } from '../types/protocol';
 
 function participant(overrides: Partial<Participant> = {}): Participant {
   return {
-    id: 'p1', userId: 'u1', name: 'Fulana', avatar: '', avatarColor: 'green', role: 'user', deafened: false, voiceChannelId: null,
+    id: 'p1', userId: 'u1', name: 'Fulana', displayName: 'Fulana', avatar: '', avatarColor: 'green', role: 'user', deafened: false, voiceChannelId: null,
     micActivated: false, micMuted: true, cameraOn: false, sharing: false, speaking: false,
     ...overrides,
   };
@@ -18,12 +18,13 @@ describe('roomReducer', () => {
       id: 'conn1',
       userId: 'u1',
       name: 'Fulana',
+      displayName: 'Apelido',
       avatar: 'a.png',
       avatarColor: 'fuchsia',
       role: 'admin',
       participants: [participant({ id: 'p2', userId: 'u2' })],
     });
-    expect(next.me).toEqual({ ...initialRoomState.me, id: 'conn1', userId: 'u1', name: 'Fulana', avatar: 'a.png', avatarColor: 'fuchsia', role: 'admin' });
+    expect(next.me).toEqual({ ...initialRoomState.me, id: 'conn1', userId: 'u1', name: 'Fulana', displayName: 'Apelido', avatar: 'a.png', avatarColor: 'fuchsia', role: 'admin' });
     expect(next.participants.get('p2')?.userId).toBe('u2');
     expect(next.joined).toBe(true);
     expect(next.roomError).toBeNull();
@@ -90,10 +91,11 @@ describe('roomReducer', () => {
     expect(next.me.name).toBe(state.me.name);
   });
 
-  it('SET_LOCAL_PROFILE atualiza foto e cor do fundo de "me"', () => {
-    const next = roomReducer(initialRoomState, { type: 'SET_LOCAL_PROFILE', avatar: 'novo.png', avatarColor: 'red' });
+  it('SET_LOCAL_PROFILE atualiza foto, cor do fundo e nome de exibicao de "me"', () => {
+    const next = roomReducer(initialRoomState, { type: 'SET_LOCAL_PROFILE', avatar: 'novo.png', avatarColor: 'red', displayName: 'Apelido' });
     expect(next.me.avatar).toBe('novo.png');
     expect(next.me.avatarColor).toBe('red');
+    expect(next.me.displayName).toBe('Apelido');
   });
 
   it('SET_ROOM_ERROR seta e limpa (null) a mensagem de erro de sala', () => {

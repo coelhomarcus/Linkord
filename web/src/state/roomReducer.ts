@@ -3,7 +3,8 @@ import type { Participant } from '../types/protocol';
 export interface Me {
   id: string | null; // per CONNECTION (= LiveKit identity) — not the same as userId
   userId: string | null; // per ACCOUNT — stable across tabs/reconnects
-  name: string;
+  name: string; // account username — unique, immutable
+  displayName: string; // editable, non-unique — shown everywhere instead of `name`
   avatar: string;
   avatarColor: string;
   role: 'user' | 'admin';
@@ -32,7 +33,7 @@ export interface RoomState {
 }
 
 export const initialRoomState: RoomState = {
-  me: { id: null, userId: null, name: '', avatar: '', avatarColor: '', role: 'user', sharing: false, cameraOn: false, sharingSince: null },
+  me: { id: null, userId: null, name: '', displayName: '', avatar: '', avatarColor: '', role: 'user', sharing: false, cameraOn: false, sharingSince: null },
   participants: new Map(),
   focusedId: null,
   reconnecting: false,
@@ -42,13 +43,13 @@ export const initialRoomState: RoomState = {
 };
 
 export type RoomAction =
-  | { type: 'WELCOME'; id: string; userId: string; name: string; avatar: string; avatarColor: string; role: 'user' | 'admin'; participants: Participant[] }
+  | { type: 'WELCOME'; id: string; userId: string; name: string; displayName: string; avatar: string; avatarColor: string; role: 'user' | 'admin'; participants: Participant[] }
   | { type: 'PARTICIPANT_JOINED'; participant: Participant }
   | { type: 'PARTICIPANT_UPDATED'; participant: Participant }
   | { type: 'PARTICIPANT_LEFT'; id: string }
   | { type: 'SET_RECONNECTING'; value: boolean }
   | { type: 'SET_LOCAL_AVATAR'; avatar: string }
-  | { type: 'SET_LOCAL_PROFILE'; avatar: string; avatarColor: string }
+  | { type: 'SET_LOCAL_PROFILE'; avatar: string; avatarColor: string; displayName: string }
   | { type: 'SET_ROOM_ERROR'; message: string | null }
   | { type: 'SET_LOCAL_SHARING'; sharing: boolean }
   | { type: 'SET_LOCAL_CAMERA'; on: boolean }
@@ -67,6 +68,7 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
           id: action.id,
           userId: action.userId,
           name: action.name,
+          displayName: action.displayName,
           avatar: action.avatar,
           avatarColor: action.avatarColor,
           role: action.role,
@@ -106,7 +108,7 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
     case 'SET_LOCAL_AVATAR':
       return { ...state, me: { ...state.me, avatar: action.avatar } };
     case 'SET_LOCAL_PROFILE':
-      return { ...state, me: { ...state.me, avatar: action.avatar, avatarColor: action.avatarColor } };
+      return { ...state, me: { ...state.me, avatar: action.avatar, avatarColor: action.avatarColor, displayName: action.displayName } };
     case 'SET_ROOM_ERROR':
       return { ...state, roomError: action.message };
     case 'SET_LOCAL_SHARING':

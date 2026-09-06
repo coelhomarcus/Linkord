@@ -33,7 +33,7 @@ function renderRich(text: string, mentionLookup: Map<string, PublicUser> | undef
     const isMe = myUserId != null && user.id === myUserId;
     nodes.push(
       <span key={key++} className={cn('rounded px-1 font-medium', isMe ? 'bg-yellow/25 text-yellow' : 'bg-blurple/15 text-blurple')}>
-        @{user.username}
+        @{user.displayName}
       </span>
     );
   }

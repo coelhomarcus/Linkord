@@ -9,6 +9,9 @@ export interface SessionUser {
   tokenHash: string;
   userId: string;
   username: string;
+  // free-form, non-unique — always resolved to a non-empty value here (see
+  // auth/session.ts), falling back to `username` when the account never set one.
+  displayName: string;
   avatar: string;
   avatarColor: string;
   role: Role;
@@ -23,6 +26,9 @@ export interface Participant {
   userId: string;
   socket: AppSocket | null;
   name: string;
+  // editable, non-unique — what's shown everywhere in the UI instead of
+  // `name`. Always non-empty (falls back to `name` — the username — server-side).
+  displayName: string;
   avatar: string;
   avatarColor: string;
   role: Role;
@@ -52,6 +58,7 @@ export interface PublicParticipant {
   id: string;
   userId: string;
   name: string;
+  displayName: string;
   avatar: string;
   avatarColor: string;
   role: Role;

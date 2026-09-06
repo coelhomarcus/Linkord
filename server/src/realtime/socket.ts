@@ -52,6 +52,7 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
     token: p.token,
     userId: p.userId,
     name: p.name,
+    displayName: p.displayName,
     avatar: p.avatar,
     avatarColor: p.avatarColor,
     role: p.role,

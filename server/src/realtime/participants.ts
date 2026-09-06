@@ -26,9 +26,17 @@ function sanitizeAvatarColor(value: unknown): string {
   return AVATAR_COLOR_VALUES.has(key) ? key : DEFAULT_AVATAR_COLOR;
 }
 
+// free-form (no allowed-values set, unlike avatarColor) — just trimmed,
+// collapsed to single-line, and length-capped. Falling back to the
+// username when this comes out empty is the CALLER's job (join/
+// handleProfile), since only they know the account's username here.
+function sanitizeDisplayName(value: unknown): string {
+  return String(value == null ? '' : value).replace(/[\r\n\t]+/g, ' ').trim().slice(0, config.MAX_DISPLAY_NAME_LEN);
+}
+
 export function publicParticipant(p: Participant): PublicParticipant {
   return {
-    id: p.id, userId: p.userId, name: p.name, avatar: p.avatar, avatarColor: p.avatarColor, role: p.role,
+    id: p.id, userId: p.userId, name: p.name, displayName: p.displayName, avatar: p.avatar, avatarColor: p.avatarColor, role: p.role,
     deafened: p.deafened, voiceChannelId: p.voiceChannelId,
     micActivated: p.micActivated, micMuted: p.micMuted, cameraOn: p.cameraOn, sharing: p.sharing, speaking: p.speaking,
   };
@@ -147,6 +155,10 @@ export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
       userId: u.userId,
       socket,
       name: u.username,
+      // u.displayName (SessionUser) already resolved a non-empty value in
+      // session.ts — sanitizeDisplayName here is just defense in depth
+      // (same pattern as sanitizeAvatar/sanitizeAvatarColor above).
+      displayName: sanitizeDisplayName(u.displayName) || u.username,
       avatar: sanitizeAvatar(u.avatar),
       avatarColor: sanitizeAvatarColor(u.avatarColor),
       role: u.role,
@@ -169,9 +181,13 @@ export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
   return p;
 }
 
-/** Avatar and avatar background color are editable — name is the account's
- * immutable username. Persisted to survive reconnects/other tabs. */
-function handleProfile(socket: AppSocket, msg: { avatar?: string; avatarColor?: string } | null | undefined): void {
+/** Avatar, avatar background color, and displayName are all editable —
+ * `name` stays the account's immutable username (used for @mentions/login,
+ * never shown as-is once displayName exists). An empty/whitespace-only
+ * displayName resets back to the username, same idea as avatarColor
+ * falling back to the default on an invalid value. Persisted to survive
+ * reconnects/other tabs. */
+function handleProfile(socket: AppSocket, msg: { avatar?: string; avatarColor?: string; displayName?: string } | null | undefined): void {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   const body = msg && typeof msg === 'object' ? msg : {};
@@ -182,13 +198,17 @@ function handleProfile(socket: AppSocket, msg: { avatar?: string; avatarColor?: 
   const nextAvatarColor = Object.prototype.hasOwnProperty.call(body, 'avatarColor')
     ? sanitizeAvatarColor(body.avatarColor)
     : p.avatarColor;
+  const nextDisplayName = Object.prototype.hasOwnProperty.call(body, 'displayName')
+    ? (sanitizeDisplayName(body.displayName) || p.name)
+    : p.displayName;
   for (const other of participants.values()) {
     if (other.userId !== p.userId) continue;
     other.avatar = nextAvatar;
     other.avatarColor = nextAvatarColor;
+    other.displayName = nextDisplayName;
     broadcast({ t: 'participant-updated', participant: publicParticipant(other) });
   }
-  updateProfile(p.userId, { avatar: nextAvatar, avatarColor: nextAvatarColor })
+  updateProfile(p.userId, { avatar: nextAvatar, avatarColor: nextAvatarColor, displayName: nextDisplayName })
     .catch((err) => console.error(`[${p.id}] falha ao salvar perfil:`, err instanceof Error ? err.stack : err));
   // deletes the OLD photo file if it was one of our uploads and changed —
   // otherwise each photo change would leave the previous one orphaned.

@@ -25,6 +25,7 @@ import { mentionsUsername } from '../shared/lib/mentions';
 import { uploadWithProgress } from '../shared/lib/uploadWithProgress';
 import { uploadFileInChunks } from '../shared/lib/chunkedUpload';
 import { DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../shared/Avatar';
+import { sanitizeDisplayName } from '../shared/lib/displayName';
 import type { Category, ChatMessage, ClientMessage, Participant, PublicUser, ReactionEmoji, ServerMessage, StorageUsage } from '../types/protocol';
 
 const REACTION_DURATION_MS = 3000; // must match --animate-float-up in index.css
@@ -38,10 +39,14 @@ function mergeUserFromParticipant(prev: Map<string, PublicUser>, participant: Pa
   if (!existing || (
     existing.avatar === participant.avatar
     && existing.avatarColor === participant.avatarColor
+    && existing.displayName === participant.displayName
     && existing.role === participant.role
   )) return prev;
   const next = new Map(prev);
-  next.set(participant.userId, { ...existing, avatar: participant.avatar, avatarColor: participant.avatarColor, role: participant.role });
+  next.set(participant.userId, {
+    ...existing, avatar: participant.avatar, avatarColor: participant.avatarColor,
+    displayName: participant.displayName, role: participant.role,
+  });
   return next;
 }
 
@@ -143,6 +148,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const [messagesByChannel, setMessagesByChannel] = useState<Map<string, ChatMessage[]>>(new Map());
   const [unreadByChannel, setUnreadByChannel] = useState<Map<string, number>>(new Map());
   const [allUsers, setAllUsers] = useState<Map<string, PublicUser>>(new Map());
+  // same staleness reason as categoriesRef/activeChannelIdRef — lets the
+  // 'chat' case below resolve the sender's CURRENT displayName (not the
+  // frozen ChatMessage.name/username) without handleServerMessage closing
+  // over a stale allUsers.
+  const allUsersRef = useRef<Map<string, PublicUser>>(new Map());
+  useEffect(() => { allUsersRef.current = allUsers; }, [allUsers]);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [storageUsage, setStorageUsage] = useState<StorageUsage>({ totalBytes: 0, totalFiles: 0, maxBytes: 0 });
   // recoverable channel-management error, distinct from state.roomError
@@ -356,7 +367,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         myUsernameRef.current = m.name;
         tokenRef.current = m.token;
         saveIdentity(m.id, m.token);
-        dispatch({ type: 'WELCOME', id: m.id, userId: m.userId, name: m.name, avatar: m.avatar, avatarColor: m.avatarColor, role: m.role, participants: m.participants });
+        dispatch({ type: 'WELCOME', id: m.id, userId: m.userId, name: m.name, displayName: m.displayName, avatar: m.avatar, avatarColor: m.avatarColor, role: m.role, participants: m.participants });
         setCategories(m.categories);
         categoriesRef.current = m.categories;
         setAllUsers(new Map(m.users.map((u) => [u.id, u])));
@@ -419,7 +430,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
             channelId,
             channelName: categoriesRef.current.flatMap((c) => c.channels).find((ch) => ch.id === channelId)?.name ?? 'canal',
             senderId: m.message.id,
-            senderName: m.message.name,
+            senderName: (m.message.id ? allUsersRef.current.get(m.message.id)?.displayName : undefined) ?? m.message.name,
             text: m.message.text,
             mentioned: mentionsUsername(m.message.text, myUsernameRef.current),
           });
@@ -564,38 +575,43 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, sendWs, handleServerMessage, auth]);
 
-  const updateProfile = useCallback((profile: { avatar: string; avatarColor: string }) => {
+  const updateProfile = useCallback((profile: { avatar: string; avatarColor: string; displayName: string }) => {
     const finalAvatar = profile.avatar.trim().slice(0, 500);
     const finalAvatarColor = normalizeAvatarColor(profile.avatarColor) || DEFAULT_AVATAR_COLOR;
-    dispatch({ type: 'SET_LOCAL_PROFILE', avatar: finalAvatar, avatarColor: finalAvatarColor });
+    // blank/whitespace-only resets to the username, same idea as avatarColor
+    // falling back to the default on an invalid value.
+    const finalDisplayName = sanitizeDisplayName(profile.displayName) || state.me.name;
+    dispatch({ type: 'SET_LOCAL_PROFILE', avatar: finalAvatar, avatarColor: finalAvatarColor, displayName: finalDisplayName });
     setAllUsers((prev) => {
       const userId = myUserIdRef.current;
       if (!userId) return prev;
       const existing = prev.get(userId);
-      if (!existing || (existing.avatar === finalAvatar && existing.avatarColor === finalAvatarColor)) return prev;
+      if (!existing || (
+        existing.avatar === finalAvatar && existing.avatarColor === finalAvatarColor && existing.displayName === finalDisplayName
+      )) return prev;
       const next = new Map(prev);
-      next.set(userId, { ...existing, avatar: finalAvatar, avatarColor: finalAvatarColor });
+      next.set(userId, { ...existing, avatar: finalAvatar, avatarColor: finalAvatarColor, displayName: finalDisplayName });
       return next;
     });
-    sendWs({ t: 'profile', avatar: finalAvatar, avatarColor: finalAvatarColor });
-  }, [dispatch, sendWs]);
+    sendWs({ t: 'profile', avatar: finalAvatar, avatarColor: finalAvatarColor, displayName: finalDisplayName });
+  }, [dispatch, sendWs, state.me.name]);
 
   const updateAvatar = useCallback((avatar: string) => {
-    updateProfile({ avatar, avatarColor: state.me.avatarColor });
-  }, [state.me.avatarColor, updateProfile]);
+    updateProfile({ avatar, avatarColor: state.me.avatarColor, displayName: state.me.displayName });
+  }, [state.me.avatarColor, state.me.displayName, updateProfile]);
 
   // same upload folder/route as chat attachments — this only gets the URL
-  // back; updateProfile applies it together with the chosen background.
-  const uploadAvatarFile = useCallback(async (file: File, onProgress?: (fraction: number) => void, avatarColor?: string) => {
+  // back; updateProfile applies it together with the chosen background/name.
+  const uploadAvatarFile = useCallback(async (file: File, onProgress?: (fraction: number) => void, avatarColor?: string, displayName?: string) => {
     const body = await uploadWithProgress<{ avatar: string }>({
       url: '/api/avatar',
       file,
       headers: { 'Content-Type': file.type || 'application/octet-stream' },
       onProgress,
     });
-    updateProfile({ avatar: body.avatar, avatarColor: avatarColor ?? state.me.avatarColor });
+    updateProfile({ avatar: body.avatar, avatarColor: avatarColor ?? state.me.avatarColor, displayName: displayName ?? state.me.displayName });
     return body.avatar;
-  }, [state.me.avatarColor, updateProfile]);
+  }, [state.me.avatarColor, state.me.displayName, updateProfile]);
 
   // menuOpenRef exists so closeTileMenu can answer synchronously whether it
   // actually closed something (setState isn't synchronous enough for that).
