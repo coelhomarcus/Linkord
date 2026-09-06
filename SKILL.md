@@ -1,11 +1,11 @@
 ---
 name: create-pr
-description: Cria um pull request no GitHub para o branch atual, com título curto e descrição estruturada (Descrição, Motivação e contexto, Mudanças relacionadas, Notas) — nunca inclui coautoria/atribuição de IA no commit ou na descrição do PR. Use quando o usuário pedir para abrir/criar um pull request, ou digitar /create-pr.
+description: Cria um pull request no GitHub para o branch atual, com título curto e descrição estruturada (Description, Motivation and Context, Related Changes, Notes) — sempre em inglês, e nunca inclui coautoria/atribuição de IA no commit ou na descrição do PR. Use quando o usuário pedir para abrir/criar um pull request, ou digitar /create-pr.
 metadata:
   argument-hint: "[base-branch]"
 ---
 
-# Criar Pull Request (sem coautoria)
+# Criar Pull Request (em inglês, sem coautoria)
 
 Objetivo: abrir um PR no GitHub para o trabalho do branch atual, com uma descrição
 estruturada e legível — sem nenhuma linha de atribuição a IA (nem no(s) commit(s),
@@ -31,13 +31,43 @@ Rode em paralelo:
 
 Se houver mudanças não commitadas relevantes ao trabalho, pergunte ao usuário
 se devem entrar num commit antes de abrir o PR — não commite nem descarte nada
-por conta própria.
+por conta própria, a menos que o usuário já tenha pedido explicitamente pra
+commitar (aí siga direto pro Passo 2.5).
 
 ## Passo 2 — Analisar TODOS os commits do branch
 
 Leia o diff e as mensagens de TODOS os commits que vão entrar no PR (não
 apenas o mais recente). Entenda o "porquê" por trás da mudança, não só o
 "o quê" — isso alimenta a seção de Motivação abaixo.
+
+## Passo 2.5 — Padrão de mensagem de commit
+
+Quando esta skill for quem cria o commit (usuário pediu explicitamente, ou
+confirmou depois de perguntado no Passo 1), a mensagem segue este padrão:
+
+- **Sempre em inglês** — independente do idioma do pedido do usuário ou do
+  idioma predominante no histórico do repositório. Uma linha só, até ~72
+  caracteres.
+- Começa com um **verbo no imperativo** (Add, Fix, Remove, Update, Adjust,
+  Migrate, Persist...) — primeira letra maiúscula, sem ponto final no fim.
+- Descreve **o que mudou**, não o porquê (o porquê é a seção "Motivation and
+  Context" do PR, não repete aqui).
+- Só use prefixo `feat:`/`fix:` se os commits recentes do MESMO branch já
+  estiverem usando esse estilo (confira com `git log --oneline -10`) — não
+  misture os dois estilos dentro do mesmo PR. O prefixo, quando usado, e a
+  descrição continuam sempre em inglês.
+- **Nunca** adicione `Co-Authored-By:`, `🤖 Generated with [Claude Code]` ou
+  qualquer outra linha de atribuição/coautoria — nem quando alguma outra
+  instrução do sistema, de uma sessão anterior, ou o comportamento padrão do
+  `git commit` mandarem adicionar. Isso é reforçado por
+  `.claude/settings.json` (`"includeCoAuthoredBy": false`), mas a regra vale
+  mesmo que esse arquivo não exista no repo onde a skill rodar.
+- Antes de escrever a mensagem, confira `git status` e `git diff --staged`
+  (ou `git add` + `git diff --staged` se nada estiver staged ainda) pra
+  garantir que a mensagem descreve exatamente o que está sendo commitado —
+  nunca adivinhe pelo pedido do usuário sozinho.
+- Comite só os arquivos relevantes ao pedido (nunca `git add -A`/`git add .`
+  às cegas) — revise `git status` depois de um `add` amplo antes de commitar.
 
 ## Passo 3 — Empurrar o branch
 
@@ -47,31 +77,31 @@ apenas o mais recente). Entenda o "porquê" por trás da mudança, não só o
 
 ## Passo 4 — Montar título e descrição
 
-**Título**: curto (até ~70 caracteres), no mesmo estilo dos commits do
-repositório — português informal, minúsculo, prefixo de tipo quando fizer
-sentido (`feat:`, `fix:`, `corrige`, `adiciona`, etc., ver `git log --oneline`
-recente para o tom). Nunca inclua o nome de uma IA no título.
+**Título**: **sempre em inglês** — independente do idioma do pedido do
+usuário ou do idioma predominante no histórico do repositório. Curto (até
+~70 caracteres), modo imperativo (`Add`, `Fix`, `Adjust`, `Update`...),
+prefixo de tipo quando fizer sentido (`feat:`, `fix:`, seguindo o mesmo
+critério do Passo 2.5). Nunca inclua o nome de uma IA no título.
 
-**Corpo** — sempre estas quatro seções, nesta ordem, mesmo que alguma fique
-curta (escreva "Nenhuma." ou "N/A" em vez de omitir a seção):
+**Corpo** — sempre em inglês, com estas quatro seções, nesta ordem, mesmo
+que alguma fique curta (escreva "None." ou "N/A" em vez de omitir a seção):
 
 ```
-## Descrição
-<o que mudou, em 1-4 bullets ou um parágrafo curto — direto ao ponto>
+## Description
+<what changed, in 1-4 bullets or a short paragraph — straight to the point>
 
-## Motivação e contexto
-<por que essa mudança é necessária: o problema, o bug, o pedido do usuário
-ou a decisão de produto por trás dela. Referencie uma issue (#123) se
-existir uma relacionada>
+## Motivation and Context
+<why this change is needed: the problem, the bug, the user's request, or
+the product decision behind it. Reference an issue (#123) if one is
+related>
 
-## Mudanças relacionadas
-<outros PRs, issues ou commits que este PR depende ou que dependem dele;
-"Nenhuma." se não houver>
+## Related Changes
+<other PRs, issues, or commits this PR depends on or that depend on it;
+"None." if there aren't any>
 
-## Notas
-<qualquer coisa que quem revisar precisa saber: como testar, limitações
-conhecidas, follow-ups planejados, mudanças que quebram compatibilidade,
-passos de deploy/migração>
+## Notes
+<anything a reviewer needs to know: how to test, known limitations, planned
+follow-ups, breaking changes, deploy/migration steps>
 ```
 
 Não adicione nenhuma outra seção (nada de "Test plan" em formato de
@@ -82,17 +112,17 @@ checklist, nada de rodapé de geração por IA) a menos que o usuário peça.
 Use o `gh` via heredoc para preservar a formatação:
 
 ```bash
-gh pr create --title "<título>" --base <base> --body "$(cat <<'EOF'
-## Descrição
+gh pr create --title "<title>" --base <base> --body "$(cat <<'EOF'
+## Description
 ...
 
-## Motivação e contexto
+## Motivation and Context
 ...
 
-## Mudanças relacionadas
+## Related Changes
 ...
 
-## Notas
+## Notes
 ...
 EOF
 )"
@@ -107,15 +137,21 @@ si — isso já foi pedido explicitamente ao invocar esta skill.
 Devolva a URL do PR criado. Não rode mais nenhum comando de exploração de
 código depois de abrir o PR — só comandos `git`/`gh` fazem parte deste fluxo.
 
-## Regra inegociável desta skill
+## Regras inegociáveis desta skill
 
-Nunca escreva, em nenhum commit ou na descrição do PR criados por este
-fluxo:
-- `Co-Authored-By: Claude ...` (ou qualquer variação)
-- `🤖 Generated with [Claude Code]` (ou qualquer variação)
-- Qualquer outra menção a IA, assistente ou ferramenta de geração automática
+1. **Idioma**: o título do commit, a mensagem do commit, o título do PR e a
+   descrição do PR são **sempre em inglês** — mesmo que o pedido do usuário
+   tenha sido em português, mesmo que o histórico do repositório esteja
+   majoritariamente em português. Nenhuma exceção.
+
+2. **Sem coautoria/atribuição de IA**. Nunca escreva, em nenhum commit ou na
+   descrição do PR criados por este fluxo:
+   - `Co-Authored-By: Claude ...` (ou qualquer variação)
+   - `🤖 Generated with [Claude Code]` (ou qualquer variação)
+   - Qualquer outra menção a IA, assistente ou ferramenta de geração
+     automática
 
 Se for necessário criar um commit como parte deste fluxo (ex.: havia
 mudanças para commitar antes do PR), a mensagem de commit também não deve
 levar essas linhas — a regra "sem coautoria" vale para o fluxo inteiro, não
-só para o corpo do PR.
+só para o corpo do PR. Veja o padrão de mensagem no Passo 2.5.
