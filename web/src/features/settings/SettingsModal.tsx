@@ -8,6 +8,7 @@ import { useAuth } from '../../state/AuthContext';
 import { QUALITY_LABELS } from './useQualityPreference';
 import type { Quality } from './useQualityPreference';
 import { useMediaDevices } from './useMediaDevices';
+import { requestNotificationPermission } from '../../shared/notifications';
 import { Avatar } from '../../shared/Avatar';
 import { UploadProgressBar } from '../../shared/UploadProgressBar';
 import { SectionLabel, sectionLabelClass } from '../../shared/SectionLabel';
@@ -69,7 +70,7 @@ function DevicePicker({ label, room, kind }: { label: string; room: import('live
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const {
     state, updateAvatar, uploadAvatarFile, quality, setQuality, showStats, setShowStats,
-    notifyVolume, setNotifyVolume, livekitRoom, storageUsage,
+    notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled, livekitRoom, storageUsage,
   } = useRoom();
   const { logout } = useAuth();
   const [avatar, setAvatar] = useState(state.me.avatar);
@@ -85,6 +86,19 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   function handleVolumeChange(value: number | readonly number[]) {
     const v = Array.isArray(value) ? (value[0] ?? 0) : (value as number);
     setNotifyVolume(v / 100);
+  }
+
+  async function handleToggleNotifications(checked: boolean) {
+    if (!checked) {
+      setNotificationsEnabled(false);
+      return;
+    }
+    // never request OS permission silently — only in direct response to
+    // the user turning this on, same care useMediaDevices takes with mic/
+    // camera permission (its "Grant access" button).
+    if (typeof Notification === 'undefined') return;
+    const permission = Notification.permission === 'default' ? await requestNotificationPermission() : Notification.permission;
+    if (permission === 'granted') setNotificationsEnabled(true);
   }
 
   function handleProfileSubmit(e: FormEvent) {
@@ -231,6 +245,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               <div className={settingsCardClass}>
                 <DevicePicker label="Camera" room={livekitRoom} kind="videoinput" />
               </div>
+
+              <div className={settingsCardClass}>
+                <DevicePicker label="Alto-falante" room={livekitRoom} kind="audiooutput" />
+              </div>
             </TabsPanel>
 
             <TabsPanel value="prefs" className="flex flex-col gap-4">
@@ -256,6 +274,19 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   checked={showStats}
                   onCheckedChange={setShowStats}
                   aria-label="Mostrar estatisticas"
+                  className="mt-0.5 flex-none"
+                />
+              </div>
+
+              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
+                <div className="min-w-0">
+                  <p className="select-none text-body font-medium text-text-primary">Notificacoes de mensagens</p>
+                  <p className="select-none text-label text-text-muted">Avisa no sistema quando chegar mensagem em um canal que voce nao esta vendo.</p>
+                </div>
+                <Switch
+                  checked={notificationsEnabled}
+                  onCheckedChange={handleToggleNotifications}
+                  aria-label="Notificacoes de mensagens"
                   className="mt-0.5 flex-none"
                 />
               </div>

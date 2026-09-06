@@ -40,6 +40,10 @@ function Shell() {
   // already looking at chat.
   useEffect(() => { notifyActiveView(activeView); }, [activeView, notifyActiveView]);
 
+  // lets a desktop-notification click switch to the Chat tab (RoomProvider
+  // only owns the active channel, not this view state).
+  useEffect(() => { registerRequestChatView(() => setActiveView('chat')); }, [registerRequestChatView]);
+
   // mic isn't included: with the "native" model (activate once, only
   // mute/unmute), it stays published in the background for most of the
   // session — including it would fire the warning uselessly. Screen/camera

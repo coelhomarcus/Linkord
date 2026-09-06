@@ -34,8 +34,17 @@ export function Stage({ allIds, onBackMobile, onExitVoice }: StageProps) {
     onExitVoice();
   }
 
+  // `pb-32` reserves room at the bottom so <CallControlBar/> (a sibling,
+  // absolutely positioned, floating over this) never covers the last row
+  // of tiles — sized to comfortably clear the bar's own bottom offset
+  // (1.5rem + the iOS home-indicator safe-area inset, see
+  // CallControlBar.tsx) plus its tallest (md) height. `md:p-5` must stay
+  // axis-specific (px/pt), never the `p-*` shorthand: it sets `padding` on
+  // all four sides, so at md+ it was silently resetting padding-bottom
+  // back to 1.25rem and wiping out the reserved space, letting the bar
+  // overlap tiles on desktop.
   return (
-    <main className="relative flex flex-1 min-w-0 items-center justify-center overflow-auto bg-bg-call p-2 pb-24 text-text-primary md:p-5">
+    <main data-stage className="relative flex flex-1 min-w-0 items-center justify-center overflow-auto bg-bg-call p-2 pb-32 text-text-primary md:px-5 md:pt-5">
       <Button
         type="button"
         variant="ghost"

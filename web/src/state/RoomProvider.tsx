@@ -22,7 +22,13 @@ import { useMicrophone } from '../features/sharing/useMicrophone';
 import { useTrackSpeaking } from '../features/sharing/useLiveKitTrack';
 import type { TileKind } from '../features/sharing/tileTypes';
 import { loadShowStats, saveShowStats, loadNotifyVolume, saveNotifyVolume } from '../features/settings/useSettingsPreference';
+import { loadHideAudioOnlyTiles, saveHideAudioOnlyTiles } from '../features/settings/useStageViewPreference';
 import { playSound, preloadSounds, setVolume } from '../shared/sounds';
+import {
+  loadNotificationsEnabled, saveNotificationsEnabled, setNotificationsModuleEnabled,
+  setNotificationClickHandler, notifyIncomingChatMessage,
+} from '../shared/notifications';
+import { mentionsUsername } from '../shared/lib/mentions';
 import { uploadWithProgress } from '../shared/lib/uploadWithProgress';
 import { uploadFileInChunks } from '../shared/lib/chunkedUpload';
 import type { Category, ChatMessage, ClientMessage, Participant, PublicUser, ReactionEmoji, ServerMessage, StorageUsage } from '../types/protocol';
@@ -63,6 +69,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const socketRef = useRef<Socket | null>(null);
   const myIdRef = useRef<string | null>(null);
   const myUserIdRef = useRef<string | null>(null);
+  // username is immutable (server never changes it) — set once in
+  // 'welcome', used for mention-detection inside handleServerMessage,
+  // which can't read allUsers (state) without going stale.
+  const myUsernameRef = useRef<string | null>(null);
   const tokenRef = useRef<string | null>(null);
   const intentionalCloseRef = useRef(false);
   // A server-initiated Socket.IO disconnect does not auto-reconnect. Keep
@@ -118,6 +128,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const [categories, setCategories] = useState<Category[]>([]);
+  // same staleness reason as activeChannelIdRef — lets handleServerMessage
+  // resolve a channel's name (for desktop notifications) without depending
+  // on `categories` (state).
+  const categoriesRef = useRef<Category[]>([]);
   const [activeChannelId, setActiveChannelIdState] = useState<string | null>(null);
   // ref (not state) — handleServerMessage is registered once at mount and
   // would otherwise close over a stale activeChannelId.
@@ -148,6 +162,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   // already looking at chat (view lives in Shell/App.tsx, not here).
   const activeViewRef = useRef<'chat' | 'call'>('chat');
   const notifyActiveView = useCallback((view: 'chat' | 'call') => { activeViewRef.current = view; }, []);
+  // set once by Shell on mount (see App.tsx) — lets a desktop-notification
+  // click switch to the Chat tab, not just select the channel.
+  const requestChatViewRef = useRef<(() => void) | null>(null);
+  const registerRequestChatView = useCallback((fn: () => void) => { requestChatViewRef.current = fn; }, []);
   const [messagesByChannel, setMessagesByChannel] = useState<Map<string, ChatMessage[]>>(new Map());
   // Bookkeeping for sends not yet confirmed by the server — the source of
   // truth for WHAT to (re)send; `pending` on the ChatMessage objects above
@@ -657,10 +675,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'welcome': {
         myIdRef.current = m.id;
         myUserIdRef.current = m.userId;
+        myUsernameRef.current = m.name;
         tokenRef.current = m.token;
         saveIdentity(m.id, m.token);
         dispatch({ type: 'WELCOME', id: m.id, userId: m.userId, name: m.name, avatar: m.avatar, role: m.role, participants: m.participants });
         setCategories(m.categories);
+        categoriesRef.current = m.categories;
         setAllUsers(new Map(m.users.map((u) => [u.id, u])));
         setOnlineUserIds(new Set(m.onlineUserIds));
         setStorageUsage(m.storageUsage);
@@ -770,6 +790,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         break;
       case 'channels-tree': {
         setCategories(m.categories);
+        categoriesRef.current = m.categories;
         const stillExists = m.categories.some((cat) => cat.channels.some((ch) => ch.id === activeChannelIdRef.current));
         if (!stillExists) {
           const fallback = m.categories.flatMap((cat) => cat.channels).find((ch) => ch.type === 'text');
@@ -951,6 +972,11 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     preloadSounds();
     setVolume(notifyVolume);
+    setNotificationsModuleEnabled(notificationsEnabled);
+    setNotificationClickHandler((channelId) => {
+      openChannel(channelId);
+      requestChatViewRef.current?.();
+    });
     connect();
     return () => {
       clearVoiceJoinTimeout();
@@ -968,7 +994,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         activeVoiceChannelId, voiceConnection, joinVoiceChannel, retryVoiceChannel, cancelVoiceJoin,
         startSharing, stopSharing, startCamera, stopCamera, enableMicrophone, toggleMicMuted, leaveVoiceChannel, quality, setQuality,
         updateAvatar, uploadAvatarFile, menuTarget, openTileMenu, closeTileMenu,
-        reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume,
+        reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
+        hideAudioOnlyTiles, setHideAudioOnlyTiles,
         categories, activeChannelId, openChannel, messagesByChannel, unreadByChannel,
         allUsers, onlineUserIds, channelsError, clearChannelsError: () => setChannelsError(null),
         deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null),
