@@ -8,10 +8,10 @@ import { deleteAvatarFile } from './attachments.js';
 import type { AppSocket, HandlerTable, Participant } from '../types.js';
 
 // Settings "Moderation" tab (admin-only) — currently only deletes accounts.
-// Deleted users' messages don't disappear (authorId becomes NULL, but
-// authorName/authorAvatar are already frozen on the row at send time, see
-// db/schema.ts — deleting an account means "this person can't log in
-// anymore," not "rewrite chat history"). Sessions vanish via CASCADE.
+// Deleted users' messages don't disappear (authorId becomes NULL, so their
+// profile resolves to the neutral deleted-user fallback). Deleting an
+// account means "this person can't log in anymore," not "rewrite chat
+// history". Sessions vanish via CASCADE.
 
 function isAdmin(p: Participant | undefined): boolean {
   return !!p && p.role === 'admin';

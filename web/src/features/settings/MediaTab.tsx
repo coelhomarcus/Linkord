@@ -8,17 +8,24 @@ import { ChatAttachment } from '../chat/ChatAttachment';
 import { LinkPreview } from '@/shared/LinkPreview';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsIndicator, TabsTrigger } from '@/components/ui/tabs';
+import { useRoom } from '@/state/RoomContext';
 
 function formatWhen(ts: number): string {
   return new Date(ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 function MediaRow({ item }: { item: MediaItem }) {
+  const { allUsers } = useRoom();
+  const author = item.authorId ? allUsers.get(item.authorId) : undefined;
+  const authorName = author?.displayName ?? item.authorName;
+  const authorAvatar = author?.avatar ?? item.authorAvatar;
+  const authorAvatarColor = author?.avatarColor ?? item.authorAvatarColor;
+
   return (
     <div className="flex flex-col gap-1.5 border-b border-subtle pb-4 last:border-0 last:pb-0">
       <div className="flex min-w-0 items-center gap-2 text-label text-text-muted">
-        <Avatar id={item.authorName} name={item.authorName} avatar={item.authorAvatar} size={20} />
-        <span className="flex-none font-medium text-text-secondary">{item.authorName}</span>
+        <Avatar id={item.authorId ?? item.authorName} name={authorName} avatar={authorAvatar} avatarColor={authorAvatarColor} size={20} />
+        <span className="flex-none font-medium text-text-secondary">{authorName}</span>
         <span className="min-w-0 truncate">em #{item.channelName}</span>
         <span className="ml-auto flex-none">{formatWhen(item.ts)}</span>
       </div>

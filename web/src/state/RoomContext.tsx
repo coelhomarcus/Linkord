@@ -132,8 +132,8 @@ export interface RoomContextValue {
   channelsError: string | null;
   clearChannelsError: () => void;
   /** Permanently deletes another account — Moderation tab, admin-only
-   * (server always revalidates role). Their past messages keep their
-   * frozen name/avatar; only the account itself stops existing. */
+   * (server always revalidates role). Their past messages stay in history
+   * and resolve to a neutral deleted-user fallback. */
   deleteUserAccount: (userId: string) => void;
   /** Same idea as channelsError, for the Moderation tab. */
   moderationError: string | null;

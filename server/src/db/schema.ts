@@ -65,16 +65,14 @@ export const channels = pgTable('channels', {
 ]);
 
 /** Chat message, now persisted (used to live only in memory, lost on
- * every restart). `authorId` is SET NULL if the account is later deleted —
- * authorName/authorAvatar stay frozen on the row, so history remains
- * readable even without the author existing. `replyTo`/`reactions` keep
- * the same frozen shape the protocol already used. */
+ * every restart). `authorId` is SET NULL if the account is later deleted.
+ * Mutable profile data (display name/avatar/color) intentionally lives only
+ * on `users`; chat rows resolve it with a join when they are read, so a
+ * profile change updates the whole history without rewriting messages. */
 export const messages = pgTable('messages', {
   id: serial('id').primaryKey(),
   channelId: text('channel_id').notNull().references(() => channels.id, { onDelete: 'cascade' }),
   authorId: text('author_id').references(() => users.id, { onDelete: 'set null' }),
-  authorName: varchar('author_name', { length: 20 }).notNull(),
-  authorAvatar: text('author_avatar').notNull().default(''),
   text: text('text').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   editedAt: timestamp('edited_at', { withTimezone: true }),

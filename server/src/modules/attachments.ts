@@ -333,7 +333,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
       await assembleChunks(uploadId, manifest, destPath);
       const inserted = await db.transaction(async (tx) => {
         const [messageRow] = await tx.insert(messages).values({
-          channelId: manifest.channelId, authorId: sess.userId, authorName: sess.username, authorAvatar: sess.avatar, text: manifest.caption,
+          channelId: manifest.channelId, authorId: sess.userId, text: manifest.caption,
         }).returning();
         const [attachmentRow] = await tx.insert(attachmentsTable).values({
           id: uploadId, messageId: messageRow!.id, fileName: manifest.fileName, mimeType: manifest.mimeType, size: manifest.totalSize,
@@ -359,8 +359,8 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
       msgId: message.id,
       channelId: message.channelId,
       id: message.authorId,
-      name: message.authorName,
-      avatar: message.authorAvatar,
+      name: sess.displayName,
+      avatar: sess.avatar,
       text: message.text,
       ts: message.createdAt.getTime(),
       attachment: { id: row.id, name: row.fileName, mime: row.mimeType, size: row.size },

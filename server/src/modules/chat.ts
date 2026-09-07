@@ -1,12 +1,13 @@
 import { eq, and, desc } from 'drizzle-orm';
 import { config } from '../config/env.js';
 import { db } from '../db/client.js';
-import { messages, type Message, type Attachment } from '../db/schema.js';
+import { messages, users, type Message, type Attachment } from '../db/schema.js';
 import { participants, broadcast, send } from '../realtime/participants.js';
 import { ALLOWED_REACTIONS } from '../realtime/reactions.js';
 import { channelExists } from './channels.js';
+import { resolveDisplayName } from './auth/users.js';
 import * as attachments from './attachments.js';
-import type { AppSocket, HandlerTable } from '../types.js';
+import type { AppSocket, HandlerTable, Participant } from '../types.js';
 
 // Deleting a channel (modules/channels.ts) CASCADEs here.
 //
@@ -16,10 +17,11 @@ import type { AppSocket, HandlerTable } from '../types.js';
 // The client compares against `state.me.userId`, not `state.me.id`.
 
 const REPLY_PREVIEW_LEN = 120;
+const DELETED_AUTHOR_NAME = 'Usuario apagado';
 
 interface ReplyRef {
   msgId: number;
-  name: string;
+  authorId: string | null;
   text: string;
 }
 
@@ -32,46 +34,114 @@ interface ChatMessagePayload {
   text: string;
   ts: number;
   editedAt?: number;
-  replyTo?: unknown;
+  replyTo?: ReplyRef;
   reactions?: Record<string, string[]>;
   attachment?: { id: string; name: string; mime: string; size: number };
+}
+
+interface MessageWithAuthor {
+  id: number;
+  channelId: string;
+  authorId: string | null;
+  authorUsername: string | null;
+  authorDisplayName: string | null;
+  authorAvatar: string | null;
+  text: string;
+  createdAt: Date;
+  editedAt: Date | null;
+  replyTo: unknown;
+  reactions: unknown;
 }
 
 function sanitizeChatText(text: unknown): string {
   return String(text == null ? '' : text).trim().slice(0, config.MAX_CHAT_LEN);
 }
 
+const messageWithAuthorSelect = {
+  id: messages.id,
+  channelId: messages.channelId,
+  authorId: messages.authorId,
+  authorUsername: users.username,
+  authorDisplayName: users.displayName,
+  authorAvatar: users.avatar,
+  text: messages.text,
+  createdAt: messages.createdAt,
+  editedAt: messages.editedAt,
+  replyTo: messages.replyTo,
+  reactions: messages.reactions,
+};
+
+function rowWithParticipant(row: Message, participant: Participant): MessageWithAuthor {
+  return {
+    id: row.id,
+    channelId: row.channelId,
+    authorId: row.authorId,
+    authorUsername: participant.name,
+    authorDisplayName: participant.displayName,
+    authorAvatar: participant.avatar,
+    text: row.text,
+    createdAt: row.createdAt,
+    editedAt: row.editedAt,
+    replyTo: row.replyTo,
+    reactions: row.reactions,
+  };
+}
+
+function authorNameFor(row: MessageWithAuthor): string {
+  return row.authorUsername
+    ? resolveDisplayName(row.authorDisplayName ?? '', row.authorUsername)
+    : DELETED_AUTHOR_NAME;
+}
+
+function normalizeReplyRef(raw: unknown): ReplyRef | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const obj = raw as Record<string, unknown>;
+  const msgId = Number(obj.msgId);
+  if (!Number.isFinite(msgId)) return undefined;
+  return {
+    msgId,
+    authorId: typeof obj.authorId === 'string' && obj.authorId ? obj.authorId : null,
+    text: String(obj.text == null ? '' : obj.text).slice(0, REPLY_PREVIEW_LEN),
+  };
+}
+
 /** `attachment` (optional) is the raw attachments-table row — the
  * attachment itself doesn't live in the messages table, see
  * modules/attachments.ts. */
-function rowToMessage(row: Message, attachment?: Attachment): ChatMessagePayload {
+function rowToMessage(row: MessageWithAuthor, attachment?: Attachment): ChatMessagePayload {
   const out: ChatMessagePayload = {
     msgId: row.id,
     channelId: row.channelId,
     id: row.authorId,
-    name: row.authorName,
-    avatar: row.authorAvatar,
+    name: authorNameFor(row),
+    avatar: row.authorAvatar ?? '',
     text: row.text,
     ts: row.createdAt.getTime(),
   };
   if (row.editedAt) out.editedAt = row.editedAt.getTime();
-  if (row.replyTo) out.replyTo = row.replyTo;
+  const replyTo = normalizeReplyRef(row.replyTo);
+  if (replyTo) out.replyTo = replyTo;
   const reactions = row.reactions as Record<string, string[]> | null;
   if (reactions && Object.keys(reactions).length) out.reactions = reactions;
   if (attachment) out.attachment = { id: attachment.id, name: attachment.fileName, mime: attachment.mimeType, size: attachment.size };
   return out;
 }
 
-/** Builds the frozen reference to the original message from the client's
- * msgId — silently returns undefined if it's gone (deleted) or from
- * another channel, so the reply just carries no reference instead of
- * failing outright. */
+/** Builds a compact reference to the original message from the client's
+ * msgId. It stores the original author's user id, not mutable profile data,
+ * so reply previews follow profile changes too. Silently returns undefined
+ * if it's gone (deleted) or from another channel, so the reply just carries
+ * no reference instead of failing outright. */
 async function buildReplyRef(channelId: string, replyToId: unknown): Promise<ReplyRef | undefined> {
   const id = Number(replyToId);
   if (!Number.isFinite(id)) return undefined;
-  const [original] = await db.select().from(messages).where(and(eq(messages.id, id), eq(messages.channelId, channelId))).limit(1);
+  const [original] = await db
+    .select({ id: messages.id, authorId: messages.authorId, text: messages.text })
+    .from(messages)
+    .where(and(eq(messages.id, id), eq(messages.channelId, channelId)))
+    .limit(1);
   if (!original) return undefined;
-  return { msgId: original.id, name: original.authorName, text: original.text.slice(0, REPLY_PREVIEW_LEN) };
+  return { msgId: original.id, authorId: original.authorId, text: original.text.slice(0, REPLY_PREVIEW_LEN) };
 }
 
 /** Client opening a channel (switched tabs, or the first channel on join) —
@@ -82,7 +152,13 @@ async function handleChannelOpen(socket: AppSocket, msg: { channelId?: string })
   if (!p || p.socket !== socket) return;
   const channelId = String(msg.channelId || '');
   if (!channelId || !(await channelExists(channelId))) return;
-  const rows = await db.select().from(messages).where(eq(messages.channelId, channelId)).orderBy(desc(messages.id)).limit(config.CHAT_HISTORY_LIMIT);
+  const rows = await db
+    .select(messageWithAuthorSelect)
+    .from(messages)
+    .leftJoin(users, eq(users.id, messages.authorId))
+    .where(eq(messages.channelId, channelId))
+    .orderBy(desc(messages.id))
+    .limit(config.CHAT_HISTORY_LIMIT);
   rows.reverse();
   // one query for all history messages' attachments, not one per message
   // (N+1) — most have no attachment anyway.
@@ -98,10 +174,10 @@ async function handleChat(socket: AppSocket, msg: { channelId?: string; text?: s
   if (!channelId || !text || !(await channelExists(channelId))) return;
   const replyTo = await buildReplyRef(channelId, msg.replyTo);
   const [row] = await db.insert(messages).values({
-    channelId, authorId: p.userId, authorName: p.name, authorAvatar: p.avatar, text,
+    channelId, authorId: p.userId, text,
     replyTo: replyTo || null,
   }).returning();
-  broadcast({ t: 'chat', message: rowToMessage(row!) });
+  broadcast({ t: 'chat', message: rowToMessage(rowWithParticipant(row!, p)) });
 }
 
 /** Only the original author edits — not even admin (Discord-like; admin
@@ -120,7 +196,7 @@ async function handleChatEdit(socket: AppSocket, msg: { msgId?: unknown; text?: 
   // the attachment disappear for everyone (the client replaces the whole
   // message with what arrives in 'chat-edited', see RoomProvider.tsx).
   const attachment = (await attachments.getByMessageIds([msgId])).get(msgId);
-  broadcast({ t: 'chat-edited', message: rowToMessage(updated!, attachment) });
+  broadcast({ t: 'chat-edited', message: rowToMessage(rowWithParticipant(updated!, p), attachment) });
 }
 
 /** Toggles (not just adds) — reacting again with the same emoji removes

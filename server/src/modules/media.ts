@@ -2,10 +2,11 @@ import { eq, and, lt, desc, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { config } from '../config/env.js';
 import { db } from '../db/client.js';
-import { messages, channels, attachments as attachmentsTable } from '../db/schema.js';
+import { messages, channels, users, attachments as attachmentsTable } from '../db/schema.js';
 import { sendJson, sendError } from '../http/respond.js';
 import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from './auth/session.js';
+import { resolveDisplayName } from './auth/users.js';
 import { firstEmbed, type DetectedEmbed } from './link-preview/embeds.js';
 
 // GET /api/media — Settings "Media" tab: aggregates every uploaded
@@ -31,13 +32,17 @@ const EMBED_SCAN_CEILING = 400;
 // "no cursor yet" sentinel overflows Postgres's int4 range. This is the
 // column's real ceiling.
 const PG_INT4_MAX = 2147483647;
+const DELETED_AUTHOR_NAME = 'Usuario apagado';
 
 interface MediaBaseRow {
   msgId: number;
   channelId: string;
   channelName: string;
-  authorName: string;
-  authorAvatar: string;
+  authorId: string | null;
+  authorUsername: string | null;
+  authorDisplayName: string | null;
+  authorAvatar: string | null;
+  authorAvatarColor: string | null;
   createdAt: Date;
 }
 
@@ -45,8 +50,10 @@ interface MediaBase {
   msgId: number;
   channelId: string;
   channelName: string;
+  authorId: string | null;
   authorName: string;
   authorAvatar: string;
+  authorAvatarColor: string;
   ts: number;
 }
 
@@ -63,8 +70,12 @@ function toMediaBase(row: MediaBaseRow): MediaBase {
     msgId: row.msgId,
     channelId: row.channelId,
     channelName: row.channelName,
-    authorName: row.authorName,
-    authorAvatar: row.authorAvatar,
+    authorId: row.authorId,
+    authorName: row.authorUsername
+      ? resolveDisplayName(row.authorDisplayName ?? '', row.authorUsername)
+      : DELETED_AUTHOR_NAME,
+    authorAvatar: row.authorAvatar ?? '',
+    authorAvatarColor: row.authorAvatarColor ?? '',
     ts: row.createdAt.getTime(),
   };
 }
@@ -75,8 +86,11 @@ async function fetchUploadsPage(before: number | null, limit: number): Promise<{
       msgId: messages.id,
       channelId: messages.channelId,
       channelName: channels.name,
-      authorName: messages.authorName,
-      authorAvatar: messages.authorAvatar,
+      authorId: messages.authorId,
+      authorUsername: users.username,
+      authorDisplayName: users.displayName,
+      authorAvatar: users.avatar,
+      authorAvatarColor: users.avatarColor,
       createdAt: messages.createdAt,
       attachmentId: attachmentsTable.id,
       fileName: attachmentsTable.fileName,
@@ -89,6 +103,7 @@ async function fetchUploadsPage(before: number | null, limit: number): Promise<{
     // match, no extra filter needed.
     .innerJoin(attachmentsTable, eq(attachmentsTable.messageId, messages.id))
     .innerJoin(channels, eq(channels.id, messages.channelId))
+    .leftJoin(users, eq(users.id, messages.authorId))
     .where(lt(messages.id, before ?? PG_INT4_MAX))
     .orderBy(desc(messages.id))
     .limit(limit);
@@ -112,13 +127,17 @@ async function fetchEmbedsPage(before: number | null, limit: number): Promise<{ 
         msgId: messages.id,
         channelId: messages.channelId,
         channelName: channels.name,
-        authorName: messages.authorName,
-        authorAvatar: messages.authorAvatar,
+        authorId: messages.authorId,
+        authorUsername: users.username,
+        authorDisplayName: users.displayName,
+        authorAvatar: users.avatar,
+        authorAvatarColor: users.avatarColor,
         createdAt: messages.createdAt,
         text: messages.text,
       })
       .from(messages)
       .innerJoin(channels, eq(channels.id, messages.channelId))
+      .leftJoin(users, eq(users.id, messages.authorId))
       .where(and(lt(messages.id, cursor ?? PG_INT4_MAX), sql`${messages.text} ~* ${'https?://'}`))
       .orderBy(desc(messages.id))
       .limit(EMBED_BATCH_SIZE);

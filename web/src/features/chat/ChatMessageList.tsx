@@ -20,6 +20,7 @@ const GROUP_GAP_MS = 5 * 60 * 1000;
 // stable reference — reused instead of a new `[]` on every render for a
 // channel whose history hasn't loaded yet.
 const EMPTY_MESSAGES: ChatMessage[] = [];
+const DELETED_AUTHOR_NAME = 'Usuario apagado';
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -58,9 +59,9 @@ interface ChatMessageRowProps {
   isHighlighted: boolean;
   mentionLookup: Map<string, PublicUser>;
   /** Keyed by userId (unlike mentionLookup, keyed by username) — used to
-   * resolve the author's CURRENT displayName/avatarColor for a historical
-   * message, since those are mutable but never re-frozen on the row (see
-   * modules/chat.ts). */
+   * resolve the author's CURRENT displayName/avatar/avatarColor for a
+   * historical message, since those are mutable and never stored on the row
+   * (see modules/chat.ts). */
   allUsers: Map<string, PublicUser>;
   isEditing: boolean;
   editText: string;
@@ -99,12 +100,12 @@ function ChatMessageRow({
   // yourself isn't a notification.
   const mentionsMe = !isMine && mentionsUser(message.text, mentionLookup, state.me.userId);
   // `allUsers` is keyed by userId (message.id) — NOT mentionLookup, which is
-  // keyed by username and would never match here. Falls back to the frozen
-  // name/color (message.name, colorFor's own id-based default) once the
-  // account no longer exists in the directory.
+  // keyed by username and would never match here. Falls back to the server's
+  // neutral deleted-user payload once the account no longer exists.
   const author = message.id ? allUsers.get(message.id) : undefined;
   const displayedName = author?.displayName ?? message.name;
-  const replyAuthor = message.replyTo ? mentionLookup.get(message.replyTo.name.toLowerCase()) : undefined;
+  const displayedAvatar = author?.avatar ?? message.avatar;
+  const replyAuthor = message.replyTo?.authorId ? allUsers.get(message.replyTo.authorId) : undefined;
 
   function handleEditKeyDown(e: ReactKeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSaveEdit(); }
@@ -124,10 +125,9 @@ function ChatMessageRow({
     >
       <div className="w-10 flex-none pt-0.5">
         {/* message.id (authorId) becomes null when the sender's account was
-            deleted — falls back to the frozen name as the color seed, just
-            so every deleted author doesn't get the SAME color. */}
+            deleted — the neutral fallback name becomes the avatar seed. */}
         {showHeader ? (
-          <Avatar id={message.id ?? message.name} name={displayedName} avatar={message.avatar} avatarColor={author?.avatarColor} size={40} />
+          <Avatar id={message.id ?? message.name} name={displayedName} avatar={displayedAvatar} avatarColor={author?.avatarColor} size={40} />
         ) : (
           <span className="hidden select-none text-center text-caption text-text-muted group-hover/msg:block">
             {formatTime(message.ts)}
@@ -148,7 +148,7 @@ function ChatMessageRow({
             <svg width="14" height="5" viewBox="0 0 25 8.5" fill="none" className="flex-none -translate-y-px" xmlns="http://www.w3.org/2000/svg">
               <path d="M0.5 8.5V5.5C0.5 2.73858 2.73858 0.5 5.5 0.5H25" stroke="currentColor" />
             </svg>
-            <span className="flex-none font-medium">{replyAuthor?.displayName ?? message.replyTo.name}</span>
+            <span className="flex-none font-medium">{replyAuthor?.displayName ?? DELETED_AUTHOR_NAME}</span>
             <span className="truncate">{message.replyTo.text}</span>
           </button>
         )}

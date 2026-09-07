@@ -149,8 +149,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const [unreadByChannel, setUnreadByChannel] = useState<Map<string, number>>(new Map());
   const [allUsers, setAllUsers] = useState<Map<string, PublicUser>>(new Map());
   // same staleness reason as categoriesRef/activeChannelIdRef — lets the
-  // 'chat' case below resolve the sender's CURRENT displayName (not the
-  // frozen ChatMessage.name/username) without handleServerMessage closing
+  // 'chat' case below resolve the sender's CURRENT displayName without
+  // handleServerMessage closing
   // over a stale allUsers.
   const allUsersRef = useRef<Map<string, PublicUser>>(new Map());
   useEffect(() => { allUsersRef.current = allUsers; }, [allUsers]);

@@ -70,8 +70,10 @@ export interface MediaItem {
   msgId: number;
   channelId: string;
   channelName: string;
+  authorId: string | null;
   authorName: string;
   authorAvatar: string;
+  authorAvatarColor: string;
   ts: number;
   attachment?: ChatAttachment;
   embed?: DetectedEmbed;

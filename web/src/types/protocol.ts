@@ -37,11 +37,12 @@ export interface Participant {
 export const ALLOWED_REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉'] as const;
 export type ReactionEmoji = (typeof ALLOWED_REACTIONS)[number];
 
-// frozen snapshot of the original message at reply time — same idea as
-// name/avatar on ChatMessage, doesn't depend on the original still existing.
+// Compact reference to the original message at reply time. It keeps only
+// stable ids/text preview; profile data is resolved through allUsers when
+// rendered so replies follow displayName/avatar changes too.
 export interface ChatReplyRef {
   msgId: number;
-  name: string;
+  authorId: string | null;
   text: string;
 }
 
@@ -51,10 +52,12 @@ export interface ChatMessage {
   msgId: number;
   channelId: string;
   // null when the sender's account was deleted (author_id set to NULL via
-  // ON DELETE SET NULL) — name/avatar stay valid (frozen at send time).
-  // Comparing against state.me.userId already handles null safely; using
-  // `id` as a color seed (Avatar/colorFor) needs its own fallback.
+  // ON DELETE SET NULL). Comparing against state.me.userId already handles
+  // null safely; using `id` as a color seed (Avatar/colorFor) needs its own
+  // fallback.
   id: string | null;
+  // Server-derived fallback for deleted/missing authors. Active accounts are
+  // rendered from allUsers so mutable profile fields update across history.
   name: string;
   avatar: string;
   text: string;
