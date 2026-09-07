@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { File as FileIcon } from 'lucide-react';
 import type { ChatAttachment as ChatAttachmentData } from '../../types/protocol';
 import { ImageLightbox } from '../../shared/ImageLightbox';
+import { AudioPlayer, VideoPlayer } from '../../shared/MediaPlayers';
 import { formatFileSize } from '../../shared/lib/formatBytes';
 
 // mirrors INLINE_MIME_TYPES from server/src/modules/attachments.ts — only
@@ -47,14 +48,11 @@ export function ChatAttachment({ attachment }: { attachment: ChatAttachmentData 
   }
 
   if (VIDEO_MIME_TYPES.has(attachment.mime)) {
-    return (
-      // eslint-disable-next-line jsx-a11y/media-has-caption
-      <video src={url} controls preload="metadata" className="mt-1.5 max-h-80 max-w-sm rounded-md border border-strong bg-black" />
-    );
+    return <VideoPlayer src={url} title={attachment.name} className="mt-1.5" />;
   }
 
   if (AUDIO_MIME_TYPES.has(attachment.mime)) {
-    return <audio src={url} controls preload="metadata" className="mt-1.5 max-w-full" />;
+    return <AudioPlayer src={url} title={attachment.name} className="mt-1.5 max-w-full" />;
   }
 
   return (

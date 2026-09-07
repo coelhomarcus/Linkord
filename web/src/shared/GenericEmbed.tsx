@@ -5,6 +5,7 @@ import { ExternalLink, Play } from 'lucide-react';
 import type { DetectedEmbed } from './lib/chatEmbeds';
 import { loadLinkPreview } from './lib/linkPreviewCache';
 import type { LinkPreviewData } from './lib/api';
+import { VideoPlayer } from './MediaPlayers';
 
 interface GenericEmbedProps {
   embed: DetectedEmbed;
@@ -81,12 +82,14 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
   const { url } = embed;
   const [data, setData] = useState<LinkPreviewData | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
   const [faviconFailed, setFaviconFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setData(null);
     setImageFailed(false);
+    setVideoFailed(false);
     setFaviconFailed(false);
     loadLinkPreview(url)
       .then((d) => { if (!cancelled) setData(d); })
@@ -128,7 +131,7 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
   const siteName = data.siteName || known?.name || url;
   const favicon = !faviconFailed ? (data.favicon || known?.favicon) : null;
   const accent = isHexColor(data.themeColor) ? data.themeColor : (known?.accent ?? null);
-  const playableVideo = !!data.video && (ReactPlayer.canPlay?.(data.video) ?? false);
+  const playableVideo = !!data.video && !videoFailed;
 
   let media: ReactNode = null;
   if (embed.kind === 'youtube') {
@@ -152,9 +155,7 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
     media = <div className="w-full bg-black"><TwitchPlayer embed={embed} /></div>;
   } else if (playableVideo) {
     media = (
-      <div className="aspect-video w-full bg-black">
-        <ReactPlayer src={data.video!} controls light={data.image || true} width="100%" height="100%" />
-      </div>
+      <VideoPlayer src={data.video!} poster={data.image} className="max-w-none rounded-none border-0" onError={() => setVideoFailed(true)} />
     );
   } else if (data.image && !imageFailed) {
     media = (

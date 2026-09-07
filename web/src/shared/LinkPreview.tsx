@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import ReactPlayer from 'react-player';
 import { ImageOff } from 'lucide-react';
 import type { DetectedEmbed } from './lib/chatEmbeds';
 import { ImageLightbox } from './ImageLightbox';
 import { GenericEmbed } from './GenericEmbed';
+import { AudioPlayer, VideoPlayer } from './MediaPlayers';
 
 /** Shown when a link we recognize as media (image/video/audio) actually
  * fails to load (broken link, hotlink protection, etc.) — otherwise the
@@ -49,15 +49,11 @@ export function LinkPreview({ embed, className = '' }: LinkPreviewProps) {
   if (failed) return <EmbedFailedFallback url={embed.url} className={className} />;
 
   if (embed.kind === 'video') {
-    return (
-      <div className={`aspect-video w-full max-w-sm overflow-hidden rounded-md border border-strong bg-black ${className}`}>
-        <ReactPlayer src={embed.url} controls width="100%" height="100%" onError={() => setFailed(true)} />
-      </div>
-    );
+    return <VideoPlayer src={embed.url} className={className} onError={() => setFailed(true)} />;
   }
 
   if (embed.kind === 'audio') {
-    return <audio src={embed.url} controls preload="metadata" onError={() => setFailed(true)} className={`block w-full max-w-sm ${className}`} />;
+    return <AudioPlayer src={embed.url} className={className} onError={() => setFailed(true)} />;
   }
 
   // image — w-auto/h-auto (not w-full+object-contain) lets the browser use
