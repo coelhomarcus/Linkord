@@ -14,6 +14,9 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash').notNull(),
   avatar: text('avatar').notNull().default(''),
   avatarColor: varchar('avatar_color', { length: 32 }).notNull().default('blurple'),
+  banner: text('banner').notNull().default(''),
+  bio: text('bio').notNull().default(''),
+  profileLinks: jsonb('profile_links').$type<string[]>().notNull().default([]),
   role: varchar('role', { length: 16 }).notNull().default('user'), // 'user' | 'admin'
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

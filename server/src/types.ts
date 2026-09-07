@@ -14,6 +14,9 @@ export interface SessionUser {
   displayName: string;
   avatar: string;
   avatarColor: string;
+  banner: string;
+  bio: string;
+  profileLinks: string[];
   role: Role;
 }
 
@@ -31,6 +34,9 @@ export interface Participant {
   displayName: string;
   avatar: string;
   avatarColor: string;
+  banner: string;
+  bio: string;
+  profileLinks: string[];
   role: Role;
   deafened: boolean;
   // which voice channel they're in now, or null — set explicitly by
@@ -61,6 +67,9 @@ export interface PublicParticipant {
   displayName: string;
   avatar: string;
   avatarColor: string;
+  banner: string;
+  bio: string;
+  profileLinks: string[];
   role: Role;
   deafened: boolean;
   voiceChannelId: string | null;

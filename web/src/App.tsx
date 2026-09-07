@@ -17,6 +17,7 @@ import { useParticipantMedia } from './features/sharing/useLiveKitTrack';
 import { TileMenu } from './features/sharing/TileMenu';
 import { ReactionsOverlay } from './features/reactions/ReactionsOverlay';
 import { GlobalContextMenu } from './components/GlobalContextMenu';
+import { ProfileModal } from './features/profile/ProfileModal';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/shared/lib/utils';
 
@@ -31,6 +32,7 @@ function Shell() {
   const [activeView, setActiveView] = useState<AppView>('chat');
   const roomError = state.roomError;
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
   // mobile-only: below md there's no room for sidebar + content side by
   // side, so they become two panels shown one at a time (see LeftSidebar's
   // and the content wrapper's `md:flex` below, which ignores this and
@@ -127,11 +129,12 @@ function Shell() {
           onViewChange={handleViewChange}
           inCall={inCall}
           onOpenSettings={() => setSettingsOpen(true)}
+          onOpenProfile={setProfileUserId}
           mobileVisible={mobileShowSidebar}
           onSelectChannelMobile={handleSelectChannelMobile}
         />
         <div className={cn('relative min-h-0 flex-1 md:flex', mobileShowSidebar ? 'hidden' : 'flex')}>
-          {activeView === 'chat' && <ChatPage onBackMobile={() => setMobileShowSidebar(true)} />}
+          {activeView === 'chat' && <ChatPage onBackMobile={() => setMobileShowSidebar(true)} onOpenProfile={setProfileUserId} />}
           {activeView === 'call' && <Stage allIds={allIds} onBackMobile={() => setMobileShowSidebar(true)} />}
           {/* full floating bar (mic/camera/screen/reactions) only on the
               Call tab itself — elsewhere the LeftSidebar's compact panel
@@ -145,6 +148,7 @@ function Shell() {
           <ReactionsOverlay />
         </div>
         <TileMenu />
+        <ProfileModal userId={profileUserId} onClose={() => setProfileUserId(null)} />
         <Suspense fallback={null}>
           <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
         </Suspense>

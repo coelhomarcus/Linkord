@@ -33,8 +33,8 @@ import type { Category, Channel } from '../types/protocol';
  * 'screen-share'/'speaking'), always available but one broadcast round-trip
  * behind. `viewerInSameChannel` picks which one to trust — never both, to
  * avoid a stale value from one leaking through when the other should win. */
-function CallParticipantRow({ id, name, avatar, avatarColor, viewerInSameChannel }: {
-  id: string; name: string; avatar: string; avatarColor: string; viewerInSameChannel: boolean;
+function CallParticipantRow({ id, userId, name, avatar, avatarColor, viewerInSameChannel, onOpenProfile }: {
+  id: string; userId: string; name: string; avatar: string; avatarColor: string; viewerInSameChannel: boolean; onOpenProfile?: (userId: string) => void;
 }) {
   const { state, deafened } = useRoom();
   const media = useParticipantMedia(id);
@@ -59,7 +59,12 @@ function CallParticipantRow({ id, name, avatar, avatarColor, viewerInSameChannel
   const isDeafened = isMe ? deafened : (participant?.deafened ?? false);
 
   return (
-    <div className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-bg-hover">
+    <button
+      type="button"
+      aria-label={`Abrir perfil de ${name}`}
+      onClick={() => { if (userId) onOpenProfile?.(userId); }}
+      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+    >
       <div className="rounded-full transition-shadow" style={{ boxShadow: isSpeaking ? `0 0 0 2px ${tint}` : 'none' }}>
         <Avatar id={id} name={name} avatar={avatar} avatarColor={avatarColor} size={26} />
       </div>
@@ -73,7 +78,7 @@ function CallParticipantRow({ id, name, avatar, avatarColor, viewerInSameChannel
       ) : (
         micActivated && micMuted && <MicOff size={15} className="flex-none text-red" />
       )}
-    </div>
+    </button>
   );
 }
 
@@ -178,11 +183,12 @@ function SortableChannelRow({ channel, categoryId, active, unread, isAdmin, onSe
   );
 }
 
-function CategoryBlock({ category, activeChannelId, isAdmin, onSelectChannel }: {
+function CategoryBlock({ category, activeChannelId, isAdmin, onSelectChannel, onOpenProfile }: {
   category: Category;
   activeChannelId: string | null;
   isAdmin: boolean;
   onSelectChannel: (channel: Channel) => void;
+  onOpenProfile?: (userId: string) => void;
 }) {
   const { state, activeVoiceChannelId, unreadByChannel, deleteChannel, deleteCategory, renameCategory } = useRoom();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -253,10 +259,27 @@ function CategoryBlock({ category, activeChannelId, isAdmin, onSelectChannel }: 
               {ch.type === 'voice' && (
                 <div className="ml-4 flex flex-col gap-0.5 py-0.5 pl-2">
                   {state.me.id && activeVoiceChannelId === ch.id && (
-                    <CallParticipantRow id={state.me.id} name={state.me.displayName} avatar={state.me.avatar} avatarColor={state.me.avatarColor} viewerInSameChannel />
+                    <CallParticipantRow
+                      id={state.me.id}
+                      userId={state.me.userId ?? ''}
+                      name={state.me.displayName}
+                      avatar={state.me.avatar}
+                      avatarColor={state.me.avatarColor}
+                      viewerInSameChannel
+                      onOpenProfile={onOpenProfile}
+                    />
                   )}
                   {[...state.participants.values()].filter((p) => p.voiceChannelId === ch.id).map((p) => (
-                    <CallParticipantRow key={p.id} id={p.id} name={p.displayName} avatar={p.avatar} avatarColor={p.avatarColor} viewerInSameChannel={activeVoiceChannelId === ch.id} />
+                    <CallParticipantRow
+                      key={p.id}
+                      id={p.id}
+                      userId={p.userId}
+                      name={p.displayName}
+                      avatar={p.avatar}
+                      avatarColor={p.avatarColor}
+                      viewerInSameChannel={activeVoiceChannelId === ch.id}
+                      onOpenProfile={onOpenProfile}
+                    />
                   ))}
                 </div>
               )}
@@ -290,6 +313,7 @@ function CategoryBlock({ category, activeChannelId, isAdmin, onSelectChannel }: 
 interface ChannelTreeProps {
   activeChannelId: string | null;
   onSelectChannel: (channel: Channel) => void;
+  onOpenProfile?: (userId: string) => void;
 }
 
 /** Categories/channels (text and voice), with real drag-and-drop (admin) —
@@ -300,7 +324,7 @@ interface ChannelTreeProps {
  * server confirms, and onDragEnd sends the final request — the next
  * `channels-tree` from the server (source of truth) syncs back once it
  * arrives. */
-export function ChannelTree({ activeChannelId, onSelectChannel }: ChannelTreeProps) {
+export function ChannelTree({ activeChannelId, onSelectChannel, onOpenProfile }: ChannelTreeProps) {
   const { state, categories, reorderCategories, reorderChannels, channelsError, clearChannelsError } = useRoom();
   const isAdmin = state.me.role === 'admin';
   const [localCategories, setLocalCategories] = useState<Category[]>(categories);
@@ -390,7 +414,14 @@ export function ChannelTree({ activeChannelId, onSelectChannel }: ChannelTreePro
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
         <SortableContext items={localCategories.map((c) => c.id)} strategy={verticalListSortingStrategy}>
           {localCategories.map((cat) => (
-            <CategoryBlock key={cat.id} category={cat} activeChannelId={activeChannelId} isAdmin={isAdmin} onSelectChannel={onSelectChannel} />
+            <CategoryBlock
+              key={cat.id}
+              category={cat}
+              activeChannelId={activeChannelId}
+              isAdmin={isAdmin}
+              onSelectChannel={onSelectChannel}
+              onOpenProfile={onOpenProfile}
+            />
           ))}
         </SortableContext>
       </DndContext>

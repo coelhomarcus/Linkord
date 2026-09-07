@@ -8,7 +8,19 @@ import {
 
 /** Fake minimo de AppSocket — so os campos que participants.ts de fato le
  * (nunca uma Socket.IO de verdade, sem conexao nenhuma). */
-function fakeSocket(userId: string, overrides: Partial<{ username: string; displayName: string; avatar: string; avatarColor: string; role: 'user' | 'admin' }> = {}): AppSocket {
+function fakeSocket(
+  userId: string,
+  overrides: Partial<{
+    username: string;
+    displayName: string;
+    avatar: string;
+    avatarColor: string;
+    banner: string;
+    bio: string;
+    profileLinks: string[];
+    role: 'user' | 'admin';
+  }> = {}
+): AppSocket {
   return {
     participantId: null,
     ip: '127.0.0.1',
@@ -25,6 +37,9 @@ function fakeSocket(userId: string, overrides: Partial<{ username: string; displ
       displayName: overrides.displayName ?? '',
       avatar: overrides.avatar ?? '',
       avatarColor: overrides.avatarColor ?? 'blurple',
+      banner: overrides.banner ?? '',
+      bio: overrides.bio ?? '',
+      profileLinks: overrides.profileLinks ?? [],
       role: overrides.role ?? 'user',
     },
   } as unknown as AppSocket;
@@ -94,6 +109,19 @@ describe('join', () => {
 
     assert.equal(p.displayName, 'Apelido');
     assert.equal(publicParticipant(p).displayName, 'Apelido');
+  });
+
+  test('usa banner, bio e links persistidos na conta', () => {
+    const p = join(fakeSocket(`u-${Math.random()}`, {
+      banner: 'https://example.com/banner.png',
+      bio: 'Bio persistida',
+      profileLinks: ['https://youtube.com/@fulana'],
+    }), {})!;
+    createdIds.push(p.id);
+
+    assert.equal(publicParticipant(p).banner, 'https://example.com/banner.png');
+    assert.equal(publicParticipant(p).bio, 'Bio persistida');
+    assert.deepEqual(publicParticipant(p).profileLinks, ['https://youtube.com/@fulana']);
   });
 
   test('nome de exibicao vazio (conta que nunca escolheu um) cai pro username', () => {

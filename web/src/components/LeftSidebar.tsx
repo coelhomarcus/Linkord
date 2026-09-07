@@ -28,6 +28,7 @@ interface LeftSidebarProps {
   onViewChange: (view: AppView) => void;
   inCall: boolean;
   onOpenSettings: () => void;
+  onOpenProfile: (userId: string) => void;
   /** Below md, this pane and the content pane show one at a time — true
    * shows this one. Ignored from md up, where both are always visible. */
   mobileVisible: boolean;
@@ -40,7 +41,7 @@ interface LeftSidebarProps {
  * channel is just another channel in the tree, with connected people
  * indented under it — see ChannelTree), and a fixed user area at the
  * bottom. */
-export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, mobileVisible, onSelectChannelMobile }: LeftSidebarProps) {
+export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, onOpenProfile, mobileVisible, onSelectChannelMobile }: LeftSidebarProps) {
   const { state, livekitRoom, toggleMicMuted, deafened, toggleDeafened, leaveVoiceChannel, joinVoiceChannel, openChannel, activeChannelId, categories, createCategory } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
   const mics = useMediaDevices(livekitRoom, 'audioinput');
@@ -97,7 +98,7 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
           this area, not the footer (avatar/mic/settings) below. */}
       <div data-sidebar-channels className="min-h-0 flex-1 overflow-y-auto px-2">
         <div className="flex flex-col gap-0.5">
-          <ChannelTree activeChannelId={activeView === 'chat' ? activeChannelId : null} onSelectChannel={handleSelectChannel} />
+          <ChannelTree activeChannelId={activeView === 'chat' ? activeChannelId : null} onSelectChannel={handleSelectChannel} onOpenProfile={onOpenProfile} />
         </div>
       </div>
 

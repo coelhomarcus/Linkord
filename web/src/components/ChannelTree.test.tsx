@@ -67,7 +67,8 @@ describe('CallParticipantRow (via ChannelTree)', () => {
 
   function fakeParticipant(overrides: Partial<Participant> = {}): Participant {
     return {
-      id: 'user-2', userId: 'user-2', name: 'Fulano', displayName: 'Fulano', avatar: '', avatarColor: 'green', role: 'user',
+      id: 'user-2', userId: 'user-2', name: 'Fulano', displayName: 'Fulano', avatar: '', avatarColor: 'green',
+      banner: '', bio: '', profileLinks: [], role: 'user',
       deafened: false, voiceChannelId: 'voice1',
       micActivated: false, micMuted: true, cameraOn: false, sharing: false, speaking: false,
       ...overrides,
@@ -83,6 +84,21 @@ describe('CallParticipantRow (via ChannelTree)', () => {
       { categories: [category], state }
     );
   }
+
+  it('abre o perfil ao clicar num participante da chamada na sidebar', async () => {
+    const user = userEvent.setup();
+    const onOpenProfile = vi.fn();
+    const participant = fakeParticipant();
+    const state = { ...initialRoomState, participants: new Map([[participant.id, participant]]) };
+    renderWithRoom(
+      <ChannelTree activeChannelId={null} onSelectChannel={vi.fn()} onOpenProfile={onOpenProfile} />,
+      { categories: [category], state }
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Abrir perfil de Fulano' }));
+
+    expect(onOpenProfile).toHaveBeenCalledWith('user-2');
+  });
 
   it('mostra quem esta no canal de voz mesmo sem o LiveKit local conectado la', () => {
     renderTreeWith(fakeParticipant());

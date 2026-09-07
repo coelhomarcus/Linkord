@@ -19,6 +19,11 @@ function sanitizeAvatar(url: unknown): string {
   return /^https?:\/\/\S+$/i.test(s) || UPLOADED_AVATAR_RE.test(s) ? s : '';
 }
 
+function sanitizeBanner(url: unknown): string {
+  const s = String(url == null ? '' : url).trim().slice(0, config.MAX_BANNER_LEN);
+  return /^https?:\/\/\S+$/i.test(s) || UPLOADED_AVATAR_RE.test(s) ? s : '';
+}
+
 const DEFAULT_AVATAR_COLOR = 'blurple';
 // preset keys — kept in sync with web/src/shared/Avatar.tsx#AVATAR_COLOR_OPTIONS
 // (no shared package between server/web, see that file's comment).
@@ -40,9 +45,30 @@ function sanitizeDisplayName(value: unknown): string {
   return String(value == null ? '' : value).replace(/[\r\n\t]+/g, ' ').trim().slice(0, config.MAX_DISPLAY_NAME_LEN);
 }
 
+function sanitizeBio(value: unknown): string {
+  return String(value == null ? '' : value).replace(/\r\n?/g, '\n').trim().slice(0, config.MAX_PROFILE_BIO_LEN);
+}
+
+function sanitizeProfileLinks(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const links: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const url = String(item == null ? '' : item).trim().slice(0, config.MAX_PROFILE_LINK_LEN);
+    if (!/^https?:\/\/\S+$/i.test(url)) continue;
+    const key = url.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    links.push(url);
+    if (links.length >= config.MAX_PROFILE_LINKS) break;
+  }
+  return links;
+}
+
 export function publicParticipant(p: Participant): PublicParticipant {
   return {
-    id: p.id, userId: p.userId, name: p.name, displayName: p.displayName, avatar: p.avatar, avatarColor: p.avatarColor, role: p.role,
+    id: p.id, userId: p.userId, name: p.name, displayName: p.displayName,
+    avatar: p.avatar, avatarColor: p.avatarColor, banner: p.banner, bio: p.bio, profileLinks: p.profileLinks, role: p.role,
     deafened: p.deafened, voiceChannelId: p.voiceChannelId,
     micActivated: p.micActivated, micMuted: p.micMuted, cameraOn: p.cameraOn, sharing: p.sharing, speaking: p.speaking,
   };
@@ -167,6 +193,9 @@ export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
       displayName: sanitizeDisplayName(u.displayName) || u.username,
       avatar: sanitizeAvatar(u.avatar),
       avatarColor: sanitizeAvatarColor(u.avatarColor),
+      banner: sanitizeBanner(u.banner),
+      bio: sanitizeBio(u.bio),
+      profileLinks: sanitizeProfileLinks(u.profileLinks),
       role: u.role,
       // always starts undeafened on a brand NEW connection (client starts
       // the same way); a resume above reuses the existing `p` and
@@ -193,7 +222,7 @@ export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
  * displayName resets back to the username, same idea as avatarColor
  * falling back to the default on an invalid value. Persisted to survive
  * reconnects/other tabs. */
-function handleProfile(socket: AppSocket, msg: { avatar?: string; avatarColor?: string; displayName?: string } | null | undefined): void {
+function handleProfile(socket: AppSocket, msg: { avatar?: string; avatarColor?: string; displayName?: string; banner?: string; bio?: string; profileLinks?: string[] } | null | undefined): void {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   const body = msg && typeof msg === 'object' ? msg : {};
@@ -207,14 +236,33 @@ function handleProfile(socket: AppSocket, msg: { avatar?: string; avatarColor?: 
   const nextDisplayName = Object.prototype.hasOwnProperty.call(body, 'displayName')
     ? (sanitizeDisplayName(body.displayName) || p.name)
     : p.displayName;
+  const nextBanner = Object.prototype.hasOwnProperty.call(body, 'banner')
+    ? sanitizeBanner(body.banner)
+    : p.banner;
+  const nextBio = Object.prototype.hasOwnProperty.call(body, 'bio')
+    ? sanitizeBio(body.bio)
+    : p.bio;
+  const nextProfileLinks = Object.prototype.hasOwnProperty.call(body, 'profileLinks')
+    ? sanitizeProfileLinks(body.profileLinks)
+    : p.profileLinks;
   for (const other of participants.values()) {
     if (other.userId !== p.userId) continue;
     other.avatar = nextAvatar;
     other.avatarColor = nextAvatarColor;
     other.displayName = nextDisplayName;
+    other.banner = nextBanner;
+    other.bio = nextBio;
+    other.profileLinks = nextProfileLinks;
     broadcast({ t: 'participant-updated', participant: publicParticipant(other) });
   }
-  updateProfile(p.userId, { avatar: nextAvatar, avatarColor: nextAvatarColor, displayName: nextDisplayName })
+  updateProfile(p.userId, {
+    avatar: nextAvatar,
+    avatarColor: nextAvatarColor,
+    displayName: nextDisplayName,
+    banner: nextBanner,
+    bio: nextBio,
+    profileLinks: nextProfileLinks,
+  })
     .catch((err) => console.error(`[${p.id}] falha ao salvar perfil:`, err instanceof Error ? err.stack : err));
   // deletes the OLD photo file if it was one of our uploads and changed —
   // otherwise each photo change would leave the previous one orphaned.

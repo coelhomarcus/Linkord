@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { Check, HardDrive, Images, LogOut, Palette, Settings2, ShieldCheck, SlidersHorizontal, Upload, User, Volume2, VolumeX } from 'lucide-react';
+import { Check, HardDrive, Images, Link2, LogOut, Palette, Plus, Settings2, ShieldCheck, SlidersHorizontal, Trash2, Upload, User, Volume2, VolumeX } from 'lucide-react';
 import { MediaTab } from './MediaTab';
 import { ModerationTab } from './ModerationTab';
 import { useRoom } from '../../state/RoomContext';
@@ -15,9 +15,10 @@ import { UploadProgressBar } from '../../shared/UploadProgressBar';
 import { SectionLabel, sectionLabelClass } from '../../shared/SectionLabel';
 import { cn } from '@/shared/lib/utils';
 import { formatMB } from '../../shared/lib/formatBytes';
-import { MAX_AVATAR_BYTES } from '../../types/protocol';
+import { MAX_AVATAR_BYTES, MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '../../types/protocol';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -77,6 +78,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [avatar, setAvatar] = useState(state.me.avatar);
   const [avatarColor, setAvatarColor] = useState(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
   const [displayName, setDisplayName] = useState(state.me.displayName);
+  const [banner, setBanner] = useState(state.me.banner);
+  const [bio, setBio] = useState(state.me.bio);
+  const [profileLinks, setProfileLinks] = useState<string[]>(state.me.profileLinks.length ? state.me.profileLinks : ['']);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
   const [avatarError, setAvatarError] = useState<string | null>(null);
@@ -87,8 +91,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       setAvatar(state.me.avatar);
       setAvatarColor(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
       setDisplayName(state.me.displayName);
+      setBanner(state.me.banner);
+      setBio(state.me.bio);
+      setProfileLinks(state.me.profileLinks.length ? state.me.profileLinks : ['']);
     }
-  }, [open, state.me.avatar, state.me.avatarColor, state.me.displayName]);
+  }, [open, state.me.avatar, state.me.avatarColor, state.me.banner, state.me.bio, state.me.displayName, state.me.profileLinks]);
 
   function handleVolumeChange(value: number | readonly number[]) {
     const v = Array.isArray(value) ? (value[0] ?? 0) : (value as number);
@@ -112,9 +119,28 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   // color input below — drives which swatch shows the "selected" ring.
   const isCustomAvatarColor = !AVATAR_COLOR_OPTIONS.some((option) => option.value === avatarColor);
 
+  function profileLinksForSubmit(): string[] {
+    return profileLinks.map((link) => link.trim()).filter(Boolean);
+  }
+
   function handleProfileSubmit(e: FormEvent) {
     e.preventDefault();
-    updateProfile({ avatar, avatarColor, displayName });
+    updateProfile({ avatar, avatarColor, displayName, banner, bio, profileLinks: profileLinksForSubmit() });
+  }
+
+  function updateProfileLink(index: number, value: string) {
+    setProfileLinks((prev) => prev.map((link, i) => (i === index ? value.slice(0, MAX_PROFILE_LINK_LEN) : link)));
+  }
+
+  function addProfileLink() {
+    setProfileLinks((prev) => (prev.length >= MAX_PROFILE_LINKS ? prev : [...prev, '']));
+  }
+
+  function removeProfileLink(index: number) {
+    setProfileLinks((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      return next.length ? next : [''];
+    });
   }
 
   async function handleAvatarFileChange(e: ChangeEvent<HTMLInputElement>) {
@@ -129,7 +155,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setAvatarUploadProgress(0);
     setUploadingAvatar(true);
     try {
-      const url = await uploadAvatarFile(file, setAvatarUploadProgress, avatarColor, displayName);
+      const url = await uploadAvatarFile(file, setAvatarUploadProgress, { avatarColor, displayName, banner, bio, profileLinks: profileLinksForSubmit() });
       setAvatar(url);
     } catch (err) {
       setAvatarError(err instanceof Error ? err.message : 'Falha ao enviar a foto.');
@@ -254,6 +280,69 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                       </span>
                     </label>
                   </div>
+                </div>
+
+                <SectionLabel>Banner</SectionLabel>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="settingsBanner" className="text-label text-text-muted">URL de uma imagem horizontal (opcional)</Label>
+                  <Input
+                    id="settingsBanner"
+                    maxLength={MAX_BANNER_LEN}
+                    placeholder="https://..."
+                    value={banner}
+                    onChange={(e) => setBanner(e.target.value)}
+                  />
+                </div>
+
+                <SectionLabel>Bio</SectionLabel>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="settingsBio" className="text-label text-text-muted">Um resumo curto sobre voce</Label>
+                  <Textarea
+                    id="settingsBio"
+                    maxLength={MAX_PROFILE_BIO_LEN}
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                    rows={4}
+                    className="resize-none bg-bg-textarea text-body"
+                  />
+                  <p className="select-none text-caption text-text-muted">{bio.length}/{MAX_PROFILE_BIO_LEN}</p>
+                </div>
+
+                <SectionLabel>Links</SectionLabel>
+                <div className="flex flex-col gap-2">
+                  {profileLinks.map((link, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <Link2 size={15} className="flex-none text-text-muted" />
+                      <Input
+                        aria-label={`Link ${index + 1}`}
+                        maxLength={MAX_PROFILE_LINK_LEN}
+                        placeholder="https://..."
+                        value={link}
+                        onChange={(e) => updateProfileLink(index, e.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Remover link"
+                        className="flex-none text-text-muted hover:bg-red/12 hover:text-red"
+                        onClick={() => removeProfileLink(index)}
+                      >
+                        <Trash2 size={15} />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-fit"
+                    disabled={profileLinks.length >= MAX_PROFILE_LINKS}
+                    onClick={addProfileLink}
+                  >
+                    <Plus size={14} />
+                    <span>Adicionar link</span>
+                  </Button>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button type="submit" size="sm">

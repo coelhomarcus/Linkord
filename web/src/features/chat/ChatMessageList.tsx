@@ -70,6 +70,7 @@ interface ChatMessageRowProps {
   onSaveEdit: () => void;
   onCancelEdit: () => void;
   onReply: () => void;
+  onOpenProfile: (userId: string) => void;
   onJumpTo: (msgId: number) => void;
 }
 
@@ -79,7 +80,7 @@ interface ChatMessageRowProps {
  * would be). */
 function ChatMessageRow({
   message, showHeader, isMod, isHighlighted, mentionLookup, allUsers, isEditing, editText, onEditTextChange,
-  onStartEdit, onSaveEdit, onCancelEdit, onReply, onJumpTo,
+  onStartEdit, onSaveEdit, onCancelEdit, onReply, onOpenProfile, onJumpTo,
 }: ChatMessageRowProps) {
   const { state, deleteChatMessage, reactToChatMessage } = useRoom();
   const [reactOpen, setReactOpen] = useState(false);
@@ -155,7 +156,17 @@ function ChatMessageRow({
 
         {showHeader && (
           <div className="flex items-baseline gap-2">
-            <span className="text-body font-semibold text-text-primary">{displayedName}</span>
+            {message.id ? (
+              <button
+                type="button"
+                onClick={() => onOpenProfile(message.id!)}
+                className="min-w-0 truncate text-body font-semibold text-text-primary transition-colors hover:text-text-secondary hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                {displayedName}
+              </button>
+            ) : (
+              <span className="min-w-0 truncate text-body font-semibold text-text-primary">{displayedName}</span>
+            )}
             <span className="text-caption text-text-muted">{formatTime(message.ts)}</span>
           </div>
         )}
@@ -301,12 +312,13 @@ interface ChatMessageListProps {
   className?: string;
   channelId: string;
   onReply: (message: ChatMessage) => void;
+  onOpenProfile: (userId: string) => void;
 }
 
 /** Chat history — Discord-style: no bubbles, continuous background,
  * messages grouped by author, date divider, and a per-message action bar
  * on hover (react/reply/edit/delete). */
-export function ChatMessageList({ className, channelId, onReply }: ChatMessageListProps) {
+export function ChatMessageList({ className, channelId, onReply, onOpenProfile }: ChatMessageListProps) {
   const { state, messagesByChannel, editChatMessage, allUsers } = useRoom();
   const mentionLookup = useMemo(() => buildMentionLookup(allUsers), [allUsers]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -451,6 +463,7 @@ export function ChatMessageList({ className, channelId, onReply }: ChatMessageLi
               onSaveEdit={saveEdit}
               onCancelEdit={() => setEditingMsgId(null)}
               onReply={() => onReply(message)}
+              onOpenProfile={onOpenProfile}
               onJumpTo={jumpToMessage}
             />
           );

@@ -14,6 +14,9 @@ export interface ApiUser {
   displayName: string;
   avatar: string;
   avatarColor: string;
+  banner: string;
+  bio: string;
+  profileLinks: string[];
   role: 'user' | 'admin';
 }
 

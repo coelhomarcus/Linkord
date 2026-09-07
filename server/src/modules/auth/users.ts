@@ -16,6 +16,9 @@ export interface PublicUser {
   displayName: string;
   avatar: string;
   avatarColor: string;
+  banner: string;
+  bio: string;
+  profileLinks: string[];
   role: Role;
 }
 
@@ -33,7 +36,9 @@ export function resolveDisplayName(displayName: string, username: string): strin
 export function publicUser(u: User): PublicUser {
   return {
     id: u.id, username: u.username, displayName: resolveDisplayName(u.displayName, u.username),
-    avatar: u.avatar, avatarColor: u.avatarColor, role: u.role as Role,
+    avatar: u.avatar, avatarColor: u.avatarColor, banner: u.banner, bio: u.bio,
+    profileLinks: Array.isArray(u.profileLinks) ? u.profileLinks : [],
+    role: u.role as Role,
   };
 }
 
@@ -76,10 +81,18 @@ export async function createUser({ username, passwordHash, role }: { username: s
   }
 }
 
-export async function updateProfile(id: string, profile: { avatar: string; avatarColor: string; displayName: string }): Promise<User | null> {
+export async function updateProfile(id: string, profile: { avatar: string; avatarColor: string; displayName: string; banner: string; bio: string; profileLinks: string[] }): Promise<User | null> {
   const [row] = await db
     .update(users)
-    .set({ avatar: profile.avatar, avatarColor: profile.avatarColor, displayName: profile.displayName, updatedAt: new Date() })
+    .set({
+      avatar: profile.avatar,
+      avatarColor: profile.avatarColor,
+      displayName: profile.displayName,
+      banner: profile.banner,
+      bio: profile.bio,
+      profileLinks: profile.profileLinks,
+      updatedAt: new Date(),
+    })
     .where(eq(users.id, id))
     .returning();
   invalidateSessionsForUser(id);

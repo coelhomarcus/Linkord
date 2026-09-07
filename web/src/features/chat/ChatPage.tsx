@@ -14,12 +14,13 @@ interface ChatPageProps {
    * there's no room for sidebar + chat side by side (see Shell in
    * App.tsx). Irrelevant from md up, where the sidebar is always visible. */
   onBackMobile: () => void;
+  onOpenProfile: (userId: string) => void;
 }
 
 /** Chat as a full page (Discord-style text channel) — no bubble, no
  * centered column, fills the whole width between the left sidebar and the
  * user directory (right). */
-export function ChatPage({ onBackMobile }: ChatPageProps) {
+export function ChatPage({ onBackMobile, onOpenProfile }: ChatPageProps) {
   const { state, categories, activeChannelId, deleteChannel } = useRoom();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
@@ -74,7 +75,7 @@ export function ChatPage({ onBackMobile }: ChatPageProps) {
 
         {activeChannelId && (
           <>
-            <ChatMessageList className="px-2 pb-3 pt-2" channelId={activeChannelId} onReply={setReplyingTo} />
+            <ChatMessageList className="px-2 pb-3 pt-2" channelId={activeChannelId} onReply={setReplyingTo} onOpenProfile={onOpenProfile} />
             {/* key={activeChannelId}: forces a remount on channel switch —
                 otherwise the composer is the SAME instance (only the
                 channelId prop changes), so pending text/attachment would
@@ -95,7 +96,7 @@ export function ChatPage({ onBackMobile }: ChatPageProps) {
           onConfirm={() => { if (activeChannelId) deleteChannel(activeChannelId); }}
         />
       </div>
-      <UserDirectory mobileOpen={membersOpen} onMobileClose={() => setMembersOpen(false)} />
+      <UserDirectory mobileOpen={membersOpen} onMobileClose={() => setMembersOpen(false)} onOpenProfile={onOpenProfile} />
     </main>
   );
 }

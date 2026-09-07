@@ -27,6 +27,7 @@ import { uploadFileInChunks } from '../shared/lib/chunkedUpload';
 import { DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../shared/Avatar';
 import { sanitizeDisplayName } from '../shared/lib/displayName';
 import type { Category, ChatMessage, ClientMessage, Participant, PublicUser, ReactionEmoji, ServerMessage, StorageUsage } from '../types/protocol';
+import { MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '../types/protocol';
 
 const REACTION_DURATION_MS = 3000; // must match --animate-float-up in index.css
 const CHAT_CLIENT_LIMIT = 300; // client-side cap only — server already limits history sent on welcome
@@ -40,14 +41,43 @@ function mergeUserFromParticipant(prev: Map<string, PublicUser>, participant: Pa
     existing.avatar === participant.avatar
     && existing.avatarColor === participant.avatarColor
     && existing.displayName === participant.displayName
+    && existing.banner === participant.banner
+    && existing.bio === participant.bio
+    && JSON.stringify(existing.profileLinks) === JSON.stringify(participant.profileLinks)
     && existing.role === participant.role
   )) return prev;
   const next = new Map(prev);
   next.set(participant.userId, {
     ...existing, avatar: participant.avatar, avatarColor: participant.avatarColor,
-    displayName: participant.displayName, role: participant.role,
+    displayName: participant.displayName, banner: participant.banner, bio: participant.bio,
+    profileLinks: participant.profileLinks, role: participant.role,
   });
   return next;
+}
+
+function sanitizeBanner(value: unknown): string {
+  const url = String(value == null ? '' : value).trim().slice(0, MAX_BANNER_LEN);
+  return /^https?:\/\/\S+$/i.test(url) || /^\/uploads\/[0-9a-f]{32}$/.test(url) ? url : '';
+}
+
+function sanitizeBio(value: unknown): string {
+  return String(value == null ? '' : value).replace(/\r\n?/g, '\n').trim().slice(0, MAX_PROFILE_BIO_LEN);
+}
+
+function sanitizeProfileLinks(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const links: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const url = String(item == null ? '' : item).trim().slice(0, MAX_PROFILE_LINK_LEN);
+    if (!/^https?:\/\/\S+$/i.test(url)) continue;
+    const key = url.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    links.push(url);
+    if (links.length >= MAX_PROFILE_LINKS) break;
+  }
+  return links;
 }
 
 export function RoomProvider({ children }: { children: ReactNode }) {
@@ -367,7 +397,20 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         myUsernameRef.current = m.name;
         tokenRef.current = m.token;
         saveIdentity(m.id, m.token);
-        dispatch({ type: 'WELCOME', id: m.id, userId: m.userId, name: m.name, displayName: m.displayName, avatar: m.avatar, avatarColor: m.avatarColor, role: m.role, participants: m.participants });
+        dispatch({
+          type: 'WELCOME',
+          id: m.id,
+          userId: m.userId,
+          name: m.name,
+          displayName: m.displayName,
+          avatar: m.avatar,
+          avatarColor: m.avatarColor,
+          banner: m.banner,
+          bio: m.bio,
+          profileLinks: m.profileLinks,
+          role: m.role,
+          participants: m.participants,
+        });
         setCategories(m.categories);
         categoriesRef.current = m.categories;
         setAllUsers(new Map(m.users.map((u) => [u.id, u])));
@@ -575,43 +618,90 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, sendWs, handleServerMessage, auth]);
 
-  const updateProfile = useCallback((profile: { avatar: string; avatarColor: string; displayName: string }) => {
+  const updateProfile = useCallback((profile: { avatar: string; avatarColor: string; displayName: string; banner: string; bio: string; profileLinks: string[] }) => {
     const finalAvatar = profile.avatar.trim().slice(0, 500);
     const finalAvatarColor = normalizeAvatarColor(profile.avatarColor) || DEFAULT_AVATAR_COLOR;
     // blank/whitespace-only resets to the username, same idea as avatarColor
     // falling back to the default on an invalid value.
     const finalDisplayName = sanitizeDisplayName(profile.displayName) || state.me.name;
-    dispatch({ type: 'SET_LOCAL_PROFILE', avatar: finalAvatar, avatarColor: finalAvatarColor, displayName: finalDisplayName });
+    const finalBanner = sanitizeBanner(profile.banner);
+    const finalBio = sanitizeBio(profile.bio);
+    const finalProfileLinks = sanitizeProfileLinks(profile.profileLinks);
+    dispatch({
+      type: 'SET_LOCAL_PROFILE',
+      avatar: finalAvatar,
+      avatarColor: finalAvatarColor,
+      displayName: finalDisplayName,
+      banner: finalBanner,
+      bio: finalBio,
+      profileLinks: finalProfileLinks,
+    });
     setAllUsers((prev) => {
       const userId = myUserIdRef.current;
       if (!userId) return prev;
       const existing = prev.get(userId);
       if (!existing || (
         existing.avatar === finalAvatar && existing.avatarColor === finalAvatarColor && existing.displayName === finalDisplayName
+        && existing.banner === finalBanner && existing.bio === finalBio
+        && JSON.stringify(existing.profileLinks) === JSON.stringify(finalProfileLinks)
       )) return prev;
       const next = new Map(prev);
-      next.set(userId, { ...existing, avatar: finalAvatar, avatarColor: finalAvatarColor, displayName: finalDisplayName });
+      next.set(userId, {
+        ...existing,
+        avatar: finalAvatar,
+        avatarColor: finalAvatarColor,
+        displayName: finalDisplayName,
+        banner: finalBanner,
+        bio: finalBio,
+        profileLinks: finalProfileLinks,
+      });
       return next;
     });
-    sendWs({ t: 'profile', avatar: finalAvatar, avatarColor: finalAvatarColor, displayName: finalDisplayName });
+    sendWs({
+      t: 'profile',
+      avatar: finalAvatar,
+      avatarColor: finalAvatarColor,
+      displayName: finalDisplayName,
+      banner: finalBanner,
+      bio: finalBio,
+      profileLinks: finalProfileLinks,
+    });
   }, [dispatch, sendWs, state.me.name]);
 
   const updateAvatar = useCallback((avatar: string) => {
-    updateProfile({ avatar, avatarColor: state.me.avatarColor, displayName: state.me.displayName });
-  }, [state.me.avatarColor, state.me.displayName, updateProfile]);
+    updateProfile({
+      avatar,
+      avatarColor: state.me.avatarColor,
+      displayName: state.me.displayName,
+      banner: state.me.banner,
+      bio: state.me.bio,
+      profileLinks: state.me.profileLinks,
+    });
+  }, [state.me.avatarColor, state.me.banner, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
 
   // same upload folder/route as chat attachments — this only gets the URL
   // back; updateProfile applies it together with the chosen background/name.
-  const uploadAvatarFile = useCallback(async (file: File, onProgress?: (fraction: number) => void, avatarColor?: string, displayName?: string) => {
+  const uploadAvatarFile = useCallback(async (
+    file: File,
+    onProgress?: (fraction: number) => void,
+    profile?: { avatarColor?: string; displayName?: string; banner?: string; bio?: string; profileLinks?: string[] }
+  ) => {
     const body = await uploadWithProgress<{ avatar: string }>({
       url: '/api/avatar',
       file,
       headers: { 'Content-Type': file.type || 'application/octet-stream' },
       onProgress,
     });
-    updateProfile({ avatar: body.avatar, avatarColor: avatarColor ?? state.me.avatarColor, displayName: displayName ?? state.me.displayName });
+    updateProfile({
+      avatar: body.avatar,
+      avatarColor: profile?.avatarColor ?? state.me.avatarColor,
+      displayName: profile?.displayName ?? state.me.displayName,
+      banner: profile?.banner ?? state.me.banner,
+      bio: profile?.bio ?? state.me.bio,
+      profileLinks: profile?.profileLinks ?? state.me.profileLinks,
+    });
     return body.avatar;
-  }, [state.me.avatarColor, state.me.displayName, updateProfile]);
+  }, [state.me.avatarColor, state.me.banner, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
 
   // menuOpenRef exists so closeTileMenu can answer synchronously whether it
   // actually closed something (setState isn't synchronous enough for that).

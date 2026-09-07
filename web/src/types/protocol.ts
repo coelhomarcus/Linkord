@@ -12,6 +12,9 @@ export interface Participant {
   displayName: string;
   avatar: string; // '' when none
   avatarColor: string; // palette key; '' only appears for legacy fallback data
+  banner: string;
+  bio: string;
+  profileLinks: string[];
   role: 'user' | 'admin';
   // no LiveKit track equivalent — a flag the client announces (see
   // ClientMessage 'deafened') so others can show the icon.
@@ -82,6 +85,10 @@ export const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024 * 1024; // UI-only, server a
 // avatar — smaller cap, same upload route as attachments. UI-only, server revalidates.
 export const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 export const AVATAR_MIME_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
+export const MAX_BANNER_LEN = 500;
+export const MAX_PROFILE_BIO_LEN = 300;
+export const MAX_PROFILE_LINKS = 8;
+export const MAX_PROFILE_LINK_LEN = 300;
 
 export interface StorageUsage {
   totalBytes: number;
@@ -108,6 +115,9 @@ export interface PublicUser {
   displayName: string;
   avatar: string;
   avatarColor: string;
+  banner: string;
+  bio: string;
+  profileLinks: string[];
   role: 'user' | 'admin';
 }
 
@@ -117,7 +127,7 @@ export type ClientMessage =
   | { t: 'join'; id?: string; token?: string }
   // username isn't editable — displayName is (free-form, falls back to
   // username server-side when blank).
-  | { t: 'profile'; avatar: string; avatarColor: string; displayName: string }
+  | { t: 'profile'; avatar: string; avatarColor: string; displayName: string; banner: string; bio: string; profileLinks: string[] }
   | { t: 'reaction'; emoji: ReactionEmoji }
   | { t: 'deafened'; value: boolean }
   // self-reported media state — same pattern as 'deafened' above, just
@@ -163,7 +173,8 @@ export type ServerMessage =
   | {
       t: 'welcome'; id: string; token: string;
       // authoritative account identity — from the session, not the client
-      userId: string; name: string; displayName: string; avatar: string; avatarColor: string; role: 'user' | 'admin';
+      userId: string; name: string; displayName: string; avatar: string; avatarColor: string;
+      banner: string; bio: string; profileLinks: string[]; role: 'user' | 'admin';
       maxParticipants: number; participants: Participant[];
       categories: Category[]; users: PublicUser[]; onlineUserIds: string[];
       storageUsage: StorageUsage;

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderWithRoom } from '../../test/roomContextFixture';
 import { initialRoomState } from '../../state/roomReducer';
 import { ChatMessageList } from './ChatMessageList';
@@ -18,7 +19,9 @@ const state = {
 };
 
 describe('ChatMessageList', () => {
-  it('renderiza nome e avatar atuais do usuario, nao os dados do payload da mensagem', () => {
+  it('renderiza nome/avatar atuais e abre o perfil pelo nome do autor', async () => {
+    const user = userEvent.setup();
+    const onOpenProfile = vi.fn();
     const message: ChatMessage = {
       msgId: 1,
       channelId: 'c1',
@@ -34,11 +37,14 @@ describe('ChatMessageList', () => {
       displayName: 'Nome Atual',
       avatar: '/uploads/avatar-atual',
       avatarColor: 'green',
+      banner: '',
+      bio: '',
+      profileLinks: [],
       role: 'user',
     };
 
     renderWithRoom(
-      <ChatMessageList channelId="c1" onReply={() => {}} />,
+      <ChatMessageList channelId="c1" onReply={() => {}} onOpenProfile={onOpenProfile} />,
       {
         state,
         allUsers: new Map([['u1', currentUser]]),
@@ -49,5 +55,7 @@ describe('ChatMessageList', () => {
     expect(screen.getAllByText('Nome Atual')).toHaveLength(2);
     expect(screen.queryByText('Nome Antigo')).not.toBeInTheDocument();
     expect(screen.getByTestId('avatar')).toHaveAttribute('data-avatar', '/uploads/avatar-atual');
+    await user.click(screen.getByRole('button', { name: 'Nome Atual' }));
+    expect(onOpenProfile).toHaveBeenCalledWith('u1');
   });
 });

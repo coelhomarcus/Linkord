@@ -70,6 +70,9 @@ export async function resolveSession(rawToken: string | undefined | null): Promi
       displayName: users.displayName,
       avatar: users.avatar,
       avatarColor: users.avatarColor,
+      banner: users.banner,
+      bio: users.bio,
+      profileLinks: users.profileLinks,
       role: users.role,
     })
     .from(sessions)
@@ -97,6 +100,9 @@ export async function resolveSession(rawToken: string | undefined | null): Promi
     displayName: row.displayName.trim() || row.username,
     avatar: row.avatar,
     avatarColor: row.avatarColor,
+    banner: row.banner,
+    bio: row.bio,
+    profileLinks: Array.isArray(row.profileLinks) ? row.profileLinks : [],
     role: row.role as SessionUser['role'],
   };
   cacheSet(tokenHash, value);

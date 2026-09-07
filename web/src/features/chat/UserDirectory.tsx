@@ -6,9 +6,14 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/shared/lib/utils';
 import type { PublicUser } from '../../types/protocol';
 
-function UserRow({ user, online }: { user: PublicUser; online: boolean }) {
+function UserRow({ user, online, onOpenProfile }: { user: PublicUser; online: boolean; onOpenProfile: (userId: string) => void }) {
   return (
-    <div className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-bg-hover">
+    <button
+      type="button"
+      aria-label={`Abrir perfil de ${user.displayName}`}
+      onClick={() => onOpenProfile(user.id)}
+      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+    >
       <div className="relative flex-none">
         <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={44} />
         {/* status dot — solid gray for offline, not bg-text-muted/40: the
@@ -23,7 +28,7 @@ function UserRow({ user, online }: { user: PublicUser; online: boolean }) {
         {user.displayName !== user.username && <span className="ml-1 text-caption text-text-muted">@{user.username}</span>}
       </span>
       {user.role === 'admin' && <ShieldCheck size={16} className="flex-none text-blurple" />}
-    </div>
+    </button>
   );
 }
 
@@ -33,11 +38,12 @@ interface UserDirectoryProps {
    * from md up, where it's always visible in its normal column. */
   mobileOpen: boolean;
   onMobileClose: () => void;
+  onOpenProfile: (userId: string) => void;
 }
 
 /** Directory of ALL registered accounts, grouped online/offline — like
  * Discord's member list. Only shows on the Chat page, not the call view. */
-export function UserDirectory({ mobileOpen, onMobileClose }: UserDirectoryProps) {
+export function UserDirectory({ mobileOpen, onMobileClose, onOpenProfile }: UserDirectoryProps) {
   const { allUsers, onlineUserIds } = useRoom();
 
   const users = [...allUsers.values()].sort((a, b) => a.displayName.localeCompare(b.displayName) || a.username.localeCompare(b.username));
@@ -58,13 +64,13 @@ export function UserDirectory({ mobileOpen, onMobileClose }: UserDirectoryProps)
       {online.length > 0 && (
         <div className="flex flex-col gap-0.5">
           <p className={`${sectionLabelClass} px-2 pb-1 pt-2 first:pt-1`}>Online ({online.length})</p>
-          {online.map((u) => <UserRow key={u.id} user={u} online />)}
+          {online.map((u) => <UserRow key={u.id} user={u} online onOpenProfile={onOpenProfile} />)}
         </div>
       )}
       {offline.length > 0 && (
         <div className="flex flex-col gap-0.5">
           <p className={`${sectionLabelClass} px-2 pb-1 pt-2`}>Offline ({offline.length})</p>
-          {offline.map((u) => <UserRow key={u.id} user={u} online={false} />)}
+          {offline.map((u) => <UserRow key={u.id} user={u} online={false} onOpenProfile={onOpenProfile} />)}
         </div>
       )}
     </aside>
