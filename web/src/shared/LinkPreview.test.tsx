@@ -17,6 +17,7 @@ describe('LinkPreview', () => {
     expect(video).toHaveAttribute('src', 'https://cdn.example.com/video.mp4');
     expect(video).not.toHaveAttribute('controls');
     expect(screen.getByRole('button', { name: 'Reproduzir' })).toBeInTheDocument();
+    expect(container.querySelector('[aria-label="Volume"]')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Tela cheia' }));
     expect(screen.getByRole('button', { name: 'Fechar' })).toBeInTheDocument();
@@ -29,5 +30,6 @@ describe('LinkPreview', () => {
     expect(audio).toHaveAttribute('src', 'https://cdn.example.com/audio.mp3');
     expect(audio).not.toHaveAttribute('controls');
     expect(screen.getByRole('button', { name: 'Reproduzir' })).toBeInTheDocument();
+    expect(container.querySelector('[aria-label="Volume"]')).toBeInTheDocument();
   });
 });

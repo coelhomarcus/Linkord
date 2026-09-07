@@ -29,7 +29,7 @@ export function ImageLightbox({ src, alt, open, onOpenChange }: ImageLightboxPro
           <img
             src={src}
             alt={alt}
-            className="max-h-full max-w-full cursor-default rounded-md object-contain shadow-popover"
+            className="max-h-full max-w-full cursor-default rounded-md border border-white/20 object-contain shadow-popover"
             onClick={(e) => e.stopPropagation()}
           />
           <DialogPrimitive.Close

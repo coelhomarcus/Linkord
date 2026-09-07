@@ -156,7 +156,7 @@ function VideoLightbox({ src, poster, title, open, onOpenChange }: VideoPlayerPr
         >
           <DialogPrimitive.Title className="sr-only">{title || 'Video'}</DialogPrimitive.Title>
           <div className="w-full max-w-6xl cursor-default" onClick={(event) => event.stopPropagation()}>
-            <VideoPlayerInner src={src} poster={poster} title={title} className="max-w-none border-0 shadow-popover" />
+            <VideoPlayerInner src={src} poster={poster} title={title} className="max-w-none border-white/20 shadow-popover" />
           </div>
           <DialogPrimitive.Close
             aria-label="Fechar"
@@ -246,12 +246,13 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
               {muted || volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
             </MediaButton>
             <Slider
+              aria-label="Volume"
               value={[muted ? 0 : Math.round(volume * 100)]}
               min={0}
               max={100}
               step={1}
               onValueChange={(value) => setVolume(value)}
-              className="hidden w-18 [&_[data-slot=slider-range]]:bg-text-secondary [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-white/25 sm:block"
+              className="w-16 flex-none [&_[data-slot=slider-range]]:bg-text-secondary [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-white/25"
             />
             {onExpand && (
               <MediaButton label="Tela cheia" onClick={expand}>
@@ -289,7 +290,7 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
   } = useMediaControls<HTMLAudioElement>();
 
   return (
-    <div className={cn('grid w-full max-w-xl min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 overflow-hidden rounded-md border border-strong bg-bg-tertiary px-2.5 py-2 shadow-panel sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]', className)}>
+    <div className={cn('grid w-full max-w-xl min-w-0 grid-cols-[auto_minmax(0,1fr)_auto_3.5rem] items-center gap-2 overflow-hidden rounded-md border border-strong bg-bg-tertiary px-2.5 py-2 shadow-panel', className)}>
       <audio
         ref={ref}
         src={src}
@@ -325,12 +326,13 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
         {muted || volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
       </MediaButton>
       <Slider
+        aria-label="Volume"
         value={[muted ? 0 : Math.round(volume * 100)]}
         min={0}
         max={100}
         step={1}
         onValueChange={(value) => setVolume(value)}
-        className="hidden w-16 flex-none [&_[data-slot=slider-range]]:bg-text-secondary [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-bg-hover sm:block"
+        className="w-full min-w-0 [&_[data-slot=slider-range]]:bg-text-secondary [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-bg-hover"
       />
     </div>
   );

@@ -17,6 +17,7 @@ describe('ChatAttachment', () => {
     expect(video).toHaveAttribute('src', '/uploads/video-id');
     expect(video).not.toHaveAttribute('controls');
     expect(screen.getByRole('button', { name: 'Reproduzir' })).toBeInTheDocument();
+    expect(container.querySelector('[aria-label="Volume"]')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Tela cheia' }));
     expect(screen.getByRole('button', { name: 'Fechar' })).toBeInTheDocument();
@@ -30,5 +31,6 @@ describe('ChatAttachment', () => {
     expect(audio).not.toHaveAttribute('controls');
     expect(screen.getByText('voz.mp3')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reproduzir' })).toBeInTheDocument();
+    expect(container.querySelector('[aria-label="Volume"]')).toBeInTheDocument();
   });
 });
