@@ -1,16 +1,25 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ChatAttachment } from './ChatAttachment';
 
 describe('ChatAttachment', () => {
-  it('renderiza upload de video com o player proprio', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renderiza upload de video com o player proprio e lightbox interno', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window.HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
     const { container } = render(<ChatAttachment attachment={{ id: 'video-id', name: 'clip.mp4', mime: 'video/mp4', size: 123 }} />);
 
     const video = container.querySelector('video');
     expect(video).toHaveAttribute('src', '/uploads/video-id');
     expect(video).not.toHaveAttribute('controls');
     expect(screen.getByRole('button', { name: 'Reproduzir' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Tela cheia' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Tela cheia' }));
+    expect(screen.getByRole('button', { name: 'Fechar' })).toBeInTheDocument();
   });
 
   it('renderiza upload de audio com o player proprio', () => {

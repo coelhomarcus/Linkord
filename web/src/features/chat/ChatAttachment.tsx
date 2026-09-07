@@ -52,7 +52,7 @@ export function ChatAttachment({ attachment }: { attachment: ChatAttachmentData 
   }
 
   if (AUDIO_MIME_TYPES.has(attachment.mime)) {
-    return <AudioPlayer src={url} title={attachment.name} className="mt-1.5 max-w-full" />;
+    return <AudioPlayer src={url} title={attachment.name} className="mt-1.5" />;
   }
 
   return (

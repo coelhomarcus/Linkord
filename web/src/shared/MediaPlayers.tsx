@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Maximize2, Pause, Play, Volume2, VolumeX } from 'lucide-react';
+import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
+import { Maximize2, Pause, Play, Volume2, VolumeX, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/shared/lib/utils';
@@ -134,11 +135,42 @@ interface VideoPlayerProps {
 }
 
 export function VideoPlayer({ src, poster, title, className, onError }: VideoPlayerProps) {
-  return <VideoPlayerInner key={src} src={src} poster={poster} title={title} className={className} onError={onError} />;
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+
+  return (
+    <>
+      <VideoPlayerInner key={src} src={src} poster={poster} title={title} className={className} onError={onError} onExpand={() => setLightboxOpen(true)} />
+      <VideoLightbox src={src} poster={poster} title={title} open={lightboxOpen} onOpenChange={setLightboxOpen} />
+    </>
+  );
 }
 
-function VideoPlayerInner({ src, poster, title, className, onError }: VideoPlayerProps) {
-  const shellRef = useRef<HTMLDivElement | null>(null);
+function VideoLightbox({ src, poster, title, open, onOpenChange }: VideoPlayerProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/85 duration-150 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
+        <DialogPrimitive.Popup
+          className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center p-4 outline-none duration-150 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 sm:p-8"
+          onClick={() => onOpenChange(false)}
+        >
+          <DialogPrimitive.Title className="sr-only">{title || 'Video'}</DialogPrimitive.Title>
+          <div className="w-full max-w-6xl cursor-default" onClick={(event) => event.stopPropagation()}>
+            <VideoPlayerInner src={src} poster={poster} title={title} className="max-w-none border-0 shadow-popover" />
+          </div>
+          <DialogPrimitive.Close
+            aria-label="Fechar"
+            className="fixed right-4 top-4 z-50 flex size-10 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <X size={18} />
+          </DialogPrimitive.Close>
+        </DialogPrimitive.Popup>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
+}
+
+function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: VideoPlayerProps & { onExpand?: () => void }) {
   const {
     ref,
     state: { currentTime, duration, playing, muted, volume },
@@ -151,18 +183,13 @@ function VideoPlayerInner({ src, poster, title, className, onError }: VideoPlaye
     toggleMute,
   } = useMediaControls<HTMLVideoElement>();
 
-  async function toggleFullscreen() {
-    const shell = shellRef.current;
-    if (!shell) return;
-    if (document.fullscreenElement) {
-      await document.exitFullscreen().catch(() => {});
-    } else {
-      await shell.requestFullscreen().catch(() => {});
-    }
+  function expand() {
+    ref.current?.pause();
+    onExpand?.();
   }
 
   return (
-    <div ref={shellRef} className={cn('group/player relative aspect-video w-full max-w-sm overflow-hidden rounded-md border border-strong bg-black shadow-panel', className)}>
+    <div className={cn('group/player relative aspect-video w-full max-w-sm overflow-hidden rounded-md border border-strong bg-black shadow-panel', className)}>
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <video
         ref={ref}
@@ -226,9 +253,11 @@ function VideoPlayerInner({ src, poster, title, className, onError }: VideoPlaye
               onValueChange={(value) => setVolume(value)}
               className="hidden w-18 [&_[data-slot=slider-range]]:bg-text-secondary [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-white/25 sm:block"
             />
-            <MediaButton label="Tela cheia" onClick={toggleFullscreen}>
-              <Maximize2 size={15} />
-            </MediaButton>
+            {onExpand && (
+              <MediaButton label="Tela cheia" onClick={expand}>
+                <Maximize2 size={15} />
+              </MediaButton>
+            )}
           </div>
         </div>
       </div>
@@ -260,7 +289,7 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
   } = useMediaControls<HTMLAudioElement>();
 
   return (
-    <div className={cn('flex w-full max-w-sm items-center gap-2 rounded-md border border-strong bg-bg-tertiary px-2.5 py-2 shadow-panel', className)}>
+    <div className={cn('grid w-full max-w-xl min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 overflow-hidden rounded-md border border-strong bg-bg-tertiary px-2.5 py-2 shadow-panel sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]', className)}>
       <audio
         ref={ref}
         src={src}
@@ -279,7 +308,7 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
       </MediaButton>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         {title && <span className="truncate text-label font-medium text-text-secondary">{title}</span>}
-        <div className="flex items-center gap-2">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
           <Slider
             value={[duration ? currentTime : 0]}
             min={0}
@@ -287,7 +316,7 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
             step={0.1}
             disabled={!duration}
             onValueChange={(value) => seek(value)}
-            className="min-w-20 [&_[data-slot=slider-range]]:bg-blurple [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-bg-hover"
+            className="min-w-0 [&_[data-slot=slider-range]]:bg-blurple [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-bg-hover"
           />
           <TimeReadout currentTime={currentTime} duration={duration} />
         </div>
