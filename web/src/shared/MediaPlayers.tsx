@@ -103,15 +103,19 @@ function useMediaControls<T extends HTMLMediaElement>() {
   };
 }
 
-function TimeReadout({ currentTime, duration }: { currentTime: number; duration: number }) {
-  return (
-    <span className="w-23 flex-none select-none text-center text-caption tabular-nums text-text-muted">
-      {formatTime(currentTime)} / {formatTime(duration)}
-    </span>
-  );
-}
-
-function MediaButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+/* Botao de controle: mesma altura (28px) e mesmo icone (15px) nos dois players,
+   pra fila de icones ficar alinhada em qualquer largura. */
+function MediaButton({
+  label,
+  onClick,
+  className,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
     <Button
       type="button"
@@ -119,10 +123,34 @@ function MediaButton({ label, onClick, children }: { label: string; onClick: () 
       size="icon-xs"
       aria-label={label}
       onClick={onClick}
-      className="flex-none text-text-secondary hover:bg-white/10 hover:text-text-primary"
+      className={cn('size-7 flex-none [&_svg:not([class*=size-])]:size-[15px]', className)}
     >
       {children}
     </Button>
+  );
+}
+
+/* O slider do Base UI marca a orientacao no proprio root, e a classe de
+   orientacao (data-[orientation=horizontal]:w-full) tem especificidade maior
+   que um w-* solto — entao largura fixa so segura dentro de um wrapper. */
+function VolumeSlider({ muted, volume, onChange, className }: {
+  muted: boolean;
+  volume: number;
+  onChange: (value: number | readonly number[]) => void;
+  className?: string;
+}) {
+  return (
+    <div className={cn('w-14 flex-none', className)}>
+      <Slider
+        aria-label="Volume"
+        value={[muted ? 0 : Math.round(volume * 100)]}
+        min={0}
+        max={100}
+        step={1}
+        onValueChange={onChange}
+        className="[&_[data-slot=slider-thumb]]:size-2.5"
+      />
+    </div>
   );
 }
 
@@ -189,7 +217,7 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
   }
 
   return (
-    <div className={cn('group/player relative aspect-video w-full max-w-sm overflow-hidden rounded-md border border-strong bg-black shadow-panel', className)}>
+    <div className={cn('group/player @container/player relative aspect-video w-full max-w-sm overflow-hidden rounded-md border border-strong bg-black shadow-panel', className)}>
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <video
         ref={ref}
@@ -209,6 +237,17 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
         className="h-full w-full object-contain"
       />
 
+      {/* Clique na area do video alterna play/pause, como em qualquer player.
+          E so um atalho de mouse: aria-hidden + tabIndex -1 pra nao duplicar o
+          botao de reproduzir que ja existe nos controles. */}
+      <button
+        type="button"
+        aria-hidden
+        tabIndex={-1}
+        onClick={togglePlay}
+        className="absolute inset-0 cursor-pointer outline-none"
+      />
+
       {waiting && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20">
           <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/25 border-t-white" />
@@ -220,13 +259,13 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
           type="button"
           aria-label="Reproduzir video"
           onClick={togglePlay}
-          className="absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/65 text-white shadow-popover transition-colors hover:bg-blurple focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="absolute left-1/2 top-1/2 flex size-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/65 text-white shadow-popover transition-colors hover:bg-blurple focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         >
-          <Play size={22} fill="currentColor" />
+          <Play size={22} fill="currentColor" className="ml-0.5" />
         </button>
       )}
 
-      <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 bg-gradient-to-t from-black/90 via-black/70 to-transparent px-2 pb-2 pt-8 opacity-100 transition-opacity md:opacity-0 md:group-hover/player:opacity-100 md:group-focus-within/player:opacity-100">
+      <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 bg-gradient-to-t from-black/90 via-black/70 to-transparent px-2.5 pb-2 pt-8 transition-opacity md:pointer-events-none md:opacity-0 md:group-hover/player:pointer-events-auto md:group-hover/player:opacity-100 md:group-focus-within/player:pointer-events-auto md:group-focus-within/player:opacity-100">
         <Slider
           value={[duration ? currentTime : 0]}
           min={0}
@@ -236,23 +275,25 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
           onValueChange={(value) => seek(value)}
           className="[&_[data-slot=slider-range]]:bg-blurple [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-white/25"
         />
-        <div className="flex items-center gap-1">
+        {/* min-w-0 + itens flex-none: o botao de tela cheia nunca e empurrado
+            pra fora do container (que e overflow-hidden). Abaixo de ~19rem de
+            largura o slider de volume sai e sobra so o botao de mudo. */}
+        <div className="flex min-w-0 items-center gap-0.5 text-text-secondary [&_button:hover]:bg-white/10 [&_button:hover]:text-white">
           <MediaButton label={playing ? 'Pausar' : 'Reproduzir'} onClick={togglePlay}>
             {playing ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
           </MediaButton>
-          <TimeReadout currentTime={currentTime} duration={duration} />
-          <div className="ml-auto flex items-center gap-1">
+          <span className="ml-1 hidden flex-none select-none text-caption tabular-nums text-text-muted @[15rem]/player:block">
+            {formatTime(currentTime)} / {formatTime(duration)}
+          </span>
+          <div className="ml-auto flex flex-none items-center gap-0.5">
             <MediaButton label={muted || volume === 0 ? 'Desmutar' : 'Mutar'} onClick={toggleMute}>
               {muted || volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
             </MediaButton>
-            <Slider
-              aria-label="Volume"
-              value={[muted ? 0 : Math.round(volume * 100)]}
-              min={0}
-              max={100}
-              step={1}
-              onValueChange={(value) => setVolume(value)}
-              className="w-16 flex-none [&_[data-slot=slider-range]]:bg-text-secondary [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-white/25"
+            <VolumeSlider
+              muted={muted}
+              volume={volume}
+              onChange={setVolume}
+              className="mr-1 hidden @[19rem]/player:block [&_[data-slot=slider-range]]:bg-white/80 [&_[data-slot=slider-track]]:bg-white/25"
             />
             {onExpand && (
               <MediaButton label="Tela cheia" onClick={expand}>
@@ -290,7 +331,7 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
   } = useMediaControls<HTMLAudioElement>();
 
   return (
-    <div className={cn('grid w-full max-w-xl min-w-0 grid-cols-[auto_minmax(0,1fr)_auto_3.5rem] items-center gap-2 overflow-hidden rounded-md border border-strong bg-bg-tertiary px-2.5 py-2 shadow-panel', className)}>
+    <div className={cn('@container/audio flex w-full min-w-0 max-w-xl items-center gap-2.5 rounded-md border border-strong bg-bg-tertiary px-2.5 py-2 shadow-panel', className)}>
       <audio
         ref={ref}
         src={src}
@@ -304,36 +345,52 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
         onCanPlay={() => setWaiting(false)}
         onError={onError}
       />
-      <MediaButton label={playing ? 'Pausar' : 'Reproduzir'} onClick={togglePlay}>
-        {playing ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
-      </MediaButton>
+
+      <button
+        type="button"
+        aria-label={playing ? 'Pausar' : 'Reproduzir'}
+        onClick={togglePlay}
+        className="flex size-9 flex-none items-center justify-center rounded-full bg-blurple text-white transition-colors hover:bg-blurple-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
+      </button>
+
+      {/* titulo e tempo dividem a mesma linha, com o slider logo abaixo: as duas
+          linhas ficam centradas no bloco, entao os icones dos dois lados caem
+          exatamente no meio — com ou sem titulo. */}
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        {title && <span className="truncate text-label font-medium text-text-secondary">{title}</span>}
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-          <Slider
-            value={[duration ? currentTime : 0]}
-            min={0}
-            max={duration || 1}
-            step={0.1}
-            disabled={!duration}
-            onValueChange={(value) => seek(value)}
-            className="min-w-0 [&_[data-slot=slider-range]]:bg-blurple [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-bg-hover"
-          />
-          <TimeReadout currentTime={currentTime} duration={duration} />
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="min-w-0 flex-1 truncate text-label font-medium text-text-secondary">{title}</span>
+          <span className="flex-none select-none text-caption tabular-nums text-text-muted">
+            {formatTime(currentTime)} / {formatTime(duration)}
+          </span>
         </div>
+        <Slider
+          value={[duration ? currentTime : 0]}
+          min={0}
+          max={duration || 1}
+          step={0.1}
+          disabled={!duration}
+          onValueChange={(value) => seek(value)}
+          className="[&_[data-slot=slider-range]]:bg-blurple [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-bg-hover"
+        />
       </div>
-      <MediaButton label={muted || volume === 0 ? 'Desmutar' : 'Mutar'} onClick={toggleMute}>
-        {muted || volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
-      </MediaButton>
-      <Slider
-        aria-label="Volume"
-        value={[muted ? 0 : Math.round(volume * 100)]}
-        min={0}
-        max={100}
-        step={1}
-        onValueChange={(value) => setVolume(value)}
-        className="w-full min-w-0 [&_[data-slot=slider-range]]:bg-text-secondary [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-bg-hover"
-      />
+
+      <div className="flex flex-none items-center gap-0.5">
+        <MediaButton
+          label={muted || volume === 0 ? 'Desmutar' : 'Mutar'}
+          onClick={toggleMute}
+          className="text-text-muted hover:text-text-primary"
+        >
+          {muted || volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
+        </MediaButton>
+        <VolumeSlider
+          muted={muted}
+          volume={volume}
+          onChange={setVolume}
+          className="hidden @[26rem]/audio:block [&_[data-slot=slider-range]]:bg-text-muted [&_[data-slot=slider-track]]:bg-bg-hover"
+        />
+      </div>
     </div>
   );
 }
