@@ -8,8 +8,12 @@
     <meta name="robots" content="noindex" />
     <meta name="theme-color" content="#131519" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="icon" href="/logo.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <!-- favicon.svg adapts to light/dark automatically via its own embedded
+         prefers-color-scheme media query (see web/public/favicon.svg) — the
+         `media` attribute on this link isn't reliably honored by browsers,
+         so there's no need for a second <link> here. -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <style>html,body{background:#131519}</style>
   </head>
   <body>
