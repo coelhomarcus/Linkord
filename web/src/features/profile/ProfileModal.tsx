@@ -127,11 +127,13 @@ export function ProfileModal({ userId, onClose }: ProfileModalProps) {
           <div className="h-32 w-full" style={bannerStyle(user)} />
           <div className="px-5 pb-5">
             <div className="-mt-10 flex items-end gap-3">
-              <div className="rounded-full bg-bg-modal p-1">
+              <div className="relative rounded-full bg-bg-modal p-1">
                 <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={76} />
+                {onlineUserIds.has(user.id) && (
+                  <span className="absolute right-1 bottom-1 h-4 w-4 rounded-full border-2 border-bg-modal bg-green" />
+                )}
               </div>
               <div className="mb-2 flex min-w-0 flex-1 items-center gap-2">
-                {onlineUserIds.has(user.id) && <span className="h-2.5 w-2.5 flex-none rounded-full bg-green" />}
                 {user.role === 'admin' && (
                   <span className="flex flex-none items-center gap-1 rounded-sm bg-blurple/15 px-1.5 py-0.5 text-caption font-medium text-blurple">
                     <BadgeCheck size={13} /> Admin

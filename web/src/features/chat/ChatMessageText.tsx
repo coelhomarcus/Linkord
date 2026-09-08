@@ -52,10 +52,11 @@ interface ChatMessageTextProps {
 
 export function ChatMessageText({ text, mentionLookup, myUserId }: ChatMessageTextProps) {
   const embed = firstEmbed(text);
-  // the link that became an embed disappears from the text — only the
-  // player/preview remains, not the raw link above it. If the message was
-  // just the link, no paragraph is left.
-  const remaining = embed ? text.replace(embed.url, '').replace(/[ \t]{2,}/g, ' ').trim() : text;
+  // The link stays visible in the text (rendered as a normal clickable link
+  // by renderRich below) alongside the embed. The one exception: if the
+  // link is the entire message, showing it twice (as text and as an embed)
+  // would be redundant, so only then is the paragraph dropped.
+  const remaining = embed && text.trim() === embed.url ? '' : text;
   return (
     <>
       {remaining && <p className="whitespace-pre-wrap wrap-break-word">{renderRich(remaining, mentionLookup, myUserId)}</p>}
