@@ -6,10 +6,14 @@
 
 const ENABLED_KEY = 'ss-notifications-enabled';
 
-/** Opt-in, default OFF — never request OS permission without the user
- * explicitly turning this on in Settings. */
+/** Default ON — no stored preference means enabled. Note this only
+ * flips the app-side preference; the browser's own Notification
+ * permission prompt is still only ever requested from an explicit user
+ * action in Settings (see requestNotificationPermission below), never
+ * automatically just because this defaults to true. */
 export function loadNotificationsEnabled(): boolean {
-  return localStorage.getItem(ENABLED_KEY) === '1';
+  const stored = localStorage.getItem(ENABLED_KEY);
+  return stored === null ? true : stored === '1';
 }
 
 export function saveNotificationsEnabled(value: boolean): void {
