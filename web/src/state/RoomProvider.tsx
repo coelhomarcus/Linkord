@@ -176,6 +176,20 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const requestChatViewRef = useRef<(() => void) | null>(null);
   const registerRequestChatView = useCallback((fn: () => void) => { requestChatViewRef.current = fn; }, []);
   const [messagesByChannel, setMessagesByChannel] = useState<Map<string, ChatMessage[]>>(new Map());
+  // ref mirror — loadOlderMessages is stable (mounted-once scroll listeners
+  // in ChatMessageList call it directly) so it can't close over the state
+  // above; same staleness pattern as activeChannelIdRef.
+  const messagesByChannelRef = useRef<Map<string, ChatMessage[]>>(new Map());
+  useEffect(() => { messagesByChannelRef.current = messagesByChannel; }, [messagesByChannel]);
+  // per-channel: whether OLDER history beyond what's loaded may still
+  // exist — undefined (channel never opened yet) is treated as "maybe".
+  const [hasMoreByChannel, setHasMoreByChannel] = useState<Map<string, boolean>>(new Map());
+  const hasMoreByChannelRef = useRef<Map<string, boolean>>(new Map());
+  useEffect(() => { hasMoreByChannelRef.current = hasMoreByChannel; }, [hasMoreByChannel]);
+  // in-flight 'load-more-messages' requests, by channelId — prevents firing
+  // a second request for the same channel before the first page lands.
+  const [loadingOlderByChannel, setLoadingOlderByChannel] = useState<Set<string>>(new Set());
+  const loadingOlderRef = useRef<Set<string>>(new Set());
   const [unreadByChannel, setUnreadByChannel] = useState<Map<string, number>>(new Map());
   const [allUsers, setAllUsers] = useState<Map<string, PublicUser>>(new Map());
   // same staleness reason as categoriesRef/activeChannelIdRef — lets the
@@ -204,6 +218,22 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       return next;
     });
     sendWs({ t: 'channel-open', channelId });
+  }, [sendWs]);
+
+  /** Scrolled to the top of an already-open channel — fetches the next
+   * OLDER page to prepend. No-ops if a page is already in flight for this
+   * channel, if history definitely ends, or if nothing's loaded yet
+   * (nothing to page "before"). Stable (empty deps beyond sendWs) so
+   * ChatMessageList's scroll listener always calls the current logic
+   * without re-subscribing. */
+  const loadOlderMessages = useCallback((channelId: string) => {
+    if (loadingOlderRef.current.has(channelId)) return;
+    if (hasMoreByChannelRef.current.get(channelId) === false) return;
+    const oldest = messagesByChannelRef.current.get(channelId)?.[0];
+    if (!oldest) return;
+    loadingOlderRef.current.add(channelId);
+    setLoadingOlderByChannel((prev) => new Set(prev).add(channelId));
+    sendWs({ t: 'load-more-messages', channelId, beforeMsgId: oldest.msgId });
   }, [sendWs]);
 
   const sendChatMessage = useCallback((channelId: string, text: string, replyTo?: number) => {
@@ -453,7 +483,28 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         break;
       case 'channel-history':
         setMessagesByChannel((prev) => new Map(prev).set(m.channelId, m.messages));
+        setHasMoreByChannel((prev) => new Map(prev).set(m.channelId, m.hasMore));
         break;
+      case 'channel-history-more': {
+        const channelId = m.channelId;
+        loadingOlderRef.current.delete(channelId);
+        setLoadingOlderByChannel((prev) => {
+          if (!prev.has(channelId)) return prev;
+          const next = new Set(prev);
+          next.delete(channelId);
+          return next;
+        });
+        setHasMoreByChannel((prev) => new Map(prev).set(channelId, m.hasMore));
+        if (m.messages.length > 0) {
+          setMessagesByChannel((prev) => {
+            const existing = prev.get(channelId) || [];
+            const existingIds = new Set(existing.map((msg) => msg.msgId));
+            const older = m.messages.filter((msg) => !existingIds.has(msg.msgId));
+            return new Map(prev).set(channelId, [...older, ...existing]);
+          });
+        }
+        break;
+      }
       case 'chat': {
         const channelId = m.message.channelId;
         setMessagesByChannel((prev) => {
@@ -748,7 +799,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         updateAvatar, updateProfile, uploadAvatarFile, menuTarget, openTileMenu, closeTileMenu,
         reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
         hideAudioOnlyTiles, setHideAudioOnlyTiles,
-        categories, activeChannelId, openChannel, messagesByChannel, unreadByChannel,
+        categories, activeChannelId, openChannel, messagesByChannel, hasMoreByChannel, loadingOlderByChannel, loadOlderMessages, unreadByChannel,
         allUsers, onlineUserIds, channelsError, clearChannelsError: () => setChannelsError(null),
         deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null),
         sendChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,

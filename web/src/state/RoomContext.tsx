@@ -107,8 +107,9 @@ export interface RoomContextValue {
   /** Sound-effects volume (0..1), default 0.65. */
   notifyVolume: number;
   setNotifyVolume: (value: number) => void;
-  /** Desktop (OS-level) notifications for chat messages — opt-in, default
-   * off. Turning it on requests browser Notification permission. */
+  /** Desktop (OS-level) notifications for chat messages — default on.
+   * Turning it on (if not already granted) requests browser Notification
+   * permission. */
   notificationsEnabled: boolean;
   setNotificationsEnabled: (value: boolean) => void;
   /** Call grid filter — hides plain audio-only tiles (kind 'avatar'),
@@ -124,6 +125,16 @@ export interface RoomContextValue {
    * fresh history. */
   openChannel: (channelId: string) => void;
   messagesByChannel: Map<string, ChatMessage[]>;
+  /** Per-channel: whether OLDER history beyond what's loaded may still
+   * exist. Absent (channel never opened) is treated as "maybe" by callers. */
+  hasMoreByChannel: Map<string, boolean>;
+  /** Channels with a 'load-more-messages' request currently in flight. */
+  loadingOlderByChannel: Set<string>;
+  /** Fetches the next page of OLDER messages and prepends them — call when
+   * the user scrolls to the top of an open channel. No-ops if a page is
+   * already loading, history is known to be exhausted, or nothing is
+   * loaded yet for this channel. */
+  loadOlderMessages: (channelId: string) => void;
   /** New messages for a channel that isn't active accumulate here —
    * cleared on openChannel. */
   unreadByChannel: Map<string, number>;

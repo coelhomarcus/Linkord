@@ -1,4 +1,4 @@
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, lt } from 'drizzle-orm';
 import { config } from '../config/env.js';
 import { db } from '../db/client.js';
 import { messages, users, type Message, type Attachment } from '../db/schema.js';
@@ -146,7 +146,8 @@ async function buildReplyRef(channelId: string, replyToId: unknown): Promise<Rep
 
 /** Client opening a channel (switched tabs, or the first channel on join) —
  * sends the last CHAT_HISTORY_LIMIT messages to just THIS socket (no
- * broadcast). No pagination yet. */
+ * broadcast). Older pages are fetched on demand via 'load-more-messages'
+ * (see handleLoadMoreMessages below). */
 async function handleChannelOpen(socket: AppSocket, msg: { channelId?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
@@ -163,7 +164,38 @@ async function handleChannelOpen(socket: AppSocket, msg: { channelId?: string })
   // one query for all history messages' attachments, not one per message
   // (N+1) — most have no attachment anyway.
   const attachmentByMessageId = await attachments.getByMessageIds(rows.map((r) => r.id));
-  send(socket, { t: 'channel-history', channelId, messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id))) });
+  send(socket, {
+    t: 'channel-history',
+    channelId,
+    messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id))),
+    hasMore: rows.length === config.CHAT_HISTORY_LIMIT,
+  });
+}
+
+/** Client scrolled to the top of an already-open channel — sends up to
+ * CHAT_HISTORY_LIMIT messages older than `beforeMsgId` (the oldest one the
+ * client currently has), for it to PREPEND to existing history. */
+async function handleLoadMoreMessages(socket: AppSocket, msg: { channelId?: string; beforeMsgId?: unknown }): Promise<void> {
+  const p = participants.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  const channelId = String(msg.channelId || '');
+  const beforeMsgId = Number(msg.beforeMsgId);
+  if (!channelId || !Number.isFinite(beforeMsgId) || !(await channelExists(channelId))) return;
+  const rows = await db
+    .select(messageWithAuthorSelect)
+    .from(messages)
+    .leftJoin(users, eq(users.id, messages.authorId))
+    .where(and(eq(messages.channelId, channelId), lt(messages.id, beforeMsgId)))
+    .orderBy(desc(messages.id))
+    .limit(config.CHAT_HISTORY_LIMIT);
+  rows.reverse();
+  const attachmentByMessageId = await attachments.getByMessageIds(rows.map((r) => r.id));
+  send(socket, {
+    t: 'channel-history-more',
+    channelId,
+    messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id))),
+    hasMore: rows.length === config.CHAT_HISTORY_LIMIT,
+  });
 }
 
 async function handleChat(socket: AppSocket, msg: { channelId?: string; text?: string; replyTo?: unknown }): Promise<void> {
@@ -240,6 +272,7 @@ async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Pr
 
 export const handlers: HandlerTable = {
   'channel-open': handleChannelOpen,
+  'load-more-messages': handleLoadMoreMessages,
   chat: handleChat,
   'chat-delete': handleChatDelete,
   'chat-edit': handleChatEdit,

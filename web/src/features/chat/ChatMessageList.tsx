@@ -319,7 +319,7 @@ interface ChatMessageListProps {
  * messages grouped by author, date divider, and a per-message action bar
  * on hover (react/reply/edit/delete). */
 export function ChatMessageList({ className, channelId, onReply, onOpenProfile }: ChatMessageListProps) {
-  const { state, messagesByChannel, editChatMessage, allUsers } = useRoom();
+  const { state, messagesByChannel, editChatMessage, allUsers, hasMoreByChannel, loadingOlderByChannel, loadOlderMessages } = useRoom();
   const mentionLookup = useMemo(() => buildMentionLookup(allUsers), [allUsers]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // wraps ONLY the content (not the scrolling viewport) — with
@@ -336,6 +336,15 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
   const stickToBottomRef = useRef(true);
   const isMod = state.me.role === 'admin';
   const chatMessages = messagesByChannel.get(channelId) ?? EMPTY_MESSAGES;
+  const hasMoreHistory = hasMoreByChannel.get(channelId) !== false;
+  const isLoadingOlder = loadingOlderByChannel.has(channelId);
+  // guards against firing a second 'load-more-messages' from the same
+  // scroll burst before isLoadingOlder's setState round-trips back here —
+  // isLoadingOlder alone isn't enough since state updates aren't
+  // synchronous relative to the scroll event that triggered them.
+  const pendingPrependRef = useRef(false);
+  const prevScrollHeightRef = useRef(0);
+  const wasLoadingOlderRef = useRef(false);
 
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
@@ -349,6 +358,11 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
   // usually change together on a channel switch).
   useLayoutEffect(() => {
     stickToBottomRef.current = true;
+    // discards any in-flight pagination bookkeeping from the channel just
+    // left — the scroll-restore effect below must not act on it once
+    // `isLoadingOlder`/`chatMessages` for the NEW channel change.
+    pendingPrependRef.current = false;
+    wasLoadingOlderRef.current = false;
   }, [channelId]);
 
   // whenever the rendered list actually changes — a new/edited/deleted
@@ -394,6 +408,40 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // pagination: scrolling near the top of an open channel requests the next
+  // page of older messages. Separate from the effect above (recreated on
+  // every dep change, unlike that one) so it always sees the current
+  // channel/hasMore/loading flags without needing its own ref mirrors.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    function handleTopScroll() {
+      if (el!.scrollTop > 100) return;
+      if (pendingPrependRef.current || isLoadingOlder || !hasMoreHistory) return;
+      pendingPrependRef.current = true;
+      prevScrollHeightRef.current = el!.scrollHeight;
+      loadOlderMessages(channelId);
+    }
+    el.addEventListener('scroll', handleTopScroll);
+    return () => el.removeEventListener('scroll', handleTopScroll);
+  }, [channelId, hasMoreHistory, isLoadingOlder, loadOlderMessages]);
+
+  // once the in-flight page lands (isLoadingOlder flips back to false),
+  // restore the scroll position: prepending older messages shifts
+  // everything down, so without this the view would jump to show messages
+  // from the middle of the newly-loaded page instead of staying put.
+  useLayoutEffect(() => {
+    if (wasLoadingOlderRef.current && !isLoadingOlder) {
+      const el = scrollRef.current;
+      if (el && pendingPrependRef.current) {
+        const delta = el.scrollHeight - prevScrollHeightRef.current;
+        if (delta > 0) el.scrollTop = delta;
+      }
+      pendingPrependRef.current = false;
+    }
+    wasLoadingOlderRef.current = isLoadingOlder;
+  }, [isLoadingOlder, chatMessages]);
+
   // MY OWN message sent now always pulls to the bottom, even if I'd
   // scrolled up before sending — I just wrote it, makes sense to see it
   // appear (someone ELSE's message doesn't force this, it only sticks if I
@@ -433,6 +481,9 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
   return (
     <div ref={scrollRef} className={`min-h-0 flex-1 overflow-y-auto ${className ?? ''}`}>
       <div ref={contentRef} className="flex flex-col">
+        {isLoadingOlder && (
+          <p className="my-2 select-none px-1 text-center text-label text-text-muted">Carregando mensagens anteriores…</p>
+        )}
         {chatMessages.length === 0 && (
           <p className="mt-4 select-none px-1 text-center text-label text-text-muted">Nenhuma mensagem ainda. Diga oi!</p>
         )}

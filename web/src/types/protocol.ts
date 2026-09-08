@@ -139,6 +139,11 @@ export type ClientMessage =
   | { t: 'screen-share'; on: boolean }
   | { t: 'speaking'; value: boolean }
   | { t: 'channel-open'; channelId: string }
+  // requests the next page of OLDER history for a channel already open —
+  // beforeMsgId is the smallest msgId currently loaded on the client, so
+  // the server returns messages strictly before it (see ServerMessage
+  // 'channel-history-more').
+  | { t: 'load-more-messages'; channelId: string; beforeMsgId: number }
   | { t: 'chat'; channelId: string; text: string; replyTo?: number }
   | { t: 'chat-delete'; msgId: number }
   | { t: 'chat-edit'; msgId: number; text: string }
@@ -191,7 +196,14 @@ export type ServerMessage =
   | { t: 'participant-updated'; participant: Participant }
   | { t: 'participant-left'; id: string }
   | { t: 'reaction'; id: string; emoji: ReactionEmoji }
-  | { t: 'channel-history'; channelId: string; messages: ChatMessage[] }
+  // hasMore: true when the channel may still have OLDER messages beyond
+  // this page — a heuristic (page came back full), not a guarantee, so an
+  // empty follow-up 'channel-history-more' page can still correct it to
+  // false.
+  | { t: 'channel-history'; channelId: string; messages: ChatMessage[]; hasMore: boolean }
+  // response to 'load-more-messages' — an older page to PREPEND to
+  // existing history, not replace it.
+  | { t: 'channel-history-more'; channelId: string; messages: ChatMessage[]; hasMore: boolean }
   | { t: 'chat'; message: ChatMessage }
   | { t: 'chat-deleted'; channelId: string; msgId: number }
   | { t: 'chat-edited'; message: ChatMessage }
