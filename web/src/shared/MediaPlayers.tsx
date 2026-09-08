@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 import { Download, Maximize2, Pause, Play, Volume2, VolumeX, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -190,7 +190,7 @@ function VideoLightbox({ src, poster, title, open, onOpenChange }: VideoPlayerPr
             data-download-name={title || 'video'}
             onClick={(event) => event.stopPropagation()}
           >
-            <VideoPlayerInner src={src} poster={poster} title={title} className="max-w-none border-white/20 shadow-popover" />
+            <VideoPlayerInner src={src} poster={poster} title={title} className="border-white/20 shadow-popover" />
           </div>
           <DialogPrimitive.Close
             aria-label="Fechar"
@@ -216,14 +216,49 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
     setVolume,
     toggleMute,
   } = useMediaControls<HTMLVideoElement>();
+  // the video's OWN intrinsic size, read once metadata loads — used to size
+  // the wrapper below so its border/rounding hug the video's real shape
+  // instead of a fixed 16:9 box that letterboxed anything else (portrait,
+  // square, ultrawide...) with black bars.
+  const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
 
   function expand() {
     ref.current?.pause();
     onExpand?.();
   }
 
+  function handleLoadedMetadata() {
+    sync();
+    const video = ref.current;
+    if (video) setNatural({ width: video.videoWidth, height: video.videoHeight });
+  }
+
+  // Computed in JS, not left to CSS "shrink to content" (w-fit): a
+  // `@container` query context forces size containment on its own box,
+  // which makes fit-content sizing collapse to 0 for a container nested
+  // inside a flex-centered ancestor (Base UI's Dialog, i.e. the fullscreen
+  // lightbox) — it only "worked" inline by coincidence of that simpler
+  // layout context. Explicit pixel dimensions sidestep the conflict
+  // entirely and behave identically in both places.
+  // onExpand only exists on the small inline/chat player, never the
+  // fullscreen lightbox (see VideoPlayer/VideoLightbox below) — that's
+  // what picks which size cap applies.
+  const maxWidth = onExpand ? 384 : Math.min(window.innerWidth - 64, 1152);
+  const maxHeight = onExpand ? 320 : window.innerHeight * 0.8;
+  const boxStyle: CSSProperties = natural && natural.width > 0 && natural.height > 0
+    ? (() => {
+        const scale = Math.min(1, maxWidth / natural.width, maxHeight / natural.height);
+        return { width: natural.width * scale, height: natural.height * scale };
+      })()
+    // before metadata loads: a reasonable 16:9 placeholder at max width, so
+    // something visible shows up immediately instead of a 0-size flash.
+    : { width: maxWidth, aspectRatio: '16 / 9', maxHeight };
+
   return (
-    <div className={cn('group/player @container/player relative aspect-video w-full max-w-sm overflow-hidden rounded-md border border-strong bg-black shadow-panel', className)}>
+    <div
+      className={cn('group/player @container/player relative overflow-hidden rounded-md border border-strong bg-black shadow-panel', className)}
+      style={boxStyle}
+    >
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <video
         ref={ref}
@@ -232,7 +267,7 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
         preload="metadata"
         playsInline
         title={title}
-        onLoadedMetadata={sync}
+        onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={sync}
         onPlay={sync}
         onPause={sync}
@@ -240,7 +275,7 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
         onWaiting={() => setWaiting(true)}
         onCanPlay={() => setWaiting(false)}
         onError={onError}
-        className="h-full w-full object-contain"
+        className="block h-full w-full"
       />
 
       {/* Clique na area do video alterna play/pause, como em qualquer player.
