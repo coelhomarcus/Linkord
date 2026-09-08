@@ -13,19 +13,20 @@ import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from './auth/session.js';
 import { channelExists } from './channels.js';
 
-// Chat attachments: max one per message, stored on disk keyed by a uuid (no
-// extension — real mime type lives in the mime_type column, never trust the
-// name). Quota is computed live from the table, not a cached counter, so it
-// can't drift from what's actually on disk. Only a known list of image/
-// video/audio mimes is served inline; everything else forces a download
-// (prevents an uploaded .svg/.html from executing script on our own origin
-// — see serveUpload).
+// Chat attachments: up to MAX_ATTACHMENTS_PER_MESSAGE per message, stored on
+// disk keyed by a uuid (no extension — real mime type lives in the
+// mime_type column, never trust the name). Quota is computed live from the
+// table, not a cached counter, so it can't drift from what's actually on
+// disk. Only a known list of image/video/audio mimes is served inline;
+// everything else forces a download (prevents an uploaded .svg/.html from
+// executing script on our own origin — see serveUpload).
 const INLINE_MIME_TYPES = new Set([
   'image/png', 'image/jpeg', 'image/gif', 'image/webp',
   'video/mp4', 'video/webm', 'video/ogg',
   'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4',
 ]);
 const ID_RE = /^[0-9a-f]{32}$/; // crypto.randomUUID() without dashes, see newId
+const RANGE_RE = /^bytes=(\d*)-(\d*)$/; // single-range only — the only form <video>/<audio> ever sends
 const AVATAR_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 // only matches our own upload format (see newId) — an external URL just
 // doesn't match, treated as "not ours," not an error.
@@ -474,36 +475,73 @@ async function handleAvatarUpload(request: FastifyRequest, reply: FastifyReply):
   sendJson(reply, 201, { avatar: `/uploads/${id}` });
 }
 
-export async function serveUpload(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> {
+export async function serveUpload(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<FastifyReply> {
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) { reply.code(401).send('nao autenticado'); return; }
+  if (!sess) return reply.code(401).send('nao autenticado');
 
   const id = request.params.id;
-  if (!ID_RE.test(id)) { reply.code(400).send('id invalido'); return; }
+  if (!ID_RE.test(id)) return reply.code(400).send('id invalido');
 
   const [row] = await db.select().from(attachmentsTable).where(eq(attachmentsTable.id, id)).limit(1);
-  if (!row) { reply.code(404).send('nao encontrado'); return; }
+  if (!row) return reply.code(404).send('nao encontrado');
 
-  let data: Buffer;
+  const path = filePathFor(id);
+  let size: number;
   try {
-    data = await fs.readFile(filePathFor(id));
+    size = (await fs.stat(path)).size;
   } catch {
-    reply.code(404).send('nao encontrado');
-    return;
+    return reply.code(404).send('nao encontrado');
   }
 
   const inline = INLINE_MIME_TYPES.has(row.mimeType);
-  reply
+  const contentType = inline ? row.mimeType : 'application/octet-stream';
+  const disposition = contentDispositionFor(inline ? 'inline' : 'attachment', row.fileName);
+  // private, not public: gated by session — a shared cache shouldn't serve
+  // this to someone else without re-checking.
+  const cacheControl = 'private, max-age=31536000, immutable';
+
+  // Range requests are what let <video>/<audio> seek at all — without
+  // Accept-Ranges + 206 responses, the browser can't jump to an arbitrary
+  // byte offset and a seek attempt just snaps back to wherever playback
+  // already reached (it can only play what it's already downloaded
+  // sequentially from the start).
+  const range = RANGE_RE.exec(request.headers.range || '');
+  if (range) {
+    const start = range[1] ? Number(range[1]) : 0;
+    const end = range[2] ? Number(range[2]) : size - 1;
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start > end || end >= size) {
+      return reply.code(416).header('Content-Range', `bytes */${size}`).send();
+    }
+    // `return` (not a bare `.send()` call) matters here: without it, this
+    // async function's own promise resolves before Fastify's onSend
+    // pipeline finishes piping the stream (nothing here is awaited after
+    // send()), and Fastify's core — seeing the handler "return" with
+    // reply.sent still false at that point — races in an empty auto-reply
+    // that ends the response at 0 bytes before the real stream gets a
+    // chance to write anything (see the "did you forget to 'return reply'"
+    // warning in fastify/lib/reply.js).
+    return reply
+      .code(206)
+      .header('Content-Type', contentType)
+      .header('Content-Disposition', disposition)
+      .header('Content-Range', `bytes ${start}-${end}/${size}`)
+      .header('Content-Length', end - start + 1)
+      .header('Accept-Ranges', 'bytes')
+      .header('X-Content-Type-Options', 'nosniff')
+      .header('Cache-Control', cacheControl)
+      .send(fsStreams.createReadStream(path, { start, end }));
+  }
+
+  return reply
     .code(200)
-    .header('Content-Type', inline ? row.mimeType : 'application/octet-stream')
-    .header('Content-Disposition', contentDispositionFor(inline ? 'inline' : 'attachment', row.fileName))
-    .header('Content-Length', data.length)
+    .header('Content-Type', contentType)
+    .header('Content-Disposition', disposition)
+    .header('Content-Length', size)
+    .header('Accept-Ranges', 'bytes')
     .header('X-Content-Type-Options', 'nosniff')
-    // private, not public: gated by session — a shared cache shouldn't
-    // serve this to someone else without re-checking.
-    .header('Cache-Control', 'private, max-age=31536000, immutable')
-    .send(data);
+    .header('Cache-Control', cacheControl)
+    .send(fsStreams.createReadStream(path));
 }
 
 export function registerAttachmentRoutes(fastify: FastifyInstance): void {
