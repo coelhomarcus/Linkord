@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Copy, FolderPlus, Hash, Settings } from 'lucide-react';
+import { Copy, Download, FolderPlus, Hash, Settings } from 'lucide-react';
 import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { useRoom } from '../state/RoomContext';
 import { PromptDialog } from '../shared/PromptDialog';
 import { NewChannelDialog } from './ChannelTree';
+import { downloadFile } from '../shared/lib/download';
 
 interface GlobalContextMenuProps {
   children: ReactNode;
@@ -38,14 +39,21 @@ export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMen
   const [hasSelection, setHasSelection] = useState(false);
   const [sidebarTarget, setSidebarTarget] = useState(false);
   const [stageTarget, setStageTarget] = useState(false);
+  const [downloadTarget, setDownloadTarget] = useState<{ url: string; name: string } | null>(null);
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
   const [newChannelOpen, setNewChannelOpen] = useState(false);
   const isAdmin = state.me.role === 'admin';
 
   useEffect(() => {
     function captureTarget(e: MouseEvent) {
-      setSidebarTarget(e.target instanceof HTMLElement && !!e.target.closest('[data-sidebar-channels]'));
-      setStageTarget(e.target instanceof HTMLElement && !!e.target.closest('[data-stage]'));
+      // Element, not HTMLElement: an icon button's target can be its inner
+      // SVG/path (an SVGElement) when the click lands exactly on the glyph,
+      // and SVGElement isn't an HTMLElement — that excluded every icon
+      // button (e.g. a video's centered play button) from these checks.
+      setSidebarTarget(e.target instanceof Element && !!e.target.closest('[data-sidebar-channels]'));
+      setStageTarget(e.target instanceof Element && !!e.target.closest('[data-stage]'));
+      const downloadEl = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-download-url]') : null;
+      setDownloadTarget(downloadEl ? { url: downloadEl.dataset.downloadUrl!, name: downloadEl.dataset.downloadName || '' } : null);
     }
     function blockNative(e: MouseEvent) {
       if (isEditableTarget(e.target)) return;
@@ -54,16 +62,18 @@ export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMen
     // capture phase, before ContextMenuTrigger (spanning the whole tree via
     // className="contents") sees the event — stops propagation so it never
     // opens our menu on a text field, letting the browser show its own
-    // menu (with "Paste") normally.
-    function stopForEditable(e: MouseEvent) {
-      if (isEditableTarget(e.target)) e.stopPropagation();
+    // menu (with "Paste") normally. Shift+right-click gets the same
+    // escape hatch, everywhere — the universal shortcut for "give me the
+    // real browser menu" (inspect element, save image as, etc).
+    function stopForNativeMenu(e: MouseEvent) {
+      if (isEditableTarget(e.target) || e.shiftKey) e.stopPropagation();
     }
     document.addEventListener('contextmenu', captureTarget, { capture: true });
-    document.addEventListener('contextmenu', stopForEditable, { capture: true });
+    document.addEventListener('contextmenu', stopForNativeMenu, { capture: true });
     document.addEventListener('contextmenu', blockNative);
     return () => {
       document.removeEventListener('contextmenu', captureTarget, { capture: true });
-      document.removeEventListener('contextmenu', stopForEditable, { capture: true });
+      document.removeEventListener('contextmenu', stopForNativeMenu, { capture: true });
       document.removeEventListener('contextmenu', blockNative);
     };
   }, []);
@@ -73,11 +83,24 @@ export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMen
     if (text) navigator.clipboard.writeText(text).catch(() => {});
   }
 
+  function handleDownload() {
+    if (downloadTarget) downloadFile(downloadTarget.url, downloadTarget.name);
+  }
+
   return (
     <>
       <ContextMenu onOpenChange={(open) => { if (open) setHasSelection(!!window.getSelection()?.toString()); }}>
         <ContextMenuTrigger className="contents">{children}</ContextMenuTrigger>
         <ContextMenuContent className="w-56">
+          {downloadTarget && (
+            <>
+              <ContextMenuItem onClick={handleDownload}>
+                <Download size={14} />
+                <span>Baixar</span>
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+            </>
+          )}
           {hasSelection && (
             <>
               <ContextMenuItem onClick={handleCopy}>

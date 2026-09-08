@@ -187,7 +187,7 @@ function ChatMessageRow({
           <div className="text-body text-text-primary">
             <ChatMessageText text={message.text} mentionLookup={mentionLookup} myUserId={state.me.userId} />
             {message.editedAt && <span className="ml-1 select-none text-caption text-text-muted">(editado)</span>}
-            {message.attachment && <ChatAttachment attachment={message.attachment} />}
+            {message.attachments?.map((a) => <ChatAttachment key={a.id} attachment={a} />)}
           </div>
         )}
 

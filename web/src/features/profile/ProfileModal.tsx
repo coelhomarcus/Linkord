@@ -122,15 +122,15 @@ export function ProfileModal({ userId, onClose }: ProfileModalProps) {
   return (
     <Dialog open={!!user} onOpenChange={(next) => { if (!next) onClose(); }}>
       {user && (
-        <DialogContent className="max-w-[calc(100%-2rem)] overflow-hidden bg-bg-modal p-0 sm:max-w-105">
+        <DialogContent className="max-w-[calc(100%-2rem)] overflow-hidden bg-bg-modal p-0 sm:max-w-130">
           <DialogTitle className="sr-only">Perfil de {user.displayName}</DialogTitle>
-          <div className="h-32 w-full" style={bannerStyle(user)} />
-          <div className="px-5 pb-5">
-            <div className="-mt-10 flex items-end gap-3">
+          <div className="h-40 w-full" style={bannerStyle(user)} />
+          <div className="px-6 pb-6">
+            <div className="-mt-12 flex items-end gap-3">
               <div className="relative rounded-full bg-bg-modal p-1">
-                <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={76} />
+                <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={92} />
                 {onlineUserIds.has(user.id) && (
-                  <span className="absolute right-1 bottom-1 h-4 w-4 rounded-full border-2 border-bg-modal bg-green" />
+                  <span className="absolute right-1 bottom-1 h-5 w-5 rounded-full border-2 border-bg-modal bg-green" />
                 )}
               </div>
               <div className="mb-2 flex min-w-0 flex-1 items-center gap-2">

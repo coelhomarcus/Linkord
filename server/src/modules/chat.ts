@@ -36,7 +36,7 @@ interface ChatMessagePayload {
   editedAt?: number;
   replyTo?: ReplyRef;
   reactions?: Record<string, string[]>;
-  attachment?: { id: string; name: string; mime: string; size: number };
+  attachments?: { id: string; name: string; mime: string; size: number }[];
 }
 
 interface MessageWithAuthor {
@@ -105,10 +105,10 @@ function normalizeReplyRef(raw: unknown): ReplyRef | undefined {
   };
 }
 
-/** `attachment` (optional) is the raw attachments-table row — the
- * attachment itself doesn't live in the messages table, see
- * modules/attachments.ts. */
-function rowToMessage(row: MessageWithAuthor, attachment?: Attachment): ChatMessagePayload {
+/** `attachments` (optional, up to MAX_ATTACHMENTS_PER_MESSAGE) are the raw
+ * attachments-table rows — attachments don't live in the messages table,
+ * see modules/attachments.ts. */
+function rowToMessage(row: MessageWithAuthor, attachments?: Attachment[]): ChatMessagePayload {
   const out: ChatMessagePayload = {
     msgId: row.id,
     channelId: row.channelId,
@@ -123,7 +123,7 @@ function rowToMessage(row: MessageWithAuthor, attachment?: Attachment): ChatMess
   if (replyTo) out.replyTo = replyTo;
   const reactions = row.reactions as Record<string, string[]> | null;
   if (reactions && Object.keys(reactions).length) out.reactions = reactions;
-  if (attachment) out.attachment = { id: attachment.id, name: attachment.fileName, mime: attachment.mimeType, size: attachment.size };
+  if (attachments?.length) out.attachments = attachments.map((a) => ({ id: a.id, name: a.fileName, mime: a.mimeType, size: a.size }));
   return out;
 }
 

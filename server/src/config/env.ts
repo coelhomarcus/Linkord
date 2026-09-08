@@ -18,6 +18,11 @@ const MAX_PROFILE_LINKS = 8;
 const MAX_PROFILE_LINK_LEN = 300;
 const MAX_CHAT_LEN = 2000;
 const CHAT_HISTORY_LIMIT = 50; // messages kept to give context to whoever joins later
+const MAX_ATTACHMENTS_PER_MESSAGE = 4;
+// how long after creating a message its author can still attach more files
+// to it (2nd-4th attachment) — without this, `targetMsgId` would let someone
+// inject media into an arbitrarily old message of theirs at any time.
+const ATTACH_TO_MESSAGE_WINDOW_MS = 5 * 60 * 1000;
 
 // anchored to the repo root (not cwd) — inside Docker this is /app/uploads
 // (matches the external bind mount); in `npm run dev` it's <repo>/uploads.
@@ -81,7 +86,7 @@ const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || '';
 export const config = {
   PORT, HOST_BIND, MAX_PARTICIPANTS, TRUST_PROXY, MAX_MSG_BYTES, RECONNECT_GRACE_MS,
   MAX_AVATAR_LEN, MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINKS, MAX_PROFILE_LINK_LEN,
-  MAX_CHAT_LEN, CHAT_HISTORY_LIMIT,
+  MAX_CHAT_LEN, CHAT_HISTORY_LIMIT, MAX_ATTACHMENTS_PER_MESSAGE, ATTACH_TO_MESSAGE_WINDOW_MS,
   UPLOAD_DIR, MAX_ATTACHMENT_BYTES, MAX_STORAGE_BYTES, MAX_AVATAR_BYTES,
   UPLOAD_CHUNK_BYTES, UPLOAD_SESSION_TTL_MS,
   DATABASE_URL, DATABASE_SSL, MIGRATE_ON_BOOT,

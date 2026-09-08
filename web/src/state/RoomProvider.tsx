@@ -32,6 +32,20 @@ import { MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_
 const REACTION_DURATION_MS = 3000; // must match --animate-float-up in index.css
 const CHAT_CLIENT_LIMIT = 300; // client-side cap only — server already limits history sent on welcome
 
+/** Thrown by sendAttachments when the message was already created (its
+ * first attachment succeeded) but a LATER attachment (2nd-4th) failed —
+ * distinguishes "nothing was sent" from "the message exists, missing some
+ * attachments" so the composer can word the error accordingly. */
+export class PartialAttachmentError extends Error {
+  sentCount: number;
+  totalCount: number;
+  constructor(sentCount: number, totalCount: number) {
+    super(`partial_attachment_failure: ${sentCount}/${totalCount}`);
+    this.sentCount = sentCount;
+    this.totalCount = totalCount;
+  }
+}
+
 /** Syncs allUsers (account directory) with a participant's current avatar/
  * role — otherwise avatar changes only reached other users' sidebars after
  * a reload. */
@@ -249,10 +263,28 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
   // plain HTTP, not the websocket — raw binary avoids base64 inflate, and
   // always chunked (a 2GB body wouldn't survive most proxies, and buffering
-  // it all in memory wouldn't be safe). The message itself still arrives via
-  // the usual 'chat' broadcast; this just handles the upload + progress.
-  const sendAttachment = useCallback((channelId: string, file: File, caption: string, onProgress?: (fraction: number) => void) => {
-    return uploadFileInChunks({ channelId, file, caption, onProgress });
+  // it all in memory wouldn't be safe). The FIRST file creates the message
+  // (arrives via the usual 'chat' broadcast); the rest (2nd-4th) attach to
+  // that same message (arrive via 'chat-attachment-added') — sequential on
+  // purpose, both to keep this simple and because attaching needs the
+  // message id the first upload produces. This just handles the upload +
+  // per-file progress; message/attachment state itself comes from the WS
+  // broadcasts handled below.
+  const sendAttachments = useCallback(async (
+    channelId: string, files: File[], caption: string, onProgress?: (fileIndex: number, fraction: number) => void
+  ): Promise<void> => {
+    if (!files.length) return;
+    const msgId = await uploadFileInChunks({ channelId, file: files[0]!, caption, onProgress: (f) => onProgress?.(0, f) });
+    for (let i = 1; i < files.length; i++) {
+      try {
+        await uploadFileInChunks({ channelId, file: files[i]!, caption: '', targetMsgId: msgId, onProgress: (f) => onProgress?.(i, f) });
+      } catch {
+        // the message (and whatever attached before this one) already
+        // exists and is visible to everyone — stop here instead of
+        // continuing to try the rest.
+        throw new PartialAttachmentError(i, files.length);
+      }
+    }
   }, []);
 
   const createCategory = useCallback((name: string) => sendWs({ t: 'category-create', name }), [sendWs]);
@@ -547,6 +579,15 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         });
         break;
       }
+      case 'chat-attachment-added':
+        setMessagesByChannel((prev) => {
+          const existing = prev.get(m.channelId);
+          if (!existing) return prev;
+          return new Map(prev).set(m.channelId, existing.map((msg) => (
+            msg.msgId === m.msgId ? { ...msg, attachments: [...(msg.attachments || []), m.attachment] } : msg
+          )));
+        });
+        break;
       case 'chat-reaction-updated':
         setMessagesByChannel((prev) => {
           const existing = prev.get(m.channelId);
@@ -803,7 +844,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         allUsers, onlineUserIds, channelsError, clearChannelsError: () => setChannelsError(null),
         deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null),
         sendChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,
-        storageUsage, sendAttachment,
+        storageUsage, sendAttachments,
         createCategory, deleteCategory, renameCategory, createChannel, deleteChannel, renameChannel, reorderCategories, reorderChannels,
       }}
     >

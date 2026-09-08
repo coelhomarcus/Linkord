@@ -10,6 +10,17 @@ import type { PublicUser } from '../../types/protocol';
 // `disabled` em ChatComposer.tsx).
 const joinedState = { ...initialRoomState, joined: true };
 
+// pendingFiles/attachError agora vivem em ChatPage — esses testes nao
+// mexem com anexos, entao so precisam de props vazias/no-op.
+const noAttachmentProps = {
+  pendingFiles: [],
+  onAddFiles: () => {},
+  onRemoveFile: () => {},
+  onClearFiles: () => {},
+  attachError: null,
+  onAttachError: () => {},
+};
+
 const allUsers = new Map<string, PublicUser>([
   ['u1', { id: 'u1', username: 'Luanzera', displayName: 'Luanzera', avatar: '', avatarColor: 'blurple', banner: '', bio: '', profileLinks: [], role: 'user' }],
   ['u2', { id: 'u2', username: 'Lune', displayName: 'Lune', avatar: '', avatarColor: 'fuchsia', banner: '', bio: '', profileLinks: [], role: 'admin' }],
@@ -19,7 +30,7 @@ const allUsers = new Map<string, PublicUser>([
 describe('ChatComposer — @mencoes', () => {
   it('digitar "@lu" sugere so quem comeca com "lu" (case-insensitive), nao quem so contem', async () => {
     const user = userEvent.setup();
-    renderWithRoom(<ChatComposer channelId="c1" />, { state: joinedState, allUsers });
+    renderWithRoom(<ChatComposer channelId="c1" {...noAttachmentProps} />, { state: joinedState, allUsers });
 
     await user.type(screen.getByPlaceholderText('Mandar mensagem'), 'oi @lu');
 
@@ -30,7 +41,7 @@ describe('ChatComposer — @mencoes', () => {
 
   it('clicar numa sugestao insere "@username " no lugar do "@query" e fecha o dropdown', async () => {
     const user = userEvent.setup();
-    renderWithRoom(<ChatComposer channelId="c1" />, { state: joinedState, allUsers });
+    renderWithRoom(<ChatComposer channelId="c1" {...noAttachmentProps} />, { state: joinedState, allUsers });
 
     const textarea = screen.getByPlaceholderText('Mandar mensagem') as HTMLTextAreaElement;
     await user.type(textarea, 'oi @lun');
@@ -43,7 +54,7 @@ describe('ChatComposer — @mencoes', () => {
   it('Enter com o dropdown aberto escolhe a sugestao em vez de enviar a mensagem', async () => {
     const sendChatMessage = vi.fn();
     const user = userEvent.setup();
-    renderWithRoom(<ChatComposer channelId="c1" />, { state: joinedState, allUsers, sendChatMessage });
+    renderWithRoom(<ChatComposer channelId="c1" {...noAttachmentProps} />, { state: joinedState, allUsers, sendChatMessage });
 
     const textarea = screen.getByPlaceholderText('Mandar mensagem') as HTMLTextAreaElement;
     await user.type(textarea, '@lune{Enter}');
@@ -54,7 +65,7 @@ describe('ChatComposer — @mencoes', () => {
 
   it('Escape fecha o dropdown sem mexer no texto', async () => {
     const user = userEvent.setup();
-    renderWithRoom(<ChatComposer channelId="c1" />, { state: joinedState, allUsers });
+    renderWithRoom(<ChatComposer channelId="c1" {...noAttachmentProps} />, { state: joinedState, allUsers });
 
     const textarea = screen.getByPlaceholderText('Mandar mensagem') as HTMLTextAreaElement;
     await user.type(textarea, 'oi @lu{Escape}');
@@ -65,7 +76,7 @@ describe('ChatComposer — @mencoes', () => {
 
   it('"@" no meio de uma palavra (ex: e-mail) nao abre o dropdown', async () => {
     const user = userEvent.setup();
-    renderWithRoom(<ChatComposer channelId="c1" />, { state: joinedState, allUsers });
+    renderWithRoom(<ChatComposer channelId="c1" {...noAttachmentProps} />, { state: joinedState, allUsers });
 
     await user.type(screen.getByPlaceholderText('Mandar mensagem'), 'fulano@lu');
 
@@ -75,7 +86,7 @@ describe('ChatComposer — @mencoes', () => {
   it('enviar mensagem sem @ continua funcionando normalmente', async () => {
     const sendChatMessage = vi.fn();
     const user = userEvent.setup();
-    renderWithRoom(<ChatComposer channelId="c1" />, { state: joinedState, allUsers, sendChatMessage });
+    renderWithRoom(<ChatComposer channelId="c1" {...noAttachmentProps} />, { state: joinedState, allUsers, sendChatMessage });
 
     await user.type(screen.getByPlaceholderText('Mandar mensagem'), 'oi tudo bem{Enter}');
 

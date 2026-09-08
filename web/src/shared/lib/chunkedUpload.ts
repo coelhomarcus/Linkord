@@ -19,6 +19,10 @@ export interface ChunkedUploadOptions {
   channelId: string;
   file: File;
   caption: string;
+  // present only for the 2nd-4th attachment of a message — attaches to a
+  // message the FIRST attachment (this same send) already created, instead
+  // of creating a new one. See RoomProvider.tsx#sendAttachments.
+  targetMsgId?: number;
   onProgress?: (fraction: number) => void;
 }
 
@@ -52,7 +56,7 @@ async function runWithConcurrency(count: number, limit: number, task: (i: number
 const MAX_CHUNK_RETRIES = 3;
 const MAX_CONCURRENT_CHUNKS = 3;
 
-export async function uploadFileInChunks({ channelId, file, caption, onProgress }: ChunkedUploadOptions): Promise<void> {
+export async function uploadFileInChunks({ channelId, file, caption, targetMsgId, onProgress }: ChunkedUploadOptions): Promise<number> {
   const initRes = await fetch('/api/attachments/init', {
     method: 'POST',
     credentials: 'same-origin',
@@ -104,6 +108,16 @@ export async function uploadFileInChunks({ channelId, file, caption, onProgress 
     throw err;
   }
 
-  const completeRes = await fetch(`/api/attachments/${uploadId}/complete`, { method: 'POST', credentials: 'same-origin' });
+  const completeRes = await fetch(`/api/attachments/${uploadId}/complete`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(targetMsgId != null ? { targetMsgId } : {}),
+  });
   if (!completeRes.ok) throw await toApiError(completeRes);
+  // attaching to an existing message: the caller already knows the msgId
+  // (it's what it just sent) — no need to round-trip it through the body.
+  if (targetMsgId != null) return targetMsgId;
+  const { message } = await completeRes.json() as { message: { msgId: number } };
+  return message.msgId;
 }

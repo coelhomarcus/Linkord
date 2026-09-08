@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent, SyntheticEvent } from 'react';
+import type { ChangeEvent, ClipboardEvent, FormEvent, KeyboardEvent, SyntheticEvent } from 'react';
 import EmojiPicker, { Categories, EmojiStyle, Theme } from 'emoji-picker-react';
 import type { CategoryConfig, EmojiClickData } from 'emoji-picker-react';
-import { File as FileIcon, Plus, Send, Smile, Upload, X } from 'lucide-react';
+import { File as FileIcon, Plus, Send, Smile, X } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
-import { MAX_ATTACHMENT_BYTES } from '../../types/protocol';
+import { PartialAttachmentError } from '../../state/RoomProvider';
 import type { ChatMessage, PublicUser } from '../../types/protocol';
+import type { PendingAttachment } from './ChatPage';
 import { Textarea } from '@/components/ui/textarea';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { UploadProgressBar } from '../../shared/UploadProgressBar';
-import { formatFileSize, formatSizeLimit } from '../../shared/lib/formatBytes';
+import { formatFileSize } from '../../shared/lib/formatBytes';
 import { Avatar } from '../../shared/Avatar';
 import { cn } from '@/shared/lib/utils';
 
@@ -48,49 +49,40 @@ interface ChatComposerProps {
   channelId: string;
   replyingTo?: ChatMessage | null;
   onCancelReply?: () => void;
+  // pending attachments live in ChatPage (so dropping a file anywhere on
+  // the chat screen, not just this box, can add to them) — this component
+  // only renders/edits them via these props.
+  pendingFiles: PendingAttachment[];
+  onAddFiles: (files: File[]) => void;
+  onRemoveFile: (id: string) => void;
+  onClearFiles: () => void;
+  attachError: string | null;
+  onAttachError: (message: string | null) => void;
 }
 
 /** Chat message field — Enter sends, Shift+Enter breaks a line, grows on
  * its own up to a cap (field-sizing-content, already built into Textarea). */
-export function ChatComposer({ className, channelId, replyingTo, onCancelReply }: ChatComposerProps) {
-  const { state, sendChatMessage, sendAttachment, allUsers } = useRoom();
+export function ChatComposer({
+  className, channelId, replyingTo, onCancelReply,
+  pendingFiles, onAddFiles, onRemoveFile, onClearFiles, attachError, onAttachError,
+}: ChatComposerProps) {
+  const { state, sendChatMessage, sendAttachments, allUsers } = useRoom();
   const [text, setText] = useState('');
   // active "@query" under the cursor, or null when not mentioning anyone
   // right now (see getMentionQuery) — drives the autocomplete dropdown.
   const [mentionQuery, setMentionQuery] = useState<{ start: number; query: string } | null>(null);
   const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
-  // chosen/pasted file stays "attached" here — only actually uploads when
-  // the message is sent (Enter/button), Discord-style: lets you type a
-  // caption, change your mind (X), or swap the file before sending.
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
-  const [sendingFile, setSendingFile] = useState(false);
+  // id of whichever pendingFiles entry is currently uploading (uploads are
+  // sequential — see RoomProvider.tsx#sendAttachments — so only one at a
+  // time), null when nothing is in flight. Drives which card shows the
+  // progress bar/disables its remove button.
+  const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [attachError, setAttachError] = useState<string | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
   const formRef = useRef<HTMLFormElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  // dragenter/dragleave fire for EVERY child element as the mouse crosses
-  // the tree (entering a child = leaving the parent, leaving the child =
-  // entering the parent again) — without a counter, isDragOver would
-  // flicker every time the drag passed over anything inside the composer.
-  // Only goes back to false once the counter truly hits zero.
-  const dragCounterRef = useRef(0);
-
-  // local preview (images only) via object URL — never uploads anything,
-  // just reads the file already on disk. Revoked on change/removal to
-  // avoid a memory leak.
-  useEffect(() => {
-    if (!pendingFile || !pendingFile.type.startsWith('image/')) {
-      setPendingPreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(pendingFile);
-    setPendingPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [pendingFile]);
+  const sendingFiles = activeUploadId !== null;
 
   // Discord-style "focus follows typing": typing anywhere in Chat sends
   // focus to the field without clicking it first. Only kicks in if no
@@ -108,30 +100,44 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
     return () => document.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
-  // actually uploads the pending attachment — called only on send
-  // (Enter/button), never when picking the file. The caption is whatever
-  // text is in the field right now (can be empty).
-  async function sendPendingFile(file: File) {
-    setAttachError(null);
+  // actually uploads the pending attachments — called only on send
+  // (Enter/button), never when picking a file. The caption is whatever
+  // text is in the field right now (can be empty). The FIRST file creates
+  // the message; the rest (2nd-4th) attach to it (see
+  // RoomProvider.tsx#sendAttachments) — sequential, so only one card shows
+  // progress at a time.
+  async function sendPendingFiles() {
+    onAttachError(null);
     setUploadProgress(0);
-    setSendingFile(true);
     try {
-      await sendAttachment(channelId, file, text.trim(), setUploadProgress);
-      setPendingFile(null);
+      await sendAttachments(channelId, pendingFiles.map((p) => p.file), text.trim(), (fileIndex, fraction) => {
+        setActiveUploadId(pendingFiles[fileIndex]?.id ?? null);
+        setUploadProgress(fraction);
+      });
+      onClearFiles();
       setText('');
       setMentionQuery(null);
       onCancelReply?.();
     } catch (err) {
-      setAttachError(err instanceof Error ? err.message : 'Falha ao enviar o arquivo.');
+      if (err instanceof PartialAttachmentError) {
+        // the message itself already exists (visible to everyone) with
+        // whatever attached successfully — nothing left to retry here in
+        // place, so just clear the list; the user can reattach and resend
+        // the rest as a follow-up message if they want.
+        onAttachError(`${err.sentCount} de ${err.totalCount} anexos enviados — os outros falharam. A mensagem ja foi enviada com os que deram certo.`);
+        onClearFiles();
+      } else {
+        onAttachError(err instanceof Error ? err.message : 'Falha ao enviar os arquivos.');
+      }
     } finally {
-      setSendingFile(false);
+      setActiveUploadId(null);
     }
   }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (sendingFile) return;
-    if (pendingFile) { void sendPendingFile(pendingFile); return; }
+    if (sendingFiles) return;
+    if (pendingFiles.length) { void sendPendingFiles(); return; }
     const trimmed = text.trim();
     if (!trimmed) return;
     sendChatMessage(channelId, trimmed, replyingTo?.msgId);
@@ -190,11 +196,6 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
     });
   }
 
-  function removePendingFile() {
-    setPendingFile(null);
-    setAttachError(null);
-  }
-
   // inserts at the CURSOR (not just the end) — clicking an emoji with text
   // already half-typed and the cursor mid-string should continue from
   // there, not jump the emoji to the end. selectionStart/End disappear as
@@ -233,88 +234,35 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
     }
     if (e.key === 'Escape') {
       if (replyingTo) { e.preventDefault(); onCancelReply?.(); }
-      else if (pendingFile) { e.preventDefault(); removePendingFile(); }
+      else if (pendingFiles.length) { e.preventDefault(); onClearFiles(); }
     }
-  }
-
-  // only attaches (doesn't upload yet) — shared by both the clip button
-  // (handleFileChange) and pasting an image (handlePaste). Picking a new
-  // file while one is already attached replaces it (one attachment per
-  // message, per the current protocol).
-  function attachFile(file: File) {
-    if (file.size > MAX_ATTACHMENT_BYTES) {
-      setAttachError(`Arquivo muito grande (máximo ${formatSizeLimit(MAX_ATTACHMENT_BYTES)}).`);
-      return;
-    }
-    setAttachError(null);
-    setPendingFile(file);
   }
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     e.target.value = ''; // lets the SAME file be picked again later
-    if (file) attachFile(file);
+    if (files.length) onAddFiles(files);
   }
 
-  // Ctrl+V with an image on the clipboard — same path as the clip button,
+  // Ctrl+V with image(s) on the clipboard — same path as the clip button,
   // just a different file source. Without this, pasting an image would
   // paste whatever stray text/garbage the browser sometimes extracts from
   // an image clipboard entry (or nothing) — preventDefault only fires when
-  // an image is FOUND, pasting normal text still works natively.
+  // at least one image is FOUND, pasting normal text still works natively.
   function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>) {
-    const item = Array.from(e.clipboardData.items).find((it) => it.type.startsWith('image/'));
-    if (!item) return;
+    const files = Array.from(e.clipboardData.items)
+      .filter((item) => item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => !!file);
+    if (!files.length) return;
     e.preventDefault();
-    const file = item.getAsFile();
-    if (file) attachFile(file);
+    onAddFiles(files);
   }
 
-  // dragging a file from the OS onto the composer — same attach path the
-  // clip/paste already use (attachFile already validates size against
-  // MAX_ATTACHMENT_BYTES above, not duplicated here).
-  function handleDragEnter(e: DragEvent<HTMLDivElement>) {
-    if (disabled || !e.dataTransfer.types.includes('Files')) return;
-    e.preventDefault();
-    dragCounterRef.current += 1;
-    setIsDragOver(true);
-  }
-
-  function handleDragOver(e: DragEvent<HTMLDivElement>) {
-    if (disabled || !e.dataTransfer.types.includes('Files')) return;
-    e.preventDefault(); // without this the browser refuses the drop (opens the file in the tab instead)
-  }
-
-  function handleDragLeave(_e: DragEvent<HTMLDivElement>) {
-    if (disabled) return;
-    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
-    if (dragCounterRef.current === 0) setIsDragOver(false);
-  }
-
-  function handleDrop(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    dragCounterRef.current = 0;
-    setIsDragOver(false);
-    if (disabled) return;
-    const file = e.dataTransfer.files[0];
-    if (file) attachFile(file);
-  }
-
-  const disabled = !state.joined || sendingFile;
+  const disabled = !state.joined || sendingFiles;
 
   return (
-    <div
-      className={`relative flex flex-none flex-col gap-1.5 px-3 pb-3 ${className ?? ''}`}
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
-      {isDragOver && (
-        <div className="pointer-events-none absolute inset-0 z-10 mx-3 mb-3 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-blurple bg-bg-textarea/90">
-          <Upload size={28} className="text-blurple" />
-          <p className="select-none text-label font-medium text-text-primary">Solte pra enviar</p>
-        </div>
-      )}
+    <div className={`flex flex-none flex-col gap-1.5 px-3 pb-3 ${className ?? ''}`}>
       {replyingTo && (
         <div className="flex items-center gap-2 rounded-md border border-strong bg-bg-tertiary px-3 py-1.5 text-label">
           <span className="text-text-muted">Respondendo a</span>
@@ -326,30 +274,47 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
           </Button>
         </div>
       )}
-      {/* stays visible during the actual upload too — only the X becomes a progress bar. */}
-      {pendingFile && (
-        <div className="flex flex-col gap-1.5 rounded-md border border-strong bg-bg-tertiary px-3 py-2">
-          <div className="flex items-center gap-2.5">
-            {pendingPreviewUrl ? (
-              <img src={pendingPreviewUrl} alt="" className="h-10 w-10 flex-none rounded-md border border-strong object-cover" />
-            ) : (
-              <span className="flex h-10 w-10 flex-none items-center justify-center rounded-md border border-strong bg-bg-textarea">
-                <FileIcon size={16} className="text-text-muted" />
-              </span>
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-label font-medium text-text-secondary">{pendingFile.name}</p>
-              <p className="text-caption text-text-muted">
-                {sendingFile ? `Enviando… ${Math.round(uploadProgress * 100)}%` : formatFileSize(pendingFile.size)}
-              </p>
-            </div>
-            {!sendingFile && (
-              <Button type="button" variant="ghost" size="icon-xs" aria-label="Remover anexo" onClick={removePendingFile} className="flex-none text-text-muted">
-                <X size={14} />
-              </Button>
-            )}
-          </div>
-          {sendingFile && <UploadProgressBar progress={uploadProgress} />}
+      {/* square Discord-style preview cards, one per pending file (up to
+          MAX_ATTACHMENTS_PER_MESSAGE) — stay visible during the actual
+          upload too, showing per-card progress instead of the remove
+          button for whichever one is in flight. */}
+      {pendingFiles.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {pendingFiles.map((p) => {
+            const uploading = activeUploadId === p.id;
+            return (
+              <div
+                key={p.id}
+                title={`${p.file.name} · ${formatFileSize(p.file.size)}`}
+                className="relative h-18 w-18 flex-none overflow-hidden rounded-md border border-strong bg-bg-tertiary"
+              >
+                {p.previewUrl ? (
+                  <img src={p.previewUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-bg-textarea">
+                    <FileIcon size={22} className="text-text-muted" />
+                  </div>
+                )}
+                {uploading ? (
+                  <>
+                    <div className="absolute inset-0 bg-black/55" />
+                    <div className="absolute inset-x-1.5 bottom-1.5"><UploadProgressBar progress={uploadProgress} /></div>
+                  </>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Remover anexo"
+                    onClick={() => onRemoveFile(p.id)}
+                    className="absolute right-0.5 top-0.5 size-5 rounded-full bg-black/60 text-white hover:bg-black/80 hover:text-white"
+                  >
+                    <X size={12} />
+                  </Button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
       {attachError && (
@@ -362,7 +327,7 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
       >
         {/* absolute: positioned relative to the FORM, not the whole
             composer, so it sits right above the input row even when a
-            reply banner or a pending attachment is showing above it. */}
+            reply banner or pending attachments are showing above it. */}
         {mentionQuery && mentionCandidates.length > 0 && (
           <div className="absolute inset-x-0 bottom-full z-20 mb-1 max-h-56 overflow-y-auto rounded-md border border-strong bg-bg-floating py-1 shadow-popover">
             <p className="select-none px-3 pb-1 pt-0.5 text-caption font-semibold uppercase text-text-muted">Mencionar alguém</p>
@@ -388,7 +353,7 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
             ))}
           </div>
         )}
-        <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} />
+        <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileChange} />
         <Button
           type="button"
           variant="ghost"
@@ -406,7 +371,7 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
           onSelect={handleSelect}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder={pendingFile ? 'Adicionar uma legenda (opcional)' : 'Mandar mensagem'}
+          placeholder={pendingFiles.length ? 'Adicionar uma legenda (opcional)' : 'Mandar mensagem'}
           maxLength={2000}
           disabled={disabled}
           rows={1}
@@ -434,7 +399,7 @@ export function ChatComposer({ className, channelId, replyingTo, onCancelReply }
             />
           </PopoverContent>
         </Popover>
-        <Button type="submit" size="icon-lg" disabled={disabled || (!text.trim() && !pendingFile)}>
+        <Button type="submit" size="icon-lg" disabled={disabled || (!text.trim() && !pendingFiles.length)}>
           <Send size={16} />
         </Button>
       </form>

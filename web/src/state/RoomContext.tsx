@@ -171,8 +171,10 @@ export interface RoomContextValue {
   /** Attachment quota usage — updates itself on every upload/delete
    * (`storage-usage` broadcast), no reload needed. */
   storageUsage: StorageUsage;
-  /** `onProgress` (0 to 1) is optional. */
-  sendAttachment: (channelId: string, file: File, caption: string, onProgress?: (fraction: number) => void) => Promise<void>;
+  /** Uploads up to MAX_ATTACHMENTS_PER_MESSAGE files as ONE message — the
+   * first creates it, the rest attach to it. `onProgress(fileIndex, fraction)`
+   * is optional; fileIndex is the index into `files`. */
+  sendAttachments: (channelId: string, files: File[], caption: string, onProgress?: (fileIndex: number, fraction: number) => void) => Promise<void>;
 }
 
 export const RoomContext = createContext<RoomContextValue | null>(null);

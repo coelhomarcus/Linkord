@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
-import { Maximize2, Pause, Play, Volume2, VolumeX, X } from 'lucide-react';
+import { Download, Maximize2, Pause, Play, Volume2, VolumeX, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/shared/lib/utils';
+import { downloadFile } from '@/shared/lib/download';
 
 function sliderValue(value: number | readonly number[]): number {
   return typeof value === 'number' ? value : (value[0] ?? 0);
@@ -183,7 +184,12 @@ function VideoLightbox({ src, poster, title, open, onOpenChange }: VideoPlayerPr
           onClick={() => onOpenChange(false)}
         >
           <DialogPrimitive.Title className="sr-only">{title || 'Video'}</DialogPrimitive.Title>
-          <div className="w-full max-w-6xl cursor-default" onClick={(event) => event.stopPropagation()}>
+          <div
+            className="w-full max-w-6xl cursor-default"
+            data-download-url={src}
+            data-download-name={title || 'video'}
+            onClick={(event) => event.stopPropagation()}
+          >
             <VideoPlayerInner src={src} poster={poster} title={title} className="max-w-none border-white/20 shadow-popover" />
           </div>
           <DialogPrimitive.Close
@@ -295,6 +301,9 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
               onChange={setVolume}
               className="mr-1 hidden @[19rem]/player:block [&_[data-slot=slider-range]]:bg-white/80 [&_[data-slot=slider-track]]:bg-white/25"
             />
+            <MediaButton label="Baixar" onClick={() => downloadFile(src, title || 'video')}>
+              <Download size={15} />
+            </MediaButton>
             {onExpand && (
               <MediaButton label="Tela cheia" onClick={expand}>
                 <Maximize2 size={15} />
@@ -331,7 +340,11 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
   } = useMediaControls<HTMLAudioElement>();
 
   return (
-    <div className={cn('@container/audio flex w-full min-w-0 max-w-xl items-center gap-2.5 rounded-md border border-strong bg-bg-tertiary px-2.5 py-2 shadow-panel', className)}>
+    <div
+      className={cn('@container/audio flex w-full min-w-0 max-w-xl items-center gap-2.5 rounded-md border border-strong bg-bg-tertiary px-2.5 py-2 shadow-panel', className)}
+      data-download-url={src}
+      data-download-name={title || 'audio'}
+    >
       <audio
         ref={ref}
         src={src}
@@ -390,6 +403,13 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
           onChange={setVolume}
           className="hidden @[26rem]/audio:block [&_[data-slot=slider-range]]:bg-text-muted [&_[data-slot=slider-track]]:bg-bg-hover"
         />
+        <MediaButton
+          label="Baixar"
+          onClick={() => downloadFile(src, title || 'audio')}
+          className="text-text-muted hover:text-text-primary"
+        >
+          <Download size={15} />
+        </MediaButton>
       </div>
     </div>
   );

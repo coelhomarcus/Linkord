@@ -70,11 +70,11 @@ export interface ChatMessage {
   // emoji -> userIds who reacted — key disappears when the last one toggles
   // off, never stored as an empty array.
   reactions?: Partial<Record<ReactionEmoji, string[]>>;
-  attachment?: ChatAttachment;
+  attachments?: ChatAttachment[];
 }
 
-// max one per message. `id` doubles as the download/display path:
-// `/uploads/${id}`.
+// up to MAX_ATTACHMENTS_PER_MESSAGE per message. `id` doubles as the
+// download/display path: `/uploads/${id}`.
 export interface ChatAttachment {
   id: string;
   name: string;
@@ -82,6 +82,7 @@ export interface ChatAttachment {
   size: number;
 }
 export const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024 * 1024; // UI-only, server always revalidates
+export const MAX_ATTACHMENTS_PER_MESSAGE = 4; // UI-only, server always revalidates
 // avatar — smaller cap, same upload route as attachments. UI-only, server revalidates.
 export const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 export const AVATAR_MIME_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
@@ -208,6 +209,9 @@ export type ServerMessage =
   | { t: 'chat-deleted'; channelId: string; msgId: number }
   | { t: 'chat-edited'; message: ChatMessage }
   | { t: 'chat-reaction-updated'; channelId: string; msgId: number; emoji: ReactionEmoji; userIds: string[] }
+  // one more attachment (2nd-4th) landed on a message whose first
+  // attachment already created it — see attachments.ts#handleAttachmentComplete.
+  | { t: 'chat-attachment-added'; channelId: string; msgId: number; attachment: ChatAttachment }
   // full fresh tree after any category/channel mutation — simpler and
   // harder to desync than incremental events; the tree is small (only
   // admins touch it).

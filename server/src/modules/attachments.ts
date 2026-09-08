@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import fsStreams from 'node:fs'; // only for createReadStream/createWriteStream (chunk assembly), see assembleChunks
 import path from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { eq, and, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
+import { eq, and, asc, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
 import { config } from '../config/env.js';
 import { db } from '../db/client.js';
 import { attachments as attachmentsTable, messages, type Attachment } from '../db/schema.js';
@@ -167,22 +167,31 @@ async function broadcastUsage(): Promise<void> {
   broadcast({ t: 'storage-usage', ...(await getUsage()) });
 }
 
-/** One query for all messages' attachments (avoids N+1). */
-export async function getByMessageIds(messageIds: number[]): Promise<Map<number, Attachment>> {
-  const map = new Map<number, Attachment>();
+/** One query for all messages' attachments (avoids N+1). Up to
+ * MAX_ATTACHMENTS_PER_MESSAGE rows per message now (see
+ * handleAttachmentComplete's targetMsgId path) — ordered by createdAt so
+ * multi-attachment order survives (attachments upload sequentially,
+ * client-side, so createdAt timestamps never collide in practice). */
+export async function getByMessageIds(messageIds: number[]): Promise<Map<number, Attachment[]>> {
+  const map = new Map<number, Attachment[]>();
   if (!messageIds.length) return map;
-  const rows = await db.select().from(attachmentsTable).where(inArray(attachmentsTable.messageId, messageIds));
-  for (const row of rows) if (row.messageId !== null) map.set(row.messageId, row);
+  const rows = await db.select().from(attachmentsTable)
+    .where(inArray(attachmentsTable.messageId, messageIds))
+    .orderBy(asc(attachmentsTable.createdAt));
+  for (const row of rows) {
+    if (row.messageId === null) continue;
+    const list = map.get(row.messageId);
+    if (list) list.push(row); else map.set(row.messageId, [row]);
+  }
   return map;
 }
 
-/** Deletes the on-disk file only — the DB row disappears via CASCADE when
- * the message is deleted right after (see modules/chat.ts). Postgres
+/** Deletes the on-disk file(s) only — the DB row(s) disappear via CASCADE
+ * when the message is deleted right after (see modules/chat.ts). Postgres
  * doesn't know about the file, so that part has to happen separately. */
 export async function deleteForMessage(messageId: number): Promise<void> {
-  const [row] = await db.select().from(attachmentsTable).where(eq(attachmentsTable.messageId, messageId)).limit(1);
-  if (!row) return;
-  await fs.unlink(filePathFor(row.id)).catch((err: NodeJS.ErrnoException) => { if (err.code !== 'ENOENT') throw err; });
+  const rows = await db.select().from(attachmentsTable).where(eq(attachmentsTable.messageId, messageId));
+  await Promise.all(rows.map((row) => fs.unlink(filePathFor(row.id)).catch((err: NodeJS.ErrnoException) => { if (err.code !== 'ENOENT') throw err; })));
 }
 
 /** Same idea in bulk — deleting a channel CASCADEs messages/attachments in
@@ -304,6 +313,25 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
   const manifest = await readManifest(uploadId);
   if (!manifest || manifest.userId !== sess.userId) return sendError(reply, 404, 'upload_not_found', 'Upload nao encontrado.');
 
+  // optional — present only when this file is the 2nd-4th attachment of a
+  // message whose FIRST attachment already created it (see
+  // chunkedUpload.ts/RoomProvider.tsx#sendAttachments). The client now
+  // always sends a JSON body here (possibly `{}`), even for the common
+  // single-attachment case.
+  const body = jsonBody(request.body);
+  let targetMsgId: number | null = null;
+  if (body.targetMsgId != null) {
+    targetMsgId = Number(body.targetMsgId);
+    if (!Number.isFinite(targetMsgId)) return sendError(reply, 400, 'invalid_target', 'targetMsgId invalido.');
+    const [existing] = await db.select().from(messages).where(eq(messages.id, targetMsgId)).limit(1);
+    if (!existing) return sendError(reply, 404, 'target_message_not_found', 'Mensagem de destino nao encontrada.');
+    if (existing.authorId !== sess.userId) return sendError(reply, 403, 'not_your_message', 'Voce so pode anexar arquivos as suas proprias mensagens.');
+    if (existing.channelId !== manifest.channelId) return sendError(reply, 400, 'channel_mismatch', 'Canal nao bate com o upload.');
+    if (Date.now() - existing.createdAt.getTime() > config.ATTACH_TO_MESSAGE_WINDOW_MS) {
+      return sendError(reply, 400, 'target_message_too_old', 'Mensagem de destino e antiga demais pra receber mais anexos.');
+    }
+  }
+
   if (completingUploads.has(uploadId)) return sendError(reply, 409, 'already_completing', 'Upload ja esta sendo finalizado.');
   completingUploads.add(uploadId);
 
@@ -328,25 +356,46 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
 
     const destPath = filePathFor(uploadId);
     let row: Attachment;
-    let message: typeof messages.$inferSelect;
+    let message: typeof messages.$inferSelect | null = null;
     try {
       await assembleChunks(uploadId, manifest, destPath);
-      const inserted = await db.transaction(async (tx) => {
-        const [messageRow] = await tx.insert(messages).values({
-          channelId: manifest.channelId, authorId: sess.userId, text: manifest.caption,
-        }).returning();
-        const [attachmentRow] = await tx.insert(attachmentsTable).values({
-          id: uploadId, messageId: messageRow!.id, fileName: manifest.fileName, mimeType: manifest.mimeType, size: manifest.totalSize,
-        }).returning();
-        return { messageRow: messageRow!, attachmentRow: attachmentRow! };
-      });
-      row = inserted.attachmentRow;
-      message = inserted.messageRow;
+      if (targetMsgId != null) {
+        const targetId = targetMsgId;
+        row = await db.transaction(async (tx) => {
+          // locks the message row so two concurrent completes racing to
+          // attach to the SAME message can't both pass the count check
+          // below before either commits.
+          await tx.execute(sql`select id from ${messages} where ${messages.id} = ${targetId} for update`);
+          const existingCount = (await tx.select({ id: attachmentsTable.id }).from(attachmentsTable).where(eq(attachmentsTable.messageId, targetId))).length;
+          if (existingCount >= config.MAX_ATTACHMENTS_PER_MESSAGE) {
+            throw Object.assign(new Error('too_many_attachments'), { code: 'too_many_attachments' });
+          }
+          const [attachmentRow] = await tx.insert(attachmentsTable).values({
+            id: uploadId, messageId: targetId, fileName: manifest.fileName, mimeType: manifest.mimeType, size: manifest.totalSize,
+          }).returning();
+          return attachmentRow!;
+        });
+      } else {
+        const inserted = await db.transaction(async (tx) => {
+          const [messageRow] = await tx.insert(messages).values({
+            channelId: manifest.channelId, authorId: sess.userId, text: manifest.caption,
+          }).returning();
+          const [attachmentRow] = await tx.insert(attachmentsTable).values({
+            id: uploadId, messageId: messageRow!.id, fileName: manifest.fileName, mimeType: manifest.mimeType, size: manifest.totalSize,
+          }).returning();
+          return { messageRow: messageRow!, attachmentRow: attachmentRow! };
+        });
+        row = inserted.attachmentRow;
+        message = inserted.messageRow;
+      }
     } catch (err) {
       // keep the CHUNKS on purpose — client can retry complete() without
       // re-uploading everything; only the (partial/invalid) final file is
       // discarded.
       await fs.unlink(destPath).catch(() => {});
+      if (err instanceof Error && (err as { code?: string }).code === 'too_many_attachments') {
+        return sendError(reply, 400, 'too_many_attachments', 'Essa mensagem ja tem o maximo de anexos.');
+      }
       throw err;
     }
 
@@ -355,19 +404,26 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
     await fs.rm(tmpDirFor(uploadId), { recursive: true, force: true })
       .catch((err) => console.error('[attachments] falha ao apagar chunks apos montagem:', err instanceof Error ? err.stack : err));
 
-    const chatMessage = {
-      msgId: message.id,
-      channelId: message.channelId,
-      id: message.authorId,
-      name: sess.displayName,
-      avatar: sess.avatar,
-      text: message.text,
-      ts: message.createdAt.getTime(),
-      attachment: { id: row.id, name: row.fileName, mime: row.mimeType, size: row.size },
-    };
-    broadcast({ t: 'chat', message: chatMessage });
-    await broadcastUsage();
-    sendJson(reply, 201, { message: chatMessage });
+    const attachmentPayload = { id: row.id, name: row.fileName, mime: row.mimeType, size: row.size };
+    if (message) {
+      const chatMessage = {
+        msgId: message.id,
+        channelId: message.channelId,
+        id: message.authorId,
+        name: sess.displayName,
+        avatar: sess.avatar,
+        text: message.text,
+        ts: message.createdAt.getTime(),
+        attachments: [attachmentPayload],
+      };
+      broadcast({ t: 'chat', message: chatMessage });
+      await broadcastUsage();
+      sendJson(reply, 201, { message: chatMessage });
+    } else {
+      broadcast({ t: 'chat-attachment-added', channelId: manifest.channelId, msgId: targetMsgId!, attachment: attachmentPayload });
+      await broadcastUsage();
+      sendJson(reply, 201, { attachment: attachmentPayload });
+    }
   } finally {
     completingUploads.delete(uploadId);
   }

@@ -81,7 +81,7 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     reorderCategories: noop,
     reorderChannels: noop,
     storageUsage: { totalBytes: 0, totalFiles: 0, maxBytes: 0 },
-    sendAttachment: asyncNoop,
+    sendAttachments: asyncNoop,
   };
   return { ...base, ...overrides };
 }

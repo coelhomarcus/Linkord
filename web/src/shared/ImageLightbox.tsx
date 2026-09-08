@@ -29,6 +29,8 @@ export function ImageLightbox({ src, alt, open, onOpenChange }: ImageLightboxPro
           <img
             src={src}
             alt={alt}
+            data-download-url={src}
+            data-download-name={alt || 'imagem'}
             className="max-h-full max-w-full cursor-default rounded-md border border-white/20 object-contain shadow-popover"
             onClick={(e) => e.stopPropagation()}
           />
