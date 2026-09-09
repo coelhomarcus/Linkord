@@ -116,7 +116,11 @@ async function assembleChunks(uploadId: string, manifest: UploadManifest, destPa
 }
 
 /** Cleans up abandoned upload sessions (tab closed / browser crash before
- * complete or cancel) — called at boot and hourly. */
+ * complete or cancel) — called at boot and hourly. Also re-declares the
+ * quota reservation (see pendingUploadBytes) for every session still on
+ * disk: at boot this REBUILDS the in-memory map from scratch (a restart
+ * wipes it, but chunks already on disk don't disappear), and on the hourly
+ * runs it's a harmless no-op re-set. */
 export async function sweepStaleUploads(): Promise<void> {
   const tmpRoot = path.join(config.UPLOAD_DIR, 'tmp');
   let ids: string[];
@@ -129,9 +133,11 @@ export async function sweepStaleUploads(): Promise<void> {
   for (const id of ids) {
     const dir = path.join(tmpRoot, id);
     let createdAtMs: number;
+    let totalSize: number | undefined;
     try {
       const manifest: UploadManifest = JSON.parse(await fs.readFile(path.join(dir, 'manifest.json'), 'utf8'));
       createdAtMs = new Date(manifest.createdAt).getTime();
+      totalSize = manifest.totalSize;
     } catch {
       // manifest missing/corrupt — fall back to the folder's creation time
       // so it can still be swept.
@@ -143,6 +149,9 @@ export async function sweepStaleUploads(): Promise<void> {
     }
     if (Date.now() - createdAtMs > config.UPLOAD_SESSION_TTL_MS) {
       await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+      pendingUploadBytes.delete(id);
+    } else if (totalSize != null) {
+      pendingUploadBytes.set(id, totalSize);
     }
   }
 }
@@ -238,6 +247,40 @@ export function contentDispositionFor(kind: 'inline' | 'attachment', fileName: s
 // file twice. Process-lifetime only (correctly resets on restart).
 const completingUploads = new Set<string>();
 
+// uploadId -> declared totalSize, for every upload session that has chunks
+// on disk but isn't committed to the DB yet. getUsage() only sums committed
+// rows, so without this an attacker could open many parallel init()s — each
+// one sees the same (unchanged) committed total and passes the quota check
+// on its own — then upload chunks for all of them at once, filling the disk
+// far past MAX_STORAGE_BYTES before any single one reaches complete(). This
+// map is the running total of storage already "promised" to in-flight
+// sessions; init() checks committed + reserved + this-upload's size against
+// the quota, atomically (see withInitLock). Entries are released only when
+// the session's chunks are actually gone from disk (cancel, a *successful*
+// complete, or the stale sweep) — never on a failed complete, since chunks
+// are deliberately kept there for the client to retry. Rebuilt from disk at
+// boot by sweepStaleUploads, since a restart clears this map but not the
+// chunks already written.
+const pendingUploadBytes = new Map<string, number>();
+
+function getReservedBytes(): number {
+  let sum = 0;
+  for (const bytes of pendingUploadBytes.values()) sum += bytes;
+  return sum;
+}
+
+// Serializes the check-then-reserve section of init() across concurrent
+// requests (single-instance deployment, same assumption as completingUploads
+// above) — without this, two init()s could both read the same
+// committed+reserved total before either adds its own reservation, letting
+// both through even though their combined size exceeds the quota.
+let initLock: Promise<unknown> = Promise.resolve();
+function withInitLock<T>(fn: () => Promise<T>): Promise<T> {
+  const result = initLock.then(fn, fn);
+  initLock = result.then(() => undefined, () => undefined);
+  return result;
+}
+
 /** Step 1/3 — declares the file before any bytes are sent, so an invalid
  * channel/quota/size fails fast. Server decides chunkSize; the client never
  * hardcodes it. */
@@ -259,19 +302,33 @@ async function handleAttachmentInit(request: FastifyRequest, reply: FastifyReply
     return sendError(reply, 400, 'invalid_size', 'Tamanho de arquivo invalido.');
   }
 
-  const usage = await getUsage();
-  if (usage.totalBytes + totalSize > config.MAX_STORAGE_BYTES) {
+  const uploadId = newId();
+
+  // reserve this upload's declared size against the quota BEFORE any chunk
+  // bytes can be sent — see pendingUploadBytes above for why this has to be
+  // check-then-reserve, atomically, rather than just checking getUsage().
+  const reserved = await withInitLock(async () => {
+    const usage = await getUsage();
+    if (usage.totalBytes + getReservedBytes() + totalSize > config.MAX_STORAGE_BYTES) return false;
+    pendingUploadBytes.set(uploadId, totalSize);
+    return true;
+  });
+  if (!reserved) {
     return sendError(reply, 400, 'storage_full', 'Armazenamento cheio (30GB no total). Apague arquivos antigos antes de enviar mais.');
   }
 
-  const uploadId = newId();
   const chunkSize = config.UPLOAD_CHUNK_BYTES;
   const totalChunks = Math.ceil(totalSize / chunkSize);
-  await fs.mkdir(tmpDirFor(uploadId), { recursive: true });
-  await fs.writeFile(manifestPathFor(uploadId), JSON.stringify({
-    uploadId, userId: sess.userId, channelId, fileName, mimeType, totalSize, caption,
-    chunkSize, totalChunks, createdAt: new Date().toISOString(),
-  } satisfies UploadManifest));
+  try {
+    await fs.mkdir(tmpDirFor(uploadId), { recursive: true });
+    await fs.writeFile(manifestPathFor(uploadId), JSON.stringify({
+      uploadId, userId: sess.userId, channelId, fileName, mimeType, totalSize, caption,
+      chunkSize, totalChunks, createdAt: new Date().toISOString(),
+    } satisfies UploadManifest));
+  } catch (err) {
+    pendingUploadBytes.delete(uploadId);
+    throw err;
+  }
 
   sendJson(reply, 201, { uploadId, chunkSize, totalChunks });
 }
@@ -404,6 +461,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
     // logs — sweepStaleUploads cleans it up later.
     await fs.rm(tmpDirFor(uploadId), { recursive: true, force: true })
       .catch((err) => console.error('[attachments] falha ao apagar chunks apos montagem:', err instanceof Error ? err.stack : err));
+    pendingUploadBytes.delete(uploadId);
 
     const attachmentPayload = { id: row.id, name: row.fileName, mime: row.mimeType, size: row.size };
     if (message) {
@@ -441,6 +499,7 @@ export async function handleAttachmentCancel(request: FastifyRequest<{ Params: {
   const manifest = await readManifest(uploadId);
   if (manifest && manifest.userId === sess.userId) {
     await fs.rm(tmpDirFor(uploadId), { recursive: true, force: true }).catch(() => {});
+    pendingUploadBytes.delete(uploadId);
   }
   sendJson(reply, 200, { ok: true });
 }
