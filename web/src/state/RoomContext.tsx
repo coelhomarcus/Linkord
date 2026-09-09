@@ -149,6 +149,11 @@ export interface RoomContextValue {
    * (server always revalidates role). Their past messages stay in history
    * and resolve to a neutral deleted-user fallback. */
   deleteUserAccount: (userId: string) => void;
+  /** Force-disconnects one CONNECTION (not account — see ChannelTree.tsx's
+   * CallParticipantRow, one row per live participant) from its current
+   * voice channel. Not a ban; they can rejoin immediately. Admin-only
+   * (server always revalidates role). */
+  voiceKickParticipant: (participantId: string) => void;
   /** Same idea as channelsError, for the Moderation tab. */
   moderationError: string | null;
   clearModerationError: () => void;

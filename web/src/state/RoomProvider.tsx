@@ -2,7 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { io } from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
-import { Room, RoomEvent, Track } from 'livekit-client';
+import { DisconnectReason, Room, RoomEvent, Track } from 'livekit-client';
 import type { LocalTrackPublication, Track as LKTrack } from 'livekit-client';
 import { RoomContext } from './RoomContext';
 import type { AnchorRect, AudioHandle, ReactionEvent, TileDomHandle } from './RoomContext';
@@ -372,6 +372,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const reorderCategories = useCallback((orderedIds: string[]) => sendWs({ t: 'categories-reorder', orderedIds }), [sendWs]);
   const reorderChannels = useCallback((categoryId: string, orderedIds: string[]) => sendWs({ t: 'channels-reorder', categoryId, orderedIds }), [sendWs]);
   const deleteUserAccount = useCallback((userId: string) => sendWs({ t: 'user-delete', userId }), [sendWs]);
+  // targets a CONNECTION (ChannelTree's CallParticipantRow's `id`), not an
+  // account — see moderation.ts#handleVoiceKick. No local state changes
+  // here: the kicked connection's own cleanup happens via the
+  // RoomEvent.Disconnected handler below, everyone else's view updates via
+  // the server's 'participant-updated' broadcast.
+  const voiceKickParticipant = useCallback((participantId: string) => sendWs({ t: 'voice-kick', participantId }), [sendWs]);
 
   const { startSharing, stopSharing } = useScreenShare(livekitRoom, dispatch);
   const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch);
@@ -417,6 +423,26 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   // this ref it would run with stale (always-false) values.
   const leaveVoiceChannelRef = useRef(leaveVoiceChannel);
   useEffect(() => { leaveVoiceChannelRef.current = leaveVoiceChannel; }, [leaveVoiceChannel]);
+
+  // Cleans up local voice state on any UNEXPECTED disconnect (kicked via
+  // RoomServiceClient.removeParticipant — see moderation.ts#handleVoiceKick
+  // — a network drop, or the room ending) — without this there was no
+  // handler for RoomEvent.Disconnected at all, so local camera/sharing
+  // indicators and activeVoiceChannelId got stuck showing "still connected"
+  // after anything other than the user's own explicit leaveVoiceChannel().
+  // CLIENT_INITIATED is exactly that self-leave — it already ran this exact
+  // cleanup (plus disconnect()+'voice-leave', which this handler must NOT
+  // repeat), so it's the one reason to skip.
+  useEffect(() => {
+    const onDisconnected = (reason?: DisconnectReason) => {
+      if (reason === DisconnectReason.CLIENT_INITIATED) return;
+      if (state.me.cameraOn) stopCamera();
+      if (state.me.sharing) stopSharing();
+      setActiveVoiceChannelId(null);
+    };
+    livekitRoom.on(RoomEvent.Disconnected, onDisconnected);
+    return () => { livekitRoom.off(RoomEvent.Disconnected, onDisconnected); };
+  }, [livekitRoom, stopCamera, stopSharing, setActiveVoiceChannelId, state.me.cameraOn, state.me.sharing]);
 
   // syncs state when camera/screen stop via the browser's native controls
   // (e.g. Chrome's "Stop sharing" button) — LiveKit already unpublishes the
@@ -951,7 +977,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         hideAudioOnlyTiles, setHideAudioOnlyTiles,
         categories, activeChannelId, openChannel, messagesByChannel, hasMoreByChannel, loadingOlderByChannel, loadOlderMessages, unreadByChannel,
         allUsers, onlineUserIds, channelsError, clearChannelsError: () => setChannelsError(null),
-        deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null),
+        deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null), voiceKickParticipant,
         sendChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,
         replyingTo, setReplyingTo, editingMsgId, setEditingMsgId,
         hasMoreAfterByChannel, pendingJumpTarget, clearPendingJumpTarget, jumpToMessage,

@@ -197,6 +197,11 @@ export type ClientMessage =
   // having the tab open no longer does this by itself.
   | { t: 'voice-join'; channelId: string }
   | { t: 'voice-leave' }
+  // admin-only — force-disconnects that CONNECTION (not account) from its
+  // current voice channel via LiveKit's RoomServiceClient; not a ban, they
+  // can rejoin right away. No matching ServerMessage: the kicked client
+  // just gets a normal LiveKit 'disconnected' event (see RoomProvider.tsx).
+  | { t: 'voice-kick'; participantId: string }
   | { t: 'leave' }
   | { t: 'ping' };
 

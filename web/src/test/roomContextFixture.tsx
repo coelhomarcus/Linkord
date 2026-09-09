@@ -64,6 +64,7 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     channelsError: null,
     clearChannelsError: noop,
     deleteUserAccount: noop,
+    voiceKickParticipant: noop,
     moderationError: null,
     clearModerationError: noop,
     sendChatMessage: noop,
