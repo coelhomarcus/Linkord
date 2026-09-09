@@ -25,7 +25,6 @@ function UserRow({ user, online, onOpenProfile }: { user: PublicUser; online: bo
       </div>
       <span className={`min-w-0 flex-1 truncate text-body ${online ? 'text-text-secondary' : 'text-text-muted'}`}>
         {user.displayName}
-        {user.displayName !== user.username && <span className="ml-1 text-caption text-text-muted">@{user.username}</span>}
       </span>
       {user.role === 'admin' && <ShieldCheck size={16} className="flex-none text-blurple" />}
     </button>
