@@ -20,14 +20,21 @@ export function ProfileModal({ userId, onClose }: ProfileModalProps) {
   return (
     <Dialog open={!!user} onOpenChange={(next) => { if (!next) onClose(); }}>
       {user && (
-        <DialogContent className="max-w-[calc(100%-2rem)] overflow-hidden bg-bg-modal p-0 sm:max-w-130">
-          <DialogTitle className="sr-only">Perfil de {user.displayName}</DialogTitle>
-          <ProfileCard
-            user={user}
-            online={onlineUserIds.has(user.id)}
-            onBannerClick={user.banner ? () => setLightboxSrc(user.banner) : undefined}
-            onAvatarClick={user.avatar ? () => setLightboxSrc(user.avatar) : undefined}
-          />
+        // outer stays a fixed-size, non-scrolling box (so the close button
+        // this renders stays pinned top-right) — the card itself lives in
+        // the inner overflow-y-auto div, same split SettingsModal uses, so
+        // a short viewport doesn't cut the card off with no way to scroll
+        // to the rest of it.
+        <DialogContent className="flex max-h-[90vh] max-w-[calc(100%-2rem)] flex-col overflow-hidden bg-bg-modal p-0 sm:max-w-130">
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <DialogTitle className="sr-only">Perfil de {user.displayName}</DialogTitle>
+            <ProfileCard
+              user={user}
+              online={onlineUserIds.has(user.id)}
+              onBannerClick={user.banner ? () => setLightboxSrc(user.banner) : undefined}
+              onAvatarClick={user.avatar ? () => setLightboxSrc(user.avatar) : undefined}
+            />
+          </div>
         </DialogContent>
       )}
       {user && (

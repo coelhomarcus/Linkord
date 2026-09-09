@@ -54,42 +54,50 @@ export function ImageCropDialog({ open, imageSrc, aspect, cropShape, title, onCa
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onCancel(); }}>
-      <DialogContent className="max-w-[calc(100%-2rem)] bg-bg-modal p-6 sm:max-w-125">
-        <DialogTitle className="text-title font-bold text-text-primary">{title}</DialogTitle>
+      {/* outer stays a fixed-size, non-scrolling box (so the close button
+          this renders stays pinned top-right) — everything else lives in
+          the inner overflow-y-auto div, same split SettingsModal uses, so a
+          short viewport (phone landscape, a squat window) scrolls the
+          cropper/slider/buttons instead of cutting Cancelar/Salvar off with
+          no way to reach them. */}
+      <DialogContent className="flex max-h-[90vh] max-w-[calc(100%-2rem)] flex-col overflow-hidden bg-bg-modal p-0 sm:max-w-125">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
+          <DialogTitle className="text-title font-bold text-text-primary">{title}</DialogTitle>
 
-        {imageSrc && (
-          <div className="relative h-80 w-full overflow-hidden rounded-md bg-black">
-            <Cropper
-              image={imageSrc}
-              crop={crop}
-              zoom={zoom}
-              aspect={aspect}
-              cropShape={cropShape}
-              onCropChange={setCrop}
-              onZoomChange={setZoom}
-              onCropComplete={(_area, pixels) => setCroppedAreaPixels(pixels)}
+          {imageSrc && (
+            <div className="relative h-80 w-full flex-none overflow-hidden rounded-md bg-black">
+              <Cropper
+                image={imageSrc}
+                crop={crop}
+                zoom={zoom}
+                aspect={aspect}
+                cropShape={cropShape}
+                onCropChange={setCrop}
+                onZoomChange={setZoom}
+                onCropComplete={(_area, pixels) => setCroppedAreaPixels(pixels)}
+              />
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
+            <ZoomIn size={16} className="flex-none text-text-muted" />
+            <Slider
+              value={[zoom]}
+              onValueChange={(v) => setZoom(Array.isArray(v) ? (v[0] ?? 1) : (v as number))}
+              min={1}
+              max={3}
+              step={0.01}
             />
           </div>
-        )}
 
-        <div className="flex items-center gap-3">
-          <ZoomIn size={16} className="flex-none text-text-muted" />
-          <Slider
-            value={[zoom]}
-            onValueChange={(v) => setZoom(Array.isArray(v) ? (v[0] ?? 1) : (v as number))}
-            min={1}
-            max={3}
-            step={0.01}
-          />
-        </div>
-
-        <div className="mt-1 flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onCancel}>
-            <span>Cancelar</span>
-          </Button>
-          <Button type="button" disabled={saving || !croppedAreaPixels} onClick={handleSave}>
-            <span>{saving ? 'Salvando…' : 'Salvar'}</span>
-          </Button>
+          <div className="mt-1 flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={onCancel}>
+              <span>Cancelar</span>
+            </Button>
+            <Button type="button" disabled={saving || !croppedAreaPixels} onClick={handleSave}>
+              <span>{saving ? 'Salvando…' : 'Salvar'}</span>
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
