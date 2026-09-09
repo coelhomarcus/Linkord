@@ -48,6 +48,18 @@ function setSessionCookie(request: FastifyRequest, reply: FastifyReply, rawToken
 }
 
 async function handleRegister(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  // REGISTRATION_CODE is the only gate keeping a self-hosted instance
+  // private — without a lockout here it's brute-forceable at unlimited
+  // speed. Same IP-lockout scheme as login (see ratelimit.ts), but its own
+  // key namespace so failed logins/registrations from one IP don't block
+  // the other.
+  const ipKey = `reg-ip:${ipOfRequest(request)}`;
+  const ipBlockedSec = ratelimit.checkBlocked(ipKey);
+  if (ipBlockedSec) {
+    reply.header('Retry-After', String(ipBlockedSec));
+    return sendError(reply, 429, 'rate_limited', 'Muitas tentativas. Tente novamente mais tarde.');
+  }
+
   const body = jsonBody(request.body);
   const username = String(body.username == null ? '' : body.username).trim();
   const password = String(body.password == null ? '' : body.password);
@@ -57,7 +69,11 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
   // fail closed: no code configured means registration is closed — never
   // "open by a forgotten config."
   if (!config.REGISTRATION_CODE) return sendError(reply, 403, 'registration_closed', 'Registro fechado.');
-  if (!safeCompare(code, config.REGISTRATION_CODE)) return sendError(reply, 403, 'invalid_code', 'Codigo de convite invalido.');
+  if (!safeCompare(code, config.REGISTRATION_CODE)) {
+    ratelimit.recordFailure(ipKey);
+    return sendError(reply, 403, 'invalid_code', 'Codigo de convite invalido.');
+  }
+  ratelimit.reset(ipKey);
 
   if (!USERNAME_RE.test(username)) {
     return sendError(reply, 400, 'invalid_username', `Nome de usuario deve ter entre ${config.MIN_USERNAME_LEN} e ${config.MAX_USERNAME_LEN} caracteres (letras, numeros, . _ -).`);
