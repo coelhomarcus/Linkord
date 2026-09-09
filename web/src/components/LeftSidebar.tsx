@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { ChevronDown, FolderPlus, Hash, Headphones, HeadphoneOff, Mic, MicOff, PhoneOff, Plus, Settings } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -19,6 +20,7 @@ import { useMediaDevices } from '../features/settings/useMediaDevices';
 import { Avatar } from '../shared/Avatar';
 import { PromptDialog } from '../shared/PromptDialog';
 import { ChannelTree, NewChannelDialog } from './ChannelTree';
+import { loadSidebarWidth, saveSidebarWidth, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from '../features/settings/useSidebarWidthPreference';
 import type { Channel } from '../types/protocol';
 
 export type AppView = 'chat' | 'call';
@@ -53,6 +55,34 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
   const [newChannelOpen, setNewChannelOpen] = useState(false);
 
+  // desktop-only drag-to-resize (md:w-[var(--sidebar-w)] below) — mobile
+  // stays the fixed full-width overlay panel it's always been, untouched.
+  const [width, setWidth] = useState(loadSidebarWidth);
+  const asideRef = useRef<HTMLElement>(null);
+  const resizingRef = useRef(false);
+
+  function handleResizePointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    resizingRef.current = true;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }
+
+  function handleResizePointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    if (!resizingRef.current || !asideRef.current) return;
+    const left = asideRef.current.getBoundingClientRect().left;
+    setWidth(Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, e.clientX - left)));
+  }
+
+  function handleResizePointerUp(e: ReactPointerEvent<HTMLDivElement>) {
+    if (!resizingRef.current) return;
+    resizingRef.current = false;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    setWidth((w) => { saveSidebarWidth(w); return w; });
+  }
+
   // selecting a text channel also switches to the Chat screen if not
   // already there; selecting a voice channel actually joins it (connects
   // to that specific channel's Room, leaving another if already in one)
@@ -69,7 +99,11 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
   }
 
   return (
-    <aside className={cn('w-full flex-none flex-col border-r border-subtle bg-bg-sidebar md:flex md:w-60', mobileVisible ? 'flex' : 'hidden')}>
+    <aside
+      ref={asideRef}
+      style={{ '--sidebar-w': `${width}px` } as CSSProperties}
+      className={cn('relative w-full flex-none flex-col border-r border-subtle bg-bg-sidebar md:flex md:w-(--sidebar-w)', mobileVisible ? 'flex' : 'hidden')}
+    >
       <div className="flex flex-none select-none items-center gap-2 px-4 py-3.5">
         <img src="/logo.svg" alt="" className="h-8 w-8 flex-none" />
         <span className="min-w-0 flex-1 truncate text-title font-bold tracking-tight text-text-primary">Linkord</span>
@@ -210,6 +244,22 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
           </TooltipTrigger>
           <TooltipContent side="top">Ajustes</TooltipContent>
         </Tooltip>
+      </div>
+
+      {/* drag-to-resize — desktop only, mobile stays the fixed full-width
+          overlay panel. A wide invisible hit area (px-1.5) centered on a
+          thin visible line, so it's actually grabbable without looking
+          heavy; highlights on hover/drag so it reads as interactive. */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Redimensionar barra lateral"
+        onPointerDown={handleResizePointerDown}
+        onPointerMove={handleResizePointerMove}
+        onPointerUp={handleResizePointerUp}
+        className="absolute inset-y-0 -right-1.5 z-10 hidden w-3 cursor-col-resize touch-none px-1.5 md:block"
+      >
+        <div className="h-full w-px bg-transparent transition-colors hover:bg-blurple active:bg-blurple" />
       </div>
 
       <PromptDialog
