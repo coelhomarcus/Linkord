@@ -16,7 +16,7 @@ import { SectionLabel, sectionLabelClass } from '../../shared/SectionLabel';
 import { cn } from '@/shared/lib/utils';
 import { formatMB } from '../../shared/lib/formatBytes';
 import { AVATAR_MIME_TYPES, MAX_AVATAR_BYTES, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '../../types/protocol';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -222,8 +222,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       {/* full-screen sheet below md (no room for a floating card + a
           left-hand tab column); reverts to the original centered card from
           md up. */}
-      <DialogContent className="inset-0 h-full max-h-full w-full max-w-full translate-x-0 translate-y-0 grid-rows-[auto_1fr] overflow-hidden rounded-none bg-bg-modal p-0 gap-0 md:inset-auto md:top-1/2 md:left-1/2 md:h-auto md:min-h-150 md:max-h-[90vh] md:w-full md:max-w-4xl md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl">
-        <DialogTitle className="border-b border-subtle px-4 pt-5 pb-2 text-display font-bold text-text-primary md:px-6">Ajustes</DialogTitle>
+      <DialogContent className="inset-0 h-full max-h-full w-full max-w-full translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-none bg-bg-modal p-0 gap-0 md:inset-auto md:top-1/2 md:left-1/2 md:h-auto md:min-h-150 md:max-h-[90vh] md:w-full md:max-w-4xl md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl">
+        <DialogHeader className="border-b border-subtle px-4 pt-5 pb-2 pr-12 md:px-6 md:pr-12">
+          <DialogTitle className="text-display font-bold text-text-primary">Ajustes</DialogTitle>
+        </DialogHeader>
         <Tabs defaultValue="profile" orientation="vertical" className="min-h-0 flex-1 flex-col items-stretch md:flex-row">
           <TabsList className="h-auto w-full flex-none flex-row items-stretch gap-1 overflow-x-auto rounded-none bg-bg-primary p-2 md:w-44 md:flex-col md:overflow-visible md:p-3">
             <TabsIndicator />

@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
 interface ConfirmDialogProps {
@@ -26,17 +26,21 @@ export function ConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[calc(100%-2rem)] bg-bg-modal p-6 sm:max-w-100">
-        <DialogTitle className="text-title font-bold text-text-primary">{title}</DialogTitle>
-        <p className="select-none text-body text-text-secondary">{description}</p>
-        <div className="mt-1 flex justify-end gap-2">
+      <DialogContent className="max-h-[90vh] max-w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden bg-bg-modal p-0 sm:max-w-100">
+        <DialogHeader className="px-6 pt-6 pr-12">
+          <DialogTitle className="text-title font-bold text-text-primary">{title}</DialogTitle>
+        </DialogHeader>
+        <div className="min-h-0 overflow-y-auto px-6 py-4">
+          <DialogDescription className="select-none text-body text-text-secondary">{description}</DialogDescription>
+        </div>
+        <DialogFooter className="border-subtle bg-bg-tertiary/60 px-6 py-4">
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
             <span>{cancelLabel}</span>
           </Button>
           <Button type="button" variant={destructive ? 'destructive' : 'default'} onClick={handleConfirm}>
             <span>{confirmLabel}</span>
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

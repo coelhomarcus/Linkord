@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import Cropper from 'react-easy-crop';
 import type { Area, Point } from 'react-easy-crop';
 import { ZoomIn } from 'lucide-react';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { getCroppedImageBlob } from '@/shared/lib/cropImage';
@@ -56,14 +56,14 @@ export function ImageCropDialog({ open, imageSrc, aspect, cropShape, title, onCa
     <Dialog open={open} onOpenChange={(next) => { if (!next) onCancel(); }}>
       {/* outer stays a fixed-size, non-scrolling box (so the close button
           this renders stays pinned top-right) — everything else lives in
-          the inner overflow-y-auto div, same split SettingsModal uses, so a
-          short viewport (phone landscape, a squat window) scrolls the
-          cropper/slider/buttons instead of cutting Cancelar/Salvar off with
-          no way to reach them. */}
-      <DialogContent className="flex max-h-[90vh] max-w-[calc(100%-2rem)] flex-col overflow-hidden bg-bg-modal p-0 sm:max-w-125">
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
+          the inner overflow-y-auto div, while the footer stays reachable in
+          short viewports (phone landscape, a squat window). */}
+      <DialogContent className="max-h-[90vh] max-w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden bg-bg-modal p-0 sm:max-w-125">
+        <DialogHeader className="px-6 pt-6 pr-12">
           <DialogTitle className="text-title font-bold text-text-primary">{title}</DialogTitle>
+        </DialogHeader>
 
+        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-6 py-4">
           {imageSrc && (
             <div className="relative h-80 w-full flex-none overflow-hidden rounded-md bg-black">
               <Cropper
@@ -89,16 +89,16 @@ export function ImageCropDialog({ open, imageSrc, aspect, cropShape, title, onCa
               step={0.01}
             />
           </div>
-
-          <div className="mt-1 flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onCancel}>
-              <span>Cancelar</span>
-            </Button>
-            <Button type="button" disabled={saving || !croppedAreaPixels} onClick={handleSave}>
-              <span>{saving ? 'Salvando…' : 'Salvar'}</span>
-            </Button>
-          </div>
         </div>
+
+        <DialogFooter className="border-subtle bg-bg-tertiary/60 px-6 py-4">
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            <span>Cancelar</span>
+          </Button>
+          <Button type="button" disabled={saving || !croppedAreaPixels} onClick={handleSave}>
+            <span>{saving ? 'Salvando…' : 'Salvar'}</span>
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

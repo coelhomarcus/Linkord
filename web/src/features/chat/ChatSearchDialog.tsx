@@ -5,7 +5,7 @@ import { Avatar } from '../../shared/Avatar';
 import { formatTime } from '../../shared/lib/formatChatTime';
 import { renderSearchSnippet } from '../../shared/lib/searchSnippet';
 import type { SearchResult } from '../../types/protocol';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -91,10 +91,12 @@ export function ChatSearchDialog({ open, onOpenChange, activeChannelId, activeCh
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* same max-h-[90vh] outer / overflow-y-auto inner split as
           SettingsModal/ProfileModal/ImageCropDialog. */}
-      <DialogContent className="flex max-h-[90vh] max-w-[calc(100%-2rem)] flex-col overflow-hidden bg-bg-modal p-0 sm:max-w-2xl">
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+      <DialogContent className="max-h-[90vh] max-w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden bg-bg-modal p-0 sm:max-w-2xl">
+        <DialogHeader className="px-4 pt-4 pr-12">
           <DialogTitle className="text-title font-bold text-text-primary">Buscar mensagens</DialogTitle>
+        </DialogHeader>
 
+        <div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-4 pb-4 pt-3">
           <div className="relative flex-none">
             <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
             {/* eslint-disable-next-line jsx-a11y/no-autofocus -- opening the

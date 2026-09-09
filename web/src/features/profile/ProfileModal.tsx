@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useRoom } from '@/state/RoomContext';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ImageLightbox } from '@/shared/ImageLightbox';
 import { ProfileCard } from './ProfileCard';
 
@@ -25,9 +25,11 @@ export function ProfileModal({ userId, onClose }: ProfileModalProps) {
         // the inner overflow-y-auto div, same split SettingsModal uses, so
         // a short viewport doesn't cut the card off with no way to scroll
         // to the rest of it.
-        <DialogContent className="flex max-h-[90vh] max-w-[calc(100%-2rem)] flex-col overflow-hidden bg-bg-modal p-0 sm:max-w-130">
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <DialogTitle className="sr-only">Perfil de {user.displayName}</DialogTitle>
+        <DialogContent className="max-h-[90vh] max-w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden bg-bg-modal p-0 sm:max-w-130">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Perfil de {user.displayName}</DialogTitle>
+          </DialogHeader>
+          <div className="min-h-0 overflow-y-auto">
             <ProfileCard
               user={user}
               online={onlineUserIds.has(user.id)}

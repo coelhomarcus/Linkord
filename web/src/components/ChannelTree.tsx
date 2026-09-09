@@ -9,7 +9,7 @@ import { useRoom } from '../state/RoomContext';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { PromptDialog } from '../shared/PromptDialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -495,47 +495,51 @@ export function NewChannelDialog({ open, onOpenChange }: { open: boolean; onOpen
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[calc(100%-2rem)] bg-bg-modal p-6 sm:max-w-90">
-        <DialogTitle className="text-title font-bold text-text-primary">Novo canal</DialogTitle>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label className={sectionLabelClass}>Tipo</Label>
-            <div className="flex gap-2">
-              <Button type="button" variant={type === 'text' ? 'default' : 'outline'} className="flex-1" onClick={() => setType('text')}>
-                <Hash size={16} />
-                <span>Texto</span>
-              </Button>
-              <Button type="button" variant={type === 'voice' ? 'default' : 'outline'} className="flex-1" onClick={() => setType('voice')}>
-                <Volume2 size={16} />
-                <span>Voz</span>
-              </Button>
+      <DialogContent className="max-h-[90vh] max-w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden bg-bg-modal p-0 sm:max-w-90">
+        <form onSubmit={handleSubmit} className="contents">
+          <DialogHeader className="px-6 pt-6 pr-12">
+            <DialogTitle className="text-title font-bold text-text-primary">Novo canal</DialogTitle>
+          </DialogHeader>
+          <div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-6 py-4">
+            <div className="flex flex-col gap-1.5">
+              <Label className={sectionLabelClass}>Tipo</Label>
+              <div className="flex gap-2">
+                <Button type="button" variant={type === 'text' ? 'default' : 'outline'} className="flex-1" onClick={() => setType('text')}>
+                  <Hash size={16} />
+                  <span>Texto</span>
+                </Button>
+                <Button type="button" variant={type === 'voice' ? 'default' : 'outline'} className="flex-1" onClick={() => setType('voice')}>
+                  <Volume2 size={16} />
+                  <span>Voz</span>
+                </Button>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className={sectionLabelClass}>Categoria</Label>
+              <Select value={categoryId} onValueChange={(v) => v && setCategoryId(v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>{() => selectedCategory?.name ?? ''}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="newChannelName" className={sectionLabelClass}>Nome do canal</Label>
+              <Input id="newChannelName" autoFocus maxLength={60} placeholder="novo-canal" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label className={sectionLabelClass}>Categoria</Label>
-            <Select value={categoryId} onValueChange={(v) => v && setCategoryId(v)}>
-              <SelectTrigger className="w-full">
-                <SelectValue>{() => selectedCategory?.name ?? ''}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="newChannelName" className={sectionLabelClass}>Nome do canal</Label>
-            <Input id="newChannelName" autoFocus maxLength={60} placeholder="novo-canal" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div className="mt-1 flex justify-end gap-2">
+          <DialogFooter className="border-subtle bg-bg-tertiary/60 px-6 py-4">
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               <span>Cancelar</span>
             </Button>
             <Button type="submit" disabled={!name.trim() || !categoryId}>
               <span>Criar</span>
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
