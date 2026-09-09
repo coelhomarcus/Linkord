@@ -23,7 +23,7 @@ Linkord é uma plataforma de comunicação em tempo real com chamadas de voz, v�
 - Canais de voz com câmera e tela compartilhada (LiveKit)
 - Diretório de usuários (online/offline) e painel de moderação (apagar conta)
 - Aba de mídias — todo anexo/embed do projeto, de todos os canais
-- Preferências salvas por usuário (volume por chamada/pessoa, volume de notificações, qualidade de envio)
+- Preferências salvas por usuário (volume por chamada/pessoa, volume de notificações)
 - Notificação no Discord quando alguém entra na chamada ou compartilha tela (Webhook)
 
 ## Stack
