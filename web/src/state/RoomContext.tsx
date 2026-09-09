@@ -3,7 +3,6 @@ import type { Dispatch, MutableRefObject } from 'react';
 import type { Room } from 'livekit-client';
 import type { Category, ChatMessage, ClientMessage, PublicUser, ReactionEmoji, StorageUsage } from '../types/protocol';
 import type { RoomAction, RoomState } from './roomReducer';
-import type { Quality } from '../features/settings/useQualityPreference';
 import type { TileKind } from '../features/sharing/tileTypes';
 
 /** An active reaction shown in the overlay — `key` is unique per instance
@@ -80,8 +79,6 @@ export interface RoomContextValue {
   /** Leaves the current voice channel for real (unpublishes mic, stops
    * camera/screen, disconnects the Room, notifies the server). */
   leaveVoiceChannel: () => Promise<void>;
-  quality: Quality;
-  setQuality: (q: Quality) => void;
   /** Avatar/photo helper kept for upload and legacy callers. */
   updateAvatar: (avatar: string) => void;
   /** Profile fields editable by the user — username stays the account's

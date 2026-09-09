@@ -35,8 +35,6 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     activateMic: asyncNoop,
     toggleMicMuted: asyncNoop,
     leaveVoiceChannel: asyncNoop,
-    quality: 'standard',
-    setQuality: noop,
     updateAvatar: noop,
     updateProfile: noop,
     uploadAvatarFile: async () => '',

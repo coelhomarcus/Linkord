@@ -70,6 +70,18 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
     : undefined;
   const targetCategory = categoryTarget != null ? categories.find((c) => c.id === categoryTarget) : undefined;
 
+  // each block below ends with a separator ONLY if something actually
+  // follows it — otherwise (e.g. right-clicking a plain message, with no
+  // selection and no admin/sidebar/stage block after it) it was the LAST
+  // thing rendered, leaving an orphan divider with nothing under it.
+  const showMessageBlock = !!targetMessage;
+  const showDownloadBlock = !!downloadTarget;
+  const showSelectionBlock = hasSelection;
+  const showChannelBlock = isAdmin && !!targetChannel;
+  const showCategoryBlock = isAdmin && !!targetCategory;
+  const showSidebarCreateBlock = isAdmin && sidebarTarget && !targetChannel && !targetCategory;
+  const showStageBlock = stageTarget;
+
   useEffect(() => {
     function captureTarget(e: MouseEvent) {
       // Element, not HTMLElement: an icon button's target can be its inner
@@ -128,7 +140,7 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
       <ContextMenu onOpenChange={(open) => { if (open) setHasSelection(!!window.getSelection()?.toString()); }}>
         <ContextMenuTrigger className="contents">{children}</ContextMenuTrigger>
         <ContextMenuContent className="w-64">
-          {targetMessage && (
+          {showMessageBlock && targetMessage && (
             <>
               <div className="flex items-center justify-between gap-0.5 px-1 py-1">
                 {ALLOWED_REACTIONS.map((emoji) => (
@@ -164,28 +176,28 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
                   <span>Apagar</span>
                 </ContextMenuItem>
               )}
-              <ContextMenuSeparator />
+              {(showDownloadBlock || showSelectionBlock || showChannelBlock || showCategoryBlock || showSidebarCreateBlock || showStageBlock) && <ContextMenuSeparator />}
             </>
           )}
-          {downloadTarget && (
+          {showDownloadBlock && (
             <>
               <ContextMenuItem onClick={handleDownload}>
                 <Download size={14} />
                 <span>Baixar</span>
               </ContextMenuItem>
-              <ContextMenuSeparator />
+              {(showSelectionBlock || showChannelBlock || showCategoryBlock || showSidebarCreateBlock || showStageBlock) && <ContextMenuSeparator />}
             </>
           )}
-          {hasSelection && (
+          {showSelectionBlock && (
             <>
               <ContextMenuItem onClick={handleCopy}>
                 <Copy size={14} />
                 <span>Copiar</span>
               </ContextMenuItem>
-              <ContextMenuSeparator />
+              {(showChannelBlock || showCategoryBlock || showSidebarCreateBlock || showStageBlock) && <ContextMenuSeparator />}
             </>
           )}
-          {isAdmin && targetChannel && (
+          {showChannelBlock && targetChannel && (
             <>
               <ContextMenuItem onClick={() => setRenameChannelOpen(true)}>
                 <Pencil size={14} />
@@ -195,10 +207,10 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
                 <Trash2 size={14} />
                 <span>Apagar canal</span>
               </ContextMenuItem>
-              <ContextMenuSeparator />
+              {(showCategoryBlock || showSidebarCreateBlock || showStageBlock) && <ContextMenuSeparator />}
             </>
           )}
-          {isAdmin && targetCategory && (
+          {showCategoryBlock && (
             <>
               <ContextMenuItem onClick={() => setNewChannelOpen(true)}>
                 <Hash size={14} />
@@ -212,7 +224,7 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
                 <Trash2 size={14} />
                 <span>Apagar categoria</span>
               </ContextMenuItem>
-              <ContextMenuSeparator />
+              {(showSidebarCreateBlock || showStageBlock) && <ContextMenuSeparator />}
             </>
           )}
           {/* the generic "create" actions only make sense when the click
@@ -220,7 +232,7 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
               channel/category row, which already has its own actions above
               (and would otherwise show alongside them redundantly, since a
               row is itself inside the data-sidebar-channels region). */}
-          {isAdmin && sidebarTarget && !targetChannel && !targetCategory && (
+          {showSidebarCreateBlock && (
             <>
               <ContextMenuItem onClick={() => setNewCategoryOpen(true)}>
                 <FolderPlus size={14} />
@@ -232,10 +244,10 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
                   <span>Novo canal</span>
                 </ContextMenuItem>
               )}
-              <ContextMenuSeparator />
+              {showStageBlock && <ContextMenuSeparator />}
             </>
           )}
-          {stageTarget && (
+          {showStageBlock && (
             <ContextMenuCheckboxItem
               checked={hideAudioOnlyTiles}
               onCheckedChange={setHideAudioOnlyTiles}

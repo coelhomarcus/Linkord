@@ -10,6 +10,7 @@ import { LeftSidebar } from './components/LeftSidebar';
 import type { AppView } from './components/LeftSidebar';
 import { ChatPage } from './features/chat/ChatPage';
 import { Stage } from './features/sharing/Stage';
+import { VoiceIdleScreen } from './features/sharing/VoiceIdleScreen';
 import { CallControlBar } from './features/sharing/CallControlBar';
 import { ParticipantAudioLayer } from './features/sharing/ParticipantAudioLayer';
 import { FloatingPip } from './features/sharing/FloatingPip';
@@ -28,8 +29,17 @@ import { cn } from '@/shared/lib/utils';
 const SettingsModal = lazy(() => import('./features/settings/SettingsModal').then((m) => ({ default: m.SettingsModal })));
 
 function Shell() {
-  const { state, dispatch, livekitRoom, closeTileMenu, sendWs, notifyActiveView, registerRequestChatView } = useRoom();
+  const { state, dispatch, livekitRoom, closeTileMenu, sendWs, notifyActiveView, registerRequestChatView, activeVoiceChannelId } = useRoom();
   const [activeView, setActiveView] = useState<AppView>('chat');
+  // which voice channel the Call tab is showing — independent of
+  // `activeVoiceChannelId` (the one actually connected via LiveKit) so
+  // leaving a call doesn't strand the live Stage on screen: Stage only
+  // renders while this still matches activeVoiceChannelId, otherwise the
+  // Call tab falls back to VoiceIdleScreen (see below). Set whenever a
+  // voice channel is picked (LeftSidebar#handleSelectChannel), never
+  // cleared on leave — that's exactly what lets the idle screen keep
+  // showing which channel to rejoin.
+  const [viewedVoiceChannelId, setViewedVoiceChannelId] = useState<string | null>(null);
   const roomError = state.roomError;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
@@ -53,6 +63,10 @@ function Shell() {
   // are still things that really "stop" if the tab closes unintentionally.
   const publishing = state.me.sharing || state.me.cameraOn;
 
+  // "am I actually connected to the channel the Call tab is showing" — as
+  // opposed to just having it selected (see viewedVoiceChannelId above).
+  const viewingLiveChannel = !!viewedVoiceChannelId && viewedVoiceChannelId === activeVoiceChannelId;
+
   // "am I in the call" = my mic was activated this session — LiveKit
   // (micActivated) is already the source of truth, like the rest of the app.
   const myMedia = useParticipantMedia(state.me.id ?? '');
@@ -74,8 +88,9 @@ function Shell() {
   // joinVoiceChannel, called when clicking the specific channel in the
   // sidebar (LeftSidebar.tsx#handleSelectChannel), not here anymore just
   // by switching tabs.
-  function handleViewChange(next: AppView) {
+  function handleViewChange(next: AppView, voiceChannelId?: string) {
     setActiveView(next);
+    if (next === 'call' && voiceChannelId) setViewedVoiceChannelId(voiceChannelId);
   }
 
   // picking a channel on mobile should show its content right away, not
@@ -135,7 +150,17 @@ function Shell() {
         />
         <div className={cn('relative min-h-0 flex-1 md:flex', mobileShowSidebar ? 'hidden' : 'flex')}>
           {activeView === 'chat' && <ChatPage onBackMobile={() => setMobileShowSidebar(true)} onOpenProfile={setProfileUserId} />}
-          {activeView === 'call' && <Stage allIds={allIds} onBackMobile={() => setMobileShowSidebar(true)} />}
+          {activeView === 'call' && viewedVoiceChannelId && (
+            viewingLiveChannel
+              ? <Stage allIds={allIds} onBackMobile={() => setMobileShowSidebar(true)} />
+              : (
+                <VoiceIdleScreen
+                  channelId={viewedVoiceChannelId}
+                  onBackMobile={() => setMobileShowSidebar(true)}
+                  onOpenChat={() => setActiveView('chat')}
+                />
+              )
+          )}
           {/* full floating bar (mic/camera/screen/reactions) only on the
               Call tab itself — elsewhere the LeftSidebar's compact panel
               covers it. */}
