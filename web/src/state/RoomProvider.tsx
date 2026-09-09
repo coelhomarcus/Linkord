@@ -2,7 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { io } from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
-import { Room, RoomEvent, Track } from 'livekit-client';
+import { DisconnectReason, Room, RoomEvent, Track } from 'livekit-client';
 import type { LocalTrackPublication, Track as LKTrack } from 'livekit-client';
 import { RoomContext } from './RoomContext';
 import type { AnchorRect, AudioHandle, ReactionEvent, TileDomHandle } from './RoomContext';
@@ -26,7 +26,7 @@ import { uploadWithProgress } from '../shared/lib/uploadWithProgress';
 import { uploadFileInChunks } from '../shared/lib/chunkedUpload';
 import { DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../shared/Avatar';
 import { sanitizeDisplayName } from '../shared/lib/displayName';
-import type { Category, ChatMessage, ClientMessage, Participant, PublicUser, ReactionEmoji, ServerMessage, StorageUsage } from '../types/protocol';
+import type { Category, ChatMessage, ClientMessage, Participant, PublicUser, ReactionEmoji, SearchResult, ServerMessage, StorageUsage } from '../types/protocol';
 import { MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '../types/protocol';
 
 const REACTION_DURATION_MS = 3000; // must match --animate-float-up in index.css
@@ -96,7 +96,7 @@ function sanitizeProfileLinks(value: unknown): string[] {
 
 export function RoomProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(roomReducer, initialRoomState);
-  const auth = useAuth();
+  const { refresh: refreshAuth } = useAuth();
 
   const socketRef = useRef<Socket | null>(null);
   const myIdRef = useRef<string | null>(null);
@@ -178,8 +178,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   // on `categories` (state).
   const categoriesRef = useRef<Category[]>([]);
   const [activeChannelId, setActiveChannelIdState] = useState<string | null>(null);
-  // ref (not state) — handleServerMessage is registered once at mount and
-  // would otherwise close over a stale activeChannelId.
+  // ref (not state) — socket handlers outlive React renders and must always
+  // read the current active channel.
   const activeChannelIdRef = useRef<string | null>(null);
   const [activeVoiceChannelId, setActiveVoiceChannelIdState] = useState<string | null>(null);
   // same staleness reason as activeChannelIdRef. pendingVoiceChannelIdRef
@@ -214,6 +214,13 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const [hasMoreByChannel, setHasMoreByChannel] = useState<Map<string, boolean>>(new Map());
   const hasMoreByChannelRef = useRef<Map<string, boolean>>(new Map());
   useEffect(() => { hasMoreByChannelRef.current = hasMoreByChannel; }, [hasMoreByChannel]);
+  // per-channel: whether we're NOT caught up to the live tail (only true
+  // right after a search-result jump recentered the view — see
+  // jumpToMessage/'channel-history-around' below) — gates ChatMessageList's
+  // "back to now" pill. Unlike hasMoreByChannel, absent must mean false: a
+  // channel that was never recentered definitely has nothing "after" to
+  // page in.
+  const [hasMoreAfterByChannel, setHasMoreAfterByChannel] = useState<Map<string, boolean>>(new Map());
   // in-flight 'load-more-messages' requests, by channelId — prevents firing
   // a second request for the same channel before the first page lands.
   const [loadingOlderByChannel, setLoadingOlderByChannel] = useState<Set<string>>(new Set());
@@ -234,9 +241,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   // same idea, for the Moderation tab.
   const [moderationError, setModerationError] = useState<string | null>(null);
 
-  /** Also used internally for the first channel on join and as a fallback
-   * when the open channel gets deleted. */
-  const openChannel = useCallback((channelId: string) => {
+  /** Just the "switching to a different channel" bookkeeping, without also
+   * requesting 'channel-open' — factored out so jumpToMessage (below) can
+   * reuse it for a cross-channel jump WITHOUT also firing channel-open,
+   * which would race 'load-messages-around's reply and could silently
+   * discard the recentered window depending on which lands second. */
+  const switchActiveChannel = useCallback((channelId: string) => {
     activeChannelIdRef.current = channelId;
     setActiveChannelIdState(channelId);
     setUnreadByChannel((prev) => {
@@ -250,8 +260,15 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     // WRONG channel.
     setReplyingTo(null);
     setEditingMsgId(null);
+  }, []);
+
+  /** Also used internally for the first channel on join, as a fallback when
+   * the open channel gets deleted, and as "back to now" after a
+   * search-result jump (see ChatMessageList's pill). */
+  const openChannel = useCallback((channelId: string) => {
+    switchActiveChannel(channelId);
     sendWs({ t: 'channel-open', channelId });
-  }, [sendWs]);
+  }, [sendWs, switchActiveChannel]);
 
   /** Scrolled to the top of an already-open channel — fetches the next
    * OLDER page to prepend. No-ops if a page is already in flight for this
@@ -267,6 +284,46 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     loadingOlderRef.current.add(channelId);
     setLoadingOlderByChannel((prev) => new Set(prev).add(channelId));
     sendWs({ t: 'load-more-messages', channelId, beforeMsgId: oldest.msgId });
+  }, [sendWs]);
+
+  // search-result click target, or a reply-quote click on a message that
+  // isn't loaded yet. `pendingJumpTarget` is consumed by ChatMessageList
+  // (one effect per mounted channel view) to actually scroll/highlight once
+  // the target is in `chatMessages` — see clearPendingJumpTarget below.
+  const [pendingJumpTarget, setPendingJumpTargetState] = useState<{ channelId: string; msgId: number } | null>(null);
+  // staleness guard for an in-flight 'load-messages-around' — same idiom as
+  // pendingVoiceChannelIdRef above.
+  const pendingJumpRef = useRef<{ channelId: string; msgId: number } | null>(null);
+  const clearPendingJumpTarget = useCallback(() => setPendingJumpTargetState(null), []);
+
+  const jumpToMessage = useCallback((channelId: string, msgId: number) => {
+    const alreadyLoaded = messagesByChannelRef.current.get(channelId)?.some((msg) => msg.msgId === msgId) ?? false;
+    if (channelId !== activeChannelIdRef.current) switchActiveChannel(channelId);
+    setPendingJumpTargetState({ channelId, msgId });
+    if (alreadyLoaded) return; // already in the DOM once this channel is active — ChatMessageList finds it on the next render
+    pendingJumpRef.current = { channelId, msgId };
+    sendWs({ t: 'load-messages-around', channelId, msgId });
+  }, [sendWs, switchActiveChannel]);
+
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  // guards a stale reply to an earlier query (or a scope toggle mid-flight)
+  // from clobbering a newer one's results.
+  const pendingSearchRef = useRef<{ query: string; channelId?: string } | null>(null);
+  const clearSearchError = useCallback(() => setSearchError(null), []);
+
+  const searchMessages = useCallback((query: string, channelId?: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      pendingSearchRef.current = null;
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+    pendingSearchRef.current = { query: trimmed, channelId };
+    setSearchLoading(true);
+    sendWs({ t: 'message-search', query: trimmed, ...(channelId ? { channelId } : {}) });
   }, [sendWs]);
 
   const sendChatMessage = useCallback((channelId: string, text: string, replyTo?: number) => {
@@ -315,6 +372,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const reorderCategories = useCallback((orderedIds: string[]) => sendWs({ t: 'categories-reorder', orderedIds }), [sendWs]);
   const reorderChannels = useCallback((categoryId: string, orderedIds: string[]) => sendWs({ t: 'channels-reorder', categoryId, orderedIds }), [sendWs]);
   const deleteUserAccount = useCallback((userId: string) => sendWs({ t: 'user-delete', userId }), [sendWs]);
+  // targets a CONNECTION (ChannelTree's CallParticipantRow's `id`), not an
+  // account — see moderation.ts#handleVoiceKick. No local state changes
+  // here: the kicked connection's own cleanup happens via the
+  // RoomEvent.Disconnected handler below, everyone else's view updates via
+  // the server's 'participant-updated' broadcast.
+  const voiceKickParticipant = useCallback((participantId: string) => sendWs({ t: 'voice-kick', participantId }), [sendWs]);
 
   const { startSharing, stopSharing } = useScreenShare(livekitRoom, dispatch);
   const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch);
@@ -355,11 +418,31 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     sendWs({ t: 'voice-join', channelId });
   }, [sendWs, leaveVoiceChannel]);
 
-  // leaveVoiceChannel's identity changes with cameraOn/sharing, but it's
-  // called from the mount-only handleServerMessage closure below — without
-  // this ref it would run with stale (always-false) values.
+  // leaveVoiceChannel's identity changes with cameraOn/sharing, but socket
+  // messages call it through the long-lived handleServerMessage ref below —
+  // without this ref it would run with stale (always-false) values.
   const leaveVoiceChannelRef = useRef(leaveVoiceChannel);
   useEffect(() => { leaveVoiceChannelRef.current = leaveVoiceChannel; }, [leaveVoiceChannel]);
+
+  // Cleans up local voice state on any UNEXPECTED disconnect (kicked via
+  // RoomServiceClient.removeParticipant — see moderation.ts#handleVoiceKick
+  // — a network drop, or the room ending) — without this there was no
+  // handler for RoomEvent.Disconnected at all, so local camera/sharing
+  // indicators and activeVoiceChannelId got stuck showing "still connected"
+  // after anything other than the user's own explicit leaveVoiceChannel().
+  // CLIENT_INITIATED is exactly that self-leave — it already ran this exact
+  // cleanup (plus disconnect()+'voice-leave', which this handler must NOT
+  // repeat), so it's the one reason to skip.
+  useEffect(() => {
+    const onDisconnected = (reason?: DisconnectReason) => {
+      if (reason === DisconnectReason.CLIENT_INITIATED) return;
+      if (state.me.cameraOn) stopCamera();
+      if (state.me.sharing) stopSharing();
+      setActiveVoiceChannelId(null);
+    };
+    livekitRoom.on(RoomEvent.Disconnected, onDisconnected);
+    return () => { livekitRoom.off(RoomEvent.Disconnected, onDisconnected); };
+  }, [livekitRoom, stopCamera, stopSharing, setActiveVoiceChannelId, state.me.cameraOn, state.me.sharing]);
 
   // syncs state when camera/screen stop via the browser's native controls
   // (e.g. Chrome's "Stop sharing" button) — LiveKit already unpublishes the
@@ -535,7 +618,26 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'channel-history':
         setMessagesByChannel((prev) => new Map(prev).set(m.channelId, m.messages));
         setHasMoreByChannel((prev) => new Map(prev).set(m.channelId, m.hasMore));
+        // a normal open always loads the true live tail — any "not caught
+        // up" state from a previous jump into this channel no longer applies.
+        setHasMoreAfterByChannel((prev) => new Map(prev).set(m.channelId, false));
         break;
+      case 'channel-history-around': {
+        const pending = pendingJumpRef.current;
+        if (!pending || pending.channelId !== m.channelId || pending.msgId !== m.msgId) break; // superseded by a later jump
+        pendingJumpRef.current = null;
+        setMessagesByChannel((prev) => new Map(prev).set(m.channelId, m.messages));
+        setHasMoreByChannel((prev) => new Map(prev).set(m.channelId, m.hasMoreBefore));
+        setHasMoreAfterByChannel((prev) => new Map(prev).set(m.channelId, m.hasMoreAfter));
+        break;
+      }
+      case 'message-search-results': {
+        const pending = pendingSearchRef.current;
+        if (!pending || pending.query !== m.query || pending.channelId !== m.channelId) break; // superseded by a newer query/scope
+        setSearchResults(m.results);
+        setSearchLoading(false);
+        break;
+      }
       case 'channel-history-more': {
         const channelId = m.channelId;
         loadingOlderRef.current.delete(channelId);
@@ -691,6 +793,13 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         } else if (m.code === 'livekit-unavailable') {
           pendingVoiceChannelIdRef.current = null;
           dispatch({ type: 'SET_SHARE_ERROR', message: m.message });
+        } else if (m.code === 'message-not-found') {
+          // a search result (or reply-quote) pointed at a message deleted
+          // since — clear the pending jump instead of leaving it stuck
+          // waiting for a reply that will never arrive.
+          pendingJumpRef.current = null;
+          setPendingJumpTargetState(null);
+          setSearchError(m.message);
         } else {
           // unknown code — log it instead of failing silently (happened
           // before with this handler).
@@ -698,8 +807,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         }
         break;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, pushReaction, livekitRoom, openChannel, activateMic, setActiveVoiceChannelId]);
+
+  const handleServerMessageRef = useRef(handleServerMessage);
+  useEffect(() => { handleServerMessageRef.current = handleServerMessage; }, [handleServerMessage]);
 
   const connect = useCallback(() => {
     intentionalCloseRef.current = false;
@@ -713,7 +824,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       sendWs({ t: 'join', id: saved?.id, token: saved?.token });
     });
 
-    socket.onAny((_eventName: string, payload: ServerMessage) => handleServerMessage(payload));
+    socket.onAny((_eventName: string, payload: ServerMessage) => handleServerMessageRef.current(payload));
 
     socket.on('disconnect', () => {
       if (intentionalCloseRef.current) return;
@@ -724,10 +835,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     // and it won't auto-reconnect; auth.refresh() re-checks /api/auth/me and
     // AuthGate falls back to login if the session is truly dead.
     socket.on('connect_error', () => {
-      if (!socket.active) auth.refresh();
+      if (!socket.active) refreshAuth();
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, sendWs, handleServerMessage, auth]);
+  }, [sendWs, refreshAuth]);
 
   const updateProfile = useCallback((profile: { avatar: string; avatarColor: string; displayName: string; banner: string; bio: string; profileLinks: string[] }) => {
     const finalAvatar = profile.avatar.trim().slice(0, 500);
@@ -837,24 +947,36 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     return true;
   }, []);
 
-  // connect once on mount — RoomProvider only mounts once there's a valid
-  // session (AuthGate), so no "am I logged in?" check needed here.
   useEffect(() => {
     preloadSounds();
+  }, []);
+
+  useEffect(() => {
     setVolume(notifyVolume);
+  }, [notifyVolume]);
+
+  useEffect(() => {
     setNotificationsModuleEnabled(notificationsEnabled);
+  }, [notificationsEnabled]);
+
+  useEffect(() => {
     setNotificationClickHandler((channelId) => {
       openChannel(channelId);
       requestChatViewRef.current?.();
     });
+    return () => setNotificationClickHandler(null);
+  }, [openChannel]);
+
+  // connect once on mount — RoomProvider only mounts once there's a valid
+  // session (AuthGate), so no "am I logged in?" check needed here.
+  useEffect(() => {
     connect();
     return () => {
       intentionalCloseRef.current = true;
       socketRef.current?.disconnect();
       livekitRoom.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [connect, livekitRoom]);
 
   return (
     <RoomContext.Provider
@@ -868,9 +990,11 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         hideAudioOnlyTiles, setHideAudioOnlyTiles,
         categories, activeChannelId, openChannel, messagesByChannel, hasMoreByChannel, loadingOlderByChannel, loadOlderMessages, unreadByChannel,
         allUsers, onlineUserIds, channelsError, clearChannelsError: () => setChannelsError(null),
-        deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null),
+        deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null), voiceKickParticipant,
         sendChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,
         replyingTo, setReplyingTo, editingMsgId, setEditingMsgId,
+        hasMoreAfterByChannel, pendingJumpTarget, clearPendingJumpTarget, jumpToMessage,
+        searchResults, searchLoading, searchError, clearSearchError, searchMessages,
         storageUsage, sendAttachments,
         createCategory, deleteCategory, renameCategory, createChannel, deleteChannel, renameChannel, reorderCategories, reorderChannels,
       }}

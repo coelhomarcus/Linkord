@@ -4,12 +4,12 @@ import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from 
 import type { DragEndEvent, DragOverEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Hash, HeadphoneOff, MicOff, MoreHorizontal, Pencil, ScreenShare, Trash2, Video, Volume2, X } from 'lucide-react';
+import { Hash, HeadphoneOff, MicOff, MoreHorizontal, Pencil, PhoneOff, ScreenShare, Trash2, Video, Volume2, X } from 'lucide-react';
 import { useRoom } from '../state/RoomContext';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { PromptDialog } from '../shared/PromptDialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -33,14 +33,16 @@ import type { Category, Channel } from '../types/protocol';
  * 'screen-share'/'speaking'), always available but one broadcast round-trip
  * behind. `viewerInSameChannel` picks which one to trust — never both, to
  * avoid a stale value from one leaking through when the other should win. */
-function CallParticipantRow({ id, userId, name, avatar, avatarColor, viewerInSameChannel, onOpenProfile }: {
-  id: string; userId: string; name: string; avatar: string; avatarColor: string; viewerInSameChannel: boolean; onOpenProfile?: (userId: string) => void;
+function CallParticipantRow({ id, userId, name, avatar, avatarColor, viewerInSameChannel, isAdmin, onOpenProfile }: {
+  id: string; userId: string; name: string; avatar: string; avatarColor: string; viewerInSameChannel: boolean; isAdmin: boolean; onOpenProfile?: (userId: string) => void;
 }) {
-  const { state, deafened } = useRoom();
+  const { state, deafened, voiceKickParticipant } = useRoom();
   const media = useParticipantMedia(id);
   const isSpeakingLive = useIsSpeaking(id);
   const participant = state.participants.get(id); // socket-driven; undefined for "me"
   const isMe = id === state.me.id;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const showKick = isAdmin && !isMe;
   // my own room IS whichever voice channel I'm connected to — always
   // trust LiveKit for myself, same as for anyone else in that same room.
   const trustLiveKit = isMe || viewerInSameChannel;
@@ -59,26 +61,58 @@ function CallParticipantRow({ id, userId, name, avatar, avatarColor, viewerInSam
   const isDeafened = isMe ? deafened : (participant?.deafened ?? false);
 
   return (
-    <button
-      type="button"
-      aria-label={`Abrir perfil de ${name}`}
-      onClick={() => { if (userId) onOpenProfile?.(userId); }}
-      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-    >
-      <div className="rounded-full transition-shadow" style={{ boxShadow: isSpeaking ? `0 0 0 2px ${tint}` : 'none' }}>
-        <Avatar id={id} name={name} avatar={avatar} avatarColor={avatarColor} size={26} />
-      </div>
-      <span className="min-w-0 flex-1 truncate text-body text-text-secondary">{name}</span>
-      {cameraOn && <Video size={15} className="flex-none text-green" />}
-      {sharing && <ScreenShare size={15} className="flex-none text-blurple" />}
-      {/* deafened already implies muted — showing both icons would be
-          redundant, same as Discord only showing the deafened one. */}
-      {isDeafened ? (
-        <HeadphoneOff size={15} className="flex-none text-red" />
-      ) : (
-        micActivated && micMuted && <MicOff size={15} className="flex-none text-red" />
+    <div className="group/participant relative">
+      <button
+        type="button"
+        aria-label={`Abrir perfil de ${name}`}
+        onClick={() => { if (userId) onOpenProfile?.(userId); }}
+        className={cn(
+          'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+          showKick && 'pr-7'
+        )}
+      >
+        <div className="rounded-full transition-shadow" style={{ boxShadow: isSpeaking ? `0 0 0 2px ${tint}` : 'none' }}>
+          <Avatar id={id} name={name} avatar={avatar} avatarColor={avatarColor} size={26} />
+        </div>
+        <span className="min-w-0 flex-1 truncate text-body text-text-secondary">{name}</span>
+        {cameraOn && <Video size={15} className="flex-none text-green" />}
+        {sharing && <ScreenShare size={15} className="flex-none text-blurple" />}
+        {/* deafened already implies muted — showing both icons would be
+            redundant, same as Discord only showing the deafened one. */}
+        {isDeafened ? (
+          <HeadphoneOff size={15} className="flex-none text-red" />
+        ) : (
+          micActivated && micMuted && <MicOff size={15} className="flex-none text-red" />
+        )}
+      </button>
+      {/* only the person's CONNECTION is targeted (id, not userId) — see
+          moderation.ts#handleVoiceKick — so two tabs of the same account in
+          this channel show as two rows, each kickable independently. */}
+      {showKick && (
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+          <DropdownMenuTrigger
+            render={
+              <button
+                type="button"
+                aria-label="Mais opcoes"
+                className={cn(
+                  'absolute right-1 top-1/2 h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-text-muted transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+                  menuOpen ? 'flex' : 'hidden group-hover/participant:flex'
+                )}
+              />
+            }
+          >
+            <MoreHorizontal size={14} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem variant="destructive" onClick={() => voiceKickParticipant(id)}>
+              <PhoneOff size={14} />
+              <span>Remover da chamada</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -267,6 +301,7 @@ function CategoryBlock({ category, activeChannelId, isAdmin, onSelectChannel, on
                       avatar={state.me.avatar}
                       avatarColor={state.me.avatarColor}
                       viewerInSameChannel
+                      isAdmin={isAdmin}
                       onOpenProfile={onOpenProfile}
                     />
                   )}
@@ -279,6 +314,7 @@ function CategoryBlock({ category, activeChannelId, isAdmin, onSelectChannel, on
                       avatar={p.avatar}
                       avatarColor={p.avatarColor}
                       viewerInSameChannel={activeVoiceChannelId === ch.id}
+                      isAdmin={isAdmin}
                       onOpenProfile={onOpenProfile}
                     />
                   ))}
@@ -459,47 +495,51 @@ export function NewChannelDialog({ open, onOpenChange }: { open: boolean; onOpen
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[calc(100%-2rem)] bg-bg-modal p-6 sm:max-w-90">
-        <DialogTitle className="text-title font-bold text-text-primary">Novo canal</DialogTitle>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label className={sectionLabelClass}>Tipo</Label>
-            <div className="flex gap-2">
-              <Button type="button" variant={type === 'text' ? 'default' : 'outline'} className="flex-1" onClick={() => setType('text')}>
-                <Hash size={16} />
-                <span>Texto</span>
-              </Button>
-              <Button type="button" variant={type === 'voice' ? 'default' : 'outline'} className="flex-1" onClick={() => setType('voice')}>
-                <Volume2 size={16} />
-                <span>Voz</span>
-              </Button>
+      <DialogContent className="max-h-[90vh] max-w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden bg-bg-modal p-0 sm:max-w-90">
+        <form onSubmit={handleSubmit} className="contents">
+          <DialogHeader className="px-6 pt-6 pr-12">
+            <DialogTitle className="text-title font-bold text-text-primary">Novo canal</DialogTitle>
+          </DialogHeader>
+          <div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-6 py-4">
+            <div className="flex flex-col gap-1.5">
+              <Label className={sectionLabelClass}>Tipo</Label>
+              <div className="flex gap-2">
+                <Button type="button" variant={type === 'text' ? 'default' : 'outline'} className="flex-1" onClick={() => setType('text')}>
+                  <Hash size={16} />
+                  <span>Texto</span>
+                </Button>
+                <Button type="button" variant={type === 'voice' ? 'default' : 'outline'} className="flex-1" onClick={() => setType('voice')}>
+                  <Volume2 size={16} />
+                  <span>Voz</span>
+                </Button>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className={sectionLabelClass}>Categoria</Label>
+              <Select value={categoryId} onValueChange={(v) => v && setCategoryId(v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>{() => selectedCategory?.name ?? ''}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="newChannelName" className={sectionLabelClass}>Nome do canal</Label>
+              <Input id="newChannelName" autoFocus maxLength={60} placeholder="novo-canal" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label className={sectionLabelClass}>Categoria</Label>
-            <Select value={categoryId} onValueChange={(v) => v && setCategoryId(v)}>
-              <SelectTrigger className="w-full">
-                <SelectValue>{() => selectedCategory?.name ?? ''}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="newChannelName" className={sectionLabelClass}>Nome do canal</Label>
-            <Input id="newChannelName" autoFocus maxLength={60} placeholder="novo-canal" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div className="mt-1 flex justify-end gap-2">
+          <DialogFooter className="border-subtle bg-bg-tertiary/60 px-6 py-4">
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               <span>Cancelar</span>
             </Button>
             <Button type="submit" disabled={!name.trim() || !categoryId}>
               <span>Criar</span>
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

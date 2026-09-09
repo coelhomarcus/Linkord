@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { Dispatch, MutableRefObject } from 'react';
 import type { Room } from 'livekit-client';
-import type { Category, ChatMessage, ClientMessage, PublicUser, ReactionEmoji, StorageUsage } from '../types/protocol';
+import type { Category, ChatMessage, ClientMessage, PublicUser, ReactionEmoji, SearchResult, StorageUsage } from '../types/protocol';
 import type { RoomAction, RoomState } from './roomReducer';
 import type { TileKind } from '../features/sharing/tileTypes';
 
@@ -149,6 +149,11 @@ export interface RoomContextValue {
    * (server always revalidates role). Their past messages stay in history
    * and resolve to a neutral deleted-user fallback. */
   deleteUserAccount: (userId: string) => void;
+  /** Force-disconnects one CONNECTION (not account — see ChannelTree.tsx's
+   * CallParticipantRow, one row per live participant) from its current
+   * voice channel. Not a ban; they can rejoin immediately. Admin-only
+   * (server always revalidates role). */
+  voiceKickParticipant: (participantId: string) => void;
   /** Same idea as channelsError, for the Moderation tab. */
   moderationError: string | null;
   clearModerationError: () => void;
@@ -172,6 +177,34 @@ export interface RoomContextValue {
    * editText state), re-seeded from the message whenever this changes. */
   editingMsgId: number | null;
   setEditingMsgId: (msgId: number | null) => void;
+  /** Per-channel: true only right after a search-result jump recentered the
+   * view away from the live tail — gates ChatMessageList's "back to now"
+   * pill. Absent (or false) means caught up, unlike hasMoreByChannel's
+   * "absent = maybe" heuristic. */
+  hasMoreAfterByChannel: Map<string, boolean>;
+  /** Set by jumpToMessage once the target message is loaded for its
+   * channel — consumed by ChatMessageList to scroll/highlight it, then
+   * cleared via clearPendingJumpTarget. */
+  pendingJumpTarget: { channelId: string; msgId: number } | null;
+  clearPendingJumpTarget: () => void;
+  /** Search-result (or reply-quote-to-not-yet-loaded-message) click target.
+   * If the message is already loaded for its channel, just switches to it
+   * and sets pendingJumpTarget (no request). Otherwise requests a
+   * recentered window ('load-messages-around') that REPLACES whatever
+   * history was loaded for that channel — see ChatMessageList's "back to
+   * now" pill for how to return to the live tail afterward. */
+  jumpToMessage: (channelId: string, msgId: number) => void;
+  /** Results of the last completed 'message-search' — cleared automatically
+   * when searchMessages is called with an empty query. */
+  searchResults: SearchResult[];
+  searchLoading: boolean;
+  /** Set when a search-result jump target no longer exists (deleted since
+   * the search ran) — distinct from an empty `searchResults`. */
+  searchError: string | null;
+  clearSearchError: () => void;
+  /** Debounce this yourself before calling (see ChatSearchDialog) — every
+   * call sends a request. `channelId` omitted searches every channel. */
+  searchMessages: (query: string, channelId?: string) => void;
   createCategory: (name: string) => void;
   deleteCategory: (categoryId: string) => void;
   renameCategory: (categoryId: string, name: string) => void;

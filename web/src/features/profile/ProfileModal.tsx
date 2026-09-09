@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useRoom } from '@/state/RoomContext';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ImageLightbox } from '@/shared/ImageLightbox';
 import { ProfileCard } from './ProfileCard';
 
@@ -20,14 +20,23 @@ export function ProfileModal({ userId, onClose }: ProfileModalProps) {
   return (
     <Dialog open={!!user} onOpenChange={(next) => { if (!next) onClose(); }}>
       {user && (
-        <DialogContent className="max-w-[calc(100%-2rem)] overflow-hidden bg-bg-modal p-0 sm:max-w-130">
-          <DialogTitle className="sr-only">Perfil de {user.displayName}</DialogTitle>
-          <ProfileCard
-            user={user}
-            online={onlineUserIds.has(user.id)}
-            onBannerClick={user.banner ? () => setLightboxSrc(user.banner) : undefined}
-            onAvatarClick={user.avatar ? () => setLightboxSrc(user.avatar) : undefined}
-          />
+        // outer stays a fixed-size, non-scrolling box (so the close button
+        // this renders stays pinned top-right) — the card itself lives in
+        // the inner overflow-y-auto div, same split SettingsModal uses, so
+        // a short viewport doesn't cut the card off with no way to scroll
+        // to the rest of it.
+        <DialogContent className="max-h-[90vh] max-w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden bg-bg-modal p-0 sm:max-w-130">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Perfil de {user.displayName}</DialogTitle>
+          </DialogHeader>
+          <div className="min-h-0 overflow-y-auto">
+            <ProfileCard
+              user={user}
+              online={onlineUserIds.has(user.id)}
+              onBannerClick={user.banner ? () => setLightboxSrc(user.banner) : undefined}
+              onAvatarClick={user.avatar ? () => setLightboxSrc(user.avatar) : undefined}
+            />
+          </div>
         </DialogContent>
       )}
       {user && (

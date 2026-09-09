@@ -7,6 +7,7 @@ import {
 } from './participants.js';
 import * as livekit from './livekit.js';
 import * as reactions from './reactions.js';
+import * as floodControl from './floodControl.js';
 import * as chat from '../modules/chat.js';
 import * as channels from '../modules/channels.js';
 import * as attachments from '../modules/attachments.js';
@@ -35,6 +36,28 @@ interface JoinMessage {
   id?: string;
   token?: string;
 }
+
+// Per-account sliding-window caps for the events an authenticated account
+// (or a script driving it) could otherwise flood at unlimited speed — chat
+// writes/broadcasts, reactions, and profile updates all hit the DB and fan
+// out to every connected participant with no other throttle in front of
+// them. Not applied to every event on purpose: most read-only/idempotent
+// ones (channel-open, voice-join, mic-state, ...) aren't the same kind of
+// risk and a limiter here would just make normal UI usage flaky.
+// 'message-search' is the one read-only exception — it's a full-text query
+// against the DB on every call, so it gets a conservative cap as defense in
+// depth against a scripted client bypassing the search box's own debounce;
+// 'load-messages-around' stays unthrottled like the other reads since it's
+// click-driven, not keystroke-driven.
+const ACTION_LIMITS: Record<string, { windowMs: number; max: number }> = {
+  chat: { windowMs: 10_000, max: 10 },
+  'chat-edit': { windowMs: 10_000, max: 10 },
+  'chat-delete': { windowMs: 10_000, max: 10 },
+  'chat-react': { windowMs: 10_000, max: 20 },
+  reaction: { windowMs: 10_000, max: 20 },
+  profile: { windowMs: 60_000, max: 10 },
+  'message-search': { windowMs: 10_000, max: 20 },
+};
 
 /** 'join' is the one special case in the dispatch: only participants.ts
  * creates/finds the participant, but the `welcome` reply also carries chat
@@ -157,7 +180,19 @@ export function createWsServer(httpServer: HttpServer): Server {
       if (eventName === 'voice-leave') return safeHandle('voice-leave', socket, payload || {}, (s) => handleVoiceLeave(s));
 
       const handler = handlers[eventName];
-      if (handler) safeHandle(eventName, socket, payload || {}, handler);
+      if (!handler) return;
+
+      const rule = ACTION_LIMITS[eventName];
+      if (rule) {
+        const userId = participantsMap.get(socket.participantId ?? '')?.userId;
+        // no participant yet (never joined) — the handler's own `p.socket
+        // !== socket` guard already no-ops it, nothing to rate-limit.
+        if (userId && !floodControl.allow(`${eventName}:${userId}`, rule)) {
+          send(socket, { t: 'error', code: 'rate_limited', message: 'Voce esta enviando rapido demais. Espere um pouco.' });
+          return;
+        }
+      }
+      safeHandle(eventName, socket, payload || {}, handler);
     });
 
     socket.on('disconnect', () => handleClose(socket));

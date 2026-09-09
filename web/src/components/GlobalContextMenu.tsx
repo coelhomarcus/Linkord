@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import type { ContextMenuRootActions } from '@base-ui/react/context-menu';
 import { Copy, Download, FolderPlus, Hash, Pencil, Reply, Trash2 } from 'lucide-react';
 import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { useRoom } from '../state/RoomContext';
@@ -54,6 +55,7 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
   const [deleteChannelOpen, setDeleteChannelOpen] = useState(false);
   const [renameCategoryOpen, setRenameCategoryOpen] = useState(false);
   const [deleteCategoryOpen, setDeleteCategoryOpen] = useState(false);
+  const contextMenuActionsRef = useRef<ContextMenuRootActions | null>(null);
   const isAdmin = state.me.role === 'admin';
   // resolved from the active channel's loaded messages, not stored directly
   // in state — right-clicking only ever targets a message that's currently
@@ -88,19 +90,52 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
       // SVG/path (an SVGElement) when the click lands exactly on the glyph,
       // and SVGElement isn't an HTMLElement — that excluded every icon
       // button (e.g. a video's centered play button) from these checks.
-      setSidebarTarget(e.target instanceof Element && !!e.target.closest('[data-sidebar-channels]'));
-      setStageTarget(e.target instanceof Element && !!e.target.closest('[data-stage]'));
-      const downloadEl = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-download-url]') : null;
+      const element = e.target instanceof Element ? e.target : null;
+      const wantsNativeMenu = isEditableTarget(e.target) || e.shiftKey;
+      const nextSidebarTarget = !!element?.closest('[data-sidebar-channels]');
+      const nextStageTarget = !!element?.closest('[data-stage]');
+      const downloadEl = element?.closest<HTMLElement>('[data-download-url]') ?? null;
+      const messageEl = element?.closest<HTMLElement>('[data-message-id]') ?? null;
+      const nextMessageTarget = messageEl ? Number(messageEl.dataset.messageId) : null;
+      const channelEl = element?.closest<HTMLElement>('[data-channel-id]') ?? null;
+      const nextChannelTarget = channelEl?.dataset.channelId ?? null;
+      const categoryEl = element?.closest<HTMLElement>('[data-category-id]') ?? null;
+      const nextCategoryTarget = categoryEl?.dataset.categoryId ?? null;
+      const nextHasSelection = !wantsNativeMenu && !!window.getSelection()?.toString();
+
+      setSidebarTarget(nextSidebarTarget);
+      setStageTarget(nextStageTarget);
       setDownloadTarget(downloadEl ? { url: downloadEl.dataset.downloadUrl!, name: downloadEl.dataset.downloadName || '' } : null);
-      const messageEl = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-message-id]') : null;
-      setMessageTarget(messageEl ? Number(messageEl.dataset.messageId) : null);
-      const channelEl = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-channel-id]') : null;
-      setChannelTarget(channelEl?.dataset.channelId ?? null);
-      const categoryEl = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-category-id]') : null;
-      setCategoryTarget(categoryEl?.dataset.categoryId ?? null);
+      setMessageTarget(nextMessageTarget);
+      setChannelTarget(nextChannelTarget);
+      setCategoryTarget(nextCategoryTarget);
+      setHasSelection(nextHasSelection);
+
+      if (wantsNativeMenu) return;
+
+      const nextHasMessageBlock = nextMessageTarget != null && !!activeChannelId
+        && !!messagesByChannel.get(activeChannelId)?.some((m) => m.msgId === nextMessageTarget);
+      const nextHasChannelBlock = isAdmin && nextChannelTarget != null
+        && categories.some((c) => c.channels.some((ch) => ch.id === nextChannelTarget));
+      const nextHasCategoryBlock = isAdmin && nextCategoryTarget != null
+        && categories.some((c) => c.id === nextCategoryTarget);
+      const nextHasSidebarCreateBlock = isAdmin && nextSidebarTarget && !nextHasChannelBlock && !nextHasCategoryBlock;
+      const hasVisibleItems = nextHasMessageBlock
+        || !!downloadEl
+        || nextHasSelection
+        || nextHasChannelBlock
+        || nextHasCategoryBlock
+        || nextHasSidebarCreateBlock
+        || nextStageTarget;
+
+      if (!hasVisibleItems) {
+        contextMenuActionsRef.current?.close();
+        e.preventDefault();
+        e.stopPropagation();
+      }
     }
     function blockNative(e: MouseEvent) {
-      if (isEditableTarget(e.target)) return;
+      if (isEditableTarget(e.target) || e.shiftKey) return;
       e.preventDefault();
     }
     // capture phase, before ContextMenuTrigger (spanning the whole tree via
@@ -120,7 +155,7 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
       document.removeEventListener('contextmenu', stopForNativeMenu, { capture: true });
       document.removeEventListener('contextmenu', blockNative);
     };
-  }, []);
+  }, [activeChannelId, categories, isAdmin, messagesByChannel]);
 
   function handleCopy() {
     const text = window.getSelection()?.toString();
@@ -137,7 +172,10 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
 
   return (
     <>
-      <ContextMenu onOpenChange={(open) => { if (open) setHasSelection(!!window.getSelection()?.toString()); }}>
+      <ContextMenu
+        actionsRef={contextMenuActionsRef}
+        onOpenChange={(open) => { if (open) setHasSelection(!!window.getSelection()?.toString()); }}
+      >
         <ContextMenuTrigger className="contents">{children}</ContextMenuTrigger>
         <ContextMenuContent className="w-64">
           {showMessageBlock && targetMessage && (

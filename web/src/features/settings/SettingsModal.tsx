@@ -16,7 +16,7 @@ import { SectionLabel, sectionLabelClass } from '../../shared/SectionLabel';
 import { cn } from '@/shared/lib/utils';
 import { formatMB } from '../../shared/lib/formatBytes';
 import { AVATAR_MIME_TYPES, MAX_AVATAR_BYTES, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '../../types/protocol';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -85,6 +85,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [bannerUploadProgress, setBannerUploadProgress] = useState(0);
   const [bannerError, setBannerError] = useState<string | null>(null);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
   // set the moment a file is picked (before cropping) — the actual upload
@@ -109,15 +110,29 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   async function handleToggleNotifications(checked: boolean) {
     if (!checked) {
+      setNotificationsError(null);
       setNotificationsEnabled(false);
       return;
     }
     // never request OS permission silently — only in direct response to
     // the user turning this on, same care useMediaDevices takes with mic/
     // camera permission (its "Grant access" button).
-    if (typeof Notification === 'undefined') return;
+    if (typeof Notification === 'undefined') {
+      setNotificationsError('Seu navegador nao suporta notificacoes.');
+      return;
+    }
     const permission = Notification.permission === 'default' ? await requestNotificationPermission() : Notification.permission;
-    if (permission === 'granted') setNotificationsEnabled(true);
+    if (permission === 'granted') {
+      setNotificationsError(null);
+      setNotificationsEnabled(true);
+    } else {
+      // switch below is controlled by notificationsEnabled, so it already
+      // snaps back to off on its own — without this, that was the ONLY
+      // feedback: nothing told the user why (see also useMediaDevices'
+      // "Grant access" button, same idea of surfacing a denied permission
+      // instead of just failing quietly).
+      setNotificationsError('Notificacoes bloqueadas. Permita o acesso nas configuracoes do navegador pra habilitar.');
+    }
   }
 
   // true once a color OUTSIDE the curated presets was picked via the custom
@@ -207,8 +222,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       {/* full-screen sheet below md (no room for a floating card + a
           left-hand tab column); reverts to the original centered card from
           md up. */}
-      <DialogContent className="inset-0 h-full max-h-full w-full max-w-full translate-x-0 translate-y-0 grid-rows-[auto_1fr] overflow-hidden rounded-none bg-bg-modal p-0 gap-0 md:inset-auto md:top-1/2 md:left-1/2 md:h-auto md:min-h-150 md:max-h-[90vh] md:w-full md:max-w-4xl md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl">
-        <DialogTitle className="border-b border-subtle px-4 pt-5 pb-2 text-display font-bold text-text-primary md:px-6">Ajustes</DialogTitle>
+      <DialogContent className="inset-0 h-full max-h-full w-full max-w-full translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-none bg-bg-modal p-0 gap-0 md:inset-auto md:top-1/2 md:left-1/2 md:h-auto md:min-h-150 md:max-h-[90vh] md:w-full md:max-w-4xl md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl">
+        <DialogHeader className="border-b border-subtle px-4 pt-5 pb-2 pr-12 md:px-6 md:pr-12">
+          <DialogTitle className="text-display font-bold text-text-primary">Ajustes</DialogTitle>
+        </DialogHeader>
         <Tabs defaultValue="profile" orientation="vertical" className="min-h-0 flex-1 flex-col items-stretch md:flex-row">
           <TabsList className="h-auto w-full flex-none flex-row items-stretch gap-1 overflow-x-auto rounded-none bg-bg-primary p-2 md:w-44 md:flex-col md:overflow-visible md:p-3">
             <TabsIndicator />
@@ -467,17 +484,20 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 </p>
               </div>
 
-              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
-                <div className="min-w-0">
-                  <p className="select-none text-body font-medium text-text-primary">Notificacoes de mensagens</p>
-                  <p className="select-none text-label text-text-muted">Avisa no sistema quando chegar mensagem em um canal que voce nao esta vendo.</p>
+              <div className={settingsCardClass}>
+                <div className="flex flex-row items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="select-none text-body font-medium text-text-primary">Notificacoes de mensagens</p>
+                    <p className="select-none text-label text-text-muted">Avisa no sistema quando chegar mensagem em um canal que voce nao esta vendo.</p>
+                  </div>
+                  <Switch
+                    checked={notificationsEnabled}
+                    onCheckedChange={handleToggleNotifications}
+                    aria-label="Notificacoes de mensagens"
+                    className="mt-0.5 flex-none"
+                  />
                 </div>
-                <Switch
-                  checked={notificationsEnabled}
-                  onCheckedChange={handleToggleNotifications}
-                  aria-label="Notificacoes de mensagens"
-                  className="mt-0.5 flex-none"
-                />
+                {notificationsError && <p className="text-label text-red">{notificationsError}</p>}
               </div>
             </TabsPanel>
 

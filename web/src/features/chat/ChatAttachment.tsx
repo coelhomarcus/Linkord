@@ -38,8 +38,10 @@ export function ChatAttachment({ attachment }: { attachment: ChatAttachmentData 
             loading="lazy"
             // fixed max-w (not just max-w-full): otherwise a much-wider-than-
             // tall image grows to the chat column's full width to fit
-            // max-h — huge even though it's "just" a thumbnail.
-            className="max-h-80 max-w-sm rounded-md border border-strong object-contain"
+            // max-h — huge even though it's "just" a thumbnail. min(24rem,100%)
+            // keeps that cap while still shrinking below it on narrow columns,
+            // instead of overflowing them like a bare max-w-sm would.
+            className="max-h-80 max-w-[min(24rem,100%)] rounded-md border border-strong object-contain"
           />
         </button>
         <ImageLightbox src={url} alt={attachment.name} open={lightboxOpen} onOpenChange={setLightboxOpen} />

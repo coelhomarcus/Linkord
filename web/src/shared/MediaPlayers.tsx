@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 import { Download, Maximize2, Pause, Play, Volume2, VolumeX, X } from 'lucide-react';
@@ -228,6 +228,23 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
   // instead of a fixed 16:9 box that letterboxed anything else (portrait,
   // square, ultrawide...) with black bars.
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
+  // only the fullscreen lightbox (onExpand undefined here, see maxWidth/
+  // maxHeight below) sizes off the viewport — without this listener,
+  // rotating the phone or resizing the window while it's open left the box
+  // sized for whatever window.innerWidth/innerHeight was on the render that
+  // happened to run right after the dialog opened (same overflow bug fixed
+  // for chat media in bd0483f, surviving here since this path reads the
+  // viewport directly instead of a container it's actually laid out in).
+  const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
+
+  useEffect(() => {
+    if (onExpand) return;
+    function handleResize() {
+      setViewport({ width: window.innerWidth, height: window.innerHeight });
+    }
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [onExpand]);
 
   function expand() {
     ref.current?.pause();
@@ -250,16 +267,26 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
   // onExpand only exists on the small inline/chat player, never the
   // fullscreen lightbox (see VideoPlayer/VideoLightbox below) — that's
   // what picks which size cap applies.
-  const maxWidth = onExpand ? 384 : Math.min(window.innerWidth - 64, 1152);
-  const maxHeight = onExpand ? 320 : window.innerHeight * 0.8;
+  const maxWidth = onExpand ? 384 : Math.min(viewport.width - 64, 1152);
+  const maxHeight = onExpand ? 320 : viewport.height * 0.8;
+  // maxWidth above assumes the chat column has room for it — it doesn't
+  // know the actual parent width. `maxWidth: '100%'` + `aspectRatio` (in
+  // place of a fixed `height`) let the box shrink below that on narrow
+  // columns/screens while the video keeps its real proportions, instead of
+  // overflowing the message or getting squashed by a fixed height.
   const boxStyle: CSSProperties = natural && natural.width > 0 && natural.height > 0
     ? (() => {
         const scale = Math.min(1, maxWidth / natural.width, maxHeight / natural.height);
-        return { width: natural.width * scale, height: natural.height * scale };
+        return {
+          width: natural.width * scale,
+          maxWidth: '100%',
+          aspectRatio: `${natural.width} / ${natural.height}`,
+          maxHeight,
+        };
       })()
     // before metadata loads: a reasonable 16:9 placeholder at max width, so
     // something visible shows up immediately instead of a 0-size flash.
-    : { width: maxWidth, aspectRatio: '16 / 9', maxHeight };
+    : { width: maxWidth, maxWidth: '100%', aspectRatio: '16 / 9', maxHeight };
 
   return (
     <div
@@ -383,7 +410,11 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
 
   return (
     <div
-      className={cn('@container/audio flex w-full min-w-0 max-w-xl items-center gap-2.5 rounded-md border border-strong bg-bg-tertiary px-2.5 py-2 shadow-panel', className)}
+      // duas linhas em vez de uma so (titulo+tempo em cima, play+slider+
+      // controles embaixo): o play button e o grupo mutar/volume/baixar
+      // deixavam de disputar largura com o slider na mesma linha, entao o
+      // player inteiro cabe num max-w bem menor sem espremer nada.
+      className={cn('@container/audio flex w-full min-w-0 max-w-sm flex-col gap-1.5 rounded-md border border-strong bg-bg-tertiary px-2.5 py-2 shadow-panel', className)}
       data-download-url={src}
       data-download-name={title || 'audio'}
     >
@@ -401,25 +432,23 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
         onError={onError}
       />
 
-      <button
-        type="button"
-        aria-label={playing ? 'Pausar' : 'Reproduzir'}
-        onClick={togglePlay}
-        className="flex size-9 flex-none items-center justify-center rounded-full bg-blurple text-white transition-colors hover:bg-blurple-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-      >
-        {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
-      </button>
+      <div className="flex min-w-0 items-baseline gap-2">
+        <span className="min-w-0 flex-1 truncate text-label font-medium text-text-secondary">{title}</span>
+        <span className="flex-none select-none text-caption tabular-nums text-text-muted">
+          {formatTime(currentTime)} / {formatTime(duration)}
+        </span>
+      </div>
 
-      {/* titulo e tempo dividem a mesma linha, com o slider logo abaixo: as duas
-          linhas ficam centradas no bloco, entao os icones dos dois lados caem
-          exatamente no meio — com ou sem titulo. */}
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="min-w-0 flex-1 truncate text-label font-medium text-text-secondary">{title}</span>
-          <span className="flex-none select-none text-caption tabular-nums text-text-muted">
-            {formatTime(currentTime)} / {formatTime(duration)}
-          </span>
-        </div>
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          aria-label={playing ? 'Pausar' : 'Reproduzir'}
+          onClick={togglePlay}
+          className="flex size-8 flex-none items-center justify-center rounded-full bg-blurple text-white transition-colors hover:bg-blurple-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          {playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
+        </button>
+
         <Slider
           value={[duration ? currentTime : 0]}
           min={0}
@@ -427,31 +456,31 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
           step={0.1}
           disabled={!duration}
           onValueChange={(value) => seek(value)}
-          className="[&_[data-slot=slider-range]]:bg-blurple [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-bg-hover"
+          className="min-w-0 flex-1 [&_[data-slot=slider-range]]:bg-blurple [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-bg-hover"
         />
-      </div>
 
-      <div className="flex flex-none items-center gap-0.5">
-        <MediaButton
-          label={muted || volume === 0 ? 'Desmutar' : 'Mutar'}
-          onClick={toggleMute}
-          className="text-text-muted hover:text-text-primary"
-        >
-          {muted || volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
-        </MediaButton>
-        <VolumeSlider
-          muted={muted}
-          volume={volume}
-          onChange={setVolume}
-          className="hidden @[26rem]/audio:block [&_[data-slot=slider-range]]:bg-text-muted [&_[data-slot=slider-track]]:bg-bg-hover"
-        />
-        <MediaButton
-          label="Baixar"
-          onClick={() => downloadFile(src, title || 'audio')}
-          className="text-text-muted hover:text-text-primary"
-        >
-          <Download size={15} />
-        </MediaButton>
+        <div className="flex flex-none items-center gap-0.5">
+          <MediaButton
+            label={muted || volume === 0 ? 'Desmutar' : 'Mutar'}
+            onClick={toggleMute}
+            className="text-text-muted hover:text-text-primary"
+          >
+            {muted || volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
+          </MediaButton>
+          <VolumeSlider
+            muted={muted}
+            volume={volume}
+            onChange={setVolume}
+            className="hidden @[19rem]/audio:block [&_[data-slot=slider-range]]:bg-text-muted [&_[data-slot=slider-track]]:bg-bg-hover"
+          />
+          <MediaButton
+            label="Baixar"
+            onClick={() => downloadFile(src, title || 'audio')}
+            className="text-text-muted hover:text-text-primary"
+          >
+            <Download size={15} />
+          </MediaButton>
+        </div>
       </div>
     </div>
   );

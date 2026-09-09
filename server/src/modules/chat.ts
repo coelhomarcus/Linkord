@@ -1,7 +1,7 @@
-import { eq, and, desc, lt } from 'drizzle-orm';
+import { eq, and, desc, asc, lt, gte, sql } from 'drizzle-orm';
 import { config } from '../config/env.js';
 import { db } from '../db/client.js';
-import { messages, users, type Message, type Attachment } from '../db/schema.js';
+import { messages, channels, users, type Message, type Attachment } from '../db/schema.js';
 import { participants, broadcast, send } from '../realtime/participants.js';
 import { ALLOWED_REACTIONS } from '../realtime/reactions.js';
 import { channelExists } from './channels.js';
@@ -18,6 +18,10 @@ import type { AppSocket, HandlerTable, Participant } from '../types.js';
 
 const REPLY_PREVIEW_LEN = 120;
 const DELETED_AUTHOR_NAME = 'Usuario apagado';
+// split of CHAT_HISTORY_LIMIT for handleLoadMessagesAround — half before
+// the target, half from (and including) it.
+const AROUND_BEFORE_LIMIT = Math.floor(config.CHAT_HISTORY_LIMIT / 2);
+const AROUND_AFTER_LIMIT = config.CHAT_HISTORY_LIMIT - AROUND_BEFORE_LIMIT;
 
 interface ReplyRef {
   msgId: number;
@@ -209,6 +213,103 @@ async function handleLoadMoreMessages(socket: AppSocket, msg: { channelId?: stri
   });
 }
 
+/** Search-result click target: a window of history CENTERED on `msgId`,
+ * unlike handleChannelOpen ("latest") or handleLoadMoreMessages ("older
+ * than X") — the client fully replaces its loaded range for this channel
+ * with the result (see RoomProvider.tsx#jumpToMessage), same "recenter"
+ * shape as opening a channel, just anchored differently instead of
+ * preserving whatever was loaded before. */
+async function handleLoadMessagesAround(socket: AppSocket, msg: { channelId?: string; msgId?: unknown }): Promise<void> {
+  const p = participants.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  const channelId = String(msg.channelId || '');
+  const msgId = Number(msg.msgId);
+  if (!channelId || !Number.isFinite(msgId) || !(await channelExists(channelId))) return;
+
+  // a search result can point at a message deleted since the search ran —
+  // without this check the two queries below would just silently return an
+  // empty/off window instead of telling the client why.
+  const [target] = await db.select({ id: messages.id }).from(messages)
+    .where(and(eq(messages.id, msgId), eq(messages.channelId, channelId))).limit(1);
+  if (!target) {
+    send(socket, { t: 'error', code: 'message-not-found', message: 'Essa mensagem nao existe mais.' });
+    return;
+  }
+
+  const [beforeRows, afterRows] = await Promise.all([
+    db.select(messageWithAuthorSelect).from(messages).leftJoin(users, eq(users.id, messages.authorId))
+      .where(and(eq(messages.channelId, channelId), lt(messages.id, msgId)))
+      .orderBy(desc(messages.id)).limit(AROUND_BEFORE_LIMIT),
+    db.select(messageWithAuthorSelect).from(messages).leftJoin(users, eq(users.id, messages.authorId))
+      .where(and(eq(messages.channelId, channelId), gte(messages.id, msgId)))
+      .orderBy(asc(messages.id)).limit(AROUND_AFTER_LIMIT),
+  ]);
+  beforeRows.reverse();
+  const rows = [...beforeRows, ...afterRows];
+  const attachmentByMessageId = await attachments.getByMessageIds(rows.map((r) => r.id));
+  send(socket, {
+    t: 'channel-history-around',
+    channelId,
+    msgId,
+    messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id))),
+    hasMoreBefore: beforeRows.length === AROUND_BEFORE_LIMIT,
+    hasMoreAfter: afterRows.length === AROUND_AFTER_LIMIT,
+  });
+}
+
+/** Full-text search — `channelId` omitted searches every channel, present
+ * scopes to just that one. See db/schema.ts#messages.searchVector for the
+ * indexed side; websearch_to_tsquery never throws on malformed input
+ * (quoted phrases / -exclude / or all work, garbage input just matches
+ * nothing), so it's safe to feed raw user text directly into it. */
+async function handleMessageSearch(socket: AppSocket, msg: { query?: string; channelId?: string }): Promise<void> {
+  const p = participants.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  const query = String(msg.query || '').trim().slice(0, config.MAX_SEARCH_QUERY_LEN);
+  const channelId = msg.channelId ? String(msg.channelId) : undefined;
+  if (!query) {
+    send(socket, { t: 'message-search-results', query, channelId, results: [] });
+    return;
+  }
+  if (channelId && !(await channelExists(channelId))) return;
+
+  const tsQuery = sql`websearch_to_tsquery('portuguese', ${query})`;
+  const rank = sql`ts_rank(${messages.searchVector}, ${tsQuery})`;
+  // Private-Use-Area delimiters (never typed in real chat text) instead of
+  // HTML — the client splits on them into plain-text/highlight React nodes
+  // itself (mirrors ChatMessageText.tsx's own "never build HTML strings"
+  // convention), no dangerouslySetInnerHTML anywhere.
+  const snippet = sql<string>`ts_headline('portuguese', ${messages.text}, ${tsQuery}, 'StartSel=, StopSel=, MaxFragments=1, MaxWords=20, MinWords=6')`;
+
+  const rows = await db
+    .select({ ...messageWithAuthorSelect, channelName: channels.name, snippet })
+    .from(messages)
+    .innerJoin(channels, eq(channels.id, messages.channelId))
+    .leftJoin(users, eq(users.id, messages.authorId))
+    .where(and(
+      sql`${messages.searchVector} @@ ${tsQuery}`,
+      channelId ? eq(messages.channelId, channelId) : undefined,
+    ))
+    .orderBy(desc(rank), desc(messages.id))
+    .limit(config.SEARCH_RESULT_LIMIT);
+
+  send(socket, {
+    t: 'message-search-results',
+    query,
+    channelId,
+    results: rows.map((r) => ({
+      msgId: r.id,
+      channelId: r.channelId,
+      channelName: r.channelName,
+      id: r.authorId,
+      name: authorNameFor(r),
+      avatar: r.authorAvatar ?? '',
+      ts: r.createdAt.getTime(),
+      snippet: r.snippet,
+    })),
+  });
+}
+
 async function handleChat(socket: AppSocket, msg: { channelId?: string; text?: string; replyTo?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
@@ -284,6 +385,8 @@ async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Pr
 export const handlers: HandlerTable = {
   'channel-open': handleChannelOpen,
   'load-more-messages': handleLoadMoreMessages,
+  'load-messages-around': handleLoadMessagesAround,
+  'message-search': handleMessageSearch,
   chat: handleChat,
   'chat-delete': handleChatDelete,
   'chat-edit': handleChatEdit,

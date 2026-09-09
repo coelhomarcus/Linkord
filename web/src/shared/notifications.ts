@@ -31,7 +31,7 @@ export function setNotificationsModuleEnabled(value: boolean): void {
 }
 
 let onClick: ((channelId: string) => void) | null = null;
-export function setNotificationClickHandler(fn: (channelId: string) => void): void {
+export function setNotificationClickHandler(fn: ((channelId: string) => void) | null): void {
   onClick = fn;
 }
 
