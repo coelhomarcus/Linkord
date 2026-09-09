@@ -790,29 +790,36 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     });
   }, [state.me.avatarColor, state.me.banner, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
 
-  // same upload folder/route as chat attachments — this only gets the URL
-  // back; updateProfile applies it together with the chosen background/name.
-  const uploadAvatarFile = useCallback(async (
-    file: File,
+  // same upload folder/route regardless of field — the endpoint just
+  // stores the file and hands back a URL (its `{ avatar: ... }` response
+  // shape is a historical artifact, not a constraint: server/src/modules/
+  // attachments.ts#handleAvatarUpload never touches the users table, and
+  // sanitizeBanner already whitelists this exact /uploads/<id> pattern —
+  // see participants.ts). `field` decides which profile field the result
+  // (and the rest of the in-progress draft) gets saved to.
+  const uploadProfileImage = useCallback(async (
+    field: 'avatar' | 'banner',
+    blob: Blob,
     onProgress?: (fraction: number) => void,
-    profile?: { avatarColor?: string; displayName?: string; banner?: string; bio?: string; profileLinks?: string[] }
+    profile?: { avatarColor?: string; displayName?: string; avatar?: string; banner?: string; bio?: string; profileLinks?: string[] }
   ) => {
     const body = await uploadWithProgress<{ avatar: string }>({
       url: '/api/avatar',
-      file,
-      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      file: blob,
+      headers: { 'Content-Type': blob.type || 'application/octet-stream' },
       onProgress,
     });
+    const url = body.avatar;
     updateProfile({
-      avatar: body.avatar,
+      avatar: field === 'avatar' ? url : (profile?.avatar ?? state.me.avatar),
       avatarColor: profile?.avatarColor ?? state.me.avatarColor,
       displayName: profile?.displayName ?? state.me.displayName,
-      banner: profile?.banner ?? state.me.banner,
+      banner: field === 'banner' ? url : (profile?.banner ?? state.me.banner),
       bio: profile?.bio ?? state.me.bio,
       profileLinks: profile?.profileLinks ?? state.me.profileLinks,
     });
-    return body.avatar;
-  }, [state.me.avatarColor, state.me.banner, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
+    return url;
+  }, [state.me.avatar, state.me.avatarColor, state.me.banner, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
 
   // menuOpenRef exists so closeTileMenu can answer synchronously whether it
   // actually closed something (setState isn't synchronous enough for that).
@@ -856,7 +863,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         registerRequestChatView,
         activeVoiceChannelId, joinVoiceChannel,
         startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted, leaveVoiceChannel,
-        updateAvatar, updateProfile, uploadAvatarFile, menuTarget, openTileMenu, closeTileMenu,
+        updateAvatar, updateProfile, uploadProfileImage, menuTarget, openTileMenu, closeTileMenu,
         reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
         hideAudioOnlyTiles, setHideAudioOnlyTiles,
         categories, activeChannelId, openChannel, messagesByChannel, hasMoreByChannel, loadingOlderByChannel, loadOlderMessages, unreadByChannel,

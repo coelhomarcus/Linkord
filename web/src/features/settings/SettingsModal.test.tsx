@@ -9,6 +9,19 @@ vi.mock('../../state/AuthContext', () => ({
   useAuth: () => ({ logout: vi.fn() }),
 }));
 
+// the real dialog wraps react-easy-crop (canvas-driven drag/zoom, doesn't
+// mean anything in jsdom, and is a third-party lib's job to test, not
+// ours) — stubbed to two buttons so tests can drive confirm/cancel directly.
+vi.mock('./ImageCropDialog', () => ({
+  ImageCropDialog: ({ open, onConfirm, onCancel }: { open: boolean; onConfirm: (blob: Blob) => void; onCancel: () => void }) =>
+    open ? (
+      <div>
+        <button type="button" onClick={() => onConfirm(new Blob(['x'], { type: 'image/jpeg' }))}>Confirmar recorte</button>
+        <button type="button" onClick={onCancel}>Cancelar recorte</button>
+      </div>
+    ) : null,
+}));
+
 describe('SettingsModal — perfil', () => {
   it('salva a cor escolhida para o fundo do avatar', async () => {
     const user = userEvent.setup();
@@ -108,7 +121,7 @@ describe('SettingsModal — perfil', () => {
     });
   });
 
-  it('salva banner, bio e links do perfil sem linhas vazias', async () => {
+  it('salva bio e links do perfil sem linhas vazias', async () => {
     const user = userEvent.setup();
     const updateProfile = vi.fn();
     const state = {
@@ -126,7 +139,6 @@ describe('SettingsModal — perfil', () => {
 
     renderWithRoom(<SettingsModal open onClose={vi.fn()} />, { state, updateProfile });
 
-    await user.type(screen.getByLabelText('URL de uma imagem horizontal (opcional)'), 'https://example.com/banner.png');
     await user.type(screen.getByLabelText('Um resumo curto sobre voce'), 'Oi, eu sou a Fulana.');
     await user.type(screen.getByLabelText('Link 1'), 'https://youtube.com/@fulana');
     await user.click(screen.getByRole('button', { name: 'Adicionar link' }));
@@ -136,9 +148,53 @@ describe('SettingsModal — perfil', () => {
       avatar: '',
       avatarColor: 'green',
       displayName: 'Fulana',
-      banner: 'https://example.com/banner.png',
+      banner: '',
       bio: 'Oi, eu sou a Fulana.',
       profileLinks: ['https://youtube.com/@fulana'],
     });
+  });
+
+  it('mostra "Remover foto" so quando ja existe uma foto', async () => {
+    const user = userEvent.setup();
+    const stateSemFoto = {
+      ...initialRoomState,
+      me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana', avatar: '', avatarColor: 'green' },
+    };
+    renderWithRoom(<SettingsModal open onClose={vi.fn()} />, { state: stateSemFoto });
+
+    await user.click(screen.getByRole('button', { name: 'Alterar foto de perfil' }));
+    expect(await screen.findByRole('menuitem', { name: 'Enviar foto' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Remover foto' })).not.toBeInTheDocument();
+  });
+
+  it('recorta e envia uma nova foto de perfil, aplicando na hora (sem esperar Salvar perfil)', async () => {
+    const user = userEvent.setup();
+    const uploadProfileImage = vi.fn().mockResolvedValue('/uploads/novo-avatar');
+    const state = {
+      ...initialRoomState,
+      me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana', avatar: '', avatarColor: 'green' },
+    };
+    renderWithRoom(<SettingsModal open onClose={vi.fn()} />, { state, uploadProfileImage });
+
+    const file = new File(['conteudo'], 'foto.png', { type: 'image/png' });
+    await user.upload(screen.getByLabelText('Selecionar foto de perfil'), file);
+    await user.click(screen.getByRole('button', { name: 'Confirmar recorte' }));
+
+    expect(uploadProfileImage).toHaveBeenCalledWith('avatar', expect.any(Blob), expect.any(Function), expect.objectContaining({ avatar: '' }));
+  });
+
+  it('remove a foto de perfil na hora, sem esperar Salvar perfil', async () => {
+    const user = userEvent.setup();
+    const updateProfile = vi.fn();
+    const state = {
+      ...initialRoomState,
+      me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana', avatar: '/uploads/foto-atual', avatarColor: 'green' },
+    };
+    renderWithRoom(<SettingsModal open onClose={vi.fn()} />, { state, updateProfile });
+
+    await user.click(screen.getByRole('button', { name: 'Alterar foto de perfil' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Remover foto' }));
+
+    expect(updateProfile).toHaveBeenCalledWith(expect.objectContaining({ avatar: '' }));
   });
 });
