@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 import { Download, Maximize2, Pause, Play, Volume2, VolumeX, X } from 'lucide-react';
@@ -228,6 +228,23 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
   // instead of a fixed 16:9 box that letterboxed anything else (portrait,
   // square, ultrawide...) with black bars.
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
+  // only the fullscreen lightbox (onExpand undefined here, see maxWidth/
+  // maxHeight below) sizes off the viewport — without this listener,
+  // rotating the phone or resizing the window while it's open left the box
+  // sized for whatever window.innerWidth/innerHeight was on the render that
+  // happened to run right after the dialog opened (same overflow bug fixed
+  // for chat media in bd0483f, surviving here since this path reads the
+  // viewport directly instead of a container it's actually laid out in).
+  const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
+
+  useEffect(() => {
+    if (onExpand) return;
+    function handleResize() {
+      setViewport({ width: window.innerWidth, height: window.innerHeight });
+    }
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [onExpand]);
 
   function expand() {
     ref.current?.pause();
@@ -250,8 +267,8 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
   // onExpand only exists on the small inline/chat player, never the
   // fullscreen lightbox (see VideoPlayer/VideoLightbox below) — that's
   // what picks which size cap applies.
-  const maxWidth = onExpand ? 384 : Math.min(window.innerWidth - 64, 1152);
-  const maxHeight = onExpand ? 320 : window.innerHeight * 0.8;
+  const maxWidth = onExpand ? 384 : Math.min(viewport.width - 64, 1152);
+  const maxHeight = onExpand ? 320 : viewport.height * 0.8;
   // maxWidth above assumes the chat column has room for it — it doesn't
   // know the actual parent width. `maxWidth: '100%'` + `aspectRatio` (in
   // place of a fixed `height`) let the box shrink below that on narrow
