@@ -94,6 +94,23 @@ export const MAX_PROFILE_BIO_LEN = 300;
 export const MAX_PROFILE_LINKS = 8;
 export const MAX_PROFILE_LINK_LEN = 300;
 
+// A row from 'message-search-results' — a lighter shape than ChatMessage
+// (no attachments/reactions/replyTo, none of that is needed for a result
+// list). `snippet` is the server's ts_headline output: plain text with the
+// matched word(s) wrapped in / (Private-Use-Area markers, never
+// typed in real chat text) instead of HTML — see
+// shared/lib/searchSnippet.ts for how the client splits on them.
+export interface SearchResult {
+  msgId: number;
+  channelId: string;
+  channelName: string;
+  id: string | null; // authorId — null mirrors ChatMessage.id for a deleted account
+  name: string;
+  avatar: string;
+  ts: number;
+  snippet: string;
+}
+
 export interface StorageUsage {
   totalBytes: number;
   totalFiles: number;
@@ -148,6 +165,11 @@ export type ClientMessage =
   // the server returns messages strictly before it (see ServerMessage
   // 'channel-history-more').
   | { t: 'load-more-messages'; channelId: string; beforeMsgId: number }
+  // search-result click target — a window of history CENTERED on msgId,
+  // not "latest"/"older than X" (see ServerMessage 'channel-history-around').
+  | { t: 'load-messages-around'; channelId: string; msgId: number }
+  // channelId omitted searches every channel; present scopes to just that one.
+  | { t: 'message-search'; query: string; channelId?: string }
   | { t: 'chat'; channelId: string; text: string; replyTo?: number }
   | { t: 'chat-delete'; msgId: number }
   | { t: 'chat-edit'; msgId: number; text: string }
@@ -208,6 +230,12 @@ export type ServerMessage =
   // response to 'load-more-messages' — an older page to PREPEND to
   // existing history, not replace it.
   | { t: 'channel-history-more'; channelId: string; messages: ChatMessage[]; hasMore: boolean }
+  // response to 'load-messages-around' — a REPLACEMENT window for the
+  // channel (not a prepend/merge like 'channel-history-more'), centered on
+  // msgId. hasMoreBefore/hasMoreAfter are the same "page came back full"
+  // heuristic as 'channel-history'.hasMore, just in both directions.
+  | { t: 'channel-history-around'; channelId: string; msgId: number; messages: ChatMessage[]; hasMoreBefore: boolean; hasMoreAfter: boolean }
+  | { t: 'message-search-results'; query: string; channelId?: string; results: SearchResult[] }
   | { t: 'chat'; message: ChatMessage }
   | { t: 'chat-deleted'; channelId: string; msgId: number }
   | { t: 'chat-edited'; message: ChatMessage }

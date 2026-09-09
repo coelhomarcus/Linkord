@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
-import { ArrowLeft, Hash, MoreHorizontal, Trash2, Upload, Users } from 'lucide-react';
+import { ArrowLeft, Hash, MoreHorizontal, Search, Trash2, Upload, Users } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatComposer } from './ChatComposer';
+import { ChatSearchDialog } from './ChatSearchDialog';
 import { UserDirectory } from './UserDirectory';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE } from '../../types/protocol';
@@ -35,6 +36,7 @@ export interface PendingAttachment {
 export function ChatPage({ onBackMobile, onOpenProfile }: ChatPageProps) {
   const { state, categories, activeChannelId, deleteChannel, replyingTo, setReplyingTo } = useRoom();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   // below md, the member list has nowhere to sit beside the chat — becomes
   // an overlay toggled from the header instead (see UserDirectory's
   // mobileOpen prop).
@@ -160,6 +162,9 @@ export function ChatPage({ onBackMobile, onOpenProfile }: ChatPageProps) {
             <h1 className="truncate text-title font-semibold text-text-primary">{activeChannel?.name ?? 'Chat'}</h1>
           </div>
           <div className="flex flex-none items-center gap-1">
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="Buscar mensagens" onClick={() => setSearchOpen(true)} className="text-text-muted hover:text-text-secondary">
+              <Search size={16} />
+            </Button>
             <Button type="button" variant="ghost" size="icon-sm" aria-label="Membros" onClick={() => setMembersOpen(true)} className="text-text-muted hover:text-text-secondary md:hidden">
               <Users size={16} />
             </Button>
@@ -214,6 +219,12 @@ export function ChatPage({ onBackMobile, onOpenProfile }: ChatPageProps) {
           confirmLabel="Apagar"
           destructive
           onConfirm={() => { if (activeChannelId) deleteChannel(activeChannelId); }}
+        />
+        <ChatSearchDialog
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          activeChannelId={activeChannelId}
+          activeChannelName={activeChannel?.name ?? null}
         />
       </div>
       <UserDirectory mobileOpen={membersOpen} onMobileClose={() => setMembersOpen(false)} onOpenProfile={onOpenProfile} />

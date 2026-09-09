@@ -1,5 +1,11 @@
-import { pgTable, text, varchar, timestamp, integer, bigint, jsonb, serial, uniqueIndex, index } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
+import { pgTable, text, varchar, timestamp, integer, bigint, jsonb, serial, uniqueIndex, index, customType } from 'drizzle-orm/pg-core';
+import { sql, type SQL } from 'drizzle-orm';
+
+// Postgres tsvector has no first-class drizzle column type — customType
+// just needs to know its SQL type name; the actual value is always
+// computed by Postgres itself (see messages.searchVector below), never
+// written from the app, so there's no fromDriver/toDriver to define.
+const tsvector = customType<{ data: string }>({ dataType: () => 'tsvector' });
 
 /** An account. `username` is immutable and the room's unique login/mention
  * handle. `displayName` is the free-form, non-unique name shown everywhere
@@ -81,8 +87,15 @@ export const messages = pgTable('messages', {
   editedAt: timestamp('edited_at', { withTimezone: true }),
   replyTo: jsonb('reply_to'),
   reactions: jsonb('reactions').notNull().default({}),
+  // Postgres computes/maintains this itself (GENERATED ALWAYS AS ... STORED)
+  // on every insert/update of `text` — never set from the app. 'portuguese'
+  // config for stemming (a search for "mensagem" should also find
+  // "mensagens"); see modules/chat.ts#handleMessageSearch for the matching
+  // query side.
+  searchVector: tsvector('search_vector').generatedAlwaysAs((): SQL => sql`to_tsvector('portuguese', ${messages.text})`),
 }, (t) => [
   index('messages_channel_id_idx').on(t.channelId),
+  index('messages_search_vector_idx').using('gin', t.searchVector),
 ]);
 
 /** A file on disk (config.UPLOAD_DIR) — either a message attachment or an

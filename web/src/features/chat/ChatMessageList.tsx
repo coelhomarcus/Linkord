@@ -6,6 +6,7 @@ import { Avatar } from '../../shared/Avatar';
 import { ChatMessageText } from './ChatMessageText';
 import { ChatAttachment } from './ChatAttachment';
 import { buildMentionLookup, mentionsUser } from '../../shared/lib/mentions';
+import { formatTime, formatDateHeading } from '../../shared/lib/formatChatTime';
 import { ALLOWED_REACTIONS } from '../../types/protocol';
 import type { ChatMessage, PublicUser, ReactionEmoji } from '../../types/protocol';
 import { Button } from '@/components/ui/button';
@@ -21,29 +22,6 @@ const GROUP_GAP_MS = 5 * 60 * 1000;
 // channel whose history hasn't loaded yet.
 const EMPTY_MESSAGES: ChatMessage[] = [];
 const DELETED_AUTHOR_NAME = 'Usuario apagado';
-
-function isSameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
-
-/** Today: "00:55". Yesterday: "Ontem às 00:55". Anything older: full date,
- * "05/08/2026, 02:06" — same rule Discord uses, so a message's age is
- * clear even scrolled far past its day divider (see formatDateHeading). */
-function formatTime(ts: number): string {
-  const date = new Date(ts);
-  const now = new Date();
-  const time = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  if (isSameDay(date, now)) return time;
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  if (isSameDay(date, yesterday)) return `Ontem às ${time}`;
-  const dateStr = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  return `${dateStr}, ${time}`;
-}
-
-function formatDateHeading(ts: number): string {
-  return new Date(ts).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
-}
 
 type RenderItem =
   | { type: 'date'; key: string; label: string }
@@ -356,7 +334,7 @@ interface ChatMessageListProps {
 export function ChatMessageList({ className, channelId, onReply, onOpenProfile }: ChatMessageListProps) {
   const {
     state, messagesByChannel, editChatMessage, allUsers, hasMoreByChannel, loadingOlderByChannel, loadOlderMessages,
-    editingMsgId, setEditingMsgId,
+    editingMsgId, setEditingMsgId, hasMoreAfterByChannel, pendingJumpTarget, clearPendingJumpTarget, openChannel,
   } = useRoom();
   const mentionLookup = useMemo(() => buildMentionLookup(allUsers), [allUsers]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -518,57 +496,91 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
     setEditingMsgId(null);
   }
 
-  function jumpToMessage(msgId: number) {
+  // behavior defaults to 'smooth' for the existing reply-quote-click caller
+  // (onJumpTo below) — a search-result jump (see the effect further down)
+  // passes 'auto' instead: an instant reposition reads better than
+  // animating a long scroll across content the user never saw.
+  function jumpToMessage(msgId: number, behavior: ScrollBehavior = 'smooth') {
     const el = document.getElementById(`chat-msg-${msgId}`);
     if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.scrollIntoView({ behavior, block: 'center' });
     if (highlightTimeoutRef.current != null) window.clearTimeout(highlightTimeoutRef.current);
     setHighlightedMsgId(msgId);
     highlightTimeoutRef.current = window.setTimeout(() => setHighlightedMsgId(null), 1500);
   }
 
+  // Consumes a search-result (or cross-channel reply) jump once its target
+  // is actually in `chatMessages` — either because jumpToMessage's fast
+  // path found it already loaded, or because 'load-messages-around' just
+  // landed (see RoomProvider.tsx#jumpToMessage). A layout effect, placed
+  // AFTER the bottom-snap one above, so both scrollTop mutations resolve in
+  // the same pre-paint pass — otherwise the view would flash to the bottom
+  // first, then jump to the target on the next paint.
+  useLayoutEffect(() => {
+    if (!pendingJumpTarget || pendingJumpTarget.channelId !== channelId) return;
+    if (!chatMessages.some((m) => m.msgId === pendingJumpTarget.msgId)) return; // recenter reply hasn't landed yet
+    stickToBottomRef.current = false; // a jump explicitly isn't "caught up" to the live tail
+    jumpToMessage(pendingJumpTarget.msgId, 'auto');
+    clearPendingJumpTarget();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingJumpTarget, chatMessages, channelId]);
+
   return (
-    <div ref={scrollRef} className={`min-h-0 flex-1 overflow-y-auto ${className ?? ''}`}>
-      <div ref={contentRef} className="flex flex-col">
-        {isLoadingOlder && (
-          <p className="my-2 select-none px-1 text-center text-label text-text-muted">Carregando mensagens anteriores…</p>
-        )}
-        {chatMessages.length === 0 && (
-          <p className="mt-4 select-none px-1 text-center text-label text-text-muted">Nenhuma mensagem ainda. Diga oi!</p>
-        )}
-        {renderItems.map((item) => {
-          if (item.type === 'date') {
+    <div className="relative min-h-0 flex-1">
+      <div ref={scrollRef} className={`h-full overflow-y-auto ${className ?? ''}`}>
+        <div ref={contentRef} className="flex flex-col">
+          {isLoadingOlder && (
+            <p className="my-2 select-none px-1 text-center text-label text-text-muted">Carregando mensagens anteriores…</p>
+          )}
+          {chatMessages.length === 0 && (
+            <p className="mt-4 select-none px-1 text-center text-label text-text-muted">Nenhuma mensagem ainda. Diga oi!</p>
+          )}
+          {renderItems.map((item) => {
+            if (item.type === 'date') {
+              return (
+                <div key={item.key} className="my-3 flex select-none items-center gap-3 px-3">
+                  <div className="h-px flex-1 bg-border-strong" />
+                  <span className="flex-none text-caption font-medium text-text-muted">{item.label}</span>
+                  <div className="h-px flex-1 bg-border-strong" />
+                </div>
+              );
+            }
+            const { message, showHeader } = item;
             return (
-              <div key={item.key} className="my-3 flex select-none items-center gap-3 px-3">
-                <div className="h-px flex-1 bg-border-strong" />
-                <span className="flex-none text-caption font-medium text-text-muted">{item.label}</span>
-                <div className="h-px flex-1 bg-border-strong" />
-              </div>
+              <ChatMessageRow
+                key={item.key}
+                message={message}
+                showHeader={showHeader}
+                isMod={isMod}
+                isHighlighted={highlightedMsgId === message.msgId}
+                mentionLookup={mentionLookup}
+                allUsers={allUsers}
+                isEditing={editingMsgId === message.msgId}
+                editText={editText}
+                onEditTextChange={setEditText}
+                onStartEdit={() => startEdit(message)}
+                onSaveEdit={saveEdit}
+                onCancelEdit={() => setEditingMsgId(null)}
+                onReply={() => onReply(message)}
+                onOpenProfile={onOpenProfile}
+                onJumpTo={jumpToMessage}
+              />
             );
-          }
-          const { message, showHeader } = item;
-          return (
-            <ChatMessageRow
-              key={item.key}
-              message={message}
-              showHeader={showHeader}
-              isMod={isMod}
-              isHighlighted={highlightedMsgId === message.msgId}
-              mentionLookup={mentionLookup}
-              allUsers={allUsers}
-              isEditing={editingMsgId === message.msgId}
-              editText={editText}
-              onEditTextChange={setEditText}
-              onStartEdit={() => startEdit(message)}
-              onSaveEdit={saveEdit}
-              onCancelEdit={() => setEditingMsgId(null)}
-              onReply={() => onReply(message)}
-              onOpenProfile={onOpenProfile}
-              onJumpTo={jumpToMessage}
-            />
-          );
-        })}
+          })}
+        </div>
       </div>
+      {hasMoreAfterByChannel.get(channelId) === true && (
+        // openChannel doesn't change `channelId` here (same channel), so
+        // the channel-switch layout effect above won't reset
+        // stickToBottomRef on its own — set it manually before reloading.
+        <button
+          type="button"
+          onClick={() => { stickToBottomRef.current = true; openChannel(channelId); }}
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 select-none rounded-full bg-blurple px-3 py-1.5 text-label font-medium text-white shadow-popover transition-colors hover:bg-blurple-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          Voltar para o mais recente
+        </button>
+      )}
     </div>
   );
 }

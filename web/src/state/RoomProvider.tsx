@@ -26,7 +26,7 @@ import { uploadWithProgress } from '../shared/lib/uploadWithProgress';
 import { uploadFileInChunks } from '../shared/lib/chunkedUpload';
 import { DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../shared/Avatar';
 import { sanitizeDisplayName } from '../shared/lib/displayName';
-import type { Category, ChatMessage, ClientMessage, Participant, PublicUser, ReactionEmoji, ServerMessage, StorageUsage } from '../types/protocol';
+import type { Category, ChatMessage, ClientMessage, Participant, PublicUser, ReactionEmoji, SearchResult, ServerMessage, StorageUsage } from '../types/protocol';
 import { MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '../types/protocol';
 
 const REACTION_DURATION_MS = 3000; // must match --animate-float-up in index.css
@@ -214,6 +214,13 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const [hasMoreByChannel, setHasMoreByChannel] = useState<Map<string, boolean>>(new Map());
   const hasMoreByChannelRef = useRef<Map<string, boolean>>(new Map());
   useEffect(() => { hasMoreByChannelRef.current = hasMoreByChannel; }, [hasMoreByChannel]);
+  // per-channel: whether we're NOT caught up to the live tail (only true
+  // right after a search-result jump recentered the view — see
+  // jumpToMessage/'channel-history-around' below) — gates ChatMessageList's
+  // "back to now" pill. Unlike hasMoreByChannel, absent must mean false: a
+  // channel that was never recentered definitely has nothing "after" to
+  // page in.
+  const [hasMoreAfterByChannel, setHasMoreAfterByChannel] = useState<Map<string, boolean>>(new Map());
   // in-flight 'load-more-messages' requests, by channelId — prevents firing
   // a second request for the same channel before the first page lands.
   const [loadingOlderByChannel, setLoadingOlderByChannel] = useState<Set<string>>(new Set());
@@ -234,9 +241,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   // same idea, for the Moderation tab.
   const [moderationError, setModerationError] = useState<string | null>(null);
 
-  /** Also used internally for the first channel on join and as a fallback
-   * when the open channel gets deleted. */
-  const openChannel = useCallback((channelId: string) => {
+  /** Just the "switching to a different channel" bookkeeping, without also
+   * requesting 'channel-open' — factored out so jumpToMessage (below) can
+   * reuse it for a cross-channel jump WITHOUT also firing channel-open,
+   * which would race 'load-messages-around's reply and could silently
+   * discard the recentered window depending on which lands second. */
+  const switchActiveChannel = useCallback((channelId: string) => {
     activeChannelIdRef.current = channelId;
     setActiveChannelIdState(channelId);
     setUnreadByChannel((prev) => {
@@ -250,8 +260,15 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     // WRONG channel.
     setReplyingTo(null);
     setEditingMsgId(null);
+  }, []);
+
+  /** Also used internally for the first channel on join, as a fallback when
+   * the open channel gets deleted, and as "back to now" after a
+   * search-result jump (see ChatMessageList's pill). */
+  const openChannel = useCallback((channelId: string) => {
+    switchActiveChannel(channelId);
     sendWs({ t: 'channel-open', channelId });
-  }, [sendWs]);
+  }, [sendWs, switchActiveChannel]);
 
   /** Scrolled to the top of an already-open channel — fetches the next
    * OLDER page to prepend. No-ops if a page is already in flight for this
@@ -267,6 +284,46 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     loadingOlderRef.current.add(channelId);
     setLoadingOlderByChannel((prev) => new Set(prev).add(channelId));
     sendWs({ t: 'load-more-messages', channelId, beforeMsgId: oldest.msgId });
+  }, [sendWs]);
+
+  // search-result click target, or a reply-quote click on a message that
+  // isn't loaded yet. `pendingJumpTarget` is consumed by ChatMessageList
+  // (one effect per mounted channel view) to actually scroll/highlight once
+  // the target is in `chatMessages` — see clearPendingJumpTarget below.
+  const [pendingJumpTarget, setPendingJumpTargetState] = useState<{ channelId: string; msgId: number } | null>(null);
+  // staleness guard for an in-flight 'load-messages-around' — same idiom as
+  // pendingVoiceChannelIdRef above.
+  const pendingJumpRef = useRef<{ channelId: string; msgId: number } | null>(null);
+  const clearPendingJumpTarget = useCallback(() => setPendingJumpTargetState(null), []);
+
+  const jumpToMessage = useCallback((channelId: string, msgId: number) => {
+    const alreadyLoaded = messagesByChannelRef.current.get(channelId)?.some((msg) => msg.msgId === msgId) ?? false;
+    if (channelId !== activeChannelIdRef.current) switchActiveChannel(channelId);
+    setPendingJumpTargetState({ channelId, msgId });
+    if (alreadyLoaded) return; // already in the DOM once this channel is active — ChatMessageList finds it on the next render
+    pendingJumpRef.current = { channelId, msgId };
+    sendWs({ t: 'load-messages-around', channelId, msgId });
+  }, [sendWs, switchActiveChannel]);
+
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  // guards a stale reply to an earlier query (or a scope toggle mid-flight)
+  // from clobbering a newer one's results.
+  const pendingSearchRef = useRef<{ query: string; channelId?: string } | null>(null);
+  const clearSearchError = useCallback(() => setSearchError(null), []);
+
+  const searchMessages = useCallback((query: string, channelId?: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      pendingSearchRef.current = null;
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+    pendingSearchRef.current = { query: trimmed, channelId };
+    setSearchLoading(true);
+    sendWs({ t: 'message-search', query: trimmed, ...(channelId ? { channelId } : {}) });
   }, [sendWs]);
 
   const sendChatMessage = useCallback((channelId: string, text: string, replyTo?: number) => {
@@ -535,7 +592,26 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'channel-history':
         setMessagesByChannel((prev) => new Map(prev).set(m.channelId, m.messages));
         setHasMoreByChannel((prev) => new Map(prev).set(m.channelId, m.hasMore));
+        // a normal open always loads the true live tail — any "not caught
+        // up" state from a previous jump into this channel no longer applies.
+        setHasMoreAfterByChannel((prev) => new Map(prev).set(m.channelId, false));
         break;
+      case 'channel-history-around': {
+        const pending = pendingJumpRef.current;
+        if (!pending || pending.channelId !== m.channelId || pending.msgId !== m.msgId) break; // superseded by a later jump
+        pendingJumpRef.current = null;
+        setMessagesByChannel((prev) => new Map(prev).set(m.channelId, m.messages));
+        setHasMoreByChannel((prev) => new Map(prev).set(m.channelId, m.hasMoreBefore));
+        setHasMoreAfterByChannel((prev) => new Map(prev).set(m.channelId, m.hasMoreAfter));
+        break;
+      }
+      case 'message-search-results': {
+        const pending = pendingSearchRef.current;
+        if (!pending || pending.query !== m.query || pending.channelId !== m.channelId) break; // superseded by a newer query/scope
+        setSearchResults(m.results);
+        setSearchLoading(false);
+        break;
+      }
       case 'channel-history-more': {
         const channelId = m.channelId;
         loadingOlderRef.current.delete(channelId);
@@ -691,6 +767,13 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         } else if (m.code === 'livekit-unavailable') {
           pendingVoiceChannelIdRef.current = null;
           dispatch({ type: 'SET_SHARE_ERROR', message: m.message });
+        } else if (m.code === 'message-not-found') {
+          // a search result (or reply-quote) pointed at a message deleted
+          // since — clear the pending jump instead of leaving it stuck
+          // waiting for a reply that will never arrive.
+          pendingJumpRef.current = null;
+          setPendingJumpTargetState(null);
+          setSearchError(m.message);
         } else {
           // unknown code — log it instead of failing silently (happened
           // before with this handler).
@@ -871,6 +954,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null),
         sendChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,
         replyingTo, setReplyingTo, editingMsgId, setEditingMsgId,
+        hasMoreAfterByChannel, pendingJumpTarget, clearPendingJumpTarget, jumpToMessage,
+        searchResults, searchLoading, searchError, clearSearchError, searchMessages,
         storageUsage, sendAttachments,
         createCategory, deleteCategory, renameCategory, createChannel, deleteChannel, renameChannel, reorderCategories, reorderChannels,
       }}

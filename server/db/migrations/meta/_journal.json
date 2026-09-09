@@ -71,6 +71,13 @@
       "when": 1788749028841,
       "tag": "0009_shiny_mockingbird",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788977569005,
+      "tag": "0010_lowly_fabian_cortez",
+      "breakpoints": true
     }
   ]
 }

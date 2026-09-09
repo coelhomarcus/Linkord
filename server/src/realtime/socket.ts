@@ -41,9 +41,14 @@ interface JoinMessage {
 // (or a script driving it) could otherwise flood at unlimited speed — chat
 // writes/broadcasts, reactions, and profile updates all hit the DB and fan
 // out to every connected participant with no other throttle in front of
-// them. Not applied to every event on purpose: read-only/idempotent ones
-// (channel-open, voice-join, mic-state, ...) aren't the same kind of risk
-// and a limiter here would just make normal UI usage flaky.
+// them. Not applied to every event on purpose: most read-only/idempotent
+// ones (channel-open, voice-join, mic-state, ...) aren't the same kind of
+// risk and a limiter here would just make normal UI usage flaky.
+// 'message-search' is the one read-only exception — it's a full-text query
+// against the DB on every call, so it gets a conservative cap as defense in
+// depth against a scripted client bypassing the search box's own debounce;
+// 'load-messages-around' stays unthrottled like the other reads since it's
+// click-driven, not keystroke-driven.
 const ACTION_LIMITS: Record<string, { windowMs: number; max: number }> = {
   chat: { windowMs: 10_000, max: 10 },
   'chat-edit': { windowMs: 10_000, max: 10 },
@@ -51,6 +56,7 @@ const ACTION_LIMITS: Record<string, { windowMs: number; max: number }> = {
   'chat-react': { windowMs: 10_000, max: 20 },
   reaction: { windowMs: 10_000, max: 20 },
   profile: { windowMs: 60_000, max: 10 },
+  'message-search': { windowMs: 10_000, max: 20 },
 };
 
 /** 'join' is the one special case in the dispatch: only participants.ts
