@@ -252,14 +252,24 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
   // what picks which size cap applies.
   const maxWidth = onExpand ? 384 : Math.min(window.innerWidth - 64, 1152);
   const maxHeight = onExpand ? 320 : window.innerHeight * 0.8;
+  // maxWidth above assumes the chat column has room for it — it doesn't
+  // know the actual parent width. `maxWidth: '100%'` + `aspectRatio` (in
+  // place of a fixed `height`) let the box shrink below that on narrow
+  // columns/screens while the video keeps its real proportions, instead of
+  // overflowing the message or getting squashed by a fixed height.
   const boxStyle: CSSProperties = natural && natural.width > 0 && natural.height > 0
     ? (() => {
         const scale = Math.min(1, maxWidth / natural.width, maxHeight / natural.height);
-        return { width: natural.width * scale, height: natural.height * scale };
+        return {
+          width: natural.width * scale,
+          maxWidth: '100%',
+          aspectRatio: `${natural.width} / ${natural.height}`,
+          maxHeight,
+        };
       })()
     // before metadata loads: a reasonable 16:9 placeholder at max width, so
     // something visible shows up immediately instead of a 0-size flash.
-    : { width: maxWidth, aspectRatio: '16 / 9', maxHeight };
+    : { width: maxWidth, maxWidth: '100%', aspectRatio: '16 / 9', maxHeight };
 
   return (
     <div

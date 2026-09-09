@@ -69,7 +69,7 @@ export function LinkPreview({ embed, className = '' }: LinkPreviewProps) {
           alt=""
           loading="lazy"
           onError={() => setFailed(true)}
-          className="h-auto max-h-70 w-auto max-w-sm rounded-md border border-strong"
+          className="h-auto max-h-70 w-auto max-w-[min(24rem,100%)] rounded-md border border-strong"
         />
       </button>
       <ImageLightbox src={embed.url} alt="" open={lightboxOpen} onOpenChange={setLightboxOpen} />
