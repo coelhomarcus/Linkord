@@ -128,7 +128,17 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   // useMicrophone exists below.
   const [deafened, setDeafened] = useState(false);
 
-  const [livekitRoom] = useState(() => new Room());
+  const [livekitRoom] = useState(() => new Room({
+    // this (plus simulcast, which the SDK already defaults to `true`) is
+    // the whole "automatic quality" mechanism: adaptiveStream tells the SFU
+    // to size each SUBSCRIBER's stream to their actual tile size/bandwidth,
+    // dynacast stops encoding/forwarding simulcast layers nobody's
+    // currently subscribed to. Replaces the old manual "Qualidade de envio"
+    // setting, which was just a single fixed bitrate cap applied equally to
+    // every viewer regardless of their own tile size or connection.
+    adaptiveStream: true,
+    dynacast: true,
+  }));
 
   const [showStats, setShowStatsState] = useState(loadShowStats);
   const setShowStats = useCallback((value: boolean) => {
@@ -306,8 +316,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const reorderChannels = useCallback((categoryId: string, orderedIds: string[]) => sendWs({ t: 'channels-reorder', categoryId, orderedIds }), [sendWs]);
   const deleteUserAccount = useCallback((userId: string) => sendWs({ t: 'user-delete', userId }), [sendWs]);
 
-  const { startSharing, stopSharing, quality, setQuality } = useScreenShare(livekitRoom, dispatch);
-  const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch, quality);
+  const { startSharing, stopSharing } = useScreenShare(livekitRoom, dispatch);
+  const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch);
   const { activateMic, toggleMicMuted, setMicMuted, leaveMic } = useMicrophone(livekitRoom, dispatch);
 
   // deafening also force-mutes (otherwise others still hear you while you
@@ -845,7 +855,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         state, dispatch, sendWs, tileDomRegistry, audioRegistry, audioUnlocked, deafened, toggleDeafened, livekitRoom, notifyActiveView,
         registerRequestChatView,
         activeVoiceChannelId, joinVoiceChannel,
-        startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted, leaveVoiceChannel, quality, setQuality,
+        startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted, leaveVoiceChannel,
         updateAvatar, updateProfile, uploadAvatarFile, menuTarget, openTileMenu, closeTileMenu,
         reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
         hideAudioOnlyTiles, setHideAudioOnlyTiles,

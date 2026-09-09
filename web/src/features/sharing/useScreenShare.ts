@@ -1,15 +1,12 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import type { Dispatch } from 'react';
-import { ConnectionState, Track } from 'livekit-client';
+import { ConnectionState, ScreenSharePresets, Track } from 'livekit-client';
 import type { Room } from 'livekit-client';
 import type { RoomAction } from '../../state/roomReducer';
-import { loadQuality, saveQuality, QUALITY_ENCODINGS, type Quality } from '../settings/useQualityPreference';
 
 export interface ScreenShareApi {
   startSharing: () => Promise<void>;
   stopSharing: () => void;
-  quality: Quality;
-  setQuality: (q: Quality) => void;
 }
 
 /**
@@ -20,13 +17,6 @@ export interface ScreenShareApi {
  * joinVoiceChannel.
  */
 export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): ScreenShareApi {
-  const [quality, setQualityState] = useState<Quality>(loadQuality);
-
-  const setQuality = useCallback((q: Quality) => {
-    setQualityState(q);
-    saveQuality(q);
-  }, []);
-
   const startSharing = useCallback(async () => {
     if (room.state !== ConnectionState.Connected) {
       dispatch({ type: 'SET_SHARE_ERROR', message: 'Ainda conectando ao servidor de video, tente de novo em instantes.' });
@@ -73,7 +63,11 @@ export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): Scre
           // republished, a software loop.
           selfBrowserSurface: 'exclude',
         },
-        { videoEncoding: QUALITY_ENCODINGS[quality] },
+        // a generous ceiling matching the fixed 1080p capture resolution
+        // above — simulcast (on by default) publishes lower layers too, and
+        // adaptiveStream/dynacast (see RoomProvider.tsx's Room options)
+        // pick which layer each viewer actually gets, automatically.
+        { videoEncoding: ScreenSharePresets.h1080fps30.encoding },
       );
     } catch (err) {
       const name = (err as DOMException)?.name;
@@ -121,12 +115,12 @@ export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): Scre
       }
       console.log(`[screen-share] compartilhado sem audio (displaySurface=${displaySurface ?? 'desconhecido'}): ${reason}`);
     }
-  }, [dispatch, room, quality]);
+  }, [dispatch, room]);
 
   const stopSharing = useCallback(() => {
     room.localParticipant.setScreenShareEnabled(false).catch(() => {});
     dispatch({ type: 'SET_LOCAL_SHARING', sharing: false });
   }, [dispatch, room]);
 
-  return { startSharing, stopSharing, quality, setQuality };
+  return { startSharing, stopSharing };
 }

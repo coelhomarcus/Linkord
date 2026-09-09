@@ -1,9 +1,8 @@
 import { useCallback } from 'react';
 import type { Dispatch } from 'react';
-import { ConnectionState } from 'livekit-client';
+import { ConnectionState, VideoPresets } from 'livekit-client';
 import type { Room } from 'livekit-client';
 import type { RoomAction } from '../../state/roomReducer';
-import { QUALITY_ENCODINGS, type Quality } from '../settings/useQualityPreference';
 
 export interface CameraApi {
   startCamera: () => Promise<void>;
@@ -15,7 +14,7 @@ export interface CameraApi {
  * LiveKit Room. The microphone is independent (see useMicrophone.ts) —
  * each toggles on its own.
  */
-export function useCamera(room: Room, dispatch: Dispatch<RoomAction>, quality: Quality): CameraApi {
+export function useCamera(room: Room, dispatch: Dispatch<RoomAction>): CameraApi {
   const startCamera = useCallback(async () => {
     if (room.state !== ConnectionState.Connected) {
       dispatch({ type: 'SET_SHARE_ERROR', message: 'Ainda conectando ao servidor de video, tente de novo em instantes.' });
@@ -30,7 +29,10 @@ export function useCamera(room: Room, dispatch: Dispatch<RoomAction>, quality: Q
       await room.localParticipant.setCameraEnabled(
         true,
         { resolution: { width: 1280, height: 720, frameRate: 30 } },
-        { videoEncoding: QUALITY_ENCODINGS[quality] },
+        // matches the fixed capture resolution above — simulcast (on by
+        // default) + the Room's adaptiveStream/dynacast (see
+        // RoomProvider.tsx) pick the right layer per viewer automatically.
+        { videoEncoding: VideoPresets.h720.encoding },
       );
     } catch (err) {
       const name = (err as DOMException)?.name;
@@ -40,7 +42,7 @@ export function useCamera(room: Room, dispatch: Dispatch<RoomAction>, quality: Q
     }
 
     dispatch({ type: 'SET_LOCAL_CAMERA', on: true });
-  }, [dispatch, room, quality]);
+  }, [dispatch, room]);
 
   const stopCamera = useCallback(() => {
     room.localParticipant.setCameraEnabled(false).catch(() => {});

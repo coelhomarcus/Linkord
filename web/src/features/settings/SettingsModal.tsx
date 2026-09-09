@@ -5,8 +5,6 @@ import { MediaTab } from './MediaTab';
 import { ModerationTab } from './ModerationTab';
 import { useRoom } from '../../state/RoomContext';
 import { useAuth } from '../../state/AuthContext';
-import { QUALITY_LABELS } from './useQualityPreference';
-import type { Quality } from './useQualityPreference';
 import { useMediaDevices } from './useMediaDevices';
 import { requestNotificationPermission } from '../../shared/notifications';
 import { Avatar, AVATAR_COLOR_OPTIONS, DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../../shared/Avatar';
@@ -25,8 +23,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsIndicator, TabsPanel, TabsTrigger } from '@/components/ui/tabs';
-
-const QUALITY_OPTIONS = Object.keys(QUALITY_LABELS) as Quality[];
 
 const settingsCardClass = 'flex flex-col gap-2 rounded-md border border-strong bg-bg-tertiary p-4';
 
@@ -71,7 +67,7 @@ function DevicePicker({ label, room, kind }: { label: string; room: import('live
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const {
-    state, updateProfile, uploadAvatarFile, quality, setQuality, showStats, setShowStats,
+    state, updateProfile, uploadAvatarFile, showStats, setShowStats,
     notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled, livekitRoom, storageUsage,
   } = useRoom();
   const { logout } = useAuth();
@@ -386,23 +382,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             </TabsPanel>
 
             <TabsPanel value="av" className="flex flex-col gap-4">
-              <div className={settingsCardClass}>
-                <Label className="text-body font-medium text-text-primary">Qualidade de envio</Label>
-                <Select value={quality} onValueChange={(v) => setQuality(v as Quality)} disabled={state.me.sharing}>
-                  <SelectTrigger className="w-full text-text-muted">
-                    <SelectValue>{() => QUALITY_LABELS[quality]}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {QUALITY_OPTIONS.map((q) => (
-                      <SelectItem key={q} value={q}>{QUALITY_LABELS[q]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="select-none text-label text-text-muted">
-                  {state.me.sharing ? 'Para trocar, pare o compartilhamento atual primeiro.' : 'Vale a partir do proximo compartilhamento.'}
-                </p>
-              </div>
-
               <div className={settingsCardClass}>
                 <DevicePicker label="Microfone" room={livekitRoom} kind="audioinput" />
               </div>
