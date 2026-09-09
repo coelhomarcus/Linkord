@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { Check, HardDrive, Images, Link2, LogOut, Palette, Plus, Settings2, ShieldCheck, SlidersHorizontal, Trash2, Upload, User, Volume2, VolumeX } from 'lucide-react';
+import { Bell, Check, HardDrive, IdCard, Images, Link2, LogOut, Palette, Plus, Settings2, ShieldCheck, SlidersHorizontal, Trash2, Upload, User, Volume2, VolumeX } from 'lucide-react';
 import { MediaTab } from './MediaTab';
 import { ModerationTab } from './ModerationTab';
+import { ProfileCard } from '../profile/ProfileCard';
 import { useRoom } from '../../state/RoomContext';
 import { useAuth } from '../../state/AuthContext';
 import { useMediaDevices } from './useMediaDevices';
 import { requestNotificationPermission } from '../../shared/notifications';
-import { Avatar, AVATAR_COLOR_OPTIONS, DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../../shared/Avatar';
+import { AVATAR_COLOR_OPTIONS, DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../../shared/Avatar';
 import { MAX_DISPLAY_NAME_LEN } from '../../shared/lib/displayName';
 import { UploadProgressBar } from '../../shared/UploadProgressBar';
 import { SectionLabel, sectionLabelClass } from '../../shared/SectionLabel';
@@ -175,7 +176,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           <TabsList className="h-auto w-full flex-none flex-row items-stretch gap-1 overflow-x-auto rounded-none bg-bg-primary p-2 md:w-44 md:flex-col md:overflow-visible md:p-3">
             <TabsIndicator />
             <TabsTrigger value="profile" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><User size={16} /><span>Perfil</span></TabsTrigger>
+            <TabsTrigger value="account" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><IdCard size={16} /><span>Conta</span></TabsTrigger>
             <TabsTrigger value="av" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><SlidersHorizontal size={16} /><span>Audio e video</span></TabsTrigger>
+            <TabsTrigger value="notifications" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Bell size={16} /><span>Notificacoes</span></TabsTrigger>
             <TabsTrigger value="prefs" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Settings2 size={16} /><span>Preferencias</span></TabsTrigger>
             <TabsTrigger value="media" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Images size={16} /><span>Midias</span></TabsTrigger>
             {/* only admins see this tab — the server also revalidates the
@@ -187,21 +190,23 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           </TabsList>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
-            <TabsPanel value="profile" className="flex flex-col gap-6">
-              <div className="flex items-center gap-3">
-                <Avatar id={state.me.id || 'preview'} name={displayName || state.me.name} avatar={avatar} avatarColor={avatarColor} size={48} />
-                <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <p className="truncate text-title font-semibold text-text-primary">{displayName || state.me.name}</p>
-                  <p className="truncate text-label text-text-muted">@{state.me.name}</p>
-                  {state.me.role === 'admin' && (
-                    <span className="flex w-fit items-center gap-1 rounded-sm bg-blurple/15 px-1.5 py-0.5 text-caption font-medium text-blurple">
-                      <ShieldCheck size={14} /> Admin
-                    </span>
-                  )}
-                </div>
+            <TabsPanel value="profile" className="flex flex-col gap-6 lg:flex-row lg:items-start">
+              <div className="flex flex-col gap-2 lg:sticky lg:top-0 lg:w-80 lg:flex-none">
+                <SectionLabel>Pre-visualizacao</SectionLabel>
+                <ProfileCard
+                  user={{
+                    id: state.me.id || 'preview',
+                    displayName: displayName || state.me.name,
+                    username: state.me.name,
+                    avatar, avatarColor, banner, bio,
+                    profileLinks: profileLinksForSubmit(),
+                    role: state.me.role,
+                  }}
+                  online
+                />
               </div>
 
-              <form onSubmit={handleProfileSubmit} className={settingsCardClass}>
+              <form onSubmit={handleProfileSubmit} className={cn(settingsCardClass, 'flex-1')}>
                 <SectionLabel>Nome de exibição</SectionLabel>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="settingsDisplayName" className="text-label text-text-muted">Como voce aparece pra todo mundo</Label>
@@ -371,9 +376,25 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 {avatarError && <p className="text-label text-red">{avatarError}</p>}
                 <p className="select-none text-caption text-text-muted">PNG, JPEG, GIF ou WEBP, até {formatMB(MAX_AVATAR_BYTES)}.</p>
               </form>
+            </TabsPanel>
+
+            <TabsPanel value="account" className="flex flex-col gap-4">
+              <div className={settingsCardClass}>
+                <SectionLabel>Identificacao</SectionLabel>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-label text-text-muted">Nome de usuario</Label>
+                  <p className="select-none text-body text-text-primary">@{state.me.name}</p>
+                  <p className="select-none text-caption text-text-muted">Fixo, nao pode ser trocado. O nome de exibicao (aba Perfil) e o que aparece pra todo mundo.</p>
+                </div>
+                {state.me.role === 'admin' && (
+                  <span className="flex w-fit items-center gap-1 rounded-sm bg-blurple/15 px-1.5 py-0.5 text-caption font-medium text-blurple">
+                    <ShieldCheck size={14} /> Admin
+                  </span>
+                )}
+              </div>
 
               <div className={settingsCardClass}>
-                <SectionLabel>Conta</SectionLabel>
+                <SectionLabel>Sessao</SectionLabel>
                 <Button type="button" variant="outline" size="sm" className="w-fit text-red hover:bg-red/12" onClick={logout}>
                   <LogOut size={14} />
                   <span>Sair da conta</span>
@@ -395,7 +416,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               </div>
             </TabsPanel>
 
-            <TabsPanel value="prefs" className="flex flex-col gap-4">
+            <TabsPanel value="notifications" className="flex flex-col gap-4">
               <div className={settingsCardClass}>
                 <div className="flex items-center justify-between gap-3">
                   <span className={cn(sectionLabelClass, 'flex items-center gap-1.5')}>
@@ -411,19 +432,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
               <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
                 <div className="min-w-0">
-                  <p className="select-none text-body font-medium text-text-primary">Mostrar estatisticas</p>
-                  <p className="select-none text-label text-text-muted">Bitrate e tempo no ar no menu de cada transmissao.</p>
-                </div>
-                <Switch
-                  checked={showStats}
-                  onCheckedChange={setShowStats}
-                  aria-label="Mostrar estatisticas"
-                  className="mt-0.5 flex-none"
-                />
-              </div>
-
-              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
-                <div className="min-w-0">
                   <p className="select-none text-body font-medium text-text-primary">Notificacoes de mensagens</p>
                   <p className="select-none text-label text-text-muted">Avisa no sistema quando chegar mensagem em um canal que voce nao esta vendo.</p>
                 </div>
@@ -434,7 +442,24 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   className="mt-0.5 flex-none"
                 />
               </div>
+            </TabsPanel>
 
+            <TabsPanel value="prefs" className="flex flex-col gap-4">
+              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
+                <div className="min-w-0">
+                  <p className="select-none text-body font-medium text-text-primary">Mostrar estatisticas</p>
+                  <p className="select-none text-label text-text-muted">Bitrate e tempo no ar no menu de cada transmissao.</p>
+                </div>
+                <Switch
+                  checked={showStats}
+                  onCheckedChange={setShowStats}
+                  aria-label="Mostrar estatisticas"
+                  className="mt-0.5 flex-none"
+                />
+              </div>
+            </TabsPanel>
+
+            <TabsPanel value="media" className="flex flex-col gap-4">
               <div className={settingsCardClass}>
                 <span className={cn(sectionLabelClass, 'flex items-center gap-1.5')}>
                   <HardDrive size={14} /> Armazenamento de anexos
@@ -449,9 +474,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   {formatGB(storageUsage.totalBytes)} de {formatGB(storageUsage.maxBytes)} usados, {storageUsage.totalFiles} arquivo{storageUsage.totalFiles === 1 ? '' : 's'} enviado{storageUsage.totalFiles === 1 ? '' : 's'}.
                 </p>
               </div>
-            </TabsPanel>
-
-            <TabsPanel value="media">
               <MediaTab />
             </TabsPanel>
 
