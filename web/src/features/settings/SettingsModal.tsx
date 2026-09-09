@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { Bell, Check, HardDrive, IdCard, Images, Link2, LogOut, Palette, Plus, Settings2, ShieldCheck, SlidersHorizontal, Trash2, Upload, User, Volume2, VolumeX } from 'lucide-react';
+import { Bell, Check, HardDrive, IdCard, Images, Link2, LogOut, Palette, Plus, Settings2, ShieldCheck, SlidersHorizontal, Trash2, User, Volume2, VolumeX } from 'lucide-react';
 import { MediaTab } from './MediaTab';
 import { ModerationTab } from './ModerationTab';
+import { ImageCropDialog } from './ImageCropDialog';
 import { ProfileCard } from '../profile/ProfileCard';
 import { useRoom } from '../../state/RoomContext';
 import { useAuth } from '../../state/AuthContext';
@@ -14,7 +15,7 @@ import { UploadProgressBar } from '../../shared/UploadProgressBar';
 import { SectionLabel, sectionLabelClass } from '../../shared/SectionLabel';
 import { cn } from '@/shared/lib/utils';
 import { formatMB } from '../../shared/lib/formatBytes';
-import { MAX_AVATAR_BYTES, MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '../../types/protocol';
+import { AVATAR_MIME_TYPES, MAX_AVATAR_BYTES, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '../../types/protocol';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -68,7 +69,7 @@ function DevicePicker({ label, room, kind }: { label: string; room: import('live
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const {
-    state, updateProfile, uploadAvatarFile, showStats, setShowStats,
+    state, updateProfile, uploadProfileImage, showStats, setShowStats,
     notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled, livekitRoom, storageUsage,
   } = useRoom();
   const { logout } = useAuth();
@@ -81,7 +82,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [bannerUploadProgress, setBannerUploadProgress] = useState(0);
+  const [bannerError, setBannerError] = useState<string | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
+  const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
+  // set the moment a file is picked (before cropping) — the actual upload
+  // only happens once ImageCropDialog's "Salvar" hands back a cropped blob.
+  const [cropTarget, setCropTarget] = useState<{ field: 'avatar' | 'banner'; src: string } | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -140,25 +148,54 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     });
   }
 
-  async function handleAvatarFileChange(e: ChangeEvent<HTMLInputElement>) {
+  // shared by both hidden file inputs — just picks the file and opens the
+  // crop step; the actual upload happens in handleCropConfirm.
+  function handleFilePicked(field: 'avatar' | 'banner', e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = ''; // allows picking the SAME file again later
     if (!file) return;
+    const setError = field === 'avatar' ? setAvatarError : setBannerError;
     if (file.size > MAX_AVATAR_BYTES) {
-      setAvatarError(`Arquivo muito grande (máximo ${formatMB(MAX_AVATAR_BYTES)}).`);
+      setError(`Arquivo muito grande (máximo ${formatMB(MAX_AVATAR_BYTES)}).`);
       return;
     }
-    setAvatarError(null);
-    setAvatarUploadProgress(0);
-    setUploadingAvatar(true);
+    setError(null);
+    setCropTarget({ field, src: URL.createObjectURL(file) });
+  }
+
+  function closeCropDialog() {
+    if (cropTarget) URL.revokeObjectURL(cropTarget.src);
+    setCropTarget(null);
+  }
+
+  async function handleCropConfirm(blob: Blob) {
+    if (!cropTarget) return;
+    const { field } = cropTarget;
+    const setUploading = field === 'avatar' ? setUploadingAvatar : setUploadingBanner;
+    const setProgress = field === 'avatar' ? setAvatarUploadProgress : setBannerUploadProgress;
+    const setError = field === 'avatar' ? setAvatarError : setBannerError;
+    setError(null);
+    setProgress(0);
+    setUploading(true);
+    closeCropDialog();
     try {
-      const url = await uploadAvatarFile(file, setAvatarUploadProgress, { avatarColor, displayName, banner, bio, profileLinks: profileLinksForSubmit() });
-      setAvatar(url);
+      const url = await uploadProfileImage(field, blob, setProgress, { avatar, avatarColor, displayName, banner, bio, profileLinks: profileLinksForSubmit() });
+      if (field === 'avatar') setAvatar(url); else setBanner(url);
     } catch (err) {
-      setAvatarError(err instanceof Error ? err.message : 'Falha ao enviar a foto.');
+      setError(err instanceof Error ? err.message : `Falha ao enviar ${field === 'avatar' ? 'a foto' : 'o banner'}.`);
     } finally {
-      setUploadingAvatar(false);
+      setUploading(false);
     }
+  }
+
+  function handleRemoveAvatar() {
+    setAvatar('');
+    updateProfile({ avatar: '', avatarColor, displayName, banner, bio, profileLinks: profileLinksForSubmit() });
+  }
+
+  function handleRemoveBanner() {
+    setBanner('');
+    updateProfile({ avatar, avatarColor, displayName, banner: '', bio, profileLinks: profileLinksForSubmit() });
   }
 
   return (
@@ -203,8 +240,55 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                     role: state.me.role,
                   }}
                   online
+                  onAvatarUpload={() => avatarFileInputRef.current?.click()}
+                  onAvatarRemove={handleRemoveAvatar}
+                  avatarUploading={uploadingAvatar}
+                  onBannerUpload={() => bannerFileInputRef.current?.click()}
+                  onBannerRemove={handleRemoveBanner}
+                  bannerUploading={uploadingBanner}
                 />
+                <input
+                  ref={avatarFileInputRef}
+                  aria-label="Selecionar foto de perfil"
+                  type="file"
+                  accept={AVATAR_MIME_TYPES.join(',')}
+                  hidden
+                  onChange={(e) => handleFilePicked('avatar', e)}
+                />
+                <input
+                  ref={bannerFileInputRef}
+                  aria-label="Selecionar banner"
+                  type="file"
+                  accept={AVATAR_MIME_TYPES.join(',')}
+                  hidden
+                  onChange={(e) => handleFilePicked('banner', e)}
+                />
+                {uploadingAvatar && (
+                  <div className="flex items-center gap-2">
+                    <UploadProgressBar progress={avatarUploadProgress} />
+                    <span className="flex-none text-caption tabular-nums text-text-muted">{Math.round(avatarUploadProgress * 100)}%</span>
+                  </div>
+                )}
+                {avatarError && <p className="text-label text-red">{avatarError}</p>}
+                {uploadingBanner && (
+                  <div className="flex items-center gap-2">
+                    <UploadProgressBar progress={bannerUploadProgress} />
+                    <span className="flex-none text-caption tabular-nums text-text-muted">{Math.round(bannerUploadProgress * 100)}%</span>
+                  </div>
+                )}
+                {bannerError && <p className="text-label text-red">{bannerError}</p>}
+                <p className="select-none text-caption text-text-muted">PNG, JPEG, GIF ou WEBP, até {formatMB(MAX_AVATAR_BYTES)}.</p>
               </div>
+
+              <ImageCropDialog
+                open={!!cropTarget}
+                imageSrc={cropTarget?.src ?? null}
+                aspect={cropTarget?.field === 'banner' ? 3 : 1}
+                cropShape={cropTarget?.field === 'banner' ? 'rect' : 'round'}
+                title={cropTarget?.field === 'banner' ? 'Recortar banner' : 'Recortar foto de perfil'}
+                onCancel={closeCropDialog}
+                onConfirm={handleCropConfirm}
+              />
 
               <form onSubmit={handleProfileSubmit} className={cn(settingsCardClass, 'flex-1')}>
                 <SectionLabel>Nome de exibição</SectionLabel>
@@ -223,16 +307,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 </div>
 
                 <SectionLabel>Foto de perfil</SectionLabel>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="settingsAvatar" className="text-label text-text-muted">URL de uma imagem (opcional)</Label>
-                  <Input
-                    id="settingsAvatar"
-                    maxLength={500}
-                    placeholder="https://..."
-                    value={avatar}
-                    onChange={(e) => setAvatar(e.target.value)}
-                  />
-                </div>
                 <div className="flex flex-col gap-2">
                   <Label className="text-label text-text-muted">Cor do fundo</Label>
                   <div className="flex flex-wrap gap-2">
@@ -281,18 +355,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                       </span>
                     </label>
                   </div>
-                </div>
-
-                <SectionLabel>Banner</SectionLabel>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="settingsBanner" className="text-label text-text-muted">URL de uma imagem horizontal (opcional)</Label>
-                  <Input
-                    id="settingsBanner"
-                    maxLength={MAX_BANNER_LEN}
-                    placeholder="https://..."
-                    value={banner}
-                    onChange={(e) => setBanner(e.target.value)}
-                  />
                 </div>
 
                 <SectionLabel>Bio</SectionLabel>
@@ -349,32 +411,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   <Button type="submit" size="sm">
                     <span>Salvar perfil</span>
                   </Button>
-                  <input
-                    ref={avatarFileInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/gif,image/webp"
-                    hidden
-                    onChange={handleAvatarFileChange}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={uploadingAvatar}
-                    onClick={() => avatarFileInputRef.current?.click()}
-                  >
-                    <Upload size={14} />
-                    <span>{uploadingAvatar ? 'Enviando…' : 'Enviar do computador'}</span>
-                  </Button>
                 </div>
-                {uploadingAvatar && (
-                  <div className="flex items-center gap-2">
-                    <UploadProgressBar progress={avatarUploadProgress} />
-                    <span className="flex-none text-caption tabular-nums text-text-muted">{Math.round(avatarUploadProgress * 100)}%</span>
-                  </div>
-                )}
-                {avatarError && <p className="text-label text-red">{avatarError}</p>}
-                <p className="select-none text-caption text-text-muted">PNG, JPEG, GIF ou WEBP, até {formatMB(MAX_AVATAR_BYTES)}.</p>
               </form>
             </TabsPanel>
 

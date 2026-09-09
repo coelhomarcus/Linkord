@@ -5,6 +5,9 @@ node_modules/
 dist/
 build/
 
+# Runtime data (server UPLOAD_DIR — user avatars/banners/chat attachments)
+/uploads/
+
 # Env files
 .env
 .env.*

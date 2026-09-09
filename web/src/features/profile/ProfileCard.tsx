@@ -1,8 +1,9 @@
-import { AtSign, BadgeCheck, ExternalLink } from 'lucide-react';
+import { AtSign, BadgeCheck, Camera, ExternalLink, Loader2, Trash2, Upload } from 'lucide-react';
 import { Avatar } from '@/shared/Avatar';
 import { BrandIcon, bannerStyle, linkInfo } from '@/shared/profileLinks';
 import type { LinkInfo } from '@/shared/profileLinks';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/shared/lib/utils';
 
 export interface ProfileCardData {
@@ -20,11 +21,21 @@ export interface ProfileCardData {
 interface ProfileCardProps {
   user: ProfileCardData;
   online?: boolean;
-  /** Present only in interactive contexts (ProfileModal) — opens a
-   * lightbox. Omitted in a static preview (SettingsModal), where the
-   * banner/avatar just render, unclickable. */
+  /** View-only context (ProfileModal) — opens a lightbox. Ignored
+   * whenever the matching *Upload prop below is present (edit mode wins). */
   onAvatarClick?: () => void;
   onBannerClick?: () => void;
+  /** Edit mode (SettingsModal's own live preview) — presence of
+   * onAvatarUpload/onBannerUpload swaps the plain image for a hover
+   * overlay (camera icon) opening a menu with "Enviar"/"Remover", X-style.
+   * Unlike the view-only click above, this stays clickable even when the
+   * field is empty — you need to be able to upload the FIRST photo. */
+  onAvatarUpload?: () => void;
+  onAvatarRemove?: () => void;
+  avatarUploading?: boolean;
+  onBannerUpload?: () => void;
+  onBannerRemove?: () => void;
+  bannerUploading?: boolean;
   className?: string;
 }
 
@@ -32,12 +43,46 @@ interface ProfileCardProps {
  * bio and link icons. Shared by ProfileModal (a real person, clickable
  * media) and SettingsModal's "Perfil" tab (a live preview of your own
  * in-progress edits, static). */
-export function ProfileCard({ user, online, onAvatarClick, onBannerClick, className }: ProfileCardProps) {
+export function ProfileCard({
+  user, online, onAvatarClick, onBannerClick,
+  onAvatarUpload, onAvatarRemove, avatarUploading,
+  onBannerUpload, onBannerRemove, bannerUploading,
+  className,
+}: ProfileCardProps) {
   const links = (user.profileLinks ?? []).map(linkInfo).filter((item): item is LinkInfo => !!item);
 
   return (
     <div className={cn('overflow-hidden rounded-xl border border-strong bg-bg-modal', className)}>
-      {onBannerClick ? (
+      {onBannerUpload ? (
+        <div className="group relative h-40 w-full" style={bannerStyle(user)}>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              disabled={bannerUploading}
+              render={
+                <button
+                  type="button"
+                  aria-label="Alterar banner"
+                  className="absolute inset-0 flex items-center justify-center bg-black/0 text-transparent transition-colors group-hover:bg-black/40 group-hover:text-white focus-visible:bg-black/40 focus-visible:text-white focus-visible:outline-none disabled:cursor-default"
+                />
+              }
+            >
+              {bannerUploading ? <Loader2 size={24} className="animate-spin" /> : <Camera size={24} />}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center">
+              <DropdownMenuItem onClick={onBannerUpload}>
+                <Upload size={14} />
+                <span>Enviar banner</span>
+              </DropdownMenuItem>
+              {user.banner && onBannerRemove && (
+                <DropdownMenuItem variant="destructive" onClick={onBannerRemove}>
+                  <Trash2 size={14} />
+                  <span>Remover banner</span>
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      ) : onBannerClick ? (
         <button
           type="button"
           aria-label="Ver banner em tela cheia"
@@ -51,7 +96,37 @@ export function ProfileCard({ user, online, onAvatarClick, onBannerClick, classN
       <div className="px-6 pb-6">
         <div className="-mt-12 flex items-end gap-3">
           <div className="relative rounded-full bg-bg-modal p-1">
-            {user.avatar && onAvatarClick ? (
+            {onAvatarUpload ? (
+              <div className="group relative rounded-full">
+                <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={92} />
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    disabled={avatarUploading}
+                    render={
+                      <button
+                        type="button"
+                        aria-label="Alterar foto de perfil"
+                        className="absolute inset-0 flex items-center justify-center rounded-full bg-black/0 text-transparent transition-colors group-hover:bg-black/50 group-hover:text-white focus-visible:bg-black/50 focus-visible:text-white focus-visible:outline-none disabled:cursor-default"
+                      />
+                    }
+                  >
+                    {avatarUploading ? <Loader2 size={20} className="animate-spin" /> : <Camera size={20} />}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem onClick={onAvatarUpload}>
+                      <Upload size={14} />
+                      <span>Enviar foto</span>
+                    </DropdownMenuItem>
+                    {user.avatar && onAvatarRemove && (
+                      <DropdownMenuItem variant="destructive" onClick={onAvatarRemove}>
+                        <Trash2 size={14} />
+                        <span>Remover foto</span>
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ) : user.avatar && onAvatarClick ? (
               <button
                 type="button"
                 aria-label="Ver foto de perfil em tela cheia"

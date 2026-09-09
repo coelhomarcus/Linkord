@@ -20,6 +20,13 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
     disconnect() {}
   };
 }
+// jsdom doesn't implement these either — used for local previews (pending
+// chat attachments, the profile photo/banner crop step) before anything is
+// actually uploaded.
+if (typeof URL.createObjectURL === 'undefined') {
+  URL.createObjectURL = () => 'blob:mock';
+  URL.revokeObjectURL = () => {};
+}
 if (typeof window.matchMedia === 'undefined') {
   window.matchMedia = (query: string) => ({
     matches: false,

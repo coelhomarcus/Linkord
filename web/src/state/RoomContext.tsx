@@ -84,13 +84,15 @@ export interface RoomContextValue {
   /** Profile fields editable by the user — username stays the account's
    * immutable handle; displayName resets to it when left blank. */
   updateProfile: (profile: { avatar: string; avatarColor: string; displayName: string; banner: string; bio: string; profileLinks: string[] }) => void;
-  /** Uploads a local file and applies it as the account avatar. Throws on
-   * error (too large, invalid type). `onProgress` (0 to 1), `avatarColor`
-   * and `displayName` are optional — omitted, the current value is kept. */
-  uploadAvatarFile: (
-    file: File,
+  /** Uploads a local image (already cropped, see ImageCropDialog) and
+   * applies it to the given profile field (avatar or banner). Throws on
+   * error (too large, invalid type). `onProgress` (0 to 1) and the rest of
+   * `profile` are optional — omitted, the current value is kept. */
+  uploadProfileImage: (
+    field: 'avatar' | 'banner',
+    blob: Blob,
     onProgress?: (fraction: number) => void,
-    profile?: { avatarColor?: string; displayName?: string; banner?: string; bio?: string; profileLinks?: string[] }
+    profile?: { avatar?: string; avatarColor?: string; displayName?: string; banner?: string; bio?: string; profileLinks?: string[] }
   ) => Promise<string>;
   menuTarget: { key: string; participantId: string; kind: TileKind; rect: AnchorRect } | null;
   openTileMenu: (key: string, participantId: string, kind: TileKind, rect: AnchorRect) => void;
