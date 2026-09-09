@@ -6,7 +6,6 @@ import { ChatMessageList } from './ChatMessageList';
 import { ChatComposer } from './ChatComposer';
 import { UserDirectory } from './UserDirectory';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
-import type { ChatMessage } from '../../types/protocol';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE } from '../../types/protocol';
 import { formatSizeLimit } from '../../shared/lib/formatBytes';
 import { Button } from '@/components/ui/button';
@@ -34,9 +33,8 @@ export interface PendingAttachment {
  * centered column, fills the whole width between the left sidebar and the
  * user directory (right). */
 export function ChatPage({ onBackMobile, onOpenProfile }: ChatPageProps) {
-  const { state, categories, activeChannelId, deleteChannel } = useRoom();
+  const { state, categories, activeChannelId, deleteChannel, replyingTo, setReplyingTo } = useRoom();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   // below md, the member list has nowhere to sit beside the chat — becomes
   // an overlay toggled from the header instead (see UserDirectory's
   // mobileOpen prop).
@@ -59,11 +57,11 @@ export function ChatPage({ onBackMobile, onOpenProfile }: ChatPageProps) {
     [categories, activeChannelId]
   );
 
-  // switching channels cancels a pending reply and any pending attachments
-  // — otherwise they'd reference/send to a DIFFERENT channel than the one
-  // now being viewed.
+  // switching channels cancels any pending attachments — otherwise they'd
+  // send to a DIFFERENT channel than the one now being viewed. (A pending
+  // reply is reset the same way, but that lives in RoomProvider now — see
+  // openChannel — since GlobalContextMenu needs to reach it too.)
   useEffect(() => {
-    setReplyingTo(null);
     setPendingFiles((prev) => {
       prev.forEach((p) => { if (p.previewUrl) URL.revokeObjectURL(p.previewUrl); });
       return [];

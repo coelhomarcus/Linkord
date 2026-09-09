@@ -160,6 +160,19 @@ export interface RoomContextValue {
   /** Toggles my own reaction on that emoji — tied to ONE message, unlike
    * sendReaction (the floating room-wide reaction). */
   reactToChatMessage: (msgId: number, emoji: ReactionEmoji) => void;
+  /** The message currently being replied to (shows the banner above the
+   * composer) — lives here, not in ChatPage's own state, so both the
+   * composer/message list AND the global right-click menu (GlobalContextMenu,
+   * mounted at the app root) can set/read it. Reset to null on channel
+   * switch. */
+  replyingTo: ChatMessage | null;
+  setReplyingTo: (message: ChatMessage | null) => void;
+  /** msgId of the message currently in inline-edit mode, or null — same
+   * "needs to be reachable from GlobalContextMenu" reasoning as replyingTo.
+   * The draft text itself stays local to ChatMessageList (see its own
+   * editText state), re-seeded from the message whenever this changes. */
+  editingMsgId: number | null;
+  setEditingMsgId: (msgId: number | null) => void;
   createCategory: (name: string) => void;
   deleteCategory: (categoryId: string) => void;
   renameCategory: (categoryId: string, name: string) => void;

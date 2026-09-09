@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, ClipboardEvent, FormEvent, KeyboardEvent, SyntheticEvent } from 'react';
 import EmojiPicker, { Categories, EmojiStyle, Theme } from 'emoji-picker-react';
 import type { CategoryConfig, EmojiClickData } from 'emoji-picker-react';
-import { File as FileIcon, Plus, Send, Smile, X } from 'lucide-react';
+import { File as FileIcon, Plus, Reply, Send, Smile, X } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { PartialAttachmentError } from '../../state/RoomProvider';
 import type { ChatMessage, PublicUser } from '../../types/protocol';
@@ -263,17 +263,27 @@ export function ChatComposer({
 
   return (
     <div className={`flex flex-none flex-col gap-1.5 px-3 pb-3 ${className ?? ''}`}>
-      {replyingTo && (
-        <div className="flex items-center gap-2 rounded-md border border-strong bg-bg-tertiary px-3 py-1.5 text-label">
-          <span className="text-text-muted">Respondendo a</span>
-          <span className="min-w-0 flex-1 truncate font-medium text-text-secondary">
-            {(replyingTo.id ? allUsers.get(replyingTo.id)?.displayName : undefined) ?? replyingTo.name}
-          </span>
-          <Button type="button" variant="ghost" size="icon-xs" aria-label="Cancelar resposta" onClick={onCancelReply} className="text-text-muted">
-            <X size={14} />
-          </Button>
-        </div>
-      )}
+      {replyingTo && (() => {
+        const replyAuthor = replyingTo.id ? allUsers.get(replyingTo.id) : undefined;
+        const replyName = replyAuthor?.displayName ?? replyingTo.name;
+        return (
+          <div className="flex items-center gap-2 rounded-md border border-strong bg-bg-tertiary px-3 py-1.5 text-label">
+            <Reply size={14} className="flex-none text-text-muted" />
+            <Avatar id={replyingTo.id ?? replyingTo.name} name={replyName} avatar={replyAuthor?.avatar ?? replyingTo.avatar} avatarColor={replyAuthor?.avatarColor} size={20} />
+            <span className="min-w-0 flex-1 truncate">
+              <span className="font-medium text-text-secondary">{replyName}</span>
+              {replyingTo.text ? (
+                <span className="text-text-muted"> — {replyingTo.text}</span>
+              ) : replyingTo.attachments?.length ? (
+                <span className="text-text-muted"> — 📎 {replyingTo.attachments.length > 1 ? `${replyingTo.attachments.length} anexos` : 'Anexo'}</span>
+              ) : null}
+            </span>
+            <Button type="button" variant="ghost" size="icon-xs" aria-label="Cancelar resposta" onClick={onCancelReply} className="flex-none text-text-muted">
+              <X size={14} />
+            </Button>
+          </div>
+        );
+      })()}
       {/* square Discord-style preview cards, one per pending file (up to
           MAX_ATTACHMENTS_PER_MESSAGE) — stay visible during the actual
           upload too, showing per-card progress instead of the remove

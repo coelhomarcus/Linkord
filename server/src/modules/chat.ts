@@ -23,6 +23,7 @@ interface ReplyRef {
   msgId: number;
   authorId: string | null;
   text: string;
+  attachmentCount?: number;
 }
 
 interface ChatMessagePayload {
@@ -98,11 +99,14 @@ function normalizeReplyRef(raw: unknown): ReplyRef | undefined {
   const obj = raw as Record<string, unknown>;
   const msgId = Number(obj.msgId);
   if (!Number.isFinite(msgId)) return undefined;
-  return {
+  const ref: ReplyRef = {
     msgId,
     authorId: typeof obj.authorId === 'string' && obj.authorId ? obj.authorId : null,
     text: String(obj.text == null ? '' : obj.text).slice(0, REPLY_PREVIEW_LEN),
   };
+  const attachmentCount = Number(obj.attachmentCount);
+  if (Number.isFinite(attachmentCount) && attachmentCount > 0) ref.attachmentCount = attachmentCount;
+  return ref;
 }
 
 /** `attachments` (optional, up to MAX_ATTACHMENTS_PER_MESSAGE) are the raw
@@ -141,7 +145,14 @@ async function buildReplyRef(channelId: string, replyToId: unknown): Promise<Rep
     .where(and(eq(messages.id, id), eq(messages.channelId, channelId)))
     .limit(1);
   if (!original) return undefined;
-  return { msgId: original.id, authorId: original.authorId, text: original.text.slice(0, REPLY_PREVIEW_LEN) };
+  const ref: ReplyRef = { msgId: original.id, authorId: original.authorId, text: original.text.slice(0, REPLY_PREVIEW_LEN) };
+  // no caption on the original — likely an attachment-only message. Lets
+  // the reply reference show "📎 N anexos" instead of a blank snippet.
+  if (!ref.text) {
+    const attachmentCount = (await attachments.getByMessageIds([original.id])).get(original.id)?.length ?? 0;
+    if (attachmentCount > 0) ref.attachmentCount = attachmentCount;
+  }
+  return ref;
 }
 
 /** Client opening a channel (switched tabs, or the first channel on join) —

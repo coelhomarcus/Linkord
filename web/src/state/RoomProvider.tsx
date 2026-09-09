@@ -190,6 +190,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const requestChatViewRef = useRef<(() => void) | null>(null);
   const registerRequestChatView = useCallback((fn: () => void) => { requestChatViewRef.current = fn; }, []);
   const [messagesByChannel, setMessagesByChannel] = useState<Map<string, ChatMessage[]>>(new Map());
+  // both reachable from the message list/composer AND GlobalContextMenu
+  // (mounted at the app root, outside ChatPage) — see RoomContext.tsx.
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
   // ref mirror — loadOlderMessages is stable (mounted-once scroll listeners
   // in ChatMessageList call it directly) so it can't close over the state
   // above; same staleness pattern as activeChannelIdRef.
@@ -231,6 +235,11 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       next.delete(channelId);
       return next;
     });
+    // a reply/edit in progress references a message from the channel just
+    // left — carrying it into the new one would reply/save-edit to the
+    // WRONG channel.
+    setReplyingTo(null);
+    setEditingMsgId(null);
     sendWs({ t: 'channel-open', channelId });
   }, [sendWs]);
 
@@ -844,6 +853,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         allUsers, onlineUserIds, channelsError, clearChannelsError: () => setChannelsError(null),
         deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null),
         sendChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,
+        replyingTo, setReplyingTo, editingMsgId, setEditingMsgId,
         storageUsage, sendAttachments,
         createCategory, deleteCategory, renameCategory, createChannel, deleteChannel, renameChannel, reorderCategories, reorderChannels,
       }}

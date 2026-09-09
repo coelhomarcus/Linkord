@@ -116,6 +116,7 @@ function ChatMessageRow({
   return (
     <div
       id={`chat-msg-${message.msgId}`}
+      data-message-id={message.msgId}
       onMouseEnter={() => setIsRowActive(true)}
       onMouseLeave={() => { if (!reactOpen) setIsRowActive(false); }}
       className={cn(
@@ -126,9 +127,21 @@ function ChatMessageRow({
     >
       <div className="w-10 flex-none pt-0.5">
         {/* message.id (authorId) becomes null when the sender's account was
-            deleted — the neutral fallback name becomes the avatar seed. */}
+            deleted — the neutral fallback name becomes the avatar seed. Not
+            clickable in that case either (nothing to open). */}
         {showHeader ? (
-          <Avatar id={message.id ?? message.name} name={displayedName} avatar={displayedAvatar} avatarColor={author?.avatarColor} size={40} />
+          message.id ? (
+            <button
+              type="button"
+              aria-label={`Abrir perfil de ${displayedName}`}
+              onClick={() => onOpenProfile(message.id!)}
+              className="block rounded-full focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              <Avatar id={message.id} name={displayedName} avatar={displayedAvatar} avatarColor={author?.avatarColor} size={40} />
+            </button>
+          ) : (
+            <Avatar id={message.name} name={displayedName} avatar={displayedAvatar} avatarColor={author?.avatarColor} size={40} />
+          )
         ) : (
           <span className="hidden select-none text-center text-caption text-text-muted group-hover/msg:block">
             {formatTime(message.ts)}
@@ -149,8 +162,15 @@ function ChatMessageRow({
             <svg width="14" height="5" viewBox="0 0 25 8.5" fill="none" className="flex-none -translate-y-px" xmlns="http://www.w3.org/2000/svg">
               <path d="M0.5 8.5V5.5C0.5 2.73858 2.73858 0.5 5.5 0.5H25" stroke="currentColor" />
             </svg>
+            {replyAuthor && (
+              <Avatar id={message.replyTo.authorId ?? ''} name={replyAuthor.displayName} avatar={replyAuthor.avatar} avatarColor={replyAuthor.avatarColor} size={16} />
+            )}
             <span className="flex-none font-medium">{replyAuthor?.displayName ?? DELETED_AUTHOR_NAME}</span>
-            <span className="truncate">{message.replyTo.text}</span>
+            <span className="truncate">
+              {message.replyTo.text || (message.replyTo.attachmentCount
+                ? `📎 ${message.replyTo.attachmentCount > 1 ? `${message.replyTo.attachmentCount} anexos` : 'Anexo'}`
+                : '')}
+            </span>
           </button>
         )}
 
@@ -319,7 +339,10 @@ interface ChatMessageListProps {
  * messages grouped by author, date divider, and a per-message action bar
  * on hover (react/reply/edit/delete). */
 export function ChatMessageList({ className, channelId, onReply, onOpenProfile }: ChatMessageListProps) {
-  const { state, messagesByChannel, editChatMessage, allUsers, hasMoreByChannel, loadingOlderByChannel, loadOlderMessages } = useRoom();
+  const {
+    state, messagesByChannel, editChatMessage, allUsers, hasMoreByChannel, loadingOlderByChannel, loadOlderMessages,
+    editingMsgId, setEditingMsgId,
+  } = useRoom();
   const mentionLookup = useMemo(() => buildMentionLookup(allUsers), [allUsers]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // wraps ONLY the content (not the scrolling viewport) — with
@@ -346,7 +369,6 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
   const prevScrollHeightRef = useRef(0);
   const wasLoadingOlderRef = useRef(false);
 
-  const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
   const [highlightedMsgId, setHighlightedMsgId] = useState<number | null>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
@@ -459,9 +481,21 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
 
   const renderItems = useMemo(() => buildRenderItems(chatMessages), [chatMessages]);
 
+  // editingMsgId can now be set from elsewhere (GlobalContextMenu's
+  // "Editar" — it lives in RoomProvider precisely so that reaches here),
+  // not just startEdit below — this is what seeds the draft text either
+  // way. chatMessages is deliberately NOT a dep: it changes on unrelated
+  // updates (someone else's message, a reaction) while editing, and this
+  // must only re-seed the draft when editingMsgId itself changes.
+  useEffect(() => {
+    if (editingMsgId == null) return;
+    const msg = chatMessages.find((m) => m.msgId === editingMsgId);
+    if (msg) setEditText(msg.text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingMsgId]);
+
   function startEdit(message: ChatMessage) {
     setEditingMsgId(message.msgId);
-    setEditText(message.text);
   }
   function saveEdit() {
     const trimmed = editText.trim();

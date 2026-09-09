@@ -1,9 +1,11 @@
 import { AtSign, BadgeCheck, Camera, Code2, ExternalLink, Link2, MessageCircle, Music2 } from 'lucide-react';
 import type { CSSProperties } from 'react';
+import { useState } from 'react';
 import { Avatar, colorFor } from '@/shared/Avatar';
 import { useRoom } from '@/state/RoomContext';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ImageLightbox } from '@/shared/ImageLightbox';
 import type { PublicUser } from '@/types/protocol';
 
 type LinkKind = 'youtube' | 'twitter' | 'twitch' | 'instagram' | 'github' | 'linkedin' | 'tiktok' | 'spotify' | 'discord' | 'generic';
@@ -118,17 +120,42 @@ export function ProfileModal({ userId, onClose }: ProfileModalProps) {
   const { allUsers, onlineUserIds } = useRoom();
   const user = userId ? allUsers.get(userId) : null;
   const links = (user?.profileLinks ?? []).map(linkInfo).filter((item): item is LinkInfo => !!item);
+  // shared by both avatar and banner — only one can be open at a time
+  // anyway (it's a modal), and comparing against user.banner below tells
+  // ImageLightbox which alt text to use.
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   return (
     <Dialog open={!!user} onOpenChange={(next) => { if (!next) onClose(); }}>
       {user && (
         <DialogContent className="max-w-[calc(100%-2rem)] overflow-hidden bg-bg-modal p-0 sm:max-w-130">
           <DialogTitle className="sr-only">Perfil de {user.displayName}</DialogTitle>
-          <div className="h-40 w-full" style={bannerStyle(user)} />
+          {user.banner ? (
+            <button
+              type="button"
+              aria-label="Ver banner em tela cheia"
+              onClick={() => setLightboxSrc(user.banner)}
+              className="block h-40 w-full cursor-zoom-in"
+              style={bannerStyle(user)}
+            />
+          ) : (
+            <div className="h-40 w-full" style={bannerStyle(user)} />
+          )}
           <div className="px-6 pb-6">
             <div className="-mt-12 flex items-end gap-3">
               <div className="relative rounded-full bg-bg-modal p-1">
-                <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={92} />
+                {user.avatar ? (
+                  <button
+                    type="button"
+                    aria-label="Ver foto de perfil em tela cheia"
+                    onClick={() => setLightboxSrc(user.avatar)}
+                    className="block cursor-zoom-in rounded-full focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={92} />
+                  </button>
+                ) : (
+                  <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={92} />
+                )}
                 {onlineUserIds.has(user.id) && (
                   <span className="absolute right-1 bottom-1 h-5 w-5 rounded-full border-2 border-bg-modal bg-green" />
                 )}
@@ -180,6 +207,14 @@ export function ProfileModal({ userId, onClose }: ProfileModalProps) {
             )}
           </div>
         </DialogContent>
+      )}
+      {user && (
+        <ImageLightbox
+          src={lightboxSrc ?? ''}
+          alt={lightboxSrc === user.banner ? 'Banner' : 'Foto de perfil'}
+          open={!!lightboxSrc}
+          onOpenChange={(open) => { if (!open) setLightboxSrc(null); }}
+        />
       )}
     </Dialog>
   );

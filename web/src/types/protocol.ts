@@ -47,6 +47,9 @@ export interface ChatReplyRef {
   msgId: number;
   authorId: string | null;
   text: string;
+  // only set when `text` is empty (an attachment-only message) — lets the
+  // reply reference show "📎 N anexos" instead of a blank snippet.
+  attachmentCount?: number;
 }
 
 // `id` here is the account's userId (not a connection id) — survives
