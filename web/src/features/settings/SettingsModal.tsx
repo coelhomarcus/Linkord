@@ -85,6 +85,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [bannerUploadProgress, setBannerUploadProgress] = useState(0);
   const [bannerError, setBannerError] = useState<string | null>(null);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
   // set the moment a file is picked (before cropping) — the actual upload
@@ -109,15 +110,29 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   async function handleToggleNotifications(checked: boolean) {
     if (!checked) {
+      setNotificationsError(null);
       setNotificationsEnabled(false);
       return;
     }
     // never request OS permission silently — only in direct response to
     // the user turning this on, same care useMediaDevices takes with mic/
     // camera permission (its "Grant access" button).
-    if (typeof Notification === 'undefined') return;
+    if (typeof Notification === 'undefined') {
+      setNotificationsError('Seu navegador nao suporta notificacoes.');
+      return;
+    }
     const permission = Notification.permission === 'default' ? await requestNotificationPermission() : Notification.permission;
-    if (permission === 'granted') setNotificationsEnabled(true);
+    if (permission === 'granted') {
+      setNotificationsError(null);
+      setNotificationsEnabled(true);
+    } else {
+      // switch below is controlled by notificationsEnabled, so it already
+      // snaps back to off on its own — without this, that was the ONLY
+      // feedback: nothing told the user why (see also useMediaDevices'
+      // "Grant access" button, same idea of surfacing a denied permission
+      // instead of just failing quietly).
+      setNotificationsError('Notificacoes bloqueadas. Permita o acesso nas configuracoes do navegador pra habilitar.');
+    }
   }
 
   // true once a color OUTSIDE the curated presets was picked via the custom
@@ -467,17 +482,20 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 </p>
               </div>
 
-              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
-                <div className="min-w-0">
-                  <p className="select-none text-body font-medium text-text-primary">Notificacoes de mensagens</p>
-                  <p className="select-none text-label text-text-muted">Avisa no sistema quando chegar mensagem em um canal que voce nao esta vendo.</p>
+              <div className={settingsCardClass}>
+                <div className="flex flex-row items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="select-none text-body font-medium text-text-primary">Notificacoes de mensagens</p>
+                    <p className="select-none text-label text-text-muted">Avisa no sistema quando chegar mensagem em um canal que voce nao esta vendo.</p>
+                  </div>
+                  <Switch
+                    checked={notificationsEnabled}
+                    onCheckedChange={handleToggleNotifications}
+                    aria-label="Notificacoes de mensagens"
+                    className="mt-0.5 flex-none"
+                  />
                 </div>
-                <Switch
-                  checked={notificationsEnabled}
-                  onCheckedChange={handleToggleNotifications}
-                  aria-label="Notificacoes de mensagens"
-                  className="mt-0.5 flex-none"
-                />
+                {notificationsError && <p className="text-label text-red">{notificationsError}</p>}
               </div>
             </TabsPanel>
 
