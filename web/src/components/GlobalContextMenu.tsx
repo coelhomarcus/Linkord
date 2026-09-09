@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Copy, Download, FolderPlus, Hash, Pencil, Reply, Settings, Trash2 } from 'lucide-react';
+import { Copy, Download, FolderPlus, Hash, Pencil, Reply, Trash2 } from 'lucide-react';
 import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { useRoom } from '../state/RoomContext';
 import { PromptDialog } from '../shared/PromptDialog';
+import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { NewChannelDialog } from './ChannelTree';
 import { downloadFile } from '../shared/lib/download';
 import { ALLOWED_REACTIONS } from '../types/protocol';
 
 interface GlobalContextMenuProps {
   children: ReactNode;
-  onOpenSettings: () => void;
 }
 
 // text field: let the NATIVE menu show there (paste, spelling suggestions,
@@ -35,9 +35,10 @@ function isEditableTarget(target: EventTarget | null): boolean {
  * both triggers listening to the same native `contextmenu` event).
  * Create category/channel for admins is conditional the same way "Copy"
  * already is when there's a text selection. */
-export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMenuProps) {
+export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
   const {
-    state, categories, createCategory, hideAudioOnlyTiles, setHideAudioOnlyTiles,
+    state, categories, createCategory, renameCategory, deleteCategory, renameChannel, deleteChannel,
+    hideAudioOnlyTiles, setHideAudioOnlyTiles,
     activeChannelId, messagesByChannel, reactToChatMessage, deleteChatMessage, setReplyingTo, setEditingMsgId,
   } = useRoom();
   const [hasSelection, setHasSelection] = useState(false);
@@ -45,8 +46,14 @@ export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMen
   const [stageTarget, setStageTarget] = useState(false);
   const [downloadTarget, setDownloadTarget] = useState<{ url: string; name: string } | null>(null);
   const [messageTarget, setMessageTarget] = useState<number | null>(null);
+  const [channelTarget, setChannelTarget] = useState<string | null>(null);
+  const [categoryTarget, setCategoryTarget] = useState<string | null>(null);
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
   const [newChannelOpen, setNewChannelOpen] = useState(false);
+  const [renameChannelOpen, setRenameChannelOpen] = useState(false);
+  const [deleteChannelOpen, setDeleteChannelOpen] = useState(false);
+  const [renameCategoryOpen, setRenameCategoryOpen] = useState(false);
+  const [deleteCategoryOpen, setDeleteCategoryOpen] = useState(false);
   const isAdmin = state.me.role === 'admin';
   // resolved from the active channel's loaded messages, not stored directly
   // in state — right-clicking only ever targets a message that's currently
@@ -56,6 +63,12 @@ export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMen
     : undefined;
   const targetIsMine = !!targetMessage && targetMessage.id === state.me.userId;
   const targetCanDelete = targetIsMine || isAdmin;
+  // same idea — resolved by id from the tree already in state, not stored
+  // directly, so a rename/move elsewhere stays in sync automatically.
+  const targetChannel = channelTarget != null
+    ? categories.flatMap((c) => c.channels).find((ch) => ch.id === channelTarget)
+    : undefined;
+  const targetCategory = categoryTarget != null ? categories.find((c) => c.id === categoryTarget) : undefined;
 
   useEffect(() => {
     function captureTarget(e: MouseEvent) {
@@ -69,6 +82,10 @@ export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMen
       setDownloadTarget(downloadEl ? { url: downloadEl.dataset.downloadUrl!, name: downloadEl.dataset.downloadName || '' } : null);
       const messageEl = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-message-id]') : null;
       setMessageTarget(messageEl ? Number(messageEl.dataset.messageId) : null);
+      const channelEl = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-channel-id]') : null;
+      setChannelTarget(channelEl?.dataset.channelId ?? null);
+      const categoryEl = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-category-id]') : null;
+      setCategoryTarget(categoryEl?.dataset.categoryId ?? null);
     }
     function blockNative(e: MouseEvent) {
       if (isEditableTarget(e.target)) return;
@@ -168,7 +185,42 @@ export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMen
               <ContextMenuSeparator />
             </>
           )}
-          {isAdmin && sidebarTarget && (
+          {isAdmin && targetChannel && (
+            <>
+              <ContextMenuItem onClick={() => setRenameChannelOpen(true)}>
+                <Pencil size={14} />
+                <span>Renomear canal</span>
+              </ContextMenuItem>
+              <ContextMenuItem variant="destructive" onClick={() => setDeleteChannelOpen(true)}>
+                <Trash2 size={14} />
+                <span>Apagar canal</span>
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+            </>
+          )}
+          {isAdmin && targetCategory && (
+            <>
+              <ContextMenuItem onClick={() => setNewChannelOpen(true)}>
+                <Hash size={14} />
+                <span>Novo canal</span>
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => setRenameCategoryOpen(true)}>
+                <Pencil size={14} />
+                <span>Renomear categoria</span>
+              </ContextMenuItem>
+              <ContextMenuItem variant="destructive" onClick={() => setDeleteCategoryOpen(true)}>
+                <Trash2 size={14} />
+                <span>Apagar categoria</span>
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+            </>
+          )}
+          {/* the generic "create" actions only make sense when the click
+              landed on the sidebar's empty background — not on a specific
+              channel/category row, which already has its own actions above
+              (and would otherwise show alongside them redundantly, since a
+              row is itself inside the data-sidebar-channels region). */}
+          {isAdmin && sidebarTarget && !targetChannel && !targetCategory && (
             <>
               <ContextMenuItem onClick={() => setNewCategoryOpen(true)}>
                 <FolderPlus size={14} />
@@ -184,20 +236,13 @@ export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMen
             </>
           )}
           {stageTarget && (
-            <>
-              <ContextMenuCheckboxItem
-                checked={hideAudioOnlyTiles}
-                onCheckedChange={setHideAudioOnlyTiles}
-              >
-                <span>Ocultar sem video</span>
-              </ContextMenuCheckboxItem>
-              <ContextMenuSeparator />
-            </>
+            <ContextMenuCheckboxItem
+              checked={hideAudioOnlyTiles}
+              onCheckedChange={setHideAudioOnlyTiles}
+            >
+              <span>Ocultar sem video</span>
+            </ContextMenuCheckboxItem>
           )}
-          <ContextMenuItem onClick={onOpenSettings}>
-            <Settings size={14} />
-            <span>Abrir Ajustes</span>
-          </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
       <PromptDialog
@@ -210,6 +255,54 @@ export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMen
         onConfirm={createCategory}
       />
       <NewChannelDialog open={newChannelOpen} onOpenChange={setNewChannelOpen} />
+      {targetChannel && (
+        <>
+          <PromptDialog
+            open={renameChannelOpen}
+            onOpenChange={setRenameChannelOpen}
+            title="Renomear canal"
+            label="Nome do canal"
+            confirmLabel="Salvar"
+            initialValue={targetChannel.name}
+            onConfirm={(name) => renameChannel(targetChannel.id, name)}
+          />
+          <ConfirmDialog
+            open={deleteChannelOpen}
+            onOpenChange={setDeleteChannelOpen}
+            title="Apagar canal"
+            description={
+              targetChannel.type === 'voice'
+                ? `Isso apaga o canal de voz "${targetChannel.name}" pra sempre. Essa acao nao pode ser desfeita.`
+                : `Isso apaga "${targetChannel.name}" e TODAS as mensagens dele pra sempre. Essa acao nao pode ser desfeita.`
+            }
+            confirmLabel="Apagar"
+            destructive
+            onConfirm={() => deleteChannel(targetChannel.id)}
+          />
+        </>
+      )}
+      {targetCategory && (
+        <>
+          <PromptDialog
+            open={renameCategoryOpen}
+            onOpenChange={setRenameCategoryOpen}
+            title="Renomear categoria"
+            label="Nome da categoria"
+            confirmLabel="Salvar"
+            initialValue={targetCategory.name}
+            onConfirm={(name) => renameCategory(targetCategory.id, name)}
+          />
+          <ConfirmDialog
+            open={deleteCategoryOpen}
+            onOpenChange={setDeleteCategoryOpen}
+            title="Apagar categoria"
+            description={`Isso apaga a categoria "${targetCategory.name}". Ela precisa estar vazia (sem canais). Apague os canais primeiro.`}
+            confirmLabel="Apagar"
+            destructive
+            onConfirm={() => deleteCategory(targetCategory.id)}
+          />
+        </>
+      )}
     </>
   );
 }

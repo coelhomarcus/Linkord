@@ -104,6 +104,7 @@ function SortableChannelRow({ channel, categoryId, active, unread, isAdmin, onSe
   return (
     <div
       ref={setNodeRef}
+      data-channel-id={channel.id}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
       className="group/channel relative"
     >
@@ -202,7 +203,7 @@ function CategoryBlock({ category, activeChannelId, isAdmin, onSelectChannel, on
 
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}>
-      <div className="group/category flex items-center gap-1 px-2.5 pb-1 pt-3 first:pt-1.5">
+      <div data-category-id={category.id} className="group/category flex items-center gap-1 px-2.5 pb-1 pt-3 first:pt-1.5">
         <p
           {...(isAdmin ? attributes : {})}
           {...(isAdmin ? listeners : {})}

@@ -121,7 +121,7 @@ function Shell() {
   if (!state.joined) return <LoadingScreen />;
 
   return (
-    <GlobalContextMenu onOpenSettings={() => setSettingsOpen(true)}>
+    <GlobalContextMenu>
       <div className="flex h-dvh overflow-hidden bg-bg-primary text-text-primary">
         <ReconnectBanner />
         <LeftSidebar
