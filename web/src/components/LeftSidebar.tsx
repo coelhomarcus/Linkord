@@ -25,7 +25,11 @@ export type AppView = 'chat' | 'call';
 
 interface LeftSidebarProps {
   activeView: AppView;
-  onViewChange: (view: AppView) => void;
+  /** `voiceChannelId` is only passed (and meaningful) when switching to
+   * 'call' by picking a specific voice channel — lets the Shell remember
+   * WHICH channel to keep showing (join screen or live stage) even after
+   * `activeVoiceChannelId` clears on leave. */
+  onViewChange: (view: AppView, voiceChannelId?: string) => void;
   inCall: boolean;
   onOpenSettings: () => void;
   onOpenProfile: (userId: string) => void;
@@ -56,7 +60,7 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
   function handleSelectChannel(channel: Channel) {
     if (channel.type === 'voice') {
       joinVoiceChannel(channel.id);
-      onViewChange('call');
+      onViewChange('call', channel.id);
     } else {
       onViewChange('chat');
       openChannel(channel.id);
