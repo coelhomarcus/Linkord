@@ -184,8 +184,15 @@ function VideoLightbox({ src, poster, title, open, onOpenChange }: VideoPlayerPr
           onClick={() => onOpenChange(false)}
         >
           <DialogPrimitive.Title className="sr-only">{title || 'Video'}</DialogPrimitive.Title>
+          {/* no w-full: this is a flex child of the centered Popup below —
+              stretching it to full width left everything to the left of it
+              (a plain block child inside a wide div sits at the left edge by
+              default). Left as a shrink-to-fit flex item, it hugs the
+              video's own computed size (see boxStyle in VideoPlayerInner),
+              so the parent's justify-center actually centers the video
+              itself instead of an invisible full-width box around it. */}
           <div
-            className="w-full max-w-6xl cursor-default"
+            className="max-w-6xl cursor-default"
             data-download-url={src}
             data-download-name={title || 'video'}
             onClick={(event) => event.stopPropagation()}

@@ -110,16 +110,16 @@ export function GlobalContextMenu({ children, onOpenSettings }: GlobalContextMen
     <>
       <ContextMenu onOpenChange={(open) => { if (open) setHasSelection(!!window.getSelection()?.toString()); }}>
         <ContextMenuTrigger className="contents">{children}</ContextMenuTrigger>
-        <ContextMenuContent className="w-56">
+        <ContextMenuContent className="w-64">
           {targetMessage && (
             <>
-              <div className="flex items-center justify-center gap-1 px-1 py-1">
+              <div className="flex items-center justify-between gap-0.5 px-1 py-1">
                 {ALLOWED_REACTIONS.map((emoji) => (
                   <button
                     key={emoji}
                     type="button"
                     onClick={() => reactToChatMessage(targetMessage.msgId, emoji)}
-                    className="rounded-md p-1.5 text-[18px] leading-none transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                    className="rounded-md p-1 text-base leading-none transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                   >
                     {emoji}
                   </button>
