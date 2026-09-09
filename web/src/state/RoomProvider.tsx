@@ -96,7 +96,7 @@ function sanitizeProfileLinks(value: unknown): string[] {
 
 export function RoomProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(roomReducer, initialRoomState);
-  const auth = useAuth();
+  const { refresh: refreshAuth } = useAuth();
 
   const socketRef = useRef<Socket | null>(null);
   const myIdRef = useRef<string | null>(null);
@@ -178,8 +178,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   // on `categories` (state).
   const categoriesRef = useRef<Category[]>([]);
   const [activeChannelId, setActiveChannelIdState] = useState<string | null>(null);
-  // ref (not state) — handleServerMessage is registered once at mount and
-  // would otherwise close over a stale activeChannelId.
+  // ref (not state) — socket handlers outlive React renders and must always
+  // read the current active channel.
   const activeChannelIdRef = useRef<string | null>(null);
   const [activeVoiceChannelId, setActiveVoiceChannelIdState] = useState<string | null>(null);
   // same staleness reason as activeChannelIdRef. pendingVoiceChannelIdRef
@@ -418,9 +418,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     sendWs({ t: 'voice-join', channelId });
   }, [sendWs, leaveVoiceChannel]);
 
-  // leaveVoiceChannel's identity changes with cameraOn/sharing, but it's
-  // called from the mount-only handleServerMessage closure below — without
-  // this ref it would run with stale (always-false) values.
+  // leaveVoiceChannel's identity changes with cameraOn/sharing, but socket
+  // messages call it through the long-lived handleServerMessage ref below —
+  // without this ref it would run with stale (always-false) values.
   const leaveVoiceChannelRef = useRef(leaveVoiceChannel);
   useEffect(() => { leaveVoiceChannelRef.current = leaveVoiceChannel; }, [leaveVoiceChannel]);
 
@@ -807,8 +807,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         }
         break;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, pushReaction, livekitRoom, openChannel, activateMic, setActiveVoiceChannelId]);
+
+  const handleServerMessageRef = useRef(handleServerMessage);
+  useEffect(() => { handleServerMessageRef.current = handleServerMessage; }, [handleServerMessage]);
 
   const connect = useCallback(() => {
     intentionalCloseRef.current = false;
@@ -822,7 +824,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       sendWs({ t: 'join', id: saved?.id, token: saved?.token });
     });
 
-    socket.onAny((_eventName: string, payload: ServerMessage) => handleServerMessage(payload));
+    socket.onAny((_eventName: string, payload: ServerMessage) => handleServerMessageRef.current(payload));
 
     socket.on('disconnect', () => {
       if (intentionalCloseRef.current) return;
@@ -833,10 +835,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     // and it won't auto-reconnect; auth.refresh() re-checks /api/auth/me and
     // AuthGate falls back to login if the session is truly dead.
     socket.on('connect_error', () => {
-      if (!socket.active) auth.refresh();
+      if (!socket.active) refreshAuth();
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, sendWs, handleServerMessage, auth]);
+  }, [sendWs, refreshAuth]);
 
   const updateProfile = useCallback((profile: { avatar: string; avatarColor: string; displayName: string; banner: string; bio: string; profileLinks: string[] }) => {
     const finalAvatar = profile.avatar.trim().slice(0, 500);
@@ -946,24 +947,36 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     return true;
   }, []);
 
-  // connect once on mount — RoomProvider only mounts once there's a valid
-  // session (AuthGate), so no "am I logged in?" check needed here.
   useEffect(() => {
     preloadSounds();
+  }, []);
+
+  useEffect(() => {
     setVolume(notifyVolume);
+  }, [notifyVolume]);
+
+  useEffect(() => {
     setNotificationsModuleEnabled(notificationsEnabled);
+  }, [notificationsEnabled]);
+
+  useEffect(() => {
     setNotificationClickHandler((channelId) => {
       openChannel(channelId);
       requestChatViewRef.current?.();
     });
+    return () => setNotificationClickHandler(null);
+  }, [openChannel]);
+
+  // connect once on mount — RoomProvider only mounts once there's a valid
+  // session (AuthGate), so no "am I logged in?" check needed here.
+  useEffect(() => {
     connect();
     return () => {
       intentionalCloseRef.current = true;
       socketRef.current?.disconnect();
       livekitRoom.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [connect, livekitRoom]);
 
   return (
     <RoomContext.Provider
