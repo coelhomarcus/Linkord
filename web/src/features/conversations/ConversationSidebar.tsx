@@ -182,7 +182,7 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile }: Conversat
         collapsible="icon"
         ariaLabel="Conversas"
         className="text-text-primary"
-        panelClassName="border-white/10 bg-[rgb(14_14_16)]"
+        panelClassName="border-r-0 bg-bg-primary"
       >
         {collapsed ? (
           <div className="flex h-full flex-col items-center gap-1.5 py-3">
