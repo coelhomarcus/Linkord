@@ -8,7 +8,6 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // solid hover (not opacity-based) to match the app's original design
         default: "bg-primary text-primary-foreground hover:bg-blurple-hover",
         outline:
           "border-input bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
@@ -16,12 +15,9 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         ghost:
           "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
-        // solid (not shadcn's default soft/tinted style) to match the original destructive button
         destructive: "bg-red text-white hover:bg-red-hover",
         link: "text-primary underline-offset-4 hover:underline",
       },
-      // heights went up a notch along with the typography — 15px text
-      // inside a 32px button felt cramped.
       size: {
         default:
           "h-9 gap-1.5 px-3 has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5",

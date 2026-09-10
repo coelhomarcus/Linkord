@@ -37,9 +37,6 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-/** A device dropdown (mic or camera) — shows a "Grant access" button in
- * place of the list when the browser hasn't granted permission yet
- * (empty/generic labels). */
 function DevicePicker({ label, room, kind }: { label: string; room: import('livekit-client').Room; kind: MediaDeviceKind }) {
   const { devices, activeDeviceId, permissionNeeded, selectDevice, requestPermission } = useMediaDevices(room, kind);
 
@@ -88,8 +85,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
-  // set the moment a file is picked (before cropping) — the actual upload
-  // only happens once ImageCropDialog's "Salvar" hands back a cropped blob.
   const [cropTarget, setCropTarget] = useState<{ field: 'avatar' | 'banner'; src: string } | null>(null);
 
   useEffect(() => {
@@ -114,9 +109,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       setNotificationsEnabled(false);
       return;
     }
-    // never request OS permission silently — only in direct response to
-    // the user turning this on, same care useMediaDevices takes with mic/
-    // camera permission (its "Grant access" button).
     if (typeof Notification === 'undefined') {
       setNotificationsError('Seu navegador nao suporta notificacoes.');
       return;
@@ -126,17 +118,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       setNotificationsError(null);
       setNotificationsEnabled(true);
     } else {
-      // switch below is controlled by notificationsEnabled, so it already
-      // snaps back to off on its own — without this, that was the ONLY
-      // feedback: nothing told the user why (see also useMediaDevices'
-      // "Grant access" button, same idea of surfacing a denied permission
-      // instead of just failing quietly).
       setNotificationsError('Notificacoes bloqueadas. Permita o acesso nas configuracoes do navegador pra habilitar.');
     }
   }
 
-  // true once a color OUTSIDE the curated presets was picked via the custom
-  // color input below — drives which swatch shows the "selected" ring.
   const isCustomAvatarColor = !AVATAR_COLOR_OPTIONS.some((option) => option.value === avatarColor);
 
   function profileLinksForSubmit(): string[] {
@@ -163,11 +148,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     });
   }
 
-  // shared by both hidden file inputs — just picks the file and opens the
-  // crop step; the actual upload happens in handleCropConfirm.
   function handleFilePicked(field: 'avatar' | 'banner', e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = ''; // allows picking the SAME file again later
+    e.target.value = '';
     if (!file) return;
     const setError = field === 'avatar' ? setAvatarError : setBannerError;
     if (file.size > MAX_AVATAR_BYTES) {
@@ -215,13 +198,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      {/* DialogContent's base already bundles `sm:max-w-sm` (384px) — only
-          overriding the unprefixed max-w isn't enough, `sm:` still applies
-          on any screen >=640px and wins by specificity, clipping content.
-          Both must be overridden. */}
-      {/* full-screen sheet below md (no room for a floating card + a
-          left-hand tab column); reverts to the original centered card from
-          md up. */}
       <DialogContent className="inset-0 h-full max-h-full w-full max-w-full translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-none bg-bg-modal p-0 gap-0 md:inset-auto md:top-1/2 md:left-1/2 md:h-auto md:min-h-150 md:max-h-[90vh] md:w-full md:max-w-4xl md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl">
         <DialogHeader className="border-b border-subtle px-4 pt-5 pb-2 pr-12 md:px-6 md:pr-12">
           <DialogTitle className="text-display font-bold text-text-primary">Ajustes</DialogTitle>
@@ -235,9 +211,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             <TabsTrigger value="notifications" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Bell size={16} /><span>Notificacoes</span></TabsTrigger>
             <TabsTrigger value="prefs" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Settings2 size={16} /><span>Preferencias</span></TabsTrigger>
             <TabsTrigger value="media" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Images size={16} /><span>Midias</span></TabsTrigger>
-            {/* only admins see this tab — the server also revalidates the
-                role on EVERY action (moderation.ts), this check just
-                avoids showing UI to someone who can't use it. */}
             {state.me.role === 'admin' && (
               <TabsTrigger value="moderation" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><ShieldCheck size={16} /><span>Moderacao</span></TabsTrigger>
             )}
@@ -346,12 +319,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                         </button>
                       );
                     })}
-                    {/* custom color, beyond the presets above — a native
-                        color picker reshaped into the same circular swatch
-                        (see index.css#.avatar-color-custom-input). Shows a
-                        neutral gray + palette icon until a non-preset color
-                        is actually picked, so it doesn't look like a
-                        duplicate of one of the presets. */}
                     <label
                       title="Cor personalizada"
                       className={cn(

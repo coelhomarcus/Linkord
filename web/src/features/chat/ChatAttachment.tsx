@@ -5,25 +5,10 @@ import { ImageLightbox } from '../../shared/ImageLightbox';
 import { AudioPlayer, VideoPlayer } from '../../shared/MediaPlayers';
 import { formatFileSize } from '../../shared/lib/formatBytes';
 
-// mirrors INLINE_MIME_TYPES from server/src/modules/attachments.ts — only
-// decides HOW to render here; the server decides how it actually serves it
-// back (Content-Type/Content-Disposition), this list is UI-only.
 const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const VIDEO_MIME_TYPES = new Set(['video/mp4', 'video/webm', 'video/ogg']);
 const AUDIO_MIME_TYPES = new Set(['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4']);
 
-/** An attachment (image, video, audio, or any other file) inside a message.
- * Images open a fullscreen modal on click (ImageLightbox, Discord-style —
- * no longer a new tab); video/audio play inline; any other type becomes a
- * name+size chip that downloads on click (the server already forces
- * download via Content-Disposition in that case, see
- * server/src/modules/attachments.ts).
- *
- * `target="_blank"` on the download chip is NOT cosmetic: without it, a
- * click navigates OUR OWN tab to the link (even with server-forced
- * download, some browsers still navigate first) — unmounting the whole app
- * and dropping an ongoing call with it. With _blank, the worst case is a
- * new tab, never ours. */
 export function ChatAttachment({ attachment }: { attachment: ChatAttachmentData }) {
   const url = `/uploads/${attachment.id}`;
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -36,11 +21,6 @@ export function ChatAttachment({ attachment }: { attachment: ChatAttachmentData 
             src={url}
             alt={attachment.name}
             loading="lazy"
-            // fixed max-w (not just max-w-full): otherwise a much-wider-than-
-            // tall image grows to the chat column's full width to fit
-            // max-h — huge even though it's "just" a thumbnail. min(24rem,100%)
-            // keeps that cap while still shrinking below it on narrow columns,
-            // instead of overflowing them like a bare max-w-sm would.
             className="max-h-80 max-w-[min(24rem,100%)] rounded-md border border-strong object-contain"
           />
         </button>

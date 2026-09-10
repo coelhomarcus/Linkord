@@ -6,12 +6,8 @@ import { initialRoomState } from '../../state/roomReducer';
 import { ChatComposer } from './ChatComposer';
 import type { PublicUser } from '../../types/protocol';
 
-// composer precisa de state.joined pra nao ficar desabilitado (ver
-// `disabled` em ChatComposer.tsx).
 const joinedState = { ...initialRoomState, joined: true };
 
-// pendingFiles/attachError agora vivem em ChatPage — esses testes nao
-// mexem com anexos, entao so precisam de props vazias/no-op.
 const noAttachmentProps = {
   pendingFiles: [],
   onAddFiles: () => {},

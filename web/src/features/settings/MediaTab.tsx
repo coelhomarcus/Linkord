@@ -35,15 +35,6 @@ function MediaRow({ item }: { item: MediaItem }) {
   );
 }
 
-/** Settings' "Media" tab — aggregates every uploaded attachment and every
- * embeddable link across the WHOLE PROJECT (all channels, not just the one
- * currently open), split into two lists (media.ts decides the
- * classification; this just renders, reusing ChatAttachment/LinkPreview —
- * the same components chat itself uses to render these). Fetches on
- * demand: only loads when this tab is actually opened (TabsPanel unmounts
- * inactive tabs' content by default, see SettingsModal), and refetches from
- * scratch each time it reopens — no cache, but the app is small enough
- * (one room, few participants) for that to never matter. */
 export function MediaTab() {
   const [kind, setKind] = useState<MediaKind>('uploads');
   const [items, setItems] = useState<MediaItem[]>([]);
@@ -67,8 +58,6 @@ export function MediaTab() {
     }
   }, []);
 
-  // switching tabs (uploads/embeds) resets the list and refetches — each
-  // has its own pagination (one's cursor doesn't work for the other).
   useEffect(() => {
     setItems([]);
     setNextBefore(null);

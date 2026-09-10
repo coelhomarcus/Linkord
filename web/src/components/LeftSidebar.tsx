@@ -27,26 +27,14 @@ export type AppView = 'chat' | 'call';
 
 interface LeftSidebarProps {
   activeView: AppView;
-  /** `voiceChannelId` is only passed (and meaningful) when switching to
-   * 'call' by picking a specific voice channel — lets the Shell remember
-   * WHICH channel to keep showing (join screen or live stage) even after
-   * `activeVoiceChannelId` clears on leave. */
   onViewChange: (view: AppView, voiceChannelId?: string) => void;
   inCall: boolean;
   onOpenSettings: () => void;
   onOpenProfile: (userId: string) => void;
-  /** Below md, this pane and the content pane show one at a time — true
-   * shows this one. Ignored from md up, where both are always visible. */
   mobileVisible: boolean;
-  /** Notifies the Shell to switch to the content pane on mobile once a
-   * channel is picked — irrelevant from md up. */
   onSelectChannelMobile: () => void;
 }
 
-/** App's center, Discord-style: channels grouped by category (a voice
- * channel is just another channel in the tree, with connected people
- * indented under it — see ChannelTree), and a fixed user area at the
- * bottom. */
 export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, onOpenProfile, mobileVisible, onSelectChannelMobile }: LeftSidebarProps) {
   const { state, livekitRoom, toggleMicMuted, deafened, toggleDeafened, leaveVoiceChannel, joinVoiceChannel, openChannel, activeChannelId, categories, createCategory } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
@@ -55,8 +43,6 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
   const [newChannelOpen, setNewChannelOpen] = useState(false);
 
-  // desktop-only drag-to-resize (md:w-[var(--sidebar-w)] below) — mobile
-  // stays the fixed full-width overlay panel it's always been, untouched.
   const [width, setWidth] = useState(loadSidebarWidth);
   const asideRef = useRef<HTMLElement>(null);
   const resizingRef = useRef(false);
@@ -83,10 +69,6 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
     setWidth((w) => { saveSidebarWidth(w); return w; });
   }
 
-  // selecting a text channel also switches to the Chat screen if not
-  // already there; selecting a voice channel actually joins it (connects
-  // to that specific channel's Room, leaving another if already in one)
-  // and switches to the call screen.
   function handleSelectChannel(channel: Channel) {
     if (channel.type === 'voice') {
       joinVoiceChannel(channel.id);
@@ -107,9 +89,6 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
       <div className="flex flex-none select-none items-center gap-2 px-4 py-3.5">
         <img src="/logo.svg" alt="" className="h-8 w-8 flex-none" />
         <span className="min-w-0 flex-1 truncate text-title font-bold tracking-tight text-text-primary">Linkord</span>
-        {/* right-click for this same menu isn't reliable on touch — this
-            covers admins on mobile (desktop already has it via
-            GlobalContextMenu's right-click on this panel). */}
         {isAdmin && (
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-sm" aria-label="Criar categoria ou canal" className="flex-none text-text-muted hover:text-text-secondary md:hidden" />}>
@@ -131,9 +110,6 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
         )}
       </div>
 
-      {/* data-sidebar-channels: marks the area where right-click opens the
-          admin options (new category/channel) in GlobalContextMenu — only
-          this area, not the footer (avatar/mic/settings) below. */}
       <div data-sidebar-channels className="min-h-0 flex-1 overflow-y-auto px-2">
         <div className="flex flex-col gap-0.5">
           <ChannelTree activeChannelId={activeView === 'chat' ? activeChannelId : null} onSelectChannel={handleSelectChannel} onOpenProfile={onOpenProfile} />
@@ -143,11 +119,6 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
       <div className="mx-2 mb-2 flex flex-none items-center gap-2 rounded-xl border border-strong bg-bg-tertiary px-2 py-2">
         <Avatar id={state.me.id ?? 'me'} name={state.me.displayName} avatar={state.me.avatar} avatarColor={state.me.avatarColor} size={36} />
 
-        {/* mic + arrow: the arrow switches MICROPHONE (the PC's actual
-            input device); disabled outside a call since there's no mic to
-            mute before joining (avoids publishing the mic without going
-            through joining a voice channel first) — device switching
-            itself still works outside a call. */}
         <div className={cn('ml-auto flex items-center rounded-md', myMedia.micMuted && inCall && 'bg-red/12')}>
           <Tooltip>
             <TooltipTrigger
@@ -246,10 +217,6 @@ export function LeftSidebar({ activeView, onViewChange, inCall, onOpenSettings, 
         </Tooltip>
       </div>
 
-      {/* drag-to-resize — desktop only, mobile stays the fixed full-width
-          overlay panel. A wide invisible hit area (px-1.5) centered on a
-          thin visible line, so it's actually grabbable without looking
-          heavy; highlights on hover/drag so it reads as interactive. */}
       <div
         role="separator"
         aria-orientation="vertical"

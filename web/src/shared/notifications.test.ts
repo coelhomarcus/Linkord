@@ -76,7 +76,7 @@ describe('notifyIncomingChatMessage', () => {
   it('rajada rapida do mesmo remetente no mesmo canal colapsa em UMA notificacao', () => {
     for (let i = 0; i < 6; i++) {
       notifyIncomingChatMessage(baseEvent({ text: `mensagem ${i}` }));
-      vi.advanceTimersByTime(200); // bem abaixo do debounce
+      vi.advanceTimersByTime(200);
     }
     vi.runAllTimers();
     expect(created).toHaveLength(1);
@@ -103,10 +103,8 @@ describe('notifyIncomingChatMessage', () => {
   it('uma rajada continua (sem pausa) ainda assim dispara periodicamente (MAX_WAIT)', () => {
     for (let i = 0; i < 40; i++) {
       notifyIncomingChatMessage(baseEvent({ text: `m${i}` }));
-      vi.advanceTimersByTime(300); // reseta o debounce a cada mensagem, nunca fica quieto
+      vi.advanceTimersByTime(300);
     }
-    // 40 * 300ms = 12s de rajada continua, bem acima do MAX_WAIT (6s) —
-    // deve ter disparado pelo menos uma vez no meio do caminho.
     expect(created.length).toBeGreaterThan(0);
   });
 

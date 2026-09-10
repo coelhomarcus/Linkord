@@ -126,9 +126,6 @@ function RegisterForm() {
   );
 }
 
-/** Fullscreen view (not a modal — nothing behind it to dim) shown while no
- * one is logged in. Only after this no longer renders does RoomProvider
- * mount and open the socket — there's never an anonymous connection. */
 export function AuthScreen() {
   return (
     <div className="flex h-dvh items-center justify-center bg-bg-primary p-4">

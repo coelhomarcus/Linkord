@@ -16,12 +16,6 @@ function isHexColor(color: string | null | undefined): color is string {
   return !!color && /^#[0-9a-f]{3,8}$/i.test(color);
 }
 
-// known site without depending on scraping — covers the whole card (name,
-// favicon, accent color) when the link is YouTube/Twitch, whose player we
-// already know how to build from just the ID extracted from the URL
-// (chatEmbeds.ts). So if the Open Graph fetch fails (flaky network, site
-// briefly down), the video/stream still plays — only the real description
-// is missing.
 const KNOWN_SITE: Partial<Record<DetectedEmbed['kind'], { name: string; favicon: string; accent: string }>> = {
   youtube: { name: 'YouTube', favicon: 'https://www.youtube.com/favicon.ico', accent: '#ff0000' },
   'twitch-channel': { name: 'Twitch', favicon: 'https://www.twitch.tv/favicon.ico', accent: '#9146ff' },
@@ -39,7 +33,6 @@ function TwitchPlayer({ embed }: { embed: DetectedEmbed }) {
         ? 'VOD da Twitch'
         : 'Clip da Twitch';
     return (
-      // plain button on purpose: the whole area is clickable, not an icon button
       <button
         type="button"
         onClick={() => setLoaded(true)}
@@ -65,19 +58,6 @@ function TwitchPlayer({ embed }: { embed: DetectedEmbed }) {
   );
 }
 
-/**
- * Link embed card, styled like Discord's link embed: colored bar on the
- * left, favicon + site name, highlighted title, truncated description, and
- * the player/image below. Covers THREE cases with the same look:
- *  - a generic link with no known format (kind:'link', see chatEmbeds.ts)
- *    — everything comes from Open Graph fetched on the server
- *    (server/linkPreview.ts);
- *  - YouTube/Twitch — the player takes the image's place, but title/
- *    description/favicon still come from that page's own Open Graph
- *    (YouTube and Twitch also publish those tags);
- *  - any link whose Open Graph points at a playable og:video (e.g. a post
- *    with an externally hosted mp4) — same logic as the generic link.
- */
 export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
   const { url } = embed;
   const [data, setData] = useState<LinkPreviewData | null>(null);
@@ -109,11 +89,6 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
     );
   }
 
-  // scraping didn't turn up anything usable (blocked, down, site with no
-  // meta tags) — falls back to the minimal link-only card, EXCEPT when we
-  // already know how to build the player from just the URL's ID (YouTube/
-  // Twitch): in that case the video still plays, only the real description
-  // is missing (see KNOWN_SITE).
   if (!data.title && !data.description && !data.image && !hasKnownPlayer) {
     return (
       <a

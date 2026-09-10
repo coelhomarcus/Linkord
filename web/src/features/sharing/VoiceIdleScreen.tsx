@@ -6,17 +6,10 @@ import { Button } from '@/components/ui/button';
 
 interface VoiceIdleScreenProps {
   channelId: string;
-  /** Below md, a floating back button returns to the channel list — same
-   * reasoning as Stage's own (see Stage.tsx). */
   onBackMobile: () => void;
   onOpenChat: () => void;
 }
 
-/** Channels here get named "emoji | label" by convention (e.g. "🌙┃voz") —
- * when that shape is present, the emoji is promoted to a big standalone
- * icon and the label shown separately underneath; anything else (a plain
- * name, no separator) just falls back to a generic icon + the full name,
- * no guessing beyond that. */
 const CHANNEL_NAME_SEPARATORS = ['┃', '|'];
 
 function splitChannelDisplay(name: string): { icon: string | null; label: string } {
@@ -31,13 +24,6 @@ function splitChannelDisplay(name: string): { icon: string | null; label: string
   return icon && label ? { icon, label } : { icon: null, label: name };
 }
 
-/** Shown for a voice channel that's selected in the Call tab but NOT
- * currently connected — either it was never joined this session, or the
- * person just left it (see Shell in App.tsx, which otherwise kept the live
- * Stage/tiles on screen with no one publishing anything after leaving).
- * Mirrors Discord's own "preview a voice channel before joining" screen:
- * nobody there -> "Ninguém está em voz"; people there -> their avatars,
- * either way with a button to actually connect. */
 export function VoiceIdleScreen({ channelId, onBackMobile, onOpenChat }: VoiceIdleScreenProps) {
   const { state, categories, joinVoiceChannel } = useRoom();
   const channel = useMemo(

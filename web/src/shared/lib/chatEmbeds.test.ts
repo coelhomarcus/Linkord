@@ -6,7 +6,6 @@ describe('detectEmbed', () => {
     expect(detectEmbed('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toEqual({ kind: 'youtube', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', youtubeId: 'dQw4w9WgXcQ' });
     expect(detectEmbed('https://youtu.be/dQw4w9WgXcQ')?.youtubeId).toBe('dQw4w9WgXcQ');
     expect(detectEmbed('https://www.youtube.com/shorts/dQw4w9WgXcQ')?.youtubeId).toBe('dQw4w9WgXcQ');
-    // v= no meio de outros parametros de query
     expect(detectEmbed('https://www.youtube.com/watch?list=abc&v=dQw4w9WgXcQ')?.youtubeId).toBe('dQw4w9WgXcQ');
   });
 
@@ -20,7 +19,7 @@ describe('detectEmbed', () => {
     expect(detectEmbed('https://cdn.example.com/video.mp4')?.kind).toBe('video');
     expect(detectEmbed('https://cdn.example.com/audio.mp3')?.kind).toBe('audio');
     expect(detectEmbed('https://cdn.example.com/foto.png')?.kind).toBe('image');
-    expect(detectEmbed('https://cdn.example.com/foto.png?w=200')?.kind).toBe('image'); // extensao antes da query string
+    expect(detectEmbed('https://cdn.example.com/foto.png?w=200')?.kind).toBe('image');
   });
 
   it('qualquer link http(s) sem formato conhecido cai no fallback "link" (Open Graph)', () => {

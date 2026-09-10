@@ -12,9 +12,6 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
 }
 
-/** Generic confirmation modal — used instead of window.confirm() for
- * destructive actions, to stay consistent with the rest of the UI (never a
- * native browser dialog). */
 export function ConfirmDialog({
   open, onOpenChange, title, description,
   confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', destructive = false, onConfirm,

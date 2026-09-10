@@ -104,8 +104,6 @@ function useMediaControls<T extends HTMLMediaElement>() {
   };
 }
 
-/* Botao de controle: mesma altura (28px) e mesmo icone (15px) nos dois players,
-   pra fila de icones ficar alinhada em qualquer largura. */
 function MediaButton({
   label,
   onClick,
@@ -131,9 +129,6 @@ function MediaButton({
   );
 }
 
-/* O slider do Base UI marca a orientacao no proprio root, e a classe de
-   orientacao (data-[orientation=horizontal]:w-full) tem especificidade maior
-   que um w-* solto — entao largura fixa so segura dentro de um wrapper. */
 function VolumeSlider({ muted, volume, onChange, className }: {
   muted: boolean;
   volume: number;
@@ -184,13 +179,6 @@ function VideoLightbox({ src, poster, title, open, onOpenChange }: VideoPlayerPr
           onClick={() => onOpenChange(false)}
         >
           <DialogPrimitive.Title className="sr-only">{title || 'Video'}</DialogPrimitive.Title>
-          {/* no w-full: this is a flex child of the centered Popup below —
-              stretching it to full width left everything to the left of it
-              (a plain block child inside a wide div sits at the left edge by
-              default). Left as a shrink-to-fit flex item, it hugs the
-              video's own computed size (see boxStyle in VideoPlayerInner),
-              so the parent's justify-center actually centers the video
-              itself instead of an invisible full-width box around it. */}
           <div
             className="max-w-6xl cursor-default"
             data-download-url={src}
@@ -223,18 +211,7 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
     setVolume,
     toggleMute,
   } = useMediaControls<HTMLVideoElement>();
-  // the video's OWN intrinsic size, read once metadata loads — used to size
-  // the wrapper below so its border/rounding hug the video's real shape
-  // instead of a fixed 16:9 box that letterboxed anything else (portrait,
-  // square, ultrawide...) with black bars.
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
-  // only the fullscreen lightbox (onExpand undefined here, see maxWidth/
-  // maxHeight below) sizes off the viewport — without this listener,
-  // rotating the phone or resizing the window while it's open left the box
-  // sized for whatever window.innerWidth/innerHeight was on the render that
-  // happened to run right after the dialog opened (same overflow bug fixed
-  // for chat media in bd0483f, surviving here since this path reads the
-  // viewport directly instead of a container it's actually laid out in).
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
 
   useEffect(() => {
@@ -257,23 +234,8 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
     if (video) setNatural({ width: video.videoWidth, height: video.videoHeight });
   }
 
-  // Computed in JS, not left to CSS "shrink to content" (w-fit): a
-  // `@container` query context forces size containment on its own box,
-  // which makes fit-content sizing collapse to 0 for a container nested
-  // inside a flex-centered ancestor (Base UI's Dialog, i.e. the fullscreen
-  // lightbox) — it only "worked" inline by coincidence of that simpler
-  // layout context. Explicit pixel dimensions sidestep the conflict
-  // entirely and behave identically in both places.
-  // onExpand only exists on the small inline/chat player, never the
-  // fullscreen lightbox (see VideoPlayer/VideoLightbox below) — that's
-  // what picks which size cap applies.
   const maxWidth = onExpand ? 384 : Math.min(viewport.width - 64, 1152);
   const maxHeight = onExpand ? 320 : viewport.height * 0.8;
-  // maxWidth above assumes the chat column has room for it — it doesn't
-  // know the actual parent width. `maxWidth: '100%'` + `aspectRatio` (in
-  // place of a fixed `height`) let the box shrink below that on narrow
-  // columns/screens while the video keeps its real proportions, instead of
-  // overflowing the message or getting squashed by a fixed height.
   const boxStyle: CSSProperties = natural && natural.width > 0 && natural.height > 0
     ? (() => {
         const scale = Math.min(1, maxWidth / natural.width, maxHeight / natural.height);
@@ -284,8 +246,6 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
           maxHeight,
         };
       })()
-    // before metadata loads: a reasonable 16:9 placeholder at max width, so
-    // something visible shows up immediately instead of a 0-size flash.
     : { width: maxWidth, maxWidth: '100%', aspectRatio: '16 / 9', maxHeight };
 
   return (
@@ -312,9 +272,6 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
         className="block h-full w-full"
       />
 
-      {/* Clique na area do video alterna play/pause, como em qualquer player.
-          E so um atalho de mouse: aria-hidden + tabIndex -1 pra nao duplicar o
-          botao de reproduzir que ja existe nos controles. */}
       <button
         type="button"
         aria-hidden
@@ -350,9 +307,6 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
           onValueChange={(value) => seek(value)}
           className="[&_[data-slot=slider-range]]:bg-blurple [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-white/25"
         />
-        {/* min-w-0 + itens flex-none: o botao de tela cheia nunca e empurrado
-            pra fora do container (que e overflow-hidden). Abaixo de ~19rem de
-            largura o slider de volume sai e sobra so o botao de mudo. */}
         <div className="flex min-w-0 items-center gap-0.5 text-text-secondary [&_button:hover]:bg-white/10 [&_button:hover]:text-white">
           <MediaButton label={playing ? 'Pausar' : 'Reproduzir'} onClick={togglePlay}>
             {playing ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
@@ -410,10 +364,6 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
 
   return (
     <div
-      // duas linhas em vez de uma so (titulo+tempo em cima, play+slider+
-      // controles embaixo): o play button e o grupo mutar/volume/baixar
-      // deixavam de disputar largura com o slider na mesma linha, entao o
-      // player inteiro cabe num max-w bem menor sem espremer nada.
       className={cn('@container/audio flex w-full min-w-0 max-w-sm flex-col gap-1.5 rounded-md border border-strong bg-bg-tertiary px-2.5 py-2 shadow-panel', className)}
       data-download-url={src}
       data-download-name={title || 'audio'}

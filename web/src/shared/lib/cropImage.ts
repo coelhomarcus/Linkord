@@ -9,10 +9,6 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-/** Draws just the cropped rectangle (in source-image pixels, as computed by
- * react-easy-crop's onCropComplete) onto an offscreen canvas sized to
- * match, and reads it back out as a JPEG blob — re-encoding to one format
- * regardless of the source (PNG/GIF/WEBP) keeps upload size predictable. */
 export async function getCroppedImageBlob(imageSrc: string, cropPixels: Area, quality = 0.92): Promise<Blob> {
   const image = await loadImage(imageSrc);
   const canvas = document.createElement('canvas');

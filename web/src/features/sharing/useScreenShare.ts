@@ -9,13 +9,6 @@ export interface ScreenShareApi {
   stopSharing: () => void;
 }
 
-/**
- * Shares the local screen by publishing a video track (and audio, when
- * available) into the LiveKit Room — real WebRTC, no manual recording/
- * queuing. `room` is a single stable instance (created once in
- * RoomProvider); the actual connect() happens per voice channel, see
- * joinVoiceChannel.
- */
 export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): ScreenShareApi {
   const startSharing = useCallback(async () => {
     if (room.state !== ConnectionState.Connected) {
@@ -32,19 +25,9 @@ export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): Scre
     }
 
     const audioConstraints = {
-      // off on purpose: these are processing meant for mic voice, and
-      // degrade tab/system audio (e.g. cutting out music).
       echoCancellation: false,
       noiseSuppression: false,
       autoGainControl: false,
-      // asks the browser to filter out any audio produced by the Linkord
-      // tab ITSELF from the capture. selfBrowserSurface (below) already
-      // removes the tab from the "browser tab" picker option, but doesn't
-      // cover "entire screen + share system audio" — that mode captures
-      // the whole OS mixer, which would still pick up other participants'
-      // voices playing back through our own tab. Only has an effect when
-      // the captured surface actually includes system audio; browsers
-      // without support just ignore it.
       restrictOwnAudio: true,
     };
 
@@ -54,19 +37,8 @@ export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): Scre
         {
           audio: audioConstraints,
           resolution: { width: 1920, height: 1080, frameRate: 30 },
-          // keeps the Linkord tab itself out of the share picker. Without
-          // this, someone could pick the call tab, whose audio (via
-          // ParticipantAudioLayer) already includes everyone else's voice —
-          // sharing that tab sends that audio back into LiveKit, and each
-          // participant hears their own voice echo back. Not physical
-          // speaker/mic feedback: it's the SAME tab being captured and
-          // republished, a software loop.
           selfBrowserSurface: 'exclude',
         },
-        // a generous ceiling matching the fixed 1080p capture resolution
-        // above — simulcast (on by default) publishes lower layers too, and
-        // adaptiveStream/dynacast (see RoomProvider.tsx's Room options)
-        // pick which layer each viewer actually gets, automatically.
         { videoEncoding: ScreenSharePresets.h1080fps30.encoding },
       );
     } catch (err) {
@@ -77,34 +49,13 @@ export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): Scre
     }
 
     dispatch({ type: 'SET_LOCAL_SHARING', sharing: true });
-    // this attempt succeeded — clears any SET_SHARE_ERROR left over from a
-    // PREVIOUS attempt (e.g. "still connecting", retried, worked this time).
     dispatch({ type: 'SET_SHARE_ERROR', message: null });
 
-    // getDisplayMedia doesn't always deliver audio, and why varies with
-    // what was picked in the browser's share dialog (displaySurface, read
-    // off the video MediaStreamTrack that was just published):
-    //   'window'  — a WINDOW never has audio, in any browser/OS. A
-    //               universal getDisplayMedia restriction, no known exception.
-    //   'monitor' — the ENTIRE SCREEN only comes with audio if "Also share
-    //               system audio" was checked in Chrome/Edge's dialog —
-    //               and that option doesn't even appear on macOS (the OS
-    //               doesn't expose audio loopback to the browser outside
-    //               its own tab mixer).
-    //   'browser' — a browser TAB: the only mode with guaranteed audio on
-    //               any system (captures the tab's internal mixer, no OS
-    //               loopback needed). If this still comes without audio,
-    //               the person unchecked the option.
-    // Firefox offers NONE of these with audio (no audio option in its
-    // getDisplayMedia UI at all).
     const videoTrack = room.localParticipant.getTrackPublication(Track.Source.ScreenShare)?.track;
     const displaySurface = videoTrack?.mediaStreamTrack.getSettings().displaySurface;
     const gotAudio = !!room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio);
 
     if (!gotAudio) {
-      // no audio at all: not a problem for the room (only the sharer
-      // misses out on sound), so just log it — no need to surface a
-      // warning to every screen/window sharer.
       let reason: string;
       if (displaySurface === 'window') {
         reason = 'compartilhar uma JANELA nunca inclui audio, em nenhum navegador.';

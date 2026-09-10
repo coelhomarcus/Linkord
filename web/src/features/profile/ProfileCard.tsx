@@ -21,15 +21,8 @@ export interface ProfileCardData {
 interface ProfileCardProps {
   user: ProfileCardData;
   online?: boolean;
-  /** View-only context (ProfileModal) — opens a lightbox. Ignored
-   * whenever the matching *Upload prop below is present (edit mode wins). */
   onAvatarClick?: () => void;
   onBannerClick?: () => void;
-  /** Edit mode (SettingsModal's own live preview) — presence of
-   * onAvatarUpload/onBannerUpload swaps the plain image for a hover
-   * overlay (camera icon) opening a menu with "Enviar"/"Remover", X-style.
-   * Unlike the view-only click above, this stays clickable even when the
-   * field is empty — you need to be able to upload the FIRST photo. */
   onAvatarUpload?: () => void;
   onAvatarRemove?: () => void;
   avatarUploading?: boolean;
@@ -39,10 +32,6 @@ interface ProfileCardProps {
   className?: string;
 }
 
-/** The visual profile card — banner, overlapping avatar, name/@handle/role,
- * bio and link icons. Shared by ProfileModal (a real person, clickable
- * media) and SettingsModal's "Perfil" tab (a live preview of your own
- * in-progress edits, static). */
 export function ProfileCard({
   user, online, onAvatarClick, onBannerClick,
   onAvatarUpload, onAvatarRemove, avatarUploading,

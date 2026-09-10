@@ -13,25 +13,8 @@ interface TileProps {
   participantId: string;
   kind: TileKind;
   isMine: boolean;
-  /** 'cover' (default — grid, thumbnails, PiP): the cell is whatever size
-   * the layout dictates, and the video fills it by cropping the excess —
-   * right for small tiles, where cropping beats leftover space. 'contain'
-   * (focused tile): the BOX (not just the video) resizes to fit the
-   * video's real ratio within the available space — since there's never
-   * leftover space inside the box, the badges (name/gear) and rounded
-   * corners always sit on top of the actual image. */
   fit?: 'cover' | 'contain';
-  /** Large centered avatar (only shows when kind==='avatar', camera off) —
-   * the tile doesn't know its own rendered size (the parent decides, via
-   * inline width/height), so this has to come from outside. Default is
-   * tuned for grid/focus; the focus-mode thumbnail strip passes a smaller
-   * value (see TileGrid) — without it, a fixed 80px inside a 90px-tall
-   * thumbnail looked huge, almost the size of the whole cell. */
   avatarSize?: number;
-  /** Name size in the bottom pill — 'body' (default, grid/thumbnails) or
-   * 'label' (one step smaller, used on the LARGE focused tile: it fills
-   * almost the whole screen, so the same text that's proportional in a
-   * small grid cell looks oversized there). */
   nameSize?: 'body' | 'label';
 }
 
@@ -46,8 +29,6 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
   const name = isMine ? state.me.displayName : (participant?.displayName ?? '');
   const avatar = isMine ? state.me.avatar : (participant?.avatar ?? '');
   const avatarColor = isMine ? state.me.avatarColor : (participant?.avatarColor ?? '');
-  // deafened has no LiveKit track — for myself it's local state (instant),
-  // for others it comes from the Participant the server relays.
   const isDeafened = isMine ? deafened : (participant?.deafened ?? false);
 
   const media = useParticipantMedia(participantId);
@@ -57,8 +38,6 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
   const videoTrack = kind === 'screen' ? media.screenTrack : kind === 'camera' ? media.cameraTrack : null;
   useAttachTrack(videoTrack, videoRef);
 
-  // reactive speaking border: only on the "person" tile (camera/avatar) —
-  // speaking shouldn't highlight the shared screen.
   const showSpeakingBorder = kind !== 'screen' && isSpeaking;
   const tint = colorFor(participantId, avatarColor);
 
@@ -69,13 +48,6 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
     return () => { tileDomRegistry.current.delete(key); };
   }, [key, showsVideo, videoTrack, tileDomRegistry]);
 
-  // fit="contain": computes the exact size the BOX (not just the video)
-  // needs to fit without cropping, at the video's real ratio, within the
-  // space the parent actually has — the same math object-fit:contain would
-  // do, applied to the whole box instead of just the video. Reacts to: the
-  // parent resizing (window resize, chat opening/closing) and the video's
-  // ratio changing (metadata loads, or a stream that changes resolution
-  // mid-session).
   useEffect(() => {
     if (fit !== 'contain' || !showsVideo) { setContainSize(null); return; }
     const root = rootRef.current;
@@ -110,8 +82,6 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
 
   const handleContextMenu = useCallback((e: MouseEvent) => {
     e.preventDefault();
-    // without this the click would bubble up to GlobalContextMenu
-    // (App.tsx) and open both menus at once.
     e.stopPropagation();
     openTileMenu(key, participantId, kind, { left: e.clientX, top: e.clientY, right: e.clientX, bottom: e.clientY });
   }, [key, participantId, kind, openTileMenu]);
@@ -149,21 +119,10 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
 
       <div className={cn(
         'absolute bottom-2 left-2 flex max-w-[calc(100%-16px)] items-center gap-1.5 rounded-full bg-bg-tertiary/85 py-1 pr-2.5',
-        // pl-1 only makes sense to "hug" the 20px avatar right after it —
-        // without it, the text deserves the same breathing room as the
-        // right side (pr-2.5), or it'd stick to the pill's left edge.
         showsVideo ? 'pl-1' : 'pl-2.5'
       )}>
-        {/* only shows the avatar here for VIDEO tiles (camera/screen) — it's
-            the only visual reference to who it is in those cases. On a
-            kind==='avatar' tile the LARGE avatar already fills the whole
-            body above, repeating it here (small) would be redundant. */}
         {showsVideo && <Avatar id={participantId} name={name} avatar={avatar} avatarColor={avatarColor} size={20} />}
         <span className={cn('select-none truncate font-medium text-text-primary', nameSize === 'label' ? 'text-label' : 'text-body')}>{name}</span>
-        {/* "meta" icons — only show when NOT redundant with what this
-            specific tile already displays (e.g. doesn't repeat camera-on
-            on the camera tile itself), signaling the person has ANOTHER
-            active stream on some other tile. */}
         {kind !== 'camera' && !!media.cameraTrack && <Video size={14} className="flex-none text-green" />}
         {kind !== 'screen' && !!media.screenTrack && <ScreenShare size={14} className="flex-none text-blurple" />}
         {isDeafened ? (

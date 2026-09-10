@@ -1,5 +1,3 @@
-/** Thin progress bar — real upload feedback (0 to 1), instead of a static
- * "Uploading…" text with no sense of how much is left. */
 export function UploadProgressBar({ progress }: { progress: number }) {
   const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100);
   return (

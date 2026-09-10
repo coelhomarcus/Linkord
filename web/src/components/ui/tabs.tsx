@@ -25,12 +25,6 @@ function TabsList({ className, ...props }: TabsPrimitive.List.Props) {
   )
 }
 
-/** Sliding pill behind the active trigger — Base UI measures the active
- * tab's position/size and exposes it via custom properties
- * (--active-tab-*); just needs to come before the triggers in the DOM to
- * sit behind them without a manual z-index. Orientation-aware (used
- * vertically in LeftSidebar and SettingsModal; also supports horizontal,
- * just no current usage of that). */
 function TabsIndicator({ className, ...props }: TabsPrimitive.Indicator.Props) {
   return (
     <TabsPrimitive.Indicator

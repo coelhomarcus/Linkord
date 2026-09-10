@@ -3,9 +3,6 @@ import { Track } from 'livekit-client';
 import type { Participant, Room } from 'livekit-client';
 import { getParticipant, activeTrack } from './useLiveKitTrack';
 
-// getParticipant/activeTrack sao funcoes puras exportadas (nao hooks) —
-// testaveis com objetos fake no formato minimo que elas leem, sem precisar
-// conectar uma Room de verdade a nenhum servidor LiveKit.
 describe('getParticipant', () => {
   it('devolve o localParticipant quando a identity bate com ele mesmo', () => {
     const local = { identity: 'me' };

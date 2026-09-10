@@ -16,9 +16,6 @@ function UserRow({ user, online, onOpenProfile }: { user: PublicUser; online: bo
     >
       <div className="relative flex-none">
         <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={44} />
-        {/* status dot — solid gray for offline, not bg-text-muted/40: the
-            opacity read as almost transparent on a dark background instead
-            of an actual gray dot. */}
         <span
           className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-bg-secondary ${online ? 'bg-green' : 'bg-text-muted'}`}
         />
@@ -32,16 +29,11 @@ function UserRow({ user, online, onOpenProfile }: { user: PublicUser; online: bo
 }
 
 interface UserDirectoryProps {
-  /** Below md there's no room for a 3rd column — this renders as a
-   * fullscreen overlay instead, toggled from ChatPage's header. Ignored
-   * from md up, where it's always visible in its normal column. */
   mobileOpen: boolean;
   onMobileClose: () => void;
   onOpenProfile: (userId: string) => void;
 }
 
-/** Directory of ALL registered accounts, grouped online/offline — like
- * Discord's member list. Only shows on the Chat page, not the call view. */
 export function UserDirectory({ mobileOpen, onMobileClose, onOpenProfile }: UserDirectoryProps) {
   const { allUsers, onlineUserIds } = useRoom();
 

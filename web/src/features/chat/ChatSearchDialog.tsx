@@ -19,9 +19,6 @@ interface ChatSearchDialogProps {
   activeChannelName: string | null;
 }
 
-/** Same live-profile-over-snapshot resolution ChatMessageRow already does
- * (see ChatMessageList.tsx) — a search result's name/avatar are whatever
- * they were when the message was sent, allUsers has the current value. */
 function SearchResultRow({ result, showChannel, onSelect }: { result: SearchResult; showChannel: boolean; onSelect: () => void }) {
   const { allUsers } = useRoom();
   const author = result.id ? allUsers.get(result.id) : undefined;
@@ -50,20 +47,12 @@ function SearchResultRow({ result, showChannel, onSelect }: { result: SearchResu
   );
 }
 
-/** Search dialog reachable from the channel header (see ChatPage.tsx) —
- * defaults to the currently open channel, with a toggle to broaden to every
- * channel (safe: this app has no per-channel access control, everyone
- * already sees every channel). Clicking a result calls jumpToMessage
- * (RoomProvider.tsx), which loads a fresh window of history centered on it
- * and scrolls there (see ChatMessageList.tsx's pendingJumpTarget effect). */
 export function ChatSearchDialog({ open, onOpenChange, activeChannelId, activeChannelName }: ChatSearchDialogProps) {
   const { searchResults, searchLoading, searchError, clearSearchError, searchMessages, jumpToMessage } = useRoom();
   const [query, setQuery] = useState('');
   const [scopeAll, setScopeAll] = useState(false);
   const debounceRef = useRef<number | null>(null);
 
-  // fresh state every time the dialog opens — always starts scoped to the
-  // current channel, never carries a stale query/scope from last time.
   useEffect(() => {
     if (!open) return;
     setQuery('');
@@ -89,8 +78,6 @@ export function ChatSearchDialog({ open, onOpenChange, activeChannelId, activeCh
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* same max-h-[90vh] outer / overflow-y-auto inner split as
-          SettingsModal/ProfileModal/ImageCropDialog. */}
       <DialogContent className="max-h-[90vh] max-w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden bg-bg-modal p-0 sm:max-w-2xl">
         <DialogHeader className="px-4 pt-4 pr-12">
           <DialogTitle className="text-title font-bold text-text-primary">Buscar mensagens</DialogTitle>

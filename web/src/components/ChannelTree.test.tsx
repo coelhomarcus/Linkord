@@ -6,10 +6,6 @@ import { initialRoomState } from '../state/roomReducer';
 import { ChannelTree, NewChannelDialog } from './ChannelTree';
 import type { Participant } from '../types/protocol';
 
-// segundo teste de componente — este JA usa a fixture de RoomContext
-// (NewChannelDialog chama useRoom() pra ler `categories` e chamar
-// `createChannel`), provando que o padrao renderWithRoom funciona pra
-// qualquer componente futuro que dependa do contexto.
 describe('NewChannelDialog', () => {
   const category = { id: 'cat1', name: 'Geral', channels: [] };
 
@@ -27,7 +23,6 @@ describe('NewChannelDialog', () => {
     await user.type(screen.getByLabelText('Nome do canal'), 'anuncios');
     expect(screen.getByRole('button', { name: 'Criar' })).toBeEnabled();
 
-    // sem clicar em "Voz", o tipo padrao e 'text'.
     await user.click(screen.getByRole('button', { name: 'Criar' }));
 
     expect(createChannel).toHaveBeenCalledWith('cat1', 'anuncios', 'text');
@@ -54,13 +49,6 @@ describe('NewChannelDialog', () => {
   });
 });
 
-// regressao: uma pessoa em outro canal de voz (voiceChannelId setado via
-// socket) tem que aparecer na lista, com icones de midia certos, mesmo sem
-// o usuario local estar conectado ao LiveKit desse canal — a fixture ja usa
-// um Room() real e DESCONECTADO (ver roomContextFixture.tsx), reproduzindo
-// exatamente esse cenario sem precisar mockar o LiveKit. Os icones vem do
-// auto-relato de cada participante via Socket.IO (ver protocol.ts) quando o
-// LiveKit local nao tem esse dado.
 describe('CallParticipantRow (via ChannelTree)', () => {
   const voiceChannel = { id: 'voice1', name: 'Sala de voz', type: 'voice' as const };
   const category = { id: 'cat1', name: 'Geral', channels: [voiceChannel] };
@@ -75,8 +63,6 @@ describe('CallParticipantRow (via ChannelTree)', () => {
     };
   }
 
-  // lucide-react marca cada icone com uma classe `lucide-<nome>` — sem
-  // aria-label proprio pra buscar por texto acessivel (icone decorativo).
   function renderTreeWith(participant: Participant) {
     const state = { ...initialRoomState, participants: new Map([[participant.id, participant]]) };
     return renderWithRoom(

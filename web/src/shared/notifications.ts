@@ -1,16 +1,6 @@
-/** Desktop (OS-level) notifications for incoming chat, batched to avoid
- * flooding — plain module (not a hook), same shape as shared/sounds.ts:
- * RoomProvider's handleServerMessage is a stable useCallback that can only
- * safely reach cross-cutting effects through refs/module state, never
- * fresh hook values, so this mirrors that. */
 
 const ENABLED_KEY = 'ss-notifications-enabled';
 
-/** Default ON — no stored preference means enabled. Note this only
- * flips the app-side preference; the browser's own Notification
- * permission prompt is still only ever requested from an explicit user
- * action in Settings (see requestNotificationPermission below), never
- * automatically just because this defaults to true. */
 export function loadNotificationsEnabled(): boolean {
   const stored = localStorage.getItem(ENABLED_KEY);
   return stored === null ? true : stored === '1';
@@ -25,7 +15,7 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   return Notification.requestPermission();
 }
 
-let enabled = false; // mirrored from RoomProvider via setNotificationsModuleEnabled
+let enabled = false;
 export function setNotificationsModuleEnabled(value: boolean): void {
   enabled = value;
 }
@@ -37,7 +27,7 @@ export function setNotificationClickHandler(fn: ((channelId: string) => void) | 
 
 interface Buffered {
   channelName: string;
-  senders: Map<string, { name: string; count: number }>; // key: senderId ?? '?'
+  senders: Map<string, { name: string; count: number }>;
   lastSenderName: string;
   lastText: string;
   count: number;
@@ -46,13 +36,9 @@ interface Buffered {
   timer: ReturnType<typeof setTimeout>;
 }
 
-const buffers = new Map<string, Buffered>(); // channelId -> buffer
+const buffers = new Map<string, Buffered>();
 
-// trailing debounce, reset on every message in the channel, so a quiet
-// burst collapses into one notification...
 const QUIET_MS = 2000;
-// ...but a continuous flood still flushes periodically instead of
-// buffering forever.
 const MAX_WAIT_MS = 6000;
 const BODY_TEXT_LIMIT = 120;
 
@@ -117,8 +103,6 @@ function flush(channelId: string): void {
     const notif = new Notification(title, {
       body,
       icon: '/icon-192.png',
-      // collapses in the OS tray: a later notification for the same
-      // channel replaces this one instead of stacking up.
       tag: `chat-${channelId}`,
     });
     notif.onclick = () => {
@@ -127,7 +111,5 @@ function flush(channelId: string): void {
       notif.close();
     };
   } catch {
-    // Notification() can throw in some embedded/restricted contexts —
-    // never let a notification failure break message handling.
   }
 }

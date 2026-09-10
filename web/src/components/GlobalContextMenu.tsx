@@ -14,8 +14,6 @@ interface GlobalContextMenuProps {
   children: ReactNode;
 }
 
-// text field: let the NATIVE menu show there (paste, spelling suggestions,
-// etc.) instead of ours — pasting text anywhere would be impossible otherwise.
 function isEditableTarget(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLInputElement ||
@@ -24,18 +22,6 @@ function isEditableTarget(target: EventTarget | null): boolean {
   );
 }
 
-/** Replaces the browser's native context menu with ours everywhere on the
- * site. `className="contents"` on the trigger removes the wrapper div from
- * layout (display: contents) without removing it from the DOM — children
- * stay direct children of the Shell's flex, visually identical to no
- * wrapper at all.
- *
- * There's only ONE ContextMenu in the whole app (not one per region) — its
- * content changes based on WHERE the right-click happened (see
- * `sidebarTarget`), instead of nesting two menus (which would conflict:
- * both triggers listening to the same native `contextmenu` event).
- * Create category/channel for admins is conditional the same way "Copy"
- * already is when there's a text selection. */
 export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
   const {
     state, categories, createCategory, renameCategory, deleteCategory, renameChannel, deleteChannel,
@@ -57,25 +43,16 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
   const [deleteCategoryOpen, setDeleteCategoryOpen] = useState(false);
   const contextMenuActionsRef = useRef<ContextMenuRootActions | null>(null);
   const isAdmin = state.me.role === 'admin';
-  // resolved from the active channel's loaded messages, not stored directly
-  // in state — right-clicking only ever targets a message that's currently
-  // rendered, i.e. already in this list.
   const targetMessage = messageTarget != null
     ? activeChannelId ? messagesByChannel.get(activeChannelId)?.find((m) => m.msgId === messageTarget) : undefined
     : undefined;
   const targetIsMine = !!targetMessage && targetMessage.id === state.me.userId;
   const targetCanDelete = targetIsMine || isAdmin;
-  // same idea — resolved by id from the tree already in state, not stored
-  // directly, so a rename/move elsewhere stays in sync automatically.
   const targetChannel = channelTarget != null
     ? categories.flatMap((c) => c.channels).find((ch) => ch.id === channelTarget)
     : undefined;
   const targetCategory = categoryTarget != null ? categories.find((c) => c.id === categoryTarget) : undefined;
 
-  // each block below ends with a separator ONLY if something actually
-  // follows it — otherwise (e.g. right-clicking a plain message, with no
-  // selection and no admin/sidebar/stage block after it) it was the LAST
-  // thing rendered, leaving an orphan divider with nothing under it.
   const showMessageBlock = !!targetMessage;
   const showDownloadBlock = !!downloadTarget;
   const showSelectionBlock = hasSelection;
@@ -86,10 +63,6 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
 
   useEffect(() => {
     function captureTarget(e: MouseEvent) {
-      // Element, not HTMLElement: an icon button's target can be its inner
-      // SVG/path (an SVGElement) when the click lands exactly on the glyph,
-      // and SVGElement isn't an HTMLElement — that excluded every icon
-      // button (e.g. a video's centered play button) from these checks.
       const element = e.target instanceof Element ? e.target : null;
       const wantsNativeMenu = isEditableTarget(e.target) || e.shiftKey;
       const nextSidebarTarget = !!element?.closest('[data-sidebar-channels]');
@@ -138,12 +111,6 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
       if (isEditableTarget(e.target) || e.shiftKey) return;
       e.preventDefault();
     }
-    // capture phase, before ContextMenuTrigger (spanning the whole tree via
-    // className="contents") sees the event — stops propagation so it never
-    // opens our menu on a text field, letting the browser show its own
-    // menu (with "Paste") normally. Shift+right-click gets the same
-    // escape hatch, everywhere — the universal shortcut for "give me the
-    // real browser menu" (inspect element, save image as, etc).
     function stopForNativeMenu(e: MouseEvent) {
       if (isEditableTarget(e.target) || e.shiftKey) e.stopPropagation();
     }
@@ -265,11 +232,6 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
               {(showSidebarCreateBlock || showStageBlock) && <ContextMenuSeparator />}
             </>
           )}
-          {/* the generic "create" actions only make sense when the click
-              landed on the sidebar's empty background — not on a specific
-              channel/category row, which already has its own actions above
-              (and would otherwise show alongside them redundantly, since a
-              row is itself inside the data-sidebar-channels region). */}
           {showSidebarCreateBlock && (
             <>
               <ContextMenuItem onClick={() => setNewCategoryOpen(true)}>

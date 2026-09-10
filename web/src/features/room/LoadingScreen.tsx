@@ -1,9 +1,3 @@
-/** Fullscreen view shown while there's nothing real to see yet — either
- * checking the session (AuthGate) or connected but waiting for the
- * server's `welcome` (Shell, before state.joined). Without this, the page
- * flashed an empty UI "skeleton" (sidebar with no channels, chat with no
- * messages) for a moment until data arrived, which looked like the site
- * was assembling itself wrong. */
 export function LoadingScreen() {
   return (
     <div className="flex h-dvh items-center justify-center bg-bg-primary">

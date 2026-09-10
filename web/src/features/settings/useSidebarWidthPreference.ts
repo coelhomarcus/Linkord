@@ -1,5 +1,3 @@
-/** Left sidebar width (desktop only, drag-to-resize) — persisted in
- * localStorage, same load/save pattern as useStageViewPreference.ts. */
 
 const KEY = 'ss-sidebar-width';
 

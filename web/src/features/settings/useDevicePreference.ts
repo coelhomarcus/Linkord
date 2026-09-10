@@ -1,7 +1,3 @@
-/** Selected mic/camera/speaker device id, persisted in localStorage — kept
- * separate from useMediaDevices.ts so every hook instance (SettingsModal's
- * DevicePicker AND LeftSidebar's mic picker) restores the same saved
- * choice. Key: `ss-device-${kind}`, one per MediaDeviceKind. */
 
 const KEY_PREFIX = 'ss-device-';
 

@@ -12,11 +12,6 @@ interface DragPos {
   y: number;
 }
 
-/** Floating, draggable PiP with the current stream — shows whenever
- * `inCall` is true and the active view isn't "call" (e.g. Chat, see
- * App.tsx), since the call view's own grid already shows everything.
- * Positioned relative to the same wrapper CallControlBar uses (not the
- * whole viewport), so it never ends up under the LeftSidebar. */
 export function FloatingPip({ allIds }: { allIds: string[] }) {
   const { state } = useRoom();
   const descriptors = useCallTiles(allIds).filter((d) => d.kind !== 'avatar');
@@ -79,10 +74,6 @@ export function FloatingPip({ allIds }: { allIds: string[] }) {
       )}
       style={dragPos ? { left: dragPos.x, top: dragPos.y } : undefined}
     >
-      {/* Tile is display-only here — otherwise clicking it would change
-          state.focusedId globally (leaking into the call view when
-          switching back), and right-click would open TileMenu underneath
-          the generic menu. */}
       <div className="pointer-events-none absolute inset-0">
         <Tile participantId={current.participantId} kind={current.kind} isMine={current.participantId === state.me.id} />
       </div>

@@ -10,8 +10,6 @@ import { getCroppedImageBlob } from '@/shared/lib/cropImage';
 interface ImageCropDialogProps {
   open: boolean;
   imageSrc: string | null;
-  /** 1 for a square (avatar) crop, 3 for a wide (banner) crop — 1500x500 is
-   * the convention X itself uses for banners. */
   aspect: number;
   cropShape: 'round' | 'rect';
   title: string;
@@ -19,19 +17,12 @@ interface ImageCropDialogProps {
   onConfirm: (blob: Blob) => void;
 }
 
-/** Drag-to-pan, scroll/slider-to-zoom crop step shown after picking a file
- * for the avatar or banner (see SettingsModal's Perfil tab) — mirrors X's
- * own "choose photo -> crop -> save" flow. Shared between both fields via
- * `aspect`/`cropShape`; the actual pixel crop only happens on confirm
- * (getCroppedImageBlob), so canceling never touches anything. */
 export function ImageCropDialog({ open, imageSrc, aspect, cropShape, title, onCancel, onConfirm }: ImageCropDialogProps) {
   const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // fresh framing for every new file, not whatever was left over from a
-  // previous crop session.
   useEffect(() => {
     if (open) {
       setCrop({ x: 0, y: 0 });
@@ -54,10 +45,6 @@ export function ImageCropDialog({ open, imageSrc, aspect, cropShape, title, onCa
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onCancel(); }}>
-      {/* outer stays a fixed-size, non-scrolling box (so the close button
-          this renders stays pinned top-right) — everything else lives in
-          the inner overflow-y-auto div, while the footer stays reachable in
-          short viewports (phone landscape, a squat window). */}
       <DialogContent className="max-h-[90vh] max-w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden bg-bg-modal p-0 sm:max-w-125">
         <DialogHeader className="px-6 pt-6 pr-12">
           <DialogTitle className="text-title font-bold text-text-primary">{title}</DialogTitle>

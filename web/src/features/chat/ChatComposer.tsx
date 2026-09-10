@@ -17,9 +17,6 @@ import { cn } from '@/shared/lib/utils';
 
 const MAX_MENTION_RESULTS = 8;
 
-/** Finds the "@query" the cursor is currently sitting inside of, if any —
- * "@" must start a token (preceded by whitespace or the start of the text),
- * otherwise a plain email like "a@b.com" would trigger the dropdown too. */
 function getMentionQuery(text: string, cursor: number): { start: number; query: string } | null {
   const upToCursor = text.slice(0, cursor);
   const match = /@([A-Za-z0-9_.-]{0,20})$/.exec(upToCursor);
@@ -30,8 +27,6 @@ function getMentionQuery(text: string, cursor: number): { start: number; query: 
   return { start: atIndex, query: match[1] ?? '' };
 }
 
-// category names in Portuguese — the library only ships English by
-// default, and the rest of the app is Portuguese too.
 const EMOJI_CATEGORIES: CategoryConfig[] = [
   { category: Categories.SUGGESTED, name: 'Usados recentemente' },
   { category: Categories.SMILEYS_PEOPLE, name: 'Carinhas e pessoas' },
@@ -49,9 +44,6 @@ interface ChatComposerProps {
   channelId: string;
   replyingTo?: ChatMessage | null;
   onCancelReply?: () => void;
-  // pending attachments live in ChatPage (so dropping a file anywhere on
-  // the chat screen, not just this box, can add to them) — this component
-  // only renders/edits them via these props.
   pendingFiles: PendingAttachment[];
   onAddFiles: (files: File[]) => void;
   onRemoveFile: (id: string) => void;
@@ -60,22 +52,14 @@ interface ChatComposerProps {
   onAttachError: (message: string | null) => void;
 }
 
-/** Chat message field — Enter sends, Shift+Enter breaks a line, grows on
- * its own up to a cap (field-sizing-content, already built into Textarea). */
 export function ChatComposer({
   className, channelId, replyingTo, onCancelReply,
   pendingFiles, onAddFiles, onRemoveFile, onClearFiles, attachError, onAttachError,
 }: ChatComposerProps) {
   const { state, sendChatMessage, sendAttachments, allUsers } = useRoom();
   const [text, setText] = useState('');
-  // active "@query" under the cursor, or null when not mentioning anyone
-  // right now (see getMentionQuery) — drives the autocomplete dropdown.
   const [mentionQuery, setMentionQuery] = useState<{ start: number; query: string } | null>(null);
   const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
-  // id of whichever pendingFiles entry is currently uploading (uploads are
-  // sequential — see RoomProvider.tsx#sendAttachments — so only one at a
-  // time), null when nothing is in flight. Drives which card shows the
-  // progress bar/disables its remove button.
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -84,11 +68,6 @@ export function ChatComposer({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const sendingFiles = activeUploadId !== null;
 
-  // Discord-style "focus follows typing": typing anywhere in Chat sends
-  // focus to the field without clicking it first. Only kicks in if no
-  // OTHER text field is already focused, and only for a key that actually
-  // types something (e.key.length === 1 covers letters/digits/symbols/
-  // space, excludes Tab/Escape/arrows/F1 etc., which have longer names).
   useEffect(() => {
     function handleGlobalKeyDown(e: globalThis.KeyboardEvent) {
       if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
@@ -100,12 +79,6 @@ export function ChatComposer({
     return () => document.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
-  // actually uploads the pending attachments — called only on send
-  // (Enter/button), never when picking a file. The caption is whatever
-  // text is in the field right now (can be empty). The FIRST file creates
-  // the message; the rest (2nd-4th) attach to it (see
-  // RoomProvider.tsx#sendAttachments) — sequential, so only one card shows
-  // progress at a time.
   async function sendPendingFiles() {
     onAttachError(null);
     setUploadProgress(0);
@@ -120,10 +93,6 @@ export function ChatComposer({
       onCancelReply?.();
     } catch (err) {
       if (err instanceof PartialAttachmentError) {
-        // the message itself already exists (visible to everyone) with
-        // whatever attached successfully — nothing left to retry here in
-        // place, so just clear the list; the user can reattach and resend
-        // the rest as a follow-up message if they want.
         onAttachError(`${err.sentCount} de ${err.totalCount} anexos enviados — os outros falharam. A mensagem ja foi enviada com os que deram certo.`);
         onClearFiles();
       } else {
@@ -146,10 +115,6 @@ export function ChatComposer({
     onCancelReply?.();
   }
 
-  // users whose USERNAME or display name starts with the active "@query"
-  // (case-insensitive) — capped so the dropdown never grows unreasonably
-  // tall for a big roster. Matching on displayName too lets you find someone
-  // by the name you actually recognize, even without remembering their handle.
   const mentionCandidates = useMemo(() => {
     if (!mentionQuery) return [];
     const q = mentionQuery.query.toLowerCase();
@@ -159,10 +124,6 @@ export function ChatComposer({
       .slice(0, MAX_MENTION_RESULTS);
   }, [allUsers, mentionQuery]);
 
-  // re-derives the active "@query" from wherever the cursor is now — called
-  // after every edit (handleTextChange) and every cursor move that ISN'T an
-  // edit (handleSelect: arrow keys, click), since either can start, change,
-  // or leave a mention.
   function syncMentionQuery(value: string, cursor: number) {
     setMentionQuery(getMentionQuery(value, cursor));
     setMentionSelectedIndex(0);
@@ -178,8 +139,6 @@ export function ChatComposer({
     syncMentionQuery(el.value, el.selectionStart ?? 0);
   }
 
-  // replaces the "@query" itself (not the whole field) with "@username " —
-  // mirrors handleEmojiClick's cursor handling below.
   function selectMention(user: PublicUser) {
     const el = textareaRef.current;
     if (!mentionQuery) return;
@@ -196,11 +155,6 @@ export function ChatComposer({
     });
   }
 
-  // inserts at the CURSOR (not just the end) — clicking an emoji with text
-  // already half-typed and the cursor mid-string should continue from
-  // there, not jump the emoji to the end. selectionStart/End disappear as
-  // soon as the field loses focus (the Popover steals it on open), so this
-  // falls back to the end of the current text.
   function handleEmojiClick(data: EmojiClickData) {
     const el = textareaRef.current;
     const start = el?.selectionStart ?? text.length;
@@ -210,8 +164,6 @@ export function ChatComposer({
     setEmojiOpen(false);
     setMentionQuery(null);
     const caret = start + data.emoji.length;
-    // the new value only exists in the DOM after the next render — setting
-    // the selection in the same tick would still see the OLD text.
     requestAnimationFrame(() => {
       el?.focus();
       el?.setSelectionRange(caret, caret);
@@ -219,9 +171,6 @@ export function ChatComposer({
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    // the mention dropdown intercepts navigation/confirm keys FIRST — while
-    // it's open, Enter picks a mention instead of sending the message, and
-    // arrows move the selection instead of the caret.
     if (mentionQuery && mentionCandidates.length) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setMentionSelectedIndex((i) => (i + 1) % mentionCandidates.length); return; }
       if (e.key === 'ArrowUp') { e.preventDefault(); setMentionSelectedIndex((i) => (i - 1 + mentionCandidates.length) % mentionCandidates.length); return; }
@@ -240,15 +189,10 @@ export function ChatComposer({
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
-    e.target.value = ''; // lets the SAME file be picked again later
+    e.target.value = '';
     if (files.length) onAddFiles(files);
   }
 
-  // Ctrl+V with image(s) on the clipboard — same path as the clip button,
-  // just a different file source. Without this, pasting an image would
-  // paste whatever stray text/garbage the browser sometimes extracts from
-  // an image clipboard entry (or nothing) — preventDefault only fires when
-  // at least one image is FOUND, pasting normal text still works natively.
   function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>) {
     const files = Array.from(e.clipboardData.items)
       .filter((item) => item.type.startsWith('image/'))
@@ -284,10 +228,6 @@ export function ChatComposer({
           </div>
         );
       })()}
-      {/* square Discord-style preview cards, one per pending file (up to
-          MAX_ATTACHMENTS_PER_MESSAGE) — stay visible during the actual
-          upload too, showing per-card progress instead of the remove
-          button for whichever one is in flight. */}
       {pendingFiles.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {pendingFiles.map((p) => {
@@ -335,9 +275,6 @@ export function ChatComposer({
         onSubmit={handleSubmit}
         className="relative flex items-end gap-1 rounded-xl border border-strong bg-bg-textarea py-1.5 pr-1.5 pl-1"
       >
-        {/* absolute: positioned relative to the FORM, not the whole
-            composer, so it sits right above the input row even when a
-            reply banner or pending attachments are showing above it. */}
         {mentionQuery && mentionCandidates.length > 0 && (
           <div className="absolute inset-x-0 bottom-full z-20 mb-1 max-h-56 overflow-y-auto rounded-md border border-strong bg-bg-floating py-1 shadow-popover">
             <p className="select-none px-3 pb-1 pt-0.5 text-caption font-semibold uppercase text-text-muted">Mencionar alguém</p>
@@ -345,9 +282,6 @@ export function ChatComposer({
               <button
                 key={user.id}
                 type="button"
-                // onMouseDown (not onClick) fires BEFORE the textarea's blur
-                // — preventDefault stops that blur from happening at all, so
-                // focus/caret position never leaves the field.
                 onMouseDown={(e) => { e.preventDefault(); selectMention(user); }}
                 className={cn(
                   'flex w-full items-center gap-2 px-3 py-1.5 text-left text-label',

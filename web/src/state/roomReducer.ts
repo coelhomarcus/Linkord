@@ -1,10 +1,10 @@
 import type { Participant } from '../types/protocol';
 
 export interface Me {
-  id: string | null; // per CONNECTION (= LiveKit identity) — not the same as userId
-  userId: string | null; // per ACCOUNT — stable across tabs/reconnects
-  name: string; // account username — unique, immutable
-  displayName: string; // editable, non-unique — shown everywhere instead of `name`
+  id: string | null;
+  userId: string | null;
+  name: string;
+  displayName: string;
   avatar: string;
   avatarColor: string;
   banner: string;
@@ -13,24 +13,15 @@ export interface Me {
   role: 'user' | 'admin';
   sharing: boolean;
   cameraOn: boolean;
-  // mic does NOT live here — "activated"/"muted" are read straight from
-  // LiveKit (see useParticipantMedia in useLiveKitTrack.ts), the same
-  // source of truth used for remote participants. No duplication, no risk
-  // of drift.
-  sharingSince: number | null; // Date.now() when screen share started
+  sharingSince: number | null;
 }
 
 export interface RoomState {
   me: Me;
-  participants: Map<string, Participant>; // never includes "me"
-  // composite tile key (`${participantId}:${kind}`, see useCallTiles.ts) —
-  // no longer just the participant id, since one person's screen and
-  // camera can now be focused independently.
+  participants: Map<string, Participant>;
   focusedId: string | null;
   reconnecting: boolean;
-  joined: boolean; // welcome already received (enables sharing)
-  // ROOM-level error (e.g. room full) — identity/login is AuthContext's
-  // job; this is only what can go wrong AFTER authenticating.
+  joined: boolean;
   roomError: string | null;
   shareError: string | null;
 }
@@ -110,9 +101,6 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       return {
         ...state,
         participants,
-        // focusedId is a tile key (`${id}:kind`) — compares by prefix, not
-        // direct equality, to unfocus both that person's screen and camera
-        // if they leave while either was focused.
         focusedId: state.focusedId?.startsWith(`${action.id}:`) ? null : state.focusedId,
       };
     }

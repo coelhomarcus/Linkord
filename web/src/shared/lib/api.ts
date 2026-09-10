@@ -1,9 +1,3 @@
-/** Thin HTTP client for the routes outside the WebSocket — the rest of the
- * app speaks Socket.IO; this covers what must exist BEFORE any socket
- * (login/register, since the handshake requires a session cookie) and
- * what's simpler as plain REST (Settings' Media tab, see
- * server/src/modules/media.ts — a paginated listing, no state to keep
- * alive in a socket). */
 
 import type { ChatAttachment } from '../../types/protocol';
 import type { DetectedEmbed } from './chatEmbeds';
@@ -40,7 +34,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (res.status === 204) return undefined as T;
 
   let body: unknown = null;
-  try { body = await res.json(); } catch { /* empty/non-JSON body — handled below */ }
+  try { body = await res.json(); } catch {  }
 
   if (!res.ok) {
     const err = (body && typeof body === 'object' ? (body as { error?: { code?: string; message?: string } }).error : null) || {};
@@ -67,8 +61,6 @@ export function logout(): Promise<void> {
 
 export type MediaKind = 'uploads' | 'embeds';
 
-/** An entry in the Media tab — always has EITHER `attachment` (kind=uploads)
- * OR `embed` (kind=embeds), never both, never neither (see media.ts). */
 export interface MediaItem {
   msgId: number;
   channelId: string;
@@ -84,8 +76,6 @@ export interface MediaItem {
 
 export interface MediaPage {
   items: MediaItem[];
-  /** `msgId` to send as `before` on the next call — null once it reaches
-   * the end (see media.ts#fetchUploadsPage/fetchEmbedsPage). */
   nextBefore: number | null;
 }
 

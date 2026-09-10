@@ -29,13 +29,9 @@ import { sanitizeDisplayName } from '../shared/lib/displayName';
 import type { Category, ChatMessage, ClientMessage, Participant, PublicUser, ReactionEmoji, SearchResult, ServerMessage, StorageUsage } from '../types/protocol';
 import { MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '../types/protocol';
 
-const REACTION_DURATION_MS = 3000; // must match --animate-float-up in index.css
-const CHAT_CLIENT_LIMIT = 300; // client-side cap only — server already limits history sent on welcome
+const REACTION_DURATION_MS = 3000;
+const CHAT_CLIENT_LIMIT = 300;
 
-/** Thrown by sendAttachments when the message was already created (its
- * first attachment succeeded) but a LATER attachment (2nd-4th) failed —
- * distinguishes "nothing was sent" from "the message exists, missing some
- * attachments" so the composer can word the error accordingly. */
 export class PartialAttachmentError extends Error {
   sentCount: number;
   totalCount: number;
@@ -46,9 +42,6 @@ export class PartialAttachmentError extends Error {
   }
 }
 
-/** Syncs allUsers (account directory) with a participant's current avatar/
- * role — otherwise avatar changes only reached other users' sidebars after
- * a reload. */
 function mergeUserFromParticipant(prev: Map<string, PublicUser>, participant: Participant): Map<string, PublicUser> {
   const existing = prev.get(participant.userId);
   if (!existing || (
@@ -101,17 +94,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const socketRef = useRef<Socket | null>(null);
   const myIdRef = useRef<string | null>(null);
   const myUserIdRef = useRef<string | null>(null);
-  // username is immutable (server never changes it) — set once in
-  // 'welcome', used for mention-detection inside handleServerMessage,
-  // which can't read allUsers (state) without going stale.
   const myUsernameRef = useRef<string | null>(null);
   const tokenRef = useRef<string | null>(null);
   const intentionalCloseRef = useRef(false);
   const tileDomRegistry = useRef<Map<string, TileDomHandle>>(new Map());
   const audioRegistry = useRef<Map<string, AudioHandle>>(new Map());
 
-  // browsers block autoplay-with-sound until a user gesture; one gesture
-  // unlocks it for the whole page (not per-tile), for the rest of the session.
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   useEffect(() => {
     if (audioUnlocked) return;
@@ -124,18 +112,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     };
   }, [audioUnlocked]);
 
-  // real toggleDeafened (which also mutes the mic) is defined after
-  // useMicrophone exists below.
   const [deafened, setDeafened] = useState(false);
 
   const [livekitRoom] = useState(() => new Room({
-    // this (plus simulcast, which the SDK already defaults to `true`) is
-    // the whole "automatic quality" mechanism: adaptiveStream tells the SFU
-    // to size each SUBSCRIBER's stream to their actual tile size/bandwidth,
-    // dynacast stops encoding/forwarding simulcast layers nobody's
-    // currently subscribed to. Replaces the old manual "Qualidade de envio"
-    // setting, which was just a single fixed bitrate cap applied equally to
-    // every viewer regardless of their own tile size or connection.
     adaptiveStream: true,
     dynacast: true,
   }));
@@ -146,8 +125,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     saveShowStats(value);
   }, []);
 
-  // read via shared/sounds.ts#setVolume, not props — also called outside
-  // components (useMicrophone.ts).
   const [notifyVolume, setNotifyVolumeState] = useState(loadNotifyVolume);
   const setNotifyVolume = useCallback((value: number) => {
     setNotifyVolumeState(value);
@@ -173,79 +150,40 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const [categories, setCategories] = useState<Category[]>([]);
-  // same staleness reason as activeChannelIdRef — lets handleServerMessage
-  // resolve a channel's name (for desktop notifications) without depending
-  // on `categories` (state).
   const categoriesRef = useRef<Category[]>([]);
   const [activeChannelId, setActiveChannelIdState] = useState<string | null>(null);
-  // ref (not state) — socket handlers outlive React renders and must always
-  // read the current active channel.
   const activeChannelIdRef = useRef<string | null>(null);
   const [activeVoiceChannelId, setActiveVoiceChannelIdState] = useState<string | null>(null);
-  // same staleness reason as activeChannelIdRef. pendingVoiceChannelIdRef
-  // lets the 'voice-token' handler discard a stale reply if the channel was
-  // switched again before it arrived.
   const activeVoiceChannelIdRef = useRef<string | null>(null);
   const pendingVoiceChannelIdRef = useRef<string | null>(null);
   const setActiveVoiceChannelId = useCallback((id: string | null) => {
     activeVoiceChannelIdRef.current = id;
     setActiveVoiceChannelIdState(id);
   }, []);
-  // same staleness reason — lets the new-message sound know if the user is
-  // already looking at chat (view lives in Shell/App.tsx, not here).
   const activeViewRef = useRef<'chat' | 'call'>('chat');
   const notifyActiveView = useCallback((view: 'chat' | 'call') => { activeViewRef.current = view; }, []);
-  // set once by Shell on mount (see App.tsx) — lets a desktop-notification
-  // click switch to the Chat tab, not just select the channel.
   const requestChatViewRef = useRef<(() => void) | null>(null);
   const registerRequestChatView = useCallback((fn: () => void) => { requestChatViewRef.current = fn; }, []);
   const [messagesByChannel, setMessagesByChannel] = useState<Map<string, ChatMessage[]>>(new Map());
-  // both reachable from the message list/composer AND GlobalContextMenu
-  // (mounted at the app root, outside ChatPage) — see RoomContext.tsx.
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
-  // ref mirror — loadOlderMessages is stable (mounted-once scroll listeners
-  // in ChatMessageList call it directly) so it can't close over the state
-  // above; same staleness pattern as activeChannelIdRef.
   const messagesByChannelRef = useRef<Map<string, ChatMessage[]>>(new Map());
   useEffect(() => { messagesByChannelRef.current = messagesByChannel; }, [messagesByChannel]);
-  // per-channel: whether OLDER history beyond what's loaded may still
-  // exist — undefined (channel never opened yet) is treated as "maybe".
   const [hasMoreByChannel, setHasMoreByChannel] = useState<Map<string, boolean>>(new Map());
   const hasMoreByChannelRef = useRef<Map<string, boolean>>(new Map());
   useEffect(() => { hasMoreByChannelRef.current = hasMoreByChannel; }, [hasMoreByChannel]);
-  // per-channel: whether we're NOT caught up to the live tail (only true
-  // right after a search-result jump recentered the view — see
-  // jumpToMessage/'channel-history-around' below) — gates ChatMessageList's
-  // "back to now" pill. Unlike hasMoreByChannel, absent must mean false: a
-  // channel that was never recentered definitely has nothing "after" to
-  // page in.
   const [hasMoreAfterByChannel, setHasMoreAfterByChannel] = useState<Map<string, boolean>>(new Map());
-  // in-flight 'load-more-messages' requests, by channelId — prevents firing
-  // a second request for the same channel before the first page lands.
   const [loadingOlderByChannel, setLoadingOlderByChannel] = useState<Set<string>>(new Set());
   const loadingOlderRef = useRef<Set<string>>(new Set());
   const [unreadByChannel, setUnreadByChannel] = useState<Map<string, number>>(new Map());
   const [allUsers, setAllUsers] = useState<Map<string, PublicUser>>(new Map());
-  // same staleness reason as categoriesRef/activeChannelIdRef — lets the
-  // 'chat' case below resolve the sender's CURRENT displayName without
-  // handleServerMessage closing
-  // over a stale allUsers.
   const allUsersRef = useRef<Map<string, PublicUser>>(new Map());
   useEffect(() => { allUsersRef.current = allUsers; }, [allUsers]);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [storageUsage, setStorageUsage] = useState<StorageUsage>({ totalBytes: 0, totalFiles: 0, maxBytes: 0 });
-  // recoverable channel-management error, distinct from state.roomError
-  // (which is a full-screen blocker).
   const [channelsError, setChannelsError] = useState<string | null>(null);
-  // same idea, for the Moderation tab.
   const [moderationError, setModerationError] = useState<string | null>(null);
 
-  /** Just the "switching to a different channel" bookkeeping, without also
-   * requesting 'channel-open' — factored out so jumpToMessage (below) can
-   * reuse it for a cross-channel jump WITHOUT also firing channel-open,
-   * which would race 'load-messages-around's reply and could silently
-   * discard the recentered window depending on which lands second. */
   const switchActiveChannel = useCallback((channelId: string) => {
     activeChannelIdRef.current = channelId;
     setActiveChannelIdState(channelId);
@@ -255,27 +193,15 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       next.delete(channelId);
       return next;
     });
-    // a reply/edit in progress references a message from the channel just
-    // left — carrying it into the new one would reply/save-edit to the
-    // WRONG channel.
     setReplyingTo(null);
     setEditingMsgId(null);
   }, []);
 
-  /** Also used internally for the first channel on join, as a fallback when
-   * the open channel gets deleted, and as "back to now" after a
-   * search-result jump (see ChatMessageList's pill). */
   const openChannel = useCallback((channelId: string) => {
     switchActiveChannel(channelId);
     sendWs({ t: 'channel-open', channelId });
   }, [sendWs, switchActiveChannel]);
 
-  /** Scrolled to the top of an already-open channel — fetches the next
-   * OLDER page to prepend. No-ops if a page is already in flight for this
-   * channel, if history definitely ends, or if nothing's loaded yet
-   * (nothing to page "before"). Stable (empty deps beyond sendWs) so
-   * ChatMessageList's scroll listener always calls the current logic
-   * without re-subscribing. */
   const loadOlderMessages = useCallback((channelId: string) => {
     if (loadingOlderRef.current.has(channelId)) return;
     if (hasMoreByChannelRef.current.get(channelId) === false) return;
@@ -286,13 +212,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     sendWs({ t: 'load-more-messages', channelId, beforeMsgId: oldest.msgId });
   }, [sendWs]);
 
-  // search-result click target, or a reply-quote click on a message that
-  // isn't loaded yet. `pendingJumpTarget` is consumed by ChatMessageList
-  // (one effect per mounted channel view) to actually scroll/highlight once
-  // the target is in `chatMessages` — see clearPendingJumpTarget below.
   const [pendingJumpTarget, setPendingJumpTargetState] = useState<{ channelId: string; msgId: number } | null>(null);
-  // staleness guard for an in-flight 'load-messages-around' — same idiom as
-  // pendingVoiceChannelIdRef above.
   const pendingJumpRef = useRef<{ channelId: string; msgId: number } | null>(null);
   const clearPendingJumpTarget = useCallback(() => setPendingJumpTargetState(null), []);
 
@@ -300,7 +220,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     const alreadyLoaded = messagesByChannelRef.current.get(channelId)?.some((msg) => msg.msgId === msgId) ?? false;
     if (channelId !== activeChannelIdRef.current) switchActiveChannel(channelId);
     setPendingJumpTargetState({ channelId, msgId });
-    if (alreadyLoaded) return; // already in the DOM once this channel is active — ChatMessageList finds it on the next render
+    if (alreadyLoaded) return;
     pendingJumpRef.current = { channelId, msgId };
     sendWs({ t: 'load-messages-around', channelId, msgId });
   }, [sendWs, switchActiveChannel]);
@@ -308,8 +228,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  // guards a stale reply to an earlier query (or a scope toggle mid-flight)
-  // from clobbering a newer one's results.
   const pendingSearchRef = useRef<{ query: string; channelId?: string } | null>(null);
   const clearSearchError = useCallback(() => setSearchError(null), []);
 
@@ -337,15 +255,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   }, [sendWs]);
   const reactToChatMessage = useCallback((msgId: number, emoji: ReactionEmoji) => sendWs({ t: 'chat-react', msgId, emoji }), [sendWs]);
 
-  // plain HTTP, not the websocket — raw binary avoids base64 inflate, and
-  // always chunked (a 2GB body wouldn't survive most proxies, and buffering
-  // it all in memory wouldn't be safe). The FIRST file creates the message
-  // (arrives via the usual 'chat' broadcast); the rest (2nd-4th) attach to
-  // that same message (arrive via 'chat-attachment-added') — sequential on
-  // purpose, both to keep this simple and because attaching needs the
-  // message id the first upload produces. This just handles the upload +
-  // per-file progress; message/attachment state itself comes from the WS
-  // broadcasts handled below.
   const sendAttachments = useCallback(async (
     channelId: string, files: File[], caption: string, onProgress?: (fileIndex: number, fraction: number) => void
   ): Promise<void> => {
@@ -355,9 +264,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       try {
         await uploadFileInChunks({ channelId, file: files[i]!, caption: '', targetMsgId: msgId, onProgress: (f) => onProgress?.(i, f) });
       } catch {
-        // the message (and whatever attached before this one) already
-        // exists and is visible to everyone — stop here instead of
-        // continuing to try the rest.
         throw new PartialAttachmentError(i, files.length);
       }
     }
@@ -372,29 +278,17 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const reorderCategories = useCallback((orderedIds: string[]) => sendWs({ t: 'categories-reorder', orderedIds }), [sendWs]);
   const reorderChannels = useCallback((categoryId: string, orderedIds: string[]) => sendWs({ t: 'channels-reorder', categoryId, orderedIds }), [sendWs]);
   const deleteUserAccount = useCallback((userId: string) => sendWs({ t: 'user-delete', userId }), [sendWs]);
-  // targets a CONNECTION (ChannelTree's CallParticipantRow's `id`), not an
-  // account — see moderation.ts#handleVoiceKick. No local state changes
-  // here: the kicked connection's own cleanup happens via the
-  // RoomEvent.Disconnected handler below, everyone else's view updates via
-  // the server's 'participant-updated' broadcast.
   const voiceKickParticipant = useCallback((participantId: string) => sendWs({ t: 'voice-kick', participantId }), [sendWs]);
 
   const { startSharing, stopSharing } = useScreenShare(livekitRoom, dispatch);
   const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch);
   const { activateMic, toggleMicMuted, setMicMuted, leaveMic } = useMicrophone(livekitRoom, dispatch);
 
-  // deafening also force-mutes (otherwise others still hear you while you
-  // hear no one); undeafening does NOT auto-unmute (deliberate).
   const toggleDeafened = useCallback(() => {
-    // read directly, not the setState updater form — needed outside the
-    // updater to play the sound once; the updater form re-runs in dev
-    // StrictMode and would double it.
     const next = !deafened;
     setDeafened(next);
     if (next) setMicMuted(true);
     playSound(next ? 'deafened' : 'undeafened');
-    // no LiveKit track equivalent for deafened — must announce it
-    // explicitly so others can show the icon.
     sendWs({ t: 'deafened', value: next });
   }, [deafened, setMicMuted, sendWs]);
 
@@ -408,9 +302,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     setActiveVoiceChannelId(null);
   }, [state.me.cameraOn, state.me.sharing, stopCamera, stopSharing, leaveMic, livekitRoom, sendWs, setActiveVoiceChannelId]);
 
-  // only one voice channel at a time — leaves the current one first if
-  // switching. Connect + mic activation continue in the 'voice-token' case
-  // in handleServerMessage below.
   const joinVoiceChannel = useCallback(async (channelId: string) => {
     if (activeVoiceChannelIdRef.current === channelId) return;
     if (activeVoiceChannelIdRef.current) await leaveVoiceChannel();
@@ -418,21 +309,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     sendWs({ t: 'voice-join', channelId });
   }, [sendWs, leaveVoiceChannel]);
 
-  // leaveVoiceChannel's identity changes with cameraOn/sharing, but socket
-  // messages call it through the long-lived handleServerMessage ref below —
-  // without this ref it would run with stale (always-false) values.
   const leaveVoiceChannelRef = useRef(leaveVoiceChannel);
   useEffect(() => { leaveVoiceChannelRef.current = leaveVoiceChannel; }, [leaveVoiceChannel]);
 
-  // Cleans up local voice state on any UNEXPECTED disconnect (kicked via
-  // RoomServiceClient.removeParticipant — see moderation.ts#handleVoiceKick
-  // — a network drop, or the room ending) — without this there was no
-  // handler for RoomEvent.Disconnected at all, so local camera/sharing
-  // indicators and activeVoiceChannelId got stuck showing "still connected"
-  // after anything other than the user's own explicit leaveVoiceChannel().
-  // CLIENT_INITIATED is exactly that self-leave — it already ran this exact
-  // cleanup (plus disconnect()+'voice-leave', which this handler must NOT
-  // repeat), so it's the one reason to skip.
   useEffect(() => {
     const onDisconnected = (reason?: DisconnectReason) => {
       if (reason === DisconnectReason.CLIENT_INITIATED) return;
@@ -444,10 +323,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     return () => { livekitRoom.off(RoomEvent.Disconnected, onDisconnected); };
   }, [livekitRoom, stopCamera, stopSharing, setActiveVoiceChannelId, state.me.cameraOn, state.me.sharing]);
 
-  // syncs state when camera/screen stop via the browser's native controls
-  // (e.g. Chrome's "Stop sharing" button) — LiveKit already unpublishes the
-  // track, this just reflects it in the reducer. Mic doesn't need this:
-  // its state is always read live from LiveKit (useParticipantMedia).
   useEffect(() => {
     const onLocalUnpublished = (pub: LocalTrackPublication) => {
       if (pub.source === Track.Source.ScreenShare) dispatch({ type: 'SET_LOCAL_SHARING', sharing: false });
@@ -457,17 +332,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     return () => { livekitRoom.off(RoomEvent.LocalTrackUnpublished, onLocalUnpublished); };
   }, [livekitRoom, dispatch]);
 
-  // Track*/LocalTrack* events together cover both remote and local join/
-  // leave sounds — mic uses join/leave sounds, screen/camera only get a
-  // start sound (stopping stays silent).
   useEffect(() => {
     const onPublished = (pub: { source: Track.Source }) => {
       if (pub.source === Track.Source.Microphone) playSound('incomingUser');
       if (pub.source === Track.Source.ScreenShare) playSound('screenshare');
       if (pub.source === Track.Source.Camera) playSound('camera');
     };
-    // only MY publish reports the Discord webhook — the server has no
-    // visibility into who's in the call/sharing (that lives in LiveKit only).
     const onLocalPublished = (pub: { source: Track.Source }) => {
       onPublished(pub);
       if (pub.source === Track.Source.Microphone) sendWs({ t: 'call-event', kind: 'joined' });
@@ -488,14 +358,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     };
   }, [livekitRoom, sendWs]);
 
-  // self-reports my own mic/camera/screen state to the server via
-  // Socket.IO — the ONLY way anyone NOT connected to my current voice
-  // channel's LiveKit room can know whether I'm muted, on camera, or
-  // sharing (LiveKit only tells people already in that specific room, see
-  // ChannelTree.tsx#CallParticipantRow). Also keeps the mic track/muted
-  // state in plain React state here, since RoomProvider PROVIDES useRoom()'s
-  // context and so can't consume useParticipantMedia/useIsSpeaking itself
-  // (needed below to detect and report 'speaking' the same way).
   const [localMic, setLocalMic] = useState<{ track: LKTrack | null; muted: boolean }>({ track: null, muted: true });
   useEffect(() => {
     function reportMic() {
@@ -514,8 +376,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       if (pub.source === Track.Source.Camera) reportCamera();
       if (pub.source === Track.Source.ScreenShare) reportSharing();
     };
-    // TrackMuted/Unmuted fire for ANY participant — filtered to my own
-    // publication, the only one I should be reporting.
     const onMuteChange = (pub: { source: Track.Source }, participant: { identity: string }) => {
       if (participant.identity === livekitRoom.localParticipant.identity && pub.source === Track.Source.Microphone) reportMic();
     };
@@ -531,8 +391,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     };
   }, [livekitRoom, sendWs]);
 
-  // 'speaking' is detected 100% locally (see useTrackSpeaking) — this only
-  // reports the already-debounced on/off transitions, not a continuous stream.
   const isSpeakingLocal = useTrackSpeaking(localMic.track, localMic.muted);
   useEffect(() => {
     sendWs({ t: 'speaking', value: isSpeakingLocal });
@@ -581,19 +439,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         setOnlineUserIds(new Set(m.onlineUserIds));
         setStorageUsage(m.storageUsage);
         {
-          // first TEXT channel becomes active on join (skip a voice channel
-          // if it comes first in the tree — opening it wouldn't make sense).
           const firstChannel = m.categories.flatMap((cat) => cat.channels).find((ch) => ch.type === 'text');
           if (firstChannel) openChannel(firstChannel.id);
         }
-        // does NOT connect to LiveKit here — just having the tab open
-        // shouldn't open a real voice session. That only happens in
-        // joinVoiceChannel (see 'voice-token' below).
         break;
       }
       case 'voice-token': {
-        // race: a second voice-join (fast channel switch) can reply out of
-        // order — only apply if this is still the most recent request.
         if (m.channelId !== pendingVoiceChannelIdRef.current) break;
         livekitRoom.connect(m.livekitUrl, m.livekitToken)
           .then(() => activateMic())
@@ -618,13 +469,11 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'channel-history':
         setMessagesByChannel((prev) => new Map(prev).set(m.channelId, m.messages));
         setHasMoreByChannel((prev) => new Map(prev).set(m.channelId, m.hasMore));
-        // a normal open always loads the true live tail — any "not caught
-        // up" state from a previous jump into this channel no longer applies.
         setHasMoreAfterByChannel((prev) => new Map(prev).set(m.channelId, false));
         break;
       case 'channel-history-around': {
         const pending = pendingJumpRef.current;
-        if (!pending || pending.channelId !== m.channelId || pending.msgId !== m.msgId) break; // superseded by a later jump
+        if (!pending || pending.channelId !== m.channelId || pending.msgId !== m.msgId) break;
         pendingJumpRef.current = null;
         setMessagesByChannel((prev) => new Map(prev).set(m.channelId, m.messages));
         setHasMoreByChannel((prev) => new Map(prev).set(m.channelId, m.hasMoreBefore));
@@ -633,7 +482,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       }
       case 'message-search-results': {
         const pending = pendingSearchRef.current;
-        if (!pending || pending.query !== m.query || pending.channelId !== m.channelId) break; // superseded by a newer query/scope
+        if (!pending || pending.query !== m.query || pending.channelId !== m.channelId) break;
         setSearchResults(m.results);
         setSearchLoading(false);
         break;
@@ -668,8 +517,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         if (channelId !== activeChannelIdRef.current) {
           setUnreadByChannel((prev) => new Map(prev).set(channelId, (prev.get(channelId) || 0) + 1));
         }
-        // skip the sound/notification for my own messages (echoed back) and
-        // when I'm already looking at this exact channel.
         const amLookingAtIt = document.hasFocus() && activeViewRef.current === 'chat' && channelId === activeChannelIdRef.current;
         if (m.message.id !== myUserIdRef.current && !amLookingAtIt) {
           playSound('newMessage');
@@ -746,8 +593,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           next.delete(m.channelId);
           return next;
         });
-        // voice channel deleted while I was in it — server already cleared
-        // my voiceChannelId, this just tears down the local Room/mic/camera/screen.
         if (m.channelId === activeVoiceChannelIdRef.current) leaveVoiceChannelRef.current();
         break;
       case 'user-online':
@@ -784,7 +629,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'error':
         if (m.code === 'full') {
           intentionalCloseRef.current = true;
-          try { socketRef.current?.disconnect(); } catch { /* ok */ }
+          try { socketRef.current?.disconnect(); } catch {  }
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Sala cheia, tente mais tarde.' });
         } else if (m.code === 'category-not-empty' || m.code === 'cannot-delete-last-voice-channel') {
           setChannelsError(m.message);
@@ -794,15 +639,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           pendingVoiceChannelIdRef.current = null;
           dispatch({ type: 'SET_SHARE_ERROR', message: m.message });
         } else if (m.code === 'message-not-found') {
-          // a search result (or reply-quote) pointed at a message deleted
-          // since — clear the pending jump instead of leaving it stuck
-          // waiting for a reply that will never arrive.
           pendingJumpRef.current = null;
           setPendingJumpTargetState(null);
           setSearchError(m.message);
         } else {
-          // unknown code — log it instead of failing silently (happened
-          // before with this handler).
           console.warn('[ws] erro nao tratado do servidor:', m.code, m.message);
         }
         break;
@@ -814,8 +654,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
   const connect = useCallback(() => {
     intentionalCloseRef.current = false;
-    // withCredentials: the handshake must carry the session cookie —
-    // io.use on the server rejects any connection without it.
     const socket = io(location.origin, { path: '/ws', transports: ['websocket'], withCredentials: true });
     socketRef.current = socket;
 
@@ -831,9 +669,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_RECONNECTING', value: true });
     });
 
-    // io.use rejection (invalid/expired session) sets socket.active=false
-    // and it won't auto-reconnect; auth.refresh() re-checks /api/auth/me and
-    // AuthGate falls back to login if the session is truly dead.
     socket.on('connect_error', () => {
       if (!socket.active) refreshAuth();
     });
@@ -842,8 +677,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const updateProfile = useCallback((profile: { avatar: string; avatarColor: string; displayName: string; banner: string; bio: string; profileLinks: string[] }) => {
     const finalAvatar = profile.avatar.trim().slice(0, 500);
     const finalAvatarColor = normalizeAvatarColor(profile.avatarColor) || DEFAULT_AVATAR_COLOR;
-    // blank/whitespace-only resets to the username, same idea as avatarColor
-    // falling back to the default on an invalid value.
     const finalDisplayName = sanitizeDisplayName(profile.displayName) || state.me.name;
     const finalBanner = sanitizeBanner(profile.banner);
     const finalBio = sanitizeBio(profile.bio);
@@ -900,13 +733,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     });
   }, [state.me.avatarColor, state.me.banner, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
 
-  // same upload folder/route regardless of field — the endpoint just
-  // stores the file and hands back a URL (its `{ avatar: ... }` response
-  // shape is a historical artifact, not a constraint: server/src/modules/
-  // attachments.ts#handleAvatarUpload never touches the users table, and
-  // sanitizeBanner already whitelists this exact /uploads/<id> pattern —
-  // see participants.ts). `field` decides which profile field the result
-  // (and the rest of the in-progress draft) gets saved to.
   const uploadProfileImage = useCallback(async (
     field: 'avatar' | 'banner',
     blob: Blob,
@@ -931,8 +757,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     return url;
   }, [state.me.avatar, state.me.avatarColor, state.me.banner, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
 
-  // menuOpenRef exists so closeTileMenu can answer synchronously whether it
-  // actually closed something (setState isn't synchronous enough for that).
   const [menuTarget, setMenuTarget] = useState<{ key: string; participantId: string; kind: TileKind; rect: AnchorRect } | null>(null);
   const menuOpenRef = useRef(false);
 
@@ -967,8 +791,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     return () => setNotificationClickHandler(null);
   }, [openChannel]);
 
-  // connect once on mount — RoomProvider only mounts once there's a valid
-  // session (AuthGate), so no "am I logged in?" check needed here.
   useEffect(() => {
     connect();
     return () => {

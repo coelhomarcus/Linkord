@@ -9,11 +9,6 @@ export interface CameraApi {
   stopCamera: () => void;
 }
 
-/**
- * Turns your own camera (video only) on/off, published as a track on the
- * LiveKit Room. The microphone is independent (see useMicrophone.ts) —
- * each toggles on its own.
- */
 export function useCamera(room: Room, dispatch: Dispatch<RoomAction>): CameraApi {
   const startCamera = useCallback(async () => {
     if (room.state !== ConnectionState.Connected) {
@@ -29,9 +24,6 @@ export function useCamera(room: Room, dispatch: Dispatch<RoomAction>): CameraApi
       await room.localParticipant.setCameraEnabled(
         true,
         { resolution: { width: 1280, height: 720, frameRate: 30 } },
-        // matches the fixed capture resolution above — simulcast (on by
-        // default) + the Room's adaptiveStream/dynacast (see
-        // RoomProvider.tsx) pick the right layer per viewer automatically.
         { videoEncoding: VideoPresets.h720.encoding },
       );
     } catch (err) {

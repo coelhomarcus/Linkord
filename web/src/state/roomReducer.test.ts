@@ -50,7 +50,7 @@ describe('roomReducer', () => {
     const state = { ...initialRoomState, participants: new Map([['p1', participant()]]) };
     const next = roomReducer(state, { type: 'PARTICIPANT_UPDATED', participant: participant({ id: 'ghost' }) });
     expect(next.participants.has('ghost')).toBe(false);
-    expect(next).toBe(state); // sem mudanca de verdade -> mesma referencia
+    expect(next).toBe(state);
   });
 
   it('PARTICIPANT_UPDATED atualiza quem ja esta na sala', () => {

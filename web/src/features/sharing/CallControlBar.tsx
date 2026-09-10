@@ -10,10 +10,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/shared/lib/utils';
 
-/** The button background stays neutral — the ICON color carries the state's
- * meaning (mic muted = red, camera on = green, etc.). Subtler than painting
- * the whole button, and lets several controls' state be read at a glance
- * without each becoming a big colored blob. */
 function ControlButton({ onClick, label, icon, iconColorClass }: {
   onClick: () => void;
   label: string;
@@ -38,10 +34,6 @@ function ControlButton({ onClick, label, icon, iconColorClass }: {
   );
 }
 
-/** Discord-style floating bar with mic/camera/screen controls — only mounts
- * when `inCall` is true (App.tsx), so the mic here never needs a "not yet
- * activated" state: that already happened before this existed (see the
- * click on a voice channel in the sidebar). */
 export function CallControlBar() {
   const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, toggleMicMuted, deafened, toggleDeafened, leaveVoiceChannel, sendReaction } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
@@ -55,15 +47,6 @@ export function CallControlBar() {
   }
 
   return (
-    // column: the sharing warning (when present) STACKS on top of the
-    // control pill, both centered together — needs only ONE anchor point
-    // (bottom-6/centered) instead of two absolute blocks computing the
-    // distance between them.
-    // `env(safe-area-inset-bottom)` (index.html sets viewport-fit=cover,
-    // needed for the rest of the app to draw edge-to-edge) — without it,
-    // this floating bar sits flush with the true screen edge on an iPhone
-    // and ends up partially hidden behind the home-indicator/gesture area;
-    // 0 on any device without a safe-area inset, so bottom-6 alone unchanged there.
     <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
       {state.shareError && (
         <div className="flex max-w-[calc(100vw-2rem)] items-start gap-2 rounded-md border border-strong bg-bg-floating px-3 py-2 text-label text-text-secondary shadow-popover md:max-w-100">
@@ -110,8 +93,6 @@ export function CallControlBar() {
           onClick={toggleMicMuted}
           label={myMedia.micMuted ? 'Desmutar' : 'Mutar'}
           icon={myMedia.micMuted ? <MicOff size={18} /> : <Mic size={18} />}
-          // muted: red (warning — no one hears you). unmuted: normal gray,
-          // the expected state while talking.
           iconColorClass={myMedia.micMuted ? 'text-red' : 'text-text-secondary'}
         />
         <ControlButton

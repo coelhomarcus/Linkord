@@ -20,44 +20,23 @@ import { useParticipantMedia, useIsSpeaking } from '../features/sharing/useLiveK
 import { Avatar, colorFor } from '../shared/Avatar';
 import type { Category, Channel } from '../types/protocol';
 
-/** A connected call participant's row — shows for ANYONE connected, not
- * just when I'm in the call myself, like Discord shows who's in a voice
- * channel even before you join it (membership comes from `voiceChannelId`,
- * Socket.IO, always live — see the filter at the call site). Colored ring
- * (same "speaking" border color as tiles, see Tile.tsx) while speaking.
- *
- * Media icons (camera/screen/mic/speaking) have two possible sources:
- * LiveKit, real-time but ONLY known for people in the SAME room I'm
- * connected to; and each participant's own Socket.IO self-report (see
- * protocol.ts's Participant fields and ClientMessage 'mic-state'/'camera'/
- * 'screen-share'/'speaking'), always available but one broadcast round-trip
- * behind. `viewerInSameChannel` picks which one to trust — never both, to
- * avoid a stale value from one leaking through when the other should win. */
 function CallParticipantRow({ id, userId, name, avatar, avatarColor, viewerInSameChannel, isAdmin, onOpenProfile }: {
   id: string; userId: string; name: string; avatar: string; avatarColor: string; viewerInSameChannel: boolean; isAdmin: boolean; onOpenProfile?: (userId: string) => void;
 }) {
   const { state, deafened, voiceKickParticipant } = useRoom();
   const media = useParticipantMedia(id);
   const isSpeakingLive = useIsSpeaking(id);
-  const participant = state.participants.get(id); // socket-driven; undefined for "me"
+  const participant = state.participants.get(id);
   const isMe = id === state.me.id;
   const [menuOpen, setMenuOpen] = useState(false);
   const showKick = isAdmin && !isMe;
-  // my own room IS whichever voice channel I'm connected to — always
-  // trust LiveKit for myself, same as for anyone else in that same room.
   const trustLiveKit = isMe || viewerInSameChannel;
   const micActivated = trustLiveKit ? media.micActivated : (participant?.micActivated ?? false);
   const micMuted = trustLiveKit ? media.micMuted : (participant?.micMuted ?? true);
   const cameraOn = trustLiveKit ? !!media.cameraTrack : (participant?.cameraOn ?? false);
   const sharing = trustLiveKit ? !!media.screenTrack : (participant?.sharing ?? false);
-  // speaking border only shows when I can actually verify it myself
-  // (LiveKit, same room) — the Socket.IO self-report is accurate but noisy
-  // to show for a call I'm not in, so it's ignored here on purpose.
   const isSpeaking = trustLiveKit && isSpeakingLive;
   const tint = colorFor(id, avatarColor);
-  // deafened has no LiveKit track (see protocol.ts) — for myself it's
-  // local state (instant); for others it comes from the Participant the
-  // server relays (participant-updated).
   const isDeafened = isMe ? deafened : (participant?.deafened ?? false);
 
   return (
@@ -77,17 +56,12 @@ function CallParticipantRow({ id, userId, name, avatar, avatarColor, viewerInSam
         <span className="min-w-0 flex-1 truncate text-body text-text-secondary">{name}</span>
         {cameraOn && <Video size={15} className="flex-none text-green" />}
         {sharing && <ScreenShare size={15} className="flex-none text-blurple" />}
-        {/* deafened already implies muted — showing both icons would be
-            redundant, same as Discord only showing the deafened one. */}
         {isDeafened ? (
           <HeadphoneOff size={15} className="flex-none text-red" />
         ) : (
           micActivated && micMuted && <MicOff size={15} className="flex-none text-red" />
         )}
       </button>
-      {/* only the person's CONNECTION is targeted (id, not userId) — see
-          moderation.ts#handleVoiceKick — so two tabs of the same account in
-          this channel show as two rows, each kickable independently. */}
       {showKick && (
         <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger
@@ -353,14 +327,6 @@ interface ChannelTreeProps {
   onOpenProfile?: (userId: string) => void;
 }
 
-/** Categories/channels (text and voice), with real drag-and-drop (admin) —
- * reordering categories, reordering channels within one, and dragging a
- * channel into ANOTHER category (voice channels included, just another
- * channel to dnd-kit). `localCategories` is an optimistic mirror: onDragOver
- * already "visually drags" a channel into another category before the
- * server confirms, and onDragEnd sends the final request — the next
- * `channels-tree` from the server (source of truth) syncs back once it
- * arrives. */
 export function ChannelTree({ activeChannelId, onSelectChannel, onOpenProfile }: ChannelTreeProps) {
   const { state, categories, reorderCategories, reorderChannels, channelsError, clearChannelsError } = useRoom();
   const isAdmin = state.me.role === 'admin';
@@ -384,14 +350,14 @@ export function ChannelTree({ activeChannelId, onSelectChannel, onOpenProfile }:
   function handleDragOver(event: DragOverEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    if (active.data.current?.type !== 'channel') return; // a category only reorders on dragEnd
+    if (active.data.current?.type !== 'channel') return;
 
     setLocalCategories((prev) => {
       const fromCat = findCategoryOf(String(active.id), prev);
       if (!fromCat) return prev;
       const overType = over.data.current?.type;
       const toCatId = overType === 'channel' ? findCategoryOf(String(over.id), prev)?.id : String(over.id);
-      if (!toCatId || fromCat.id === toCatId) return prev; // same category: dragEnd handles it via arrayMove
+      if (!toCatId || fromCat.id === toCatId) return prev;
 
       const channel = fromCat.channels.find((ch) => ch.id === active.id);
       if (!channel) return prev;
@@ -424,9 +390,6 @@ export function ChannelTree({ activeChannelId, onSelectChannel, onOpenProfile }:
       return;
     }
 
-    // channel: onDragOver already moved localCategories to another category
-    // if it crossed a boundary — just needs the final order fixed within
-    // wherever it landed (reorder that category's list).
     const targetCat = findCategoryOf(String(active.id), localCategories);
     if (!targetCat) { setLocalCategories(categories); return; }
     const oldIndex = targetCat.channels.findIndex((ch) => ch.id === active.id);
@@ -466,9 +429,6 @@ export function ChannelTree({ activeChannelId, onSelectChannel, onOpenProfile }:
   );
 }
 
-/** Create a channel — requested from the sidebar's context menu
- * (right-click), no longer an inline "+": also needs picking a category,
- * so a modal with a Select fits better than a lone text field. */
 export function NewChannelDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { categories, createChannel } = useRoom();
   const [name, setName] = useState('');

@@ -2,10 +2,6 @@ import { Slider as SliderPrimitive } from "@base-ui/react/slider"
 
 import { cn } from "@/shared/lib/utils"
 
-// Base UI expõe a orientação como data-orientation="horizontal|vertical", nao
-// como os atributos booleanos data-horizontal/data-vertical que o registry do
-// shadcn assumia — com o seletor errado a trilha ficava sem altura (h-1 nunca
-// aplicava) e so o thumb aparecia.
 function Slider({
   className,
   defaultValue,

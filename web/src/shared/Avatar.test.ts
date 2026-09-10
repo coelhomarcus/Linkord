@@ -15,9 +15,6 @@ describe('colorFor', () => {
     expect(colors.size).toBeGreaterThan(1);
   });
 
-  // id null/vazio acontece de verdade quando a conta de quem mandou a
-  // mensagem foi apagada (authorId vira NULL) — sem essa guarda, derrubava
-  // o React inteiro (nao so aquele avatar), ver comentario em Avatar.tsx.
   it('id vazio/falsy nao lanca — cai na primeira cor da paleta', () => {
     expect(() => colorFor('')).not.toThrow();
     expect(colorFor('')).toBe(colorFor(''));

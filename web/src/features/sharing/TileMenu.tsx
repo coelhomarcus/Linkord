@@ -8,15 +8,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Slider } from '@/components/ui/slider';
 import { saveCallVolume } from '../settings/useCallVolumePreference';
 
-/** LocalTrack and RemoteTrack (Track's only concrete subclasses) have this
- * method, but the abstract base class doesn't declare it — could import
- * both concrete types, but a local type with just what we use here is
- * simpler. */
 type StatsCapableTrack = { getRTCStatsReport?: () => Promise<RTCStatsReport | undefined> };
 
-/** Live bitrate of a specific track, via WebRTC's native
- * getRTCStatsReport() — same API on both sides (local: outbound-rtp/
- * bytesSent, remote: inbound-rtp/bytesReceived), just a different field name. */
 async function getTrackBytes(track: LKTrack | null): Promise<number> {
   if (!track) return 0;
   try {
@@ -27,13 +20,10 @@ async function getTrackBytes(track: LKTrack | null): Promise<number> {
       if (s.type === 'outbound-rtp' && typeof s.bytesSent === 'number') return s.bytesSent;
       if (s.type === 'inbound-rtp' && typeof s.bytesReceived === 'number') return s.bytesReceived;
     }
-  } catch { /* ok */ }
+  } catch {  }
   return 0;
 }
 
-/** Base UI accepts a "virtual element" (just needs getBoundingClientRect)
- * as the menu's anchor — fits directly into the rectangle already computed
- * on right-click or the gear button, no real Trigger needed. */
 function rectToVirtualElement(rect: AnchorRect) {
   return {
     getBoundingClientRect: (): DOMRect => ({
@@ -69,32 +59,18 @@ export function TileMenu() {
   const kind = menuTarget?.kind ?? null;
   const isMe = participantId !== null && participantId === state.me.id;
   const audioKey = kind === 'screen' ? `${participantId}:screen` : participantId;
-  // stable key for persisting the volume (userId, not participantId — see
-  // useCallVolumePreference.ts).
   const targetUserId = participantId !== null ? (state.participants.get(participantId)?.userId ?? null) : null;
   const volumeStorageKey = kind === 'screen' ? `${targetUserId}:screen` : targetUserId;
 
-  // the track feeding the bitrate stats below — the same one the Tile of
-  // this specific kind is showing.
   const media = useParticipantMedia(participantId ?? '');
   const mainTrack = kind === 'screen' ? media.screenTrack : kind === 'camera' ? media.cameraTrack : media.micTrack;
 
-  // reads the actual current volume only when the menu opens for a new
-  // target (same behavior as before: a snapshot at open time, not a live
-  // value synced with the video). audio.muted here does NOT factor in —
-  // that's just the autoplay block (global, see audioUnlocked in
-  // RoomProvider), unrelated to volume; mixing the two made all audio
-  // appear "at minimum" until a manual click per tile.
   useEffect(() => {
     if (!key || !audioKey) return;
     const audio = audioRegistry.current.get(audioKey)?.element;
     setSliderValue(audio ? Math.round(audio.volume * 100) : 100);
   }, [key, audioKey, audioRegistry]);
 
-  // live bitrate while the menu stays open: measures the main track's byte
-  // delta (native getRTCStatsReport) every 1.5s. Disabled via the general
-  // setting (sidebar Settings tab) so it doesn't waste the interval for
-  // nothing.
   useEffect(() => {
     if (!key || !showStats || !mainTrack) { setBitrateKbps(0); return; }
     let cancelled = false;

@@ -5,9 +5,6 @@ import { ImageLightbox } from './ImageLightbox';
 import { GenericEmbed } from './GenericEmbed';
 import { AudioPlayer, VideoPlayer } from './MediaPlayers';
 
-/** Shown when a link we recognize as media (image/video/audio) actually
- * fails to load (broken link, hotlink protection, etc.) — otherwise the
- * user would have no clue or way to open the original link. */
 function EmbedFailedFallback({ url, className }: { url: string; className: string }) {
   return (
     <a
@@ -24,24 +21,13 @@ function EmbedFailedFallback({ url, className }: { url: string; className: strin
 
 interface LinkPreviewProps {
   embed: DetectedEmbed;
-  /** Spacing/context from whoever's using it (chat adds mt-1.5 to sit
-   * under the text above; a modal usually needs none). */
   className?: string;
 }
 
-/** Preview of a recognized link (YouTube/Twitch/image/video/audio) in chat
- * (see ChatEmbed, which just adds the margin under the text). YouTube/Twitch
- * only load the iframe after a click (avoids surprise autoplay/sound and
- * traffic for links nobody will watch) — video/audio/image load right away. */
 export function LinkPreview({ embed, className = '' }: LinkPreviewProps) {
   const [failed, setFailed] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  // YouTube/Twitch/generic link share the same card (favicon + site name +
-  // title + description, see GenericEmbed) — only what replaces the image
-  // changes per type. `key={embed.url}` resets internal state on a link
-  // change (edited message, or the component reused for another list item)
-  // instead of carrying over the previous link's state.
   if (embed.kind === 'youtube' || embed.kind === 'twitch-channel' || embed.kind === 'twitch-vod' || embed.kind === 'twitch-clip' || embed.kind === 'link') {
     return <GenericEmbed key={embed.url} embed={embed} className={className} />;
   }
@@ -56,11 +42,6 @@ export function LinkPreview({ embed, className = '' }: LinkPreviewProps) {
     return <AudioPlayer src={embed.url} className={className} onError={() => setFailed(true)} />;
   }
 
-  // image — w-auto/h-auto (not w-full+object-contain) lets the browser use
-  // the image's NATURAL aspect ratio, only capped by max-height/width —
-  // otherwise empty space shows up as a border when the ratio doesn't match
-  // the box. Opens the same fullscreen lightbox an upload attachment uses
-  // (see ChatAttachment.tsx) instead of navigating to the link.
   return (
     <>
       <button type="button" onClick={() => setLightboxOpen(true)} className={`block w-fit cursor-zoom-in ${className}`}>

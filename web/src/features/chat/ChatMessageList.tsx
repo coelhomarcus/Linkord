@@ -15,11 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/shared/lib/utils';
 
-// consecutive messages from the same author within this window group
-// together (avatar/name only on the first) — same idea as Discord.
 const GROUP_GAP_MS = 5 * 60 * 1000;
-// stable reference — reused instead of a new `[]` on every render for a
-// channel whose history hasn't loaded yet.
 const EMPTY_MESSAGES: ChatMessage[] = [];
 const DELETED_AUTHOR_NAME = 'Usuario apagado';
 
@@ -36,7 +32,7 @@ function buildRenderItems(messages: ChatMessage[]): RenderItem[] {
     if (dateKey !== lastDateKey) {
       items.push({ type: 'date', key: `date-${dateKey}`, label: formatDateHeading(m.ts) });
       lastDateKey = dateKey;
-      lastMsg = null; // forces the author header to show again after the date divider
+      lastMsg = null;
     }
     const showHeader = !lastMsg || lastMsg.id !== m.id || m.ts - lastMsg.ts > GROUP_GAP_MS;
     items.push({ type: 'message', key: String(m.msgId), message: m, showHeader });
@@ -51,10 +47,6 @@ interface ChatMessageRowProps {
   isMod: boolean;
   isHighlighted: boolean;
   mentionLookup: Map<string, PublicUser>;
-  /** Keyed by userId (unlike mentionLookup, keyed by username) — used to
-   * resolve the author's CURRENT displayName/avatar/avatarColor for a
-   * historical message, since those are mutable and never stored on the row
-   * (see modules/chat.ts). */
   allUsers: Map<string, PublicUser>;
   isEditing: boolean;
   editText: string;
@@ -67,35 +59,16 @@ interface ChatMessageRowProps {
   onJumpTo: (msgId: number) => void;
 }
 
-/** One row in history — no bubble, continuous background. `showHeader`
- * decides whether to show avatar/name (first in a run from the same
- * author) or stay compact (just the time, on hover, where the avatar
- * would be). */
 function ChatMessageRow({
   message, showHeader, isMod, isHighlighted, mentionLookup, allUsers, isEditing, editText, onEditTextChange,
   onStartEdit, onSaveEdit, onCancelEdit, onReply, onOpenProfile, onJumpTo,
 }: ChatMessageRowProps) {
   const { state, deleteChatMessage, reactToChatMessage } = useRoom();
   const [reactOpen, setReactOpen] = useState(false);
-  // a CSS-only bar (group-hover) would close as soon as the mouse left the
-  // row to reach the popover/dropdown — those portal outside the row's DOM
-  // tree, so ":hover" on the row stops applying partway there. Hover
-  // becomes state here instead: stays "active" while a popover/dropdown
-  // from this row is open, even with the mouse physically outside it.
   const [isRowActive, setIsRowActive] = useState(false);
-  // message.id is the account's USERID (not a connection id) — compare
-  // against state.me.userId, not state.me.id, or "is this my message?"
-  // breaks after reconnecting/reloading (connection id changes, userId doesn't).
   const isMine = message.id === state.me.userId;
-  // author deletes their own message; admin deletes anyone's — same split
-  // the server enforces in handleChatDelete (modules/chat.ts).
   const canDelete = isMine || isMod;
-  // own messages never "highlight for being mentioned" — mentioning
-  // yourself isn't a notification.
   const mentionsMe = !isMine && mentionsUser(message.text, mentionLookup, state.me.userId);
-  // `allUsers` is keyed by userId (message.id) — NOT mentionLookup, which is
-  // keyed by username and would never match here. Falls back to the server's
-  // neutral deleted-user payload once the account no longer exists.
   const author = message.id ? allUsers.get(message.id) : undefined;
   const displayedName = author?.displayName ?? message.name;
   const displayedAvatar = author?.avatar ?? message.avatar;
@@ -119,9 +92,6 @@ function ChatMessageRow({
       )}
     >
       <div className="w-10 flex-none pt-0.5">
-        {/* message.id (authorId) becomes null when the sender's account was
-            deleted — the neutral fallback name becomes the avatar seed. Not
-            clickable in that case either (nothing to open). */}
         {showHeader ? (
           message.id ? (
             <button
@@ -149,9 +119,6 @@ function ChatMessageRow({
             onClick={() => onJumpTo(message.replyTo!.msgId)}
             className="mb-0.5 flex max-w-full items-center gap-1.5 pl-4 text-label text-text-muted transition-colors hover:text-text-secondary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            {/* Discord's curved reply connector (from their Figma kit) — a
-                custom SVG instead of a generic arrow icon; stroke="currentColor"
-                to follow the text color (same hover/normal as the rest of the row). */}
             <svg width="14" height="5" viewBox="0 0 25 8.5" fill="none" className="flex-none -translate-y-px" xmlns="http://www.w3.org/2000/svg">
               <path d="M0.5 8.5V5.5C0.5 2.73858 2.73858 0.5 5.5 0.5H25" stroke="currentColor" />
             </svg>
@@ -228,9 +195,6 @@ function ChatMessageRow({
         )}
       </div>
 
-      {/* desktop only — hover-revealed (see isRowActive above); touch has
-          no hover, so mobile gets a single always-visible trigger instead
-          (below) that opens the same actions in one menu. */}
       <div className={cn(
         'absolute right-2 top-0 z-10 hidden -translate-y-1/2 items-center gap-0.5 rounded-md border border-strong bg-bg-floating p-0.5 shadow-popover',
         isRowActive && 'md:flex'
@@ -276,9 +240,6 @@ function ChatMessageRow({
         )}
       </div>
 
-      {/* mobile only — one always-visible trigger (no hover on touch)
-          bundling react/reply/edit/delete into a single menu instead of
-          four separate hover buttons. */}
       <div className="absolute right-1 top-1 z-10 md:hidden">
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Acoes da mensagem" className="bg-bg-floating/90" />}>
@@ -328,9 +289,6 @@ interface ChatMessageListProps {
   onOpenProfile: (userId: string) => void;
 }
 
-/** Chat history — Discord-style: no bubbles, continuous background,
- * messages grouped by author, date divider, and a per-message action bar
- * on hover (react/reply/edit/delete). */
 export function ChatMessageList({ className, channelId, onReply, onOpenProfile }: ChatMessageListProps) {
   const {
     state, messagesByChannel, editChatMessage, allUsers, hasMoreByChannel, loadingOlderByChannel, loadOlderMessages,
@@ -338,26 +296,12 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
   } = useRoom();
   const mentionLookup = useMemo(() => buildMentionLookup(allUsers), [allUsers]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  // wraps ONLY the content (not the scrolling viewport) — with
-  // overflow-y-auto, the viewport has a fixed size (doesn't grow with
-  // content), so a ResizeObserver ON IT never fires for a new message/
-  // image. The div that grows is this inner one; that's what needs
-  // observing (see the effect below).
   const contentRef = useRef<HTMLDivElement | null>(null);
-  // true while the user is "stuck" to the bottom (or hasn't scrolled
-  // anywhere yet) — only then does new content (a message, or an image/
-  // attachment that only gains real height AFTER loading) auto-adjust the
-  // scroll; if they scrolled up to read history, nothing here should pull
-  // them back down.
   const stickToBottomRef = useRef(true);
   const isMod = state.me.role === 'admin';
   const chatMessages = messagesByChannel.get(channelId) ?? EMPTY_MESSAGES;
   const hasMoreHistory = hasMoreByChannel.get(channelId) !== false;
   const isLoadingOlder = loadingOlderByChannel.has(channelId);
-  // guards against firing a second 'load-more-messages' from the same
-  // scroll burst before isLoadingOlder's setState round-trips back here —
-  // isLoadingOlder alone isn't enough since state updates aren't
-  // synchronous relative to the scroll event that triggered them.
   const pendingPrependRef = useRef(false);
   const prevScrollHeightRef = useRef(0);
   const wasLoadingOlderRef = useRef(false);
@@ -366,38 +310,17 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
   const [highlightedMsgId, setHighlightedMsgId] = useState<number | null>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
 
-  // switching channels ALWAYS starts at the bottom (most recent message) —
-  // never preserves another channel's scroll position. A layout effect (not
-  // a regular one) so it resolves before the next effect below reads it,
-  // even when both fire in the same commit (channelId and chatMessages
-  // usually change together on a channel switch).
   useLayoutEffect(() => {
     stickToBottomRef.current = true;
-    // discards any in-flight pagination bookkeeping from the channel just
-    // left — the scroll-restore effect below must not act on it once
-    // `isLoadingOlder`/`chatMessages` for the NEW channel change.
     pendingPrependRef.current = false;
     wasLoadingOlderRef.current = false;
   }, [channelId]);
 
-  // whenever the rendered list actually changes — a new/edited/deleted
-  // message, a reaction, or history just arriving for a freshly opened
-  // channel — jump to the bottom synchronously (before paint) if still
-  // stuck there. This is what keeps the view pinned to new messages;
-  // depending only on the ResizeObserver below left a gap where the first
-  // paint of newly arrived history could show the TOP of the channel
-  // instead of the bottom.
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [chatMessages]);
 
-  // "stuck to bottom" (see stickToBottomRef above) via a ResizeObserver on
-  // the CONTENT (not the message count): covers content that only gains
-  // real height AFTER the layout effect above already ran — a loading
-  // image/attachment (ChatAttachment), a link preview (ChatEmbed) —
-  // without this, the scroll position would be "correct" while the image
-  // still had no height, then fall behind once it finished loading.
   useEffect(() => {
     const scrollEl = scrollRef.current;
     const contentEl = contentRef.current;
@@ -405,7 +328,6 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
 
     function handleScroll() {
       const el = scrollEl!;
-      // a few px of tolerance so "at the bottom" doesn't require pixel-perfect
       stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
     }
     const resizeObserver = new ResizeObserver(() => {
@@ -417,16 +339,9 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
       resizeObserver.disconnect();
       scrollEl.removeEventListener('scroll', handleScroll);
     };
-    // attaches only once — scrollRef/contentRef are the SAME DOM nodes for
-    // the component's whole lifetime (doesn't remount on channel switch),
-    // no need to recreate the observer/listener each time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // pagination: scrolling near the top of an open channel requests the next
-  // page of older messages. Separate from the effect above (recreated on
-  // every dep change, unlike that one) so it always sees the current
-  // channel/hasMore/loading flags without needing its own ref mirrors.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -441,10 +356,6 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
     return () => el.removeEventListener('scroll', handleTopScroll);
   }, [channelId, hasMoreHistory, isLoadingOlder, loadOlderMessages]);
 
-  // once the in-flight page lands (isLoadingOlder flips back to false),
-  // restore the scroll position: prepending older messages shifts
-  // everything down, so without this the view would jump to show messages
-  // from the middle of the newly-loaded page instead of staying put.
   useLayoutEffect(() => {
     if (wasLoadingOlderRef.current && !isLoadingOlder) {
       const el = scrollRef.current;
@@ -457,10 +368,6 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
     wasLoadingOlderRef.current = isLoadingOlder;
   }, [isLoadingOlder, chatMessages]);
 
-  // MY OWN message sent now always pulls to the bottom, even if I'd
-  // scrolled up before sending — I just wrote it, makes sense to see it
-  // appear (someone ELSE's message doesn't force this, it only sticks if I
-  // was already at the bottom, see the ResizeObserver above).
   const lastMineTsRef = useRef(0);
   useEffect(() => {
     const last = chatMessages[chatMessages.length - 1];
@@ -474,12 +381,6 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
 
   const renderItems = useMemo(() => buildRenderItems(chatMessages), [chatMessages]);
 
-  // editingMsgId can now be set from elsewhere (GlobalContextMenu's
-  // "Editar" — it lives in RoomProvider precisely so that reaches here),
-  // not just startEdit below — this is what seeds the draft text either
-  // way. chatMessages is deliberately NOT a dep: it changes on unrelated
-  // updates (someone else's message, a reaction) while editing, and this
-  // must only re-seed the draft when editingMsgId itself changes.
   useEffect(() => {
     if (editingMsgId == null) return;
     const msg = chatMessages.find((m) => m.msgId === editingMsgId);
@@ -496,10 +397,6 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
     setEditingMsgId(null);
   }
 
-  // behavior defaults to 'smooth' for the existing reply-quote-click caller
-  // (onJumpTo below) — a search-result jump (see the effect further down)
-  // passes 'auto' instead: an instant reposition reads better than
-  // animating a long scroll across content the user never saw.
   function jumpToMessage(msgId: number, behavior: ScrollBehavior = 'smooth') {
     const el = document.getElementById(`chat-msg-${msgId}`);
     if (!el) return;
@@ -509,17 +406,10 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
     highlightTimeoutRef.current = window.setTimeout(() => setHighlightedMsgId(null), 1500);
   }
 
-  // Consumes a search-result (or cross-channel reply) jump once its target
-  // is actually in `chatMessages` — either because jumpToMessage's fast
-  // path found it already loaded, or because 'load-messages-around' just
-  // landed (see RoomProvider.tsx#jumpToMessage). A layout effect, placed
-  // AFTER the bottom-snap one above, so both scrollTop mutations resolve in
-  // the same pre-paint pass — otherwise the view would flash to the bottom
-  // first, then jump to the target on the next paint.
   useLayoutEffect(() => {
     if (!pendingJumpTarget || pendingJumpTarget.channelId !== channelId) return;
-    if (!chatMessages.some((m) => m.msgId === pendingJumpTarget.msgId)) return; // recenter reply hasn't landed yet
-    stickToBottomRef.current = false; // a jump explicitly isn't "caught up" to the live tail
+    if (!chatMessages.some((m) => m.msgId === pendingJumpTarget.msgId)) return;
+    stickToBottomRef.current = false;
     jumpToMessage(pendingJumpTarget.msgId, 'auto');
     clearPendingJumpTarget();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -570,9 +460,6 @@ export function ChatMessageList({ className, channelId, onReply, onOpenProfile }
         </div>
       </div>
       {hasMoreAfterByChannel.get(channelId) === true && (
-        // openChannel doesn't change `channelId` here (same channel), so
-        // the channel-switch layout effect above won't reset
-        // stickToBottomRef on its own — set it manually before reloading.
         <button
           type="button"
           onClick={() => { stickToBottomRef.current = true; openChannel(channelId); }}

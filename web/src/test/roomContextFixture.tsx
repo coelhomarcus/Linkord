@@ -6,11 +6,6 @@ import { RoomContext } from '../state/RoomContext';
 import type { RoomContextValue } from '../state/RoomContext';
 import { initialRoomState } from '../state/roomReducer';
 
-/** A default value for EVERY RoomContextValue field — almost all no-op/
- * empty, since testing one isolated component only needs the small slice
- * of context IT uses. `livekitRoom` is a real `Room` instance (the
- * constructor connects nothing by itself), not a mock. Pass `overrides`
- * with only what the component under test actually reads/calls. */
 export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> = {}): RoomContextValue {
   const noop = () => {};
   const asyncNoop = async () => {};
@@ -98,8 +93,6 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
   return { ...base, ...overrides };
 }
 
-/** RTL's `render` already wrapped in a <RoomContext.Provider> — almost
- * every component calls useRoom(), so rendering without this throws. */
 export function renderWithRoom(ui: ReactElement, overrides: Partial<RoomContextValue> = {}): RenderResult {
   return render(<RoomContext.Provider value={createFakeRoomContextValue(overrides)}>{ui}</RoomContext.Provider>);
 }
