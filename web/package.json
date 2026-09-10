@@ -22,6 +22,7 @@
     "emoji-picker-react": "^4.19.1",
     "livekit-client": "^2.22.0",
     "lucide-react": "^1.33.0",
+    "motion": "^13.2.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-easy-crop": "^6.2.3",
