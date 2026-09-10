@@ -3,6 +3,7 @@ import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent, ClipboardEvent }
 import { ArrowLeft, File as FileIcon, Info, MoreHorizontal, Paperclip, Phone, Reply, Search, Trash2, X, Pencil, SmilePlus } from 'lucide-react';
 import { MessageBubble, MessageBubbleContent } from '@/components/agents/message-bubble';
 import { PromptInput } from '@/components/agents/prompt-input';
+import { useAnimatedSidebar } from '@/components/motion/animated-sidebar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -19,7 +20,7 @@ import { useRoom } from '@/state/RoomContext';
 import { ALLOWED_REACTIONS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE } from '@/types/protocol';
 import type { ChatMessage, PublicUser, ReactionEmoji } from '@/types/protocol';
 import { conversationInitials, conversationTitle, directUser, groupMembers } from './conversationUtils';
-import { GroupDetailsDrawer } from './GroupDetailsDrawer';
+import { GroupDetailsPanel } from './GroupDetailsPanel';
 
 const GROUP_GAP_MS = 5 * 60 * 1000;
 const EMPTY_MESSAGES: ChatMessage[] = [];
@@ -594,15 +595,14 @@ function Composer({ conversationId }: { conversationId: string }) {
 }
 
 interface ConversationPanelProps {
-  mobileListVisible: boolean;
-  onBackMobile: () => void;
   onOpenProfile: (userId: string) => void;
   onOpenCall: (conversationId: string) => void;
   onOpenSearch: () => void;
 }
 
-export function ConversationPanel({ mobileListVisible, onBackMobile, onOpenProfile, onOpenCall, onOpenSearch }: ConversationPanelProps) {
+export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch }: ConversationPanelProps) {
   const { state, conversations, activeConversationId, allUsers, onlineUserIds } = useRoom();
+  const { setOpenMobile } = useAnimatedSidebar();
   const conversation = conversations.find((item) => item.id === activeConversationId) ?? null;
   const title = conversationTitle(conversation, state.me.userId, allUsers);
   const other = directUser(conversation, state.me.userId, allUsers);
@@ -614,11 +614,12 @@ export function ConversationPanel({ mobileListVisible, onBackMobile, onOpenProfi
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   return (
-    <main className={cn('min-w-0 flex-1 flex-col bg-[rgb(10_10_12)] text-text-primary md:flex', mobileListVisible ? 'hidden' : 'flex')}>
+    <div className="flex h-full min-w-0 flex-1">
+      <main className="flex min-w-0 flex-1 flex-col text-text-primary">
       {conversation ? (
         <>
           <header className="flex h-16 flex-none items-center gap-3 border-b border-white/10 bg-[rgb(12_12_14)]/90 px-4 backdrop-blur">
-            <Button type="button" variant="ghost" size="icon-sm" aria-label="Voltar" onClick={onBackMobile} className="-ml-1 md:hidden">
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="Voltar" onClick={() => setOpenMobile(true)} className="-ml-1 md:hidden">
               <ArrowLeft size={18} />
             </Button>
             {conversation.type === 'direct' && other ? (
@@ -656,12 +657,6 @@ export function ConversationPanel({ mobileListVisible, onBackMobile, onOpenProfi
             )}
           </header>
           <MessageBubbleListBridge conversationId={conversation.id} onOpenProfile={onOpenProfile} />
-          <GroupDetailsDrawer
-            conversationId={conversation.type === 'group' ? conversation.id : null}
-            open={detailsOpen && conversation.type === 'group'}
-            onOpenChange={setDetailsOpen}
-            onOpenProfile={onOpenProfile}
-          />
         </>
       ) : (
         <div className="grid flex-1 place-items-center px-6 text-center">
@@ -671,7 +666,14 @@ export function ConversationPanel({ mobileListVisible, onBackMobile, onOpenProfi
           </div>
         </div>
       )}
-    </main>
+      </main>
+      <GroupDetailsPanel
+        conversationId={conversation?.type === 'group' ? conversation.id : null}
+        open={detailsOpen && conversation?.type === 'group'}
+        onOpenChange={setDetailsOpen}
+        onOpenProfile={onOpenProfile}
+      />
+    </div>
   );
 }
 

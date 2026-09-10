@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RoomProvider } from './state/RoomProvider';
 import { useRoom } from './state/RoomContext';
 import { AuthProvider, useAuth } from './state/AuthContext';
@@ -19,8 +19,9 @@ import { TileMenu } from './features/sharing/TileMenu';
 import { ReactionsOverlay } from './features/reactions/ReactionsOverlay';
 import { GlobalContextMenu } from './components/GlobalContextMenu';
 import { ProfileModal } from './features/profile/ProfileModal';
+import { AnimatedSidebarInset, AnimatedSidebarProvider } from '@/components/motion/animated-sidebar';
+import { loadSidebarCollapsed, saveSidebarCollapsed } from './shared/lib/useSidebarCollapsedPreference';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { cn } from '@/shared/lib/utils';
 
 const SettingsModal = lazy(() => import('./features/settings/SettingsModal').then((m) => ({ default: m.SettingsModal })));
 
@@ -36,6 +37,12 @@ function Shell() {
   const [mobileShowSidebar, setMobileShowSidebar] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
 
+  const [sidebarOpen, setSidebarOpenState] = useState(() => !loadSidebarCollapsed());
+  const setSidebarOpen = useCallback((next: boolean) => {
+    setSidebarOpenState(next);
+    saveSidebarCollapsed(!next);
+  }, []);
+
   useEffect(() => { notifyActiveView(activeView); }, [activeView, notifyActiveView]);
 
   // The first conversation auto-selected right after connecting shouldn't
@@ -44,8 +51,8 @@ function Shell() {
   // real navigation the user should actually see: a group they just
   // created, a notification click, or anything else that opens a
   // conversation without going through the sidebar row's own onClick (which
-  // already hides the sidebar directly). Without this, those left the
-  // active conversation switched behind an unchanged, still-visible sidebar.
+  // already closes the mobile sheet directly). Without this, those left the
+  // active conversation switched behind an unchanged, still-open sidebar.
   const hasAutoSelectedInitialConversationRef = useRef(false);
   useEffect(() => {
     if (!activeConversationId) return;
@@ -67,10 +74,6 @@ function Shell() {
     () => callParticipantIds(state.me.id, state.participants, activeCallConversationId),
     [activeCallConversationId, state.me.id, state.participants]
   );
-
-  function handleSelectMobile() {
-    setMobileShowSidebar(false);
-  }
 
   function handleOpenCall(conversationId: string) {
     joinGroupCall(conversationId);
@@ -109,21 +112,24 @@ function Shell() {
 
   return (
     <GlobalContextMenu>
-      <div className="flex h-dvh overflow-hidden bg-bg-primary text-text-primary">
+      <AnimatedSidebarProvider
+        open={sidebarOpen}
+        onOpenChange={setSidebarOpen}
+        openMobile={mobileShowSidebar}
+        onOpenMobileChange={setMobileShowSidebar}
+        className="h-dvh bg-bg-primary text-text-primary"
+        style={{ '--sidebar-width': '22rem', '--sidebar-width-icon': '4.5rem' }}
+      >
         <ReconnectBanner />
         <ConversationSidebar
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenProfile={setProfileUserId}
-          mobileVisible={mobileShowSidebar}
-          onSelect={handleSelectMobile}
         />
-        <div className={cn('relative min-h-0 flex-1 md:flex', mobileShowSidebar ? 'hidden' : 'flex')}>
+        <AnimatedSidebarInset className="relative min-h-0 overflow-hidden border border-white/10 bg-[rgb(10_10_12)] md:my-2 md:mr-2">
           {activeView === 'call' && activeCallConversationId && inCall ? (
-            <Stage allIds={callIds} onBackMobile={() => setMobileShowSidebar(true)} />
+            <Stage allIds={callIds} />
           ) : (
             <ConversationPanel
-              mobileListVisible={mobileShowSidebar}
-              onBackMobile={() => setMobileShowSidebar(true)}
               onOpenProfile={setProfileUserId}
               onOpenCall={handleOpenCall}
               onOpenSearch={() => setSearchOpen(true)}
@@ -133,7 +139,7 @@ function Shell() {
           {inCall && <ParticipantAudioLayer participantIds={callIds} />}
           {inCall && activeView !== 'call' && <FloatingPip allIds={callIds} />}
           <ReactionsOverlay />
-        </div>
+        </AnimatedSidebarInset>
         <TileMenu />
         <ProfileModal userId={profileUserId} onClose={() => setProfileUserId(null)} />
         <Suspense fallback={null}>
@@ -145,7 +151,7 @@ function Shell() {
           activeConversationId={activeConversationId}
           activeConversationName={activeConversationName}
         />
-      </div>
+      </AnimatedSidebarProvider>
     </GlobalContextMenu>
   );
 }

@@ -1,4 +1,5 @@
 import { ArrowLeft } from 'lucide-react';
+import { useAnimatedSidebar } from '@/components/motion/animated-sidebar';
 import { useRoom } from '../../state/RoomContext';
 import { useCallTiles } from './useCallTiles';
 import { TileGrid } from './TileGrid';
@@ -6,11 +7,11 @@ import { Button } from '@/components/ui/button';
 
 interface StageProps {
   allIds: string[];
-  onBackMobile: () => void;
 }
 
-export function Stage({ allIds, onBackMobile }: StageProps) {
+export function Stage({ allIds }: StageProps) {
   const { state, hideAudioOnlyTiles } = useRoom();
+  const { setOpenMobile } = useAnimatedSidebar();
   const allDescriptors = useCallTiles(allIds);
   const descriptors = hideAudioOnlyTiles ? allDescriptors.filter((d) => d.kind !== 'avatar') : allDescriptors;
 
@@ -21,7 +22,7 @@ export function Stage({ allIds, onBackMobile }: StageProps) {
         variant="ghost"
         size="icon-sm"
         aria-label="Voltar para conversas"
-        onClick={onBackMobile}
+        onClick={() => setOpenMobile(true)}
         className="absolute left-2 top-2 z-20 bg-bg-tertiary/80 text-text-secondary hover:bg-bg-hover md:hidden"
       >
         <ArrowLeft size={18} />

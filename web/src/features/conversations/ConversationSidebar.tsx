@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
-import { MessageCircle, Plus, Search, Settings, UsersRound, PhoneCall } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { MessageCircle, PanelLeftClose, Plus, Search, Settings, UsersRound, PhoneCall } from 'lucide-react';
+import { AnimatedSidebar, useAnimatedSidebar } from '@/components/motion/animated-sidebar';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/motion/tabs';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar } from '@/shared/Avatar';
 import { formatTime } from '@/shared/lib/formatChatTime';
 import { cn } from '@/shared/lib/utils';
@@ -11,8 +13,6 @@ import { conversationInitials, conversationTitle, directUser, groupMembers } fro
 import { GroupCreateDialog } from './GroupCreateDialog';
 
 interface ConversationSidebarProps {
-  mobileVisible: boolean;
-  onSelect: () => void;
   onOpenSettings: () => void;
   onOpenProfile: (userId: string) => void;
 }
@@ -108,8 +108,46 @@ function UserRow({ user, onClick, onOpenProfile }: { user: PublicUser; onClick: 
   );
 }
 
-export function ConversationSidebar({ mobileVisible, onSelect, onOpenSettings, onOpenProfile }: ConversationSidebarProps) {
+function CollapsedConversationButton({ conversation, active, onClick }: {
+  conversation: Conversation;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const { state, allUsers, unreadByConversation } = useRoom();
+  const title = conversationTitle(conversation, state.me.userId, allUsers);
+  const other = directUser(conversation, state.me.userId, allUsers);
+  const unread = unreadByConversation.get(conversation.id) ?? 0;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        onClick={onClick}
+        aria-label={title}
+        className={cn(
+          'relative grid size-11 flex-none place-items-center rounded-xl transition-colors',
+          active ? 'bg-primary/20 ring-1 ring-primary/50' : 'hover:bg-white/[0.06]'
+        )}
+      >
+        {conversation.type === 'direct' && other ? (
+          <Avatar id={other.id} name={other.displayName} avatar={other.avatar} avatarColor={other.avatarColor} size={40} />
+        ) : (
+          <GroupAvatar title={title} active={active} />
+        )}
+        {unread > 0 && (
+          <span className="absolute -right-1 -top-1 grid min-w-4.5 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground">
+            {unread > 99 ? '99+' : unread}
+          </span>
+        )}
+      </TooltipTrigger>
+      <TooltipContent side="right">{title}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function ConversationSidebar({ onOpenSettings, onOpenProfile }: ConversationSidebarProps) {
   const { state, conversations, activeConversationId, openConversation, openDirect, allUsers } = useRoom();
+  const { isMobile, open: sidebarOpen, setOpenMobile, toggleSidebar } = useAnimatedSidebar();
+  const collapsed = !isMobile && !sidebarOpen;
   const [tab, setTab] = useState('conversations');
   const [query, setQuery] = useState('');
   const [groupOpen, setGroupOpen] = useState(false);
@@ -129,89 +167,152 @@ export function ConversationSidebar({ mobileVisible, onSelect, onOpenSettings, o
 
   function selectConversation(conversationId: string) {
     openConversation(conversationId);
-    onSelect();
+    if (isMobile) setOpenMobile(false);
   }
 
   function selectUser(userId: string) {
     openDirect(userId);
-    onSelect();
+    if (isMobile) setOpenMobile(false);
   }
 
   return (
     <>
-      <aside className={cn(
-        'relative w-full flex-none flex-col border-r border-white/10 bg-[rgb(14_14_16)] text-text-primary md:flex md:w-[370px]',
-        mobileVisible ? 'flex' : 'hidden'
-      )}>
-        <div className="flex flex-none items-center gap-3 border-b border-white/10 px-4 py-4">
-          <img src="/logo.svg" alt="" className="size-8 flex-none" />
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-title font-semibold">Linkord</h1>
-            <p className="truncate text-caption text-text-muted">{state.me.displayName}</p>
+      <AnimatedSidebar
+        variant="inset"
+        collapsible="icon"
+        ariaLabel="Conversas"
+        className="text-text-primary"
+        panelClassName="border border-white/10 bg-[rgb(14_14_16)]"
+      >
+        {collapsed ? (
+          <div className="flex h-full flex-col items-center gap-1.5 py-3">
+            <Tooltip>
+              <TooltipTrigger
+                onClick={toggleSidebar}
+                aria-label="Expandir sidebar"
+                className="grid size-11 flex-none place-items-center rounded-xl text-text-muted transition-colors hover:bg-white/[0.06] hover:text-text-primary"
+              >
+                <img src="/logo.svg" alt="" className="size-7" />
+              </TooltipTrigger>
+              <TooltipContent side="right">Expandir sidebar</TooltipContent>
+            </Tooltip>
+
+            <div className="my-1 h-px w-8 flex-none bg-white/10" />
+
+            <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
+              {filteredConversations.map((conversation) => (
+                <CollapsedConversationButton
+                  key={conversation.id}
+                  conversation={conversation}
+                  active={conversation.id === activeConversationId}
+                  onClick={() => selectConversation(conversation.id)}
+                />
+              ))}
+            </div>
+
+            <div className="flex flex-none flex-col gap-1.5">
+              {isAdmin && (
+                <Tooltip>
+                  <TooltipTrigger
+                    onClick={() => setGroupOpen(true)}
+                    aria-label="Criar grupo"
+                    className={cn(buttonVariants({ size: 'icon-sm' }), 'size-11 rounded-xl')}
+                  >
+                    <Plus size={18} />
+                  </TooltipTrigger>
+                  <TooltipContent side="right">Criar grupo</TooltipContent>
+                </Tooltip>
+              )}
+              <Tooltip>
+                <TooltipTrigger
+                  onClick={onOpenSettings}
+                  aria-label="Ajustes"
+                  className="grid size-11 place-items-center rounded-xl text-text-muted transition-colors hover:bg-white/[0.06] hover:text-text-primary"
+                >
+                  <Settings size={18} />
+                </TooltipTrigger>
+                <TooltipContent side="right">Ajustes</TooltipContent>
+              </Tooltip>
+            </div>
           </div>
-          {isAdmin && (
-            <Button type="button" size="icon-sm" aria-label="Criar grupo" onClick={() => setGroupOpen(true)} className="flex-none">
-              <Plus size={16} />
-            </Button>
-          )}
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="Ajustes" onClick={onOpenSettings} className="flex-none text-text-muted hover:text-text-primary">
-            <Settings size={16} />
-          </Button>
-        </div>
+        ) : (
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="flex flex-none items-center gap-3 border-b border-white/10 px-4 py-4">
+              <img src="/logo.svg" alt="" className="size-8 flex-none" />
+              <div className="min-w-0 flex-1">
+                <h1 className="truncate text-title font-semibold">Linkord</h1>
+                <p className="truncate text-caption text-text-muted">{state.me.displayName}</p>
+              </div>
+              {isAdmin && (
+                <Button type="button" size="icon-sm" aria-label="Criar grupo" onClick={() => setGroupOpen(true)} className="flex-none">
+                  <Plus size={16} />
+                </Button>
+              )}
+              <Button type="button" variant="ghost" size="icon-sm" aria-label="Ajustes" onClick={onOpenSettings} className="flex-none text-text-muted hover:text-text-primary">
+                <Settings size={16} />
+              </Button>
+              {!isMobile && (
+                <Button type="button" variant="ghost" size="icon-sm" aria-label="Recolher sidebar" onClick={toggleSidebar} className="flex-none text-text-muted hover:text-text-primary">
+                  <PanelLeftClose size={16} />
+                </Button>
+              )}
+            </div>
 
-        <div className="flex flex-none flex-col gap-3 px-3 py-3">
-          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.045] px-3">
-            <Search size={15} className="text-text-muted" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={tab === 'people' ? 'Buscar pessoas' : 'Buscar conversas'}
-              className="h-10 min-w-0 flex-1 bg-transparent text-label outline-none placeholder:text-text-muted"
-            />
+            <div className="flex min-h-0 flex-1 flex-col gap-3 px-3 py-3">
+              <div className="flex flex-none items-center gap-2 rounded-xl border border-white/10 bg-white/[0.045] px-3">
+                <Search size={15} className="text-text-muted" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={tab === 'people' ? 'Buscar pessoas' : 'Buscar conversas'}
+                  className="h-10 min-w-0 flex-1 bg-transparent text-label outline-none placeholder:text-text-muted"
+                />
+              </div>
+              <Tabs value={tab} onValueChange={setTab} variant="segment" className="flex min-h-0 flex-1 flex-col">
+                <TabsList className="flex-none grid w-full grid-cols-2 rounded-xl border border-white/10 bg-black/25 p-1">
+                  <TabsTrigger value="conversations" className="gap-1.5 rounded-lg">
+                    <MessageCircle size={14} />
+                    Conversas
+                  </TabsTrigger>
+                  <TabsTrigger value="people" className="gap-1.5 rounded-lg">
+                    <UsersRound size={14} />
+                    Pessoas
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="conversations" className="mt-3 min-h-0 flex-1 overflow-y-auto">
+                  <div className="flex flex-col gap-1">
+                    {filteredConversations.length === 0 ? (
+                      <p className="px-3 py-8 text-center text-label text-text-muted">Nenhuma conversa.</p>
+                    ) : filteredConversations.map((conversation) => (
+                      <ConversationRow
+                        key={conversation.id}
+                        conversation={conversation}
+                        active={conversation.id === activeConversationId}
+                        onClick={() => selectConversation(conversation.id)}
+                      />
+                    ))}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="people" className="mt-3 min-h-0 flex-1 overflow-y-auto">
+                  <div className="flex flex-col gap-1">
+                    {filteredUsers.length === 0 ? (
+                      <p className="px-3 py-8 text-center text-label text-text-muted">Nenhuma pessoa.</p>
+                    ) : filteredUsers.map((user) => (
+                      <UserRow key={user.id} user={user} onClick={() => selectUser(user.id)} onOpenProfile={onOpenProfile} />
+                    ))}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </div>
           </div>
-          <Tabs value={tab} onValueChange={setTab} variant="segment" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 rounded-xl border border-white/10 bg-black/25 p-1">
-              <TabsTrigger value="conversations" className="gap-1.5 rounded-lg">
-                <MessageCircle size={14} />
-                Conversas
-              </TabsTrigger>
-              <TabsTrigger value="people" className="gap-1.5 rounded-lg">
-                <UsersRound size={14} />
-                Pessoas
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="conversations" className="mt-3">
-              <div className="flex flex-col gap-1">
-                {filteredConversations.length === 0 ? (
-                  <p className="px-3 py-8 text-center text-label text-text-muted">Nenhuma conversa.</p>
-                ) : filteredConversations.map((conversation) => (
-                  <ConversationRow
-                    key={conversation.id}
-                    conversation={conversation}
-                    active={conversation.id === activeConversationId}
-                    onClick={() => selectConversation(conversation.id)}
-                  />
-                ))}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="people" className="mt-3">
-              <div className="flex flex-col gap-1">
-                {filteredUsers.length === 0 ? (
-                  <p className="px-3 py-8 text-center text-label text-text-muted">Nenhuma pessoa.</p>
-                ) : filteredUsers.map((user) => (
-                  <UserRow key={user.id} user={user} onClick={() => selectUser(user.id)} onOpenProfile={onOpenProfile} />
-                ))}
-              </div>
-            </TabsContent>
-          </Tabs>
-        </div>
-      </aside>
+        )}
+      </AnimatedSidebar>
       <GroupCreateDialog
         open={groupOpen}
         onOpenChange={setGroupOpen}
-        onCreated={() => { setTab('conversations'); onSelect(); }}
+        onCreated={() => { setTab('conversations'); if (isMobile) setOpenMobile(false); }}
       />
     </>
   );

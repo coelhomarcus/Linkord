@@ -603,6 +603,44 @@ Frontend:
 - novos componentes em `web/src/features/conversations/*`
 - componentes beUI em `web/src/components/motion/*` e `web/src/lib/*`
 
+## Fase 9 - Inset Sidebar Layout
+
+Status: concluida em 2026-09-10. Pedido novo do usuario, fora das 9 fases
+originais — o layout de sidebar/paineis passou por uma segunda rodada.
+
+- Adotado o `AnimatedSidebar`/`AnimatedSidebarProvider`/`AnimatedSidebarInset`
+  do beUI (instalado desde a Fase 0, nunca usado ate agora) pra dar ao app
+  o padrao "Inset Sidebar Layout" (Vercel/Linear): sidebar e conteudo
+  principal viram cards com margem, cantos arredondados e borda propria,
+  flutuando sobre um canto mais escuro, em vez de colados na borda da
+  janela.
+- Sidebar principal agora retratil: expandida (~22rem, com busca, abas
+  Conversas/Pessoas e linhas completas) ou recolhida a um rail de icones
+  (~4.5rem, so avatares das conversas + criar grupo + ajustes, com tooltip
+  no hover). Estado persistido em localStorage
+  (`useSidebarCollapsedPreference.ts`) e com atalho de teclado Cmd/Ctrl+B
+  de graca (vem do proprio componente beUI).
+- Padronizacao pedida pelo usuario: o painel de detalhes do grupo
+  (`GroupDetailsDrawer.tsx` renomeado pra `GroupDetailsPanel.tsx`) deixou de
+  ser so um drawer sobrepondo a tela no desktop — agora e um terceiro
+  painel inset (mesma borda/cantos/superficie do resto), que abre ao lado
+  do chat como parte do layout, empurrando espaco em vez de flutuar por
+  cima com backdrop. No mobile continua como drawer (Drawer do beUI,
+  overlay com scrim) — e o padrao certo quando nao ha espaco pra 3 colunas.
+- O comportamento mobile do sidebar principal tambem mudou de "esconder via
+  classe CSS" pra usar o sheet mobile que o proprio `AnimatedSidebar` ja
+  resolve (slide-in cobrindo ~88vw com scrim, conteudo por baixo continua
+  renderizado) — mais polido, e removeu bastante prop-drilling
+  (`mobileVisible`, `onSelect`, `mobileListVisible`, `onBackMobile` sairam
+  de `ConversationSidebar`/`ConversationPanel`/`Stage`; cada componente le
+  `useAnimatedSidebar()` direto quando precisa saber/mudar o estado).
+- Testado com Playwright em desktop (1440px) e mobile (iPhone 13 via
+  emulacao): expandir/recolher, abrir grupo, abrir painel de detalhes,
+  hover no rail recolhido, sheet mobile, drawer de detalhes no mobile.
+  Contas de teste criadas e apagadas ao final, sem tocar nas contas reais.
+  Build, typecheck e as suites de teste (122 server / 106 web) passando
+  sem mudanca.
+
 ## Decisoes Tomadas (eram "Em Aberto")
 
 - Nome final das abas: "Conversas" e "Pessoas".
