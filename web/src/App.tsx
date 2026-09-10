@@ -125,7 +125,7 @@ function Shell() {
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenProfile={setProfileUserId}
         />
-        <AnimatedSidebarInset className="relative min-h-0 overflow-hidden border border-white/10 bg-[rgb(10_10_12)] md:my-2 md:mr-2">
+        <AnimatedSidebarInset className="relative min-h-0 overflow-hidden bg-[rgb(10_10_12)] md:my-2 md:mr-2 md:ml-2 md:rounded-2xl md:border md:border-white/10">
           {activeView === 'call' && activeCallConversationId && inCall ? (
             <Stage allIds={callIds} />
           ) : (

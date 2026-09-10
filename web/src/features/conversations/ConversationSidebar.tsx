@@ -178,11 +178,11 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile }: Conversat
   return (
     <>
       <AnimatedSidebar
-        variant="inset"
+        variant="sidebar"
         collapsible="icon"
         ariaLabel="Conversas"
         className="text-text-primary"
-        panelClassName="border border-white/10 bg-[rgb(14_14_16)]"
+        panelClassName="border-white/10 bg-[rgb(14_14_16)]"
       >
         {collapsed ? (
           <div className="flex h-full flex-col items-center gap-1.5 py-3">
