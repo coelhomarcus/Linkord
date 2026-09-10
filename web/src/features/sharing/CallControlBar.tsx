@@ -35,7 +35,7 @@ function ControlButton({ onClick, label, icon, iconColorClass }: {
 }
 
 export function CallControlBar() {
-  const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, toggleMicMuted, deafened, toggleDeafened, leaveVoiceChannel, sendReaction } = useRoom();
+  const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, toggleMicMuted, deafened, toggleDeafened, leaveGroupCall, sendReaction } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
   const cameraOn = state.me.cameraOn;
   const sharing = state.me.sharing;
@@ -116,7 +116,7 @@ export function CallControlBar() {
 
         <Tooltip>
           <TooltipTrigger
-            onClick={leaveVoiceChannel}
+            onClick={leaveGroupCall}
             aria-label="Sair da chamada"
             className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), 'h-9 w-9 rounded-full bg-red text-white hover:bg-red-hover md:h-11 md:w-11')}
           >

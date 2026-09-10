@@ -11,7 +11,7 @@ export interface Participant {
   profileLinks: string[];
   role: 'user' | 'admin';
   deafened: boolean;
-  voiceChannelId: string | null;
+  callConversationId: string | null;
   micActivated: boolean;
   micMuted: boolean;
   cameraOn: boolean;
@@ -31,7 +31,7 @@ export interface ChatReplyRef {
 
 export interface ChatMessage {
   msgId: number;
-  channelId: string;
+  conversationId: string;
   id: string | null;
   name: string;
   avatar: string;
@@ -60,8 +60,8 @@ export const MAX_PROFILE_LINK_LEN = 300;
 
 export interface SearchResult {
   msgId: number;
-  channelId: string;
-  channelName: string;
+  conversationId: string;
+  conversationName: string;
   id: string | null;
   name: string;
   avatar: string;
@@ -75,15 +75,16 @@ export interface StorageUsage {
   maxBytes: number;
 }
 
-export interface Channel {
+export interface Conversation {
   id: string;
-  name: string;
-  type: 'text' | 'voice';
-}
-export interface Category {
-  id: string;
-  name: string;
-  channels: Channel[];
+  type: 'direct' | 'group';
+  title: string;
+  avatar: string;
+  createdBy: string | null;
+  memberIds: string[];
+  lastMessageAt: number | null;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface PublicUser {
@@ -107,27 +108,25 @@ export type ClientMessage =
   | { t: 'camera'; on: boolean }
   | { t: 'screen-share'; on: boolean }
   | { t: 'speaking'; value: boolean }
-  | { t: 'channel-open'; channelId: string }
-  | { t: 'load-more-messages'; channelId: string; beforeMsgId: number }
-  | { t: 'load-messages-around'; channelId: string; msgId: number }
-  | { t: 'message-search'; query: string; channelId?: string }
-  | { t: 'chat'; channelId: string; text: string; replyTo?: number }
+  | { t: 'conversation-open'; conversationId: string }
+  | { t: 'direct-open'; userId: string }
+  | { t: 'group-create'; title: string; memberIds: string[] }
+  | { t: 'group-delete'; conversationId: string }
+  | { t: 'group-update'; conversationId: string; title: string }
+  | { t: 'group-members-add'; conversationId: string; memberIds: string[] }
+  | { t: 'group-members-remove'; conversationId: string; userId: string }
+  | { t: 'load-more-messages'; conversationId: string; beforeMsgId: number }
+  | { t: 'load-messages-around'; conversationId: string; msgId: number }
+  | { t: 'message-search'; query: string; conversationId?: string }
+  | { t: 'chat'; conversationId: string; text: string; replyTo?: number }
   | { t: 'chat-delete'; msgId: number }
   | { t: 'chat-edit'; msgId: number; text: string }
   | { t: 'chat-react'; msgId: number; emoji: ReactionEmoji }
-  | { t: 'category-create'; name: string }
-  | { t: 'category-delete'; categoryId: string }
-  | { t: 'category-rename'; categoryId: string; name: string }
-  | { t: 'channel-create'; categoryId: string; name: string; type?: 'text' | 'voice' }
-  | { t: 'channel-delete'; channelId: string }
-  | { t: 'channel-rename'; channelId: string; name: string }
   | { t: 'user-delete'; userId: string }
-  | { t: 'categories-reorder'; orderedIds: string[] }
-  | { t: 'channels-reorder'; categoryId: string; orderedIds: string[] }
   | { t: 'call-event'; kind: 'joined' | 'screenshare' }
-  | { t: 'voice-join'; channelId: string }
-  | { t: 'voice-leave' }
-  | { t: 'voice-kick'; participantId: string }
+  | { t: 'call-join'; conversationId: string }
+  | { t: 'call-leave' }
+  | { t: 'call-kick'; participantId: string }
   | { t: 'leave' }
   | { t: 'ping' };
 
@@ -137,26 +136,27 @@ export type ServerMessage =
       userId: string; name: string; displayName: string; avatar: string; avatarColor: string;
       banner: string; bio: string; profileLinks: string[]; role: 'user' | 'admin';
       maxParticipants: number; participants: Participant[];
-      categories: Category[]; users: PublicUser[]; onlineUserIds: string[];
+      conversations: Conversation[]; users: PublicUser[]; onlineUserIds: string[];
       storageUsage: StorageUsage;
       livekitUrl: string;
     }
-  | { t: 'voice-token'; channelId: string; livekitUrl: string; livekitToken: string }
+  | { t: 'call-token'; conversationId: string; livekitUrl: string; livekitToken: string }
+  | { t: 'conversation-list'; conversations: Conversation[] }
+  | { t: 'conversation-opened'; conversationId: string }
+  | { t: 'conversation-history'; conversationId: string; messages: ChatMessage[]; hasMore: boolean }
+  | { t: 'conversation-history-more'; conversationId: string; messages: ChatMessage[]; hasMore: boolean }
+  | { t: 'conversation-history-around'; conversationId: string; msgId: number; messages: ChatMessage[]; hasMoreBefore: boolean; hasMoreAfter: boolean }
+  | { t: 'conversation-deleted'; conversationId: string }
   | { t: 'participant-joined'; participant: Participant }
   | { t: 'participant-updated'; participant: Participant }
   | { t: 'participant-left'; id: string }
   | { t: 'reaction'; id: string; emoji: ReactionEmoji }
-  | { t: 'channel-history'; channelId: string; messages: ChatMessage[]; hasMore: boolean }
-  | { t: 'channel-history-more'; channelId: string; messages: ChatMessage[]; hasMore: boolean }
-  | { t: 'channel-history-around'; channelId: string; msgId: number; messages: ChatMessage[]; hasMoreBefore: boolean; hasMoreAfter: boolean }
-  | { t: 'message-search-results'; query: string; channelId?: string; results: SearchResult[] }
+  | { t: 'message-search-results'; query: string; conversationId?: string; results: SearchResult[] }
   | { t: 'chat'; message: ChatMessage }
-  | { t: 'chat-deleted'; channelId: string; msgId: number }
+  | { t: 'chat-deleted'; conversationId: string; msgId: number }
   | { t: 'chat-edited'; message: ChatMessage }
-  | { t: 'chat-reaction-updated'; channelId: string; msgId: number; emoji: ReactionEmoji; userIds: string[] }
-  | { t: 'chat-attachment-added'; channelId: string; msgId: number; attachment: ChatAttachment }
-  | { t: 'channels-tree'; categories: Category[] }
-  | { t: 'channel-deleted'; channelId: string }
+  | { t: 'chat-reaction-updated'; conversationId: string; msgId: number; emoji: ReactionEmoji; userIds: string[] }
+  | { t: 'chat-attachment-added'; conversationId: string; msgId: number; attachment: ChatAttachment }
   | { t: 'user-online'; userId: string }
   | { t: 'user-offline'; userId: string }
   | { t: 'user-registered'; user: PublicUser }

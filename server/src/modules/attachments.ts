@@ -11,7 +11,7 @@ import { broadcast } from '../realtime/participants.js';
 import { sendJson, sendError, jsonBody } from '../http/respond.js';
 import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from './auth/session.js';
-import { channelExists } from './channels.js';
+import { broadcastToConversationMembers, conversationExistsForUser, touchConversation } from './conversations.js';
 
 // Chat attachments: up to MAX_ATTACHMENTS_PER_MESSAGE per message, stored on
 // disk keyed by a uuid (no extension — real mime type lives in the
@@ -53,7 +53,7 @@ export async function ensureUploadDir(): Promise<void> {
 interface UploadManifest {
   uploadId: string;
   userId: string;
-  channelId: string;
+  conversationId: string;
   fileName: string;
   mimeType: string;
   totalSize: number;
@@ -204,15 +204,16 @@ export async function deleteForMessage(messageId: number): Promise<void> {
   await Promise.all(rows.map((row) => fs.unlink(filePathFor(row.id)).catch((err: NodeJS.ErrnoException) => { if (err.code !== 'ENOENT') throw err; })));
 }
 
-/** Same idea in bulk — deleting a channel CASCADEs messages/attachments in
- * Postgres without going through deleteForMessage, so this exists purely to
- * avoid orphaned files. Called by modules/channels.ts before the delete. */
-export async function deleteForChannel(channelId: string): Promise<void> {
+/** Same idea in bulk — deleting a conversation CASCADEs messages/attachments
+ * in Postgres without going through deleteForMessage, so this exists purely
+ * to avoid orphaned files. Called by modules/conversations.ts before the
+ * delete. */
+export async function deleteForConversation(conversationId: string): Promise<void> {
   const rows = await db
     .select({ id: attachmentsTable.id })
     .from(attachmentsTable)
     .innerJoin(messages, eq(attachmentsTable.messageId, messages.id))
-    .where(eq(messages.channelId, channelId));
+    .where(eq(messages.conversationId, conversationId));
   await Promise.all(rows.map((row) => fs.unlink(filePathFor(row.id)).catch((err: NodeJS.ErrnoException) => { if (err.code !== 'ENOENT') throw err; })));
 }
 
@@ -282,16 +283,18 @@ function withInitLock<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /** Step 1/3 — declares the file before any bytes are sent, so an invalid
- * channel/quota/size fails fast. Server decides chunkSize; the client never
- * hardcodes it. */
+ * conversation/quota/size fails fast. Server decides chunkSize; the client
+ * never hardcodes it. */
 async function handleAttachmentInit(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
   if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
 
   const body = jsonBody(request.body);
-  const channelId = String(body.channelId || '');
-  if (!channelId || !(await channelExists(channelId))) return sendError(reply, 404, 'channel_not_found', 'Canal nao encontrado.');
+  const conversationId = String(body.conversationId || '');
+  if (!conversationId || !(await conversationExistsForUser(conversationId, sess.userId))) {
+    return sendError(reply, 404, 'conversation_not_found', 'Conversa nao encontrada.');
+  }
 
   const fileName = sanitizeFileName(body.fileName);
   const mimeType = String(body.mimeType || 'application/octet-stream').split(';')[0]!.trim() || 'application/octet-stream';
@@ -322,7 +325,7 @@ async function handleAttachmentInit(request: FastifyRequest, reply: FastifyReply
   try {
     await fs.mkdir(tmpDirFor(uploadId), { recursive: true });
     await fs.writeFile(manifestPathFor(uploadId), JSON.stringify({
-      uploadId, userId: sess.userId, channelId, fileName, mimeType, totalSize, caption,
+      uploadId, userId: sess.userId, conversationId, fileName, mimeType, totalSize, caption,
       chunkSize, totalChunks, createdAt: new Date().toISOString(),
     } satisfies UploadManifest));
   } catch (err) {
@@ -384,7 +387,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
     const [existing] = await db.select().from(messages).where(eq(messages.id, targetMsgId)).limit(1);
     if (!existing) return sendError(reply, 404, 'target_message_not_found', 'Mensagem de destino nao encontrada.');
     if (existing.authorId !== sess.userId) return sendError(reply, 403, 'not_your_message', 'Voce so pode anexar arquivos as suas proprias mensagens.');
-    if (existing.channelId !== manifest.channelId) return sendError(reply, 400, 'channel_mismatch', 'Canal nao bate com o upload.');
+    if (existing.conversationId !== manifest.conversationId) return sendError(reply, 400, 'conversation_mismatch', 'Conversa nao bate com o upload.');
     if (Date.now() - existing.createdAt.getTime() > config.ATTACH_TO_MESSAGE_WINDOW_MS) {
       return sendError(reply, 400, 'target_message_too_old', 'Mensagem de destino e antiga demais pra receber mais anexos.');
     }
@@ -436,7 +439,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
       } else {
         const inserted = await db.transaction(async (tx) => {
           const [messageRow] = await tx.insert(messages).values({
-            channelId: manifest.channelId, authorId: sess.userId, text: manifest.caption,
+            conversationId: manifest.conversationId, authorId: sess.userId, text: manifest.caption,
           }).returning();
           const [attachmentRow] = await tx.insert(attachmentsTable).values({
             id: uploadId, messageId: messageRow!.id, fileName: manifest.fileName, mimeType: manifest.mimeType, size: manifest.totalSize,
@@ -467,7 +470,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
     if (message) {
       const chatMessage = {
         msgId: message.id,
-        channelId: message.channelId,
+        conversationId: message.conversationId,
         id: message.authorId,
         name: sess.displayName,
         avatar: sess.avatar,
@@ -475,11 +478,18 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
         ts: message.createdAt.getTime(),
         attachments: [attachmentPayload],
       };
-      broadcast({ t: 'chat', message: chatMessage });
+      await touchConversation(message.conversationId, message.createdAt);
+      await broadcastToConversationMembers(message.conversationId, { t: 'chat', message: chatMessage });
       await broadcastUsage();
       sendJson(reply, 201, { message: chatMessage });
     } else {
-      broadcast({ t: 'chat-attachment-added', channelId: manifest.channelId, msgId: targetMsgId!, attachment: attachmentPayload });
+      await touchConversation(manifest.conversationId);
+      await broadcastToConversationMembers(manifest.conversationId, {
+        t: 'chat-attachment-added',
+        conversationId: manifest.conversationId,
+        msgId: targetMsgId!,
+        attachment: attachmentPayload,
+      });
       await broadcastUsage();
       sendJson(reply, 201, { attachment: attachmentPayload });
     }

@@ -1,8 +1,9 @@
 import { eq, and, lt, desc, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { config } from '../config/env.js';
 import { db } from '../db/client.js';
-import { messages, channels, users, attachments as attachmentsTable } from '../db/schema.js';
+import { messages, conversations, conversationMembers, users, attachments as attachmentsTable } from '../db/schema.js';
 import { sendJson, sendError } from '../http/respond.js';
 import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from './auth/session.js';
@@ -10,22 +11,27 @@ import { resolveDisplayName } from './auth/users.js';
 import { firstEmbed, type DetectedEmbed } from './link-preview/embeds.js';
 
 // GET /api/media — Settings "Media" tab: aggregates every uploaded
-// attachment and every embeddable link across ALL channels, newest first.
-// Two lists (?kind=uploads or embeds), each cursor-paginated
-// (?before=<msgId>, exclusive) instead of offset — a cursor can't skip or
-// repeat an item if a new message arrives between two "load more" clicks.
+// attachment and every embeddable link across every conversation the
+// requesting user is a member of, newest first. Two lists (?kind=uploads or
+// embeds), each cursor-paginated (?before=<msgId>, exclusive) instead of
+// offset — a cursor can't skip or repeat an item if a new message arrives
+// between two "load more" clicks.
 //
 // uploads is one exact query (the attachments innerJoin already filters to
 // message-with-attachment). embeds must scan message TEXT in JS (mirrors
 // web/src/shared/lib/chatEmbeds.ts) since not every link becomes an embed —
 // the SQL filter (~* 'https?://') only narrows candidates; fetchEmbedsPage
 // scans in batches until it collects `limit` real embeds or the table runs out.
+//
+// Both queries innerJoin conversationMembers on the REQUESTING user — this
+// is the privacy boundary: without it, someone's Media tab would surface
+// every other user's DMs/groups too, not just their own.
 
 const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 60;
 const EMBED_BATCH_SIZE = 40;
 // cap on rows scanned per call, even without reaching `limit` embeds —
-// avoids an expensive loop if a channel has hundreds of non-embed links.
+// avoids an expensive loop if a conversation has hundreds of non-embed links.
 // "Load more" resumes exactly from the cursor (see nextBefore).
 const EMBED_SCAN_CEILING = 400;
 // messages.id is a 4-byte `serial` — using Number.MAX_SAFE_INTEGER as the
@@ -34,10 +40,16 @@ const EMBED_SCAN_CEILING = 400;
 const PG_INT4_MAX = 2147483647;
 const DELETED_AUTHOR_NAME = 'Usuario apagado';
 
+const otherMembers = alias(conversationMembers, 'other_members');
+const otherUsers = alias(users, 'other_users');
+
 interface MediaBaseRow {
   msgId: number;
-  channelId: string;
-  channelName: string;
+  conversationId: string;
+  conversationType: string;
+  conversationTitle: string;
+  otherDisplayName: string | null;
+  otherUsername: string | null;
   authorId: string | null;
   authorUsername: string | null;
   authorDisplayName: string | null;
@@ -48,8 +60,8 @@ interface MediaBaseRow {
 
 interface MediaBase {
   msgId: number;
-  channelId: string;
-  channelName: string;
+  conversationId: string;
+  conversationName: string;
   authorId: string | null;
   authorName: string;
   authorAvatar: string;
@@ -65,11 +77,16 @@ interface EmbedItem extends MediaBase {
   embed: DetectedEmbed;
 }
 
+function conversationNameFor(row: MediaBaseRow): string {
+  if (row.conversationType === 'group') return row.conversationTitle || 'Grupo';
+  return row.otherUsername ? resolveDisplayName(row.otherDisplayName ?? '', row.otherUsername) : 'Conversa direta';
+}
+
 function toMediaBase(row: MediaBaseRow): MediaBase {
   return {
     msgId: row.msgId,
-    channelId: row.channelId,
-    channelName: row.channelName,
+    conversationId: row.conversationId,
+    conversationName: conversationNameFor(row),
     authorId: row.authorId,
     authorName: row.authorUsername
       ? resolveDisplayName(row.authorDisplayName ?? '', row.authorUsername)
@@ -80,12 +97,15 @@ function toMediaBase(row: MediaBaseRow): MediaBase {
   };
 }
 
-async function fetchUploadsPage(before: number | null, limit: number): Promise<{ items: UploadItem[]; nextBefore: number | null }> {
+async function fetchUploadsPage(viewerId: string, before: number | null, limit: number): Promise<{ items: UploadItem[]; nextBefore: number | null }> {
   const rows = await db
     .select({
       msgId: messages.id,
-      channelId: messages.channelId,
-      channelName: channels.name,
+      conversationId: messages.conversationId,
+      conversationType: conversations.type,
+      conversationTitle: conversations.title,
+      otherDisplayName: otherUsers.displayName,
+      otherUsername: otherUsers.username,
       authorId: messages.authorId,
       authorUsername: users.username,
       authorDisplayName: users.displayName,
@@ -102,7 +122,14 @@ async function fetchUploadsPage(before: number | null, limit: number): Promise<{
     // filters to message-with-attachment — avatars (message_id NULL) never
     // match, no extra filter needed.
     .innerJoin(attachmentsTable, eq(attachmentsTable.messageId, messages.id))
-    .innerJoin(channels, eq(channels.id, messages.channelId))
+    .innerJoin(conversationMembers, and(eq(conversationMembers.conversationId, messages.conversationId), eq(conversationMembers.userId, viewerId)))
+    .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+    .leftJoin(otherMembers, and(
+      eq(otherMembers.conversationId, messages.conversationId),
+      eq(conversations.type, 'direct'),
+      sql`${otherMembers.userId} <> ${viewerId}`,
+    ))
+    .leftJoin(otherUsers, eq(otherUsers.id, otherMembers.userId))
     .leftJoin(users, eq(users.id, messages.authorId))
     .where(lt(messages.id, before ?? PG_INT4_MAX))
     .orderBy(desc(messages.id))
@@ -115,7 +142,7 @@ async function fetchUploadsPage(before: number | null, limit: number): Promise<{
   return { items, nextBefore: rows.length === limit ? rows[rows.length - 1]!.msgId : null };
 }
 
-async function fetchEmbedsPage(before: number | null, limit: number): Promise<{ items: EmbedItem[]; nextBefore: number | null }> {
+async function fetchEmbedsPage(viewerId: string, before: number | null, limit: number): Promise<{ items: EmbedItem[]; nextBefore: number | null }> {
   const items: EmbedItem[] = [];
   let cursor = before ?? null;
   let exhausted = false;
@@ -125,8 +152,11 @@ async function fetchEmbedsPage(before: number | null, limit: number): Promise<{ 
     const batch = await db
       .select({
         msgId: messages.id,
-        channelId: messages.channelId,
-        channelName: channels.name,
+        conversationId: messages.conversationId,
+        conversationType: conversations.type,
+        conversationTitle: conversations.title,
+        otherDisplayName: otherUsers.displayName,
+        otherUsername: otherUsers.username,
         authorId: messages.authorId,
         authorUsername: users.username,
         authorDisplayName: users.displayName,
@@ -136,7 +166,14 @@ async function fetchEmbedsPage(before: number | null, limit: number): Promise<{ 
         text: messages.text,
       })
       .from(messages)
-      .innerJoin(channels, eq(channels.id, messages.channelId))
+      .innerJoin(conversationMembers, and(eq(conversationMembers.conversationId, messages.conversationId), eq(conversationMembers.userId, viewerId)))
+      .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+      .leftJoin(otherMembers, and(
+        eq(otherMembers.conversationId, messages.conversationId),
+        eq(conversations.type, 'direct'),
+        sql`${otherMembers.userId} <> ${viewerId}`,
+      ))
+      .leftJoin(otherUsers, eq(otherUsers.id, otherMembers.userId))
       .leftJoin(users, eq(users.id, messages.authorId))
       .where(and(lt(messages.id, cursor ?? PG_INT4_MAX), sql`${messages.text} ~* ${'https?://'}`))
       .orderBy(desc(messages.id))
@@ -181,7 +218,7 @@ async function handleMedia(request: FastifyRequest, reply: FastifyReply): Promis
   const limitRaw = Number(query.limit);
   const limit = Math.min(Math.max(Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : DEFAULT_LIMIT, 1), MAX_LIMIT);
 
-  const page = kind === 'embeds' ? await fetchEmbedsPage(before, limit) : await fetchUploadsPage(before, limit);
+  const page = kind === 'embeds' ? await fetchEmbedsPage(sess.userId, before, limit) : await fetchUploadsPage(sess.userId, before, limit);
   sendJson(reply, 200, page);
 }
 

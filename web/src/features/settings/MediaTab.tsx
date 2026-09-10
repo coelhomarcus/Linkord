@@ -26,7 +26,7 @@ function MediaRow({ item }: { item: MediaItem }) {
       <div className="flex min-w-0 items-center gap-2 text-label text-text-muted">
         <Avatar id={item.authorId ?? item.authorName} name={authorName} avatar={authorAvatar} avatarColor={authorAvatarColor} size={20} />
         <span className="flex-none font-medium text-text-secondary">{authorName}</span>
-        <span className="min-w-0 truncate">em #{item.channelName}</span>
+        <span className="min-w-0 truncate">em {item.conversationName}</span>
         <span className="ml-auto flex-none">{formatWhen(item.ts)}</span>
       </div>
       {item.attachment && <ChatAttachment attachment={item.attachment} />}

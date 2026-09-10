@@ -39,18 +39,15 @@ export interface Participant {
   profileLinks: string[];
   role: Role;
   deafened: boolean;
-  // which voice channel they're in now, or null — set explicitly by
-  // 'voice-join'/'voice-leave' (see realtime/socket.ts), never just from
-  // having the socket connected. Needed server-side (not just client-local
-  // like `deafened`) because the sidebar shows who's in EACH voice channel,
-  // not just the one I'm connected to (LiveKit itself only gives me
-  // participants in MY room).
-  voiceChannelId: string | null;
+  // Which group conversation call they're in now, or null — set explicitly by
+  // call join/leave (see realtime/socket.ts), never just from having the
+  // socket connected.
+  callConversationId: string | null;
   // self-reported by the client (see realtime/participants.ts handlers for
   // 'mic-state'/'camera'/'screen-share'/'speaking') — the server never
   // verifies these against LiveKit itself, same trust model as `deafened`.
-  // Reset to their defaults on every voice-join/leave (setVoiceChannelId),
-  // so a stale value never survives a channel switch.
+  // Reset to their defaults on every call join/leave (setCallConversationId),
+  // so a stale value never survives a call switch.
   micActivated: boolean;
   micMuted: boolean;
   cameraOn: boolean;
@@ -72,7 +69,7 @@ export interface PublicParticipant {
   profileLinks: string[];
   role: Role;
   deafened: boolean;
-  voiceChannelId: string | null;
+  callConversationId: string | null;
   micActivated: boolean;
   micMuted: boolean;
   cameraOn: boolean;

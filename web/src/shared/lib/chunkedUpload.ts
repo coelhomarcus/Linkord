@@ -8,7 +8,7 @@ interface InitResponse {
 }
 
 export interface ChunkedUploadOptions {
-  channelId: string;
+  conversationId: string;
   file: File;
   caption: string;
   targetMsgId?: number;
@@ -43,12 +43,13 @@ async function runWithConcurrency(count: number, limit: number, task: (i: number
 const MAX_CHUNK_RETRIES = 3;
 const MAX_CONCURRENT_CHUNKS = 3;
 
-export async function uploadFileInChunks({ channelId, file, caption, targetMsgId, onProgress }: ChunkedUploadOptions): Promise<number> {
+export async function uploadFileInChunks({ conversationId, file, caption, targetMsgId, onProgress }: ChunkedUploadOptions): Promise<number> {
+  if (!conversationId) throw new ApiError(400, 'missing_conversation', 'Conversa nao informada.');
   const initRes = await fetch('/api/attachments/init', {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ channelId, fileName: file.name, mimeType: file.type || 'application/octet-stream', totalSize: file.size, caption }),
+    body: JSON.stringify({ conversationId, fileName: file.name, mimeType: file.type || 'application/octet-stream', totalSize: file.size, caption }),
   });
   if (!initRes.ok) throw await toApiError(initRes);
   const { uploadId, chunkSize, totalChunks } = await initRes.json() as InitResponse;

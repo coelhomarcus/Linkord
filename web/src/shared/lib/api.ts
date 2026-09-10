@@ -63,8 +63,8 @@ export type MediaKind = 'uploads' | 'embeds';
 
 export interface MediaItem {
   msgId: number;
-  channelId: string;
-  channelName: string;
+  conversationId: string;
+  conversationName: string;
   authorId: string | null;
   authorName: string;
   authorAvatar: string;

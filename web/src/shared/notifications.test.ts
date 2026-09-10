@@ -26,8 +26,8 @@ class FakeNotification {
 
 function baseEvent(overrides: Partial<IncomingChatEvent> = {}): IncomingChatEvent {
   return {
-    channelId: 'ch-1',
-    channelName: 'geral',
+    conversationId: 'ch-1',
+    conversationName: 'geral',
     senderId: 'user-1',
     senderName: 'Fulano',
     text: 'oi',
@@ -92,9 +92,9 @@ describe('notifyIncomingChatMessage', () => {
     expect(created[0]!.options?.body).toBe('2 pessoas enviaram mensagens');
   });
 
-  it('canais diferentes nao se misturam (buffer por canal)', () => {
-    notifyIncomingChatMessage(baseEvent({ channelId: 'ch-1' }));
-    notifyIncomingChatMessage(baseEvent({ channelId: 'ch-2' }));
+  it('conversas diferentes nao se misturam (buffer por conversa)', () => {
+    notifyIncomingChatMessage(baseEvent({ conversationId: 'ch-1' }));
+    notifyIncomingChatMessage(baseEvent({ conversationId: 'ch-2' }));
     vi.runAllTimers();
     expect(created).toHaveLength(2);
     expect(created.map((n) => n.options?.tag).sort()).toEqual(['chat-ch-1', 'chat-ch-2']);
@@ -111,6 +111,6 @@ describe('notifyIncomingChatMessage', () => {
   it('mensagem com mencao usa titulo diferenciado', () => {
     notifyIncomingChatMessage(baseEvent({ mentioned: true }));
     vi.runAllTimers();
-    expect(created[0]!.title).toBe('Voce foi mencionado em #geral');
+    expect(created[0]!.title).toBe('Voce foi mencionado em geral');
   });
 });

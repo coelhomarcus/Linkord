@@ -20,13 +20,13 @@ export function setNotificationsModuleEnabled(value: boolean): void {
   enabled = value;
 }
 
-let onClick: ((channelId: string) => void) | null = null;
-export function setNotificationClickHandler(fn: ((channelId: string) => void) | null): void {
+let onClick: ((conversationId: string) => void) | null = null;
+export function setNotificationClickHandler(fn: ((conversationId: string) => void) | null): void {
   onClick = fn;
 }
 
 interface Buffered {
-  channelName: string;
+  conversationName: string;
   senders: Map<string, { name: string; count: number }>;
   lastSenderName: string;
   lastText: string;
@@ -43,8 +43,8 @@ const MAX_WAIT_MS = 6000;
 const BODY_TEXT_LIMIT = 120;
 
 export interface IncomingChatEvent {
-  channelId: string;
-  channelName: string;
+  conversationId: string;
+  conversationName: string;
   senderId: string | null;
   senderName: string;
   text: string;
@@ -56,10 +56,11 @@ export function notifyIncomingChatMessage(evt: IncomingChatEvent): void {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
 
   const key = evt.senderId ?? '?';
-  let buf = buffers.get(evt.channelId);
+  const conversationId = evt.conversationId;
+  let buf = buffers.get(conversationId);
   if (!buf) {
     buf = {
-      channelName: evt.channelName,
+      conversationName: evt.conversationName,
       senders: new Map(),
       lastSenderName: evt.senderName,
       lastText: evt.text,
@@ -68,7 +69,7 @@ export function notifyIncomingChatMessage(evt: IncomingChatEvent): void {
       firstAt: Date.now(),
       timer: undefined as unknown as ReturnType<typeof setTimeout>,
     };
-    buffers.set(evt.channelId, buf);
+    buffers.set(conversationId, buf);
   }
   buf.count++;
   buf.lastSenderName = evt.senderName;
@@ -81,15 +82,15 @@ export function notifyIncomingChatMessage(evt: IncomingChatEvent): void {
   clearTimeout(buf.timer);
   const elapsed = Date.now() - buf.firstAt;
   const delay = Math.min(QUIET_MS, Math.max(0, MAX_WAIT_MS - elapsed));
-  buf.timer = setTimeout(() => flush(evt.channelId), delay);
+  buf.timer = setTimeout(() => flush(conversationId), delay);
 }
 
-function flush(channelId: string): void {
-  const buf = buffers.get(channelId);
+function flush(conversationId: string): void {
+  const buf = buffers.get(conversationId);
   if (!buf) return;
-  buffers.delete(channelId);
+  buffers.delete(conversationId);
 
-  const title = buf.mentioned ? `Voce foi mencionado em #${buf.channelName}` : `#${buf.channelName}`;
+  const title = buf.mentioned ? `Voce foi mencionado em ${buf.conversationName}` : buf.conversationName;
   let body: string;
   if (buf.count === 1) {
     body = `${buf.lastSenderName}: ${buf.lastText.slice(0, BODY_TEXT_LIMIT)}`;
@@ -103,11 +104,11 @@ function flush(channelId: string): void {
     const notif = new Notification(title, {
       body,
       icon: '/icon-192.png',
-      tag: `chat-${channelId}`,
+      tag: `chat-${conversationId}`,
     });
     notif.onclick = () => {
       window.focus();
-      onClick?.(channelId);
+      onClick?.(conversationId);
       notif.close();
     };
   } catch {

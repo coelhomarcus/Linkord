@@ -3,35 +3,40 @@
 @import "shadcn/tailwind.css";
 
 @theme {
-  --color-surface-000: oklch(12.00% 0.0015 279.30);
-  --color-surface-100: oklch(21.03% 0.0030 279.30);
-  --color-surface-200: oklch(25.70% 0.0023 279.30);
-  --color-surface-300: oklch(27.21% 0.0023 279.30);
-  --color-surface-400: oklch(27.40% 0.0015 279.30);
-  --color-surface-500: oklch(39.64% 0.0015 279.30);
+  --color-surface-000: oklch(7.20% 0.0040 275.00);
+  --color-surface-100: oklch(10.80% 0.0040 275.00);
+  --color-surface-200: oklch(14.80% 0.0040 275.00);
+  --color-surface-300: oklch(18.70% 0.0040 275.00);
+  --color-surface-400: oklch(23.50% 0.0040 275.00);
+  --color-surface-500: oklch(30.00% 0.0040 275.00);
 
-  --color-bg-sidebar: var(--color-surface-000);
-  --color-bg-primary: var(--color-surface-100);
+  --color-surface-sidebar: var(--color-surface-100);
+  --color-surface-main: var(--color-surface-000);
+  --color-surface-selected: var(--color-surface-400);
+
+  --color-bg-sidebar: var(--color-surface-sidebar);
+  --color-bg-primary: var(--color-surface-main);
   --color-bg-secondary: var(--color-surface-200);
-  --color-bg-tertiary: var(--color-surface-200);
-  --color-bg-panel: var(--color-surface-200);
-  --color-bg-textarea: var(--color-surface-000);
+  --color-bg-tertiary: var(--color-surface-300);
+  --color-bg-panel: var(--color-surface-main);
+  --color-bg-textarea: var(--color-surface-200);
   --color-bg-floating: var(--color-surface-300);
-  --color-bg-modal: var(--color-surface-300);
+  --color-bg-modal: var(--color-surface-200);
   --color-bg-hover: var(--color-surface-400);
-  --color-bg-selected: var(--color-surface-500);
-  --color-bg-channel-active: var(--color-surface-500);
+  --color-bg-selected: var(--color-surface-selected);
+  --color-bg-channel-active: var(--color-surface-selected);
   --color-bg-call: #000000;
 
   --color-text-primary: oklch(99.11% 0.0015 279.30);
   --color-text-secondary: oklch(84.80% 0.0023 279.30);
   --color-text-muted: oklch(70.50% 0.0030 279.30);
 
-  --color-border-subtle: oklch(25.00% 0.0015 279.30);
-  --color-border-strong: oklch(28.00% 0.0015 279.30);
-  --color-border-accent: oklch(52.82% 0.2628 279.30);
+  --color-border-subtle: oklch(22.00% 0.0040 275.00);
+  --color-border-strong: oklch(28.00% 0.0040 275.00);
+  --color-accent-primary: oklch(52.82% 0.2628 279.30);
+  --color-border-accent: var(--color-accent-primary);
 
-  --color-blurple: oklch(52.82% 0.2628 279.30);
+  --color-blurple: var(--color-accent-primary);
   --color-blurple-hover: oklch(46.00% 0.2628 279.30);
   --color-green: oklch(73.29% 0.1941 153.87);
   --color-red: oklch(59.40% 0.1973 27.69);
@@ -62,8 +67,8 @@
   --radius-md: 8px;
   --radius-xl: 16px;
 
-  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.3);
-  --shadow-popover: 0 8px 24px rgb(0 0 0 / 0.45);
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow-popover: 0 18px 60px rgb(0 0 0 / 0.5);
 
   --default-transition-duration: 150ms;
 
@@ -175,7 +180,7 @@ button:not(:disabled) {
   --card-foreground: var(--color-text-primary);
   --popover: var(--color-bg-floating);
   --popover-foreground: var(--color-text-primary);
-  --primary: var(--color-blurple);
+  --primary: var(--color-accent-primary);
   --primary-foreground: #ffffff;
   --secondary: var(--color-bg-selected);
   --secondary-foreground: var(--color-text-primary);

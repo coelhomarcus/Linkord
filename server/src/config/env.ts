@@ -83,8 +83,8 @@ const MAX_PASSWORD_LEN = 200; // hygiene cap — hashing a 1MB password would be
 const LIVEKIT_URL = process.env.LIVEKIT_URL || '';
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || '';
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || '';
-// prefix for each voice channel's LiveKit room name (see
-// realtime/livekit.ts) — one room per channel, not a single shared one.
+// prefix for each group call's LiveKit room name (see
+// realtime/livekit.ts) — one room per group, not a single shared one.
 const LIVEKIT_ROOM_NAME = process.env.LIVEKIT_ROOM_NAME || 'linkord-room';
 
 // optional — notifies a Discord channel when someone joins the call or

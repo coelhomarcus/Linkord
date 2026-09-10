@@ -26,7 +26,7 @@ import { uploadWithProgress } from '../shared/lib/uploadWithProgress';
 import { uploadFileInChunks } from '../shared/lib/chunkedUpload';
 import { DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../shared/Avatar';
 import { sanitizeDisplayName } from '../shared/lib/displayName';
-import type { Category, ChatMessage, ClientMessage, Participant, PublicUser, ReactionEmoji, SearchResult, ServerMessage, StorageUsage } from '../types/protocol';
+import type { ChatMessage, ClientMessage, Conversation, Participant, PublicUser, ReactionEmoji, SearchResult, ServerMessage, StorageUsage } from '../types/protocol';
 import { MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '../types/protocol';
 
 const REACTION_DURATION_MS = 3000;
@@ -60,6 +60,14 @@ function mergeUserFromParticipant(prev: Map<string, PublicUser>, participant: Pa
     profileLinks: participant.profileLinks, role: participant.role,
   });
   return next;
+}
+
+function displayNameForConversation(conversation: Conversation | undefined, meUserId: string | null, users: Map<string, PublicUser>): string {
+  if (!conversation) return 'Conversa';
+  if (conversation.type === 'group') return conversation.title || 'Grupo';
+  const otherId = conversation.memberIds.find((id) => id !== meUserId) ?? conversation.memberIds[0];
+  const other = otherId ? users.get(otherId) : undefined;
+  return other?.displayName || other?.username || 'Conversa direta';
 }
 
 function sanitizeBanner(value: unknown): string {
@@ -149,89 +157,95 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     if (socketRef.current?.connected) socketRef.current.emit(msg.t, msg);
   }, []);
 
-  const [categories, setCategories] = useState<Category[]>([]);
-  const categoriesRef = useRef<Category[]>([]);
-  const [activeChannelId, setActiveChannelIdState] = useState<string | null>(null);
-  const activeChannelIdRef = useRef<string | null>(null);
-  const [activeVoiceChannelId, setActiveVoiceChannelIdState] = useState<string | null>(null);
-  const activeVoiceChannelIdRef = useRef<string | null>(null);
-  const pendingVoiceChannelIdRef = useRef<string | null>(null);
-  const setActiveVoiceChannelId = useCallback((id: string | null) => {
-    activeVoiceChannelIdRef.current = id;
-    setActiveVoiceChannelIdState(id);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const conversationsRef = useRef<Conversation[]>([]);
+  const [activeConversationId, setActiveConversationIdState] = useState<string | null>(null);
+  const activeConversationIdRef = useRef<string | null>(null);
+  const [activeCallConversationId, setActiveCallConversationIdState] = useState<string | null>(null);
+  const activeCallConversationIdRef = useRef<string | null>(null);
+  const pendingCallConversationIdRef = useRef<string | null>(null);
+  const setActiveCallConversationId = useCallback((id: string | null) => {
+    activeCallConversationIdRef.current = id;
+    setActiveCallConversationIdState(id);
   }, []);
   const activeViewRef = useRef<'chat' | 'call'>('chat');
   const notifyActiveView = useCallback((view: 'chat' | 'call') => { activeViewRef.current = view; }, []);
   const requestChatViewRef = useRef<(() => void) | null>(null);
   const registerRequestChatView = useCallback((fn: () => void) => { requestChatViewRef.current = fn; }, []);
-  const [messagesByChannel, setMessagesByChannel] = useState<Map<string, ChatMessage[]>>(new Map());
+  const [messagesByConversation, setMessagesByConversation] = useState<Map<string, ChatMessage[]>>(new Map());
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
-  const messagesByChannelRef = useRef<Map<string, ChatMessage[]>>(new Map());
-  useEffect(() => { messagesByChannelRef.current = messagesByChannel; }, [messagesByChannel]);
-  const [hasMoreByChannel, setHasMoreByChannel] = useState<Map<string, boolean>>(new Map());
-  const hasMoreByChannelRef = useRef<Map<string, boolean>>(new Map());
-  useEffect(() => { hasMoreByChannelRef.current = hasMoreByChannel; }, [hasMoreByChannel]);
-  const [hasMoreAfterByChannel, setHasMoreAfterByChannel] = useState<Map<string, boolean>>(new Map());
-  const [loadingOlderByChannel, setLoadingOlderByChannel] = useState<Set<string>>(new Set());
+  const messagesByConversationRef = useRef<Map<string, ChatMessage[]>>(new Map());
+  useEffect(() => { messagesByConversationRef.current = messagesByConversation; }, [messagesByConversation]);
+  const [hasMoreByConversation, setHasMoreByConversation] = useState<Map<string, boolean>>(new Map());
+  const hasMoreByConversationRef = useRef<Map<string, boolean>>(new Map());
+  useEffect(() => { hasMoreByConversationRef.current = hasMoreByConversation; }, [hasMoreByConversation]);
+  const [hasMoreAfterByConversation, setHasMoreAfterByConversation] = useState<Map<string, boolean>>(new Map());
+  const [loadingOlderByConversation, setLoadingOlderByConversation] = useState<Set<string>>(new Set());
   const loadingOlderRef = useRef<Set<string>>(new Set());
-  const [unreadByChannel, setUnreadByChannel] = useState<Map<string, number>>(new Map());
+  const [unreadByConversation, setUnreadByConversation] = useState<Map<string, number>>(new Map());
   const [allUsers, setAllUsers] = useState<Map<string, PublicUser>>(new Map());
   const allUsersRef = useRef<Map<string, PublicUser>>(new Map());
   useEffect(() => { allUsersRef.current = allUsers; }, [allUsers]);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [storageUsage, setStorageUsage] = useState<StorageUsage>({ totalBytes: 0, totalFiles: 0, maxBytes: 0 });
-  const [channelsError, setChannelsError] = useState<string | null>(null);
   const [moderationError, setModerationError] = useState<string | null>(null);
 
-  const switchActiveChannel = useCallback((channelId: string) => {
-    activeChannelIdRef.current = channelId;
-    setActiveChannelIdState(channelId);
-    setUnreadByChannel((prev) => {
-      if (!prev.has(channelId)) return prev;
+  const switchActiveConversation = useCallback((conversationId: string) => {
+    activeConversationIdRef.current = conversationId;
+    setActiveConversationIdState(conversationId);
+    setUnreadByConversation((prev) => {
+      if (!prev.has(conversationId)) return prev;
       const next = new Map(prev);
-      next.delete(channelId);
+      next.delete(conversationId);
       return next;
     });
     setReplyingTo(null);
     setEditingMsgId(null);
   }, []);
 
-  const openChannel = useCallback((channelId: string) => {
-    switchActiveChannel(channelId);
-    sendWs({ t: 'channel-open', channelId });
-  }, [sendWs, switchActiveChannel]);
+  const openConversation = useCallback((conversationId: string) => {
+    switchActiveConversation(conversationId);
+    sendWs({ t: 'conversation-open', conversationId });
+  }, [sendWs, switchActiveConversation]);
 
-  const loadOlderMessages = useCallback((channelId: string) => {
-    if (loadingOlderRef.current.has(channelId)) return;
-    if (hasMoreByChannelRef.current.get(channelId) === false) return;
-    const oldest = messagesByChannelRef.current.get(channelId)?.[0];
+  const openDirect = useCallback((userId: string) => sendWs({ t: 'direct-open', userId }), [sendWs]);
+  const createGroup = useCallback((title: string, memberIds: string[]) => sendWs({ t: 'group-create', title, memberIds }), [sendWs]);
+  const deleteGroup = useCallback((conversationId: string) => sendWs({ t: 'group-delete', conversationId }), [sendWs]);
+  const updateGroupTitle = useCallback((conversationId: string, title: string) => sendWs({ t: 'group-update', conversationId, title }), [sendWs]);
+  const addGroupMembers = useCallback((conversationId: string, memberIds: string[]) => sendWs({ t: 'group-members-add', conversationId, memberIds }), [sendWs]);
+  const removeGroupMember = useCallback((conversationId: string, userId: string) => sendWs({ t: 'group-members-remove', conversationId, userId }), [sendWs]);
+
+  const loadOlderMessages = useCallback((conversationId: string) => {
+    if (loadingOlderRef.current.has(conversationId)) return;
+    if (hasMoreByConversationRef.current.get(conversationId) === false) return;
+    const oldest = messagesByConversationRef.current.get(conversationId)?.[0];
     if (!oldest) return;
-    loadingOlderRef.current.add(channelId);
-    setLoadingOlderByChannel((prev) => new Set(prev).add(channelId));
-    sendWs({ t: 'load-more-messages', channelId, beforeMsgId: oldest.msgId });
+    loadingOlderRef.current.add(conversationId);
+    setLoadingOlderByConversation((prev) => new Set(prev).add(conversationId));
+    sendWs({ t: 'load-more-messages', conversationId, beforeMsgId: oldest.msgId });
   }, [sendWs]);
 
-  const [pendingJumpTarget, setPendingJumpTargetState] = useState<{ channelId: string; msgId: number } | null>(null);
-  const pendingJumpRef = useRef<{ channelId: string; msgId: number } | null>(null);
+  const [pendingJumpTarget, setPendingJumpTargetState] = useState<{ conversationId: string; msgId: number } | null>(null);
+  const pendingJumpRef = useRef<{ conversationId: string; msgId: number } | null>(null);
   const clearPendingJumpTarget = useCallback(() => setPendingJumpTargetState(null), []);
 
-  const jumpToMessage = useCallback((channelId: string, msgId: number) => {
-    const alreadyLoaded = messagesByChannelRef.current.get(channelId)?.some((msg) => msg.msgId === msgId) ?? false;
-    if (channelId !== activeChannelIdRef.current) switchActiveChannel(channelId);
-    setPendingJumpTargetState({ channelId, msgId });
+  const jumpToMessage = useCallback((conversationId: string, msgId: number) => {
+    const alreadyLoaded = messagesByConversationRef.current.get(conversationId)?.some((msg) => msg.msgId === msgId) ?? false;
+    if (conversationId !== activeConversationIdRef.current) switchActiveConversation(conversationId);
+    setPendingJumpTargetState({ conversationId, msgId });
     if (alreadyLoaded) return;
-    pendingJumpRef.current = { channelId, msgId };
-    sendWs({ t: 'load-messages-around', channelId, msgId });
-  }, [sendWs, switchActiveChannel]);
+    pendingJumpRef.current = { conversationId, msgId };
+    sendWs({ t: 'load-messages-around', conversationId, msgId });
+  }, [sendWs, switchActiveConversation]);
 
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const pendingSearchRef = useRef<{ query: string; channelId?: string } | null>(null);
+  const pendingSearchRef = useRef<{ query: string; conversationId?: string } | null>(null);
   const clearSearchError = useCallback(() => setSearchError(null), []);
 
-  const searchMessages = useCallback((query: string, channelId?: string) => {
+  const searchMessages = useCallback((query: string, conversationId?: string) => {
     const trimmed = query.trim();
     if (!trimmed) {
       pendingSearchRef.current = null;
@@ -239,14 +253,14 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       setSearchLoading(false);
       return;
     }
-    pendingSearchRef.current = { query: trimmed, channelId };
+    pendingSearchRef.current = { query: trimmed, conversationId };
     setSearchLoading(true);
-    sendWs({ t: 'message-search', query: trimmed, ...(channelId ? { channelId } : {}) });
+    sendWs({ t: 'message-search', query: trimmed, ...(conversationId ? { conversationId } : {}) });
   }, [sendWs]);
 
-  const sendChatMessage = useCallback((channelId: string, text: string, replyTo?: number) => {
+  const sendChatMessage = useCallback((conversationId: string, text: string, replyTo?: number) => {
     const trimmed = text.trim();
-    if (trimmed) sendWs({ t: 'chat', channelId, text: trimmed, ...(replyTo ? { replyTo } : {}) });
+    if (trimmed) sendWs({ t: 'chat', conversationId, text: trimmed, ...(replyTo ? { replyTo } : {}) });
   }, [sendWs]);
   const deleteChatMessage = useCallback((msgId: number) => sendWs({ t: 'chat-delete', msgId }), [sendWs]);
   const editChatMessage = useCallback((msgId: number, text: string) => {
@@ -256,29 +270,21 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const reactToChatMessage = useCallback((msgId: number, emoji: ReactionEmoji) => sendWs({ t: 'chat-react', msgId, emoji }), [sendWs]);
 
   const sendAttachments = useCallback(async (
-    channelId: string, files: File[], caption: string, onProgress?: (fileIndex: number, fraction: number) => void
+    conversationId: string, files: File[], caption: string, onProgress?: (fileIndex: number, fraction: number) => void
   ): Promise<void> => {
     if (!files.length) return;
-    const msgId = await uploadFileInChunks({ channelId, file: files[0]!, caption, onProgress: (f) => onProgress?.(0, f) });
+    const msgId = await uploadFileInChunks({ conversationId, file: files[0]!, caption, onProgress: (f) => onProgress?.(0, f) });
     for (let i = 1; i < files.length; i++) {
       try {
-        await uploadFileInChunks({ channelId, file: files[i]!, caption: '', targetMsgId: msgId, onProgress: (f) => onProgress?.(i, f) });
+        await uploadFileInChunks({ conversationId, file: files[i]!, caption: '', targetMsgId: msgId, onProgress: (f) => onProgress?.(i, f) });
       } catch {
         throw new PartialAttachmentError(i, files.length);
       }
     }
   }, []);
 
-  const createCategory = useCallback((name: string) => sendWs({ t: 'category-create', name }), [sendWs]);
-  const deleteCategory = useCallback((categoryId: string) => sendWs({ t: 'category-delete', categoryId }), [sendWs]);
-  const renameCategory = useCallback((categoryId: string, name: string) => sendWs({ t: 'category-rename', categoryId, name }), [sendWs]);
-  const createChannel = useCallback((categoryId: string, name: string, type?: 'text' | 'voice') => sendWs({ t: 'channel-create', categoryId, name, type }), [sendWs]);
-  const deleteChannel = useCallback((channelId: string) => sendWs({ t: 'channel-delete', channelId }), [sendWs]);
-  const renameChannel = useCallback((channelId: string, name: string) => sendWs({ t: 'channel-rename', channelId, name }), [sendWs]);
-  const reorderCategories = useCallback((orderedIds: string[]) => sendWs({ t: 'categories-reorder', orderedIds }), [sendWs]);
-  const reorderChannels = useCallback((categoryId: string, orderedIds: string[]) => sendWs({ t: 'channels-reorder', categoryId, orderedIds }), [sendWs]);
   const deleteUserAccount = useCallback((userId: string) => sendWs({ t: 'user-delete', userId }), [sendWs]);
-  const voiceKickParticipant = useCallback((participantId: string) => sendWs({ t: 'voice-kick', participantId }), [sendWs]);
+  const kickFromCall = useCallback((participantId: string) => sendWs({ t: 'call-kick', participantId }), [sendWs]);
 
   const { startSharing, stopSharing } = useScreenShare(livekitRoom, dispatch);
   const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch);
@@ -292,36 +298,36 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     sendWs({ t: 'deafened', value: next });
   }, [deafened, setMicMuted, sendWs]);
 
-  const leaveVoiceChannel = useCallback(async () => {
+  const leaveGroupCall = useCallback(async () => {
     if (state.me.cameraOn) stopCamera();
     if (state.me.sharing) stopSharing();
     await leaveMic();
     livekitRoom.disconnect();
-    sendWs({ t: 'voice-leave' });
-    pendingVoiceChannelIdRef.current = null;
-    setActiveVoiceChannelId(null);
-  }, [state.me.cameraOn, state.me.sharing, stopCamera, stopSharing, leaveMic, livekitRoom, sendWs, setActiveVoiceChannelId]);
+    sendWs({ t: 'call-leave' });
+    pendingCallConversationIdRef.current = null;
+    setActiveCallConversationId(null);
+  }, [state.me.cameraOn, state.me.sharing, stopCamera, stopSharing, leaveMic, livekitRoom, sendWs, setActiveCallConversationId]);
 
-  const joinVoiceChannel = useCallback(async (channelId: string) => {
-    if (activeVoiceChannelIdRef.current === channelId) return;
-    if (activeVoiceChannelIdRef.current) await leaveVoiceChannel();
-    pendingVoiceChannelIdRef.current = channelId;
-    sendWs({ t: 'voice-join', channelId });
-  }, [sendWs, leaveVoiceChannel]);
+  const joinGroupCall = useCallback(async (conversationId: string) => {
+    if (activeCallConversationIdRef.current === conversationId) return;
+    if (activeCallConversationIdRef.current) await leaveGroupCall();
+    pendingCallConversationIdRef.current = conversationId;
+    sendWs({ t: 'call-join', conversationId });
+  }, [sendWs, leaveGroupCall]);
 
-  const leaveVoiceChannelRef = useRef(leaveVoiceChannel);
-  useEffect(() => { leaveVoiceChannelRef.current = leaveVoiceChannel; }, [leaveVoiceChannel]);
+  const leaveGroupCallRef = useRef(leaveGroupCall);
+  useEffect(() => { leaveGroupCallRef.current = leaveGroupCall; }, [leaveGroupCall]);
 
   useEffect(() => {
     const onDisconnected = (reason?: DisconnectReason) => {
       if (reason === DisconnectReason.CLIENT_INITIATED) return;
       if (state.me.cameraOn) stopCamera();
       if (state.me.sharing) stopSharing();
-      setActiveVoiceChannelId(null);
+      setActiveCallConversationId(null);
     };
     livekitRoom.on(RoomEvent.Disconnected, onDisconnected);
     return () => { livekitRoom.off(RoomEvent.Disconnected, onDisconnected); };
-  }, [livekitRoom, stopCamera, stopSharing, setActiveVoiceChannelId, state.me.cameraOn, state.me.sharing]);
+  }, [livekitRoom, stopCamera, stopSharing, setActiveCallConversationId, state.me.cameraOn, state.me.sharing]);
 
   useEffect(() => {
     const onLocalUnpublished = (pub: LocalTrackPublication) => {
@@ -433,23 +439,24 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           role: m.role,
           participants: m.participants,
         });
-        setCategories(m.categories);
-        categoriesRef.current = m.categories;
-        setAllUsers(new Map(m.users.map((u) => [u.id, u])));
+        setConversations(m.conversations ?? []);
+        conversationsRef.current = m.conversations ?? [];
+        const usersMap = new Map(m.users.map((u) => [u.id, u]));
+        setAllUsers(usersMap);
         setOnlineUserIds(new Set(m.onlineUserIds));
         setStorageUsage(m.storageUsage);
         {
-          const firstChannel = m.categories.flatMap((cat) => cat.channels).find((ch) => ch.type === 'text');
-          if (firstChannel) openChannel(firstChannel.id);
+          const firstConversation = (m.conversations ?? [])[0];
+          if (firstConversation) openConversation(firstConversation.id);
         }
         break;
       }
-      case 'voice-token': {
-        if (m.channelId !== pendingVoiceChannelIdRef.current) break;
+      case 'call-token': {
+        if (m.conversationId !== pendingCallConversationIdRef.current) break;
         livekitRoom.connect(m.livekitUrl, m.livekitToken)
           .then(() => activateMic())
           .catch((err) => console.warn('LiveKit connect falhou', err));
-        setActiveVoiceChannelId(m.channelId);
+        setActiveCallConversationId(m.conversationId);
         break;
       }
       case 'participant-joined':
@@ -466,63 +473,70 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'reaction':
         pushReaction(m.id, m.emoji);
         break;
-      case 'channel-history':
-        setMessagesByChannel((prev) => new Map(prev).set(m.channelId, m.messages));
-        setHasMoreByChannel((prev) => new Map(prev).set(m.channelId, m.hasMore));
-        setHasMoreAfterByChannel((prev) => new Map(prev).set(m.channelId, false));
+      case 'conversation-list':
+        setConversations(m.conversations);
+        conversationsRef.current = m.conversations;
         break;
-      case 'channel-history-around': {
+      case 'conversation-opened':
+        openConversation(m.conversationId);
+        break;
+      case 'conversation-history':
+        setMessagesByConversation((prev) => new Map(prev).set(m.conversationId, m.messages));
+        setHasMoreByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMore));
+        setHasMoreAfterByConversation((prev) => new Map(prev).set(m.conversationId, false));
+        break;
+      case 'conversation-history-around': {
         const pending = pendingJumpRef.current;
-        if (!pending || pending.channelId !== m.channelId || pending.msgId !== m.msgId) break;
+        if (!pending || pending.conversationId !== m.conversationId || pending.msgId !== m.msgId) break;
         pendingJumpRef.current = null;
-        setMessagesByChannel((prev) => new Map(prev).set(m.channelId, m.messages));
-        setHasMoreByChannel((prev) => new Map(prev).set(m.channelId, m.hasMoreBefore));
-        setHasMoreAfterByChannel((prev) => new Map(prev).set(m.channelId, m.hasMoreAfter));
+        setMessagesByConversation((prev) => new Map(prev).set(m.conversationId, m.messages));
+        setHasMoreByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMoreBefore));
+        setHasMoreAfterByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMoreAfter));
         break;
       }
       case 'message-search-results': {
         const pending = pendingSearchRef.current;
-        if (!pending || pending.query !== m.query || pending.channelId !== m.channelId) break;
+        if (!pending || pending.query !== m.query || pending.conversationId !== m.conversationId) break;
         setSearchResults(m.results);
         setSearchLoading(false);
         break;
       }
-      case 'channel-history-more': {
-        const channelId = m.channelId;
-        loadingOlderRef.current.delete(channelId);
-        setLoadingOlderByChannel((prev) => {
-          if (!prev.has(channelId)) return prev;
+      case 'conversation-history-more': {
+        const conversationId = m.conversationId;
+        loadingOlderRef.current.delete(conversationId);
+        setLoadingOlderByConversation((prev) => {
+          if (!prev.has(conversationId)) return prev;
           const next = new Set(prev);
-          next.delete(channelId);
+          next.delete(conversationId);
           return next;
         });
-        setHasMoreByChannel((prev) => new Map(prev).set(channelId, m.hasMore));
+        setHasMoreByConversation((prev) => new Map(prev).set(conversationId, m.hasMore));
         if (m.messages.length > 0) {
-          setMessagesByChannel((prev) => {
-            const existing = prev.get(channelId) || [];
+          setMessagesByConversation((prev) => {
+            const existing = prev.get(conversationId) || [];
             const existingIds = new Set(existing.map((msg) => msg.msgId));
             const older = m.messages.filter((msg) => !existingIds.has(msg.msgId));
-            return new Map(prev).set(channelId, [...older, ...existing]);
+            return new Map(prev).set(conversationId, [...older, ...existing]);
           });
         }
         break;
       }
       case 'chat': {
-        const channelId = m.message.channelId;
-        setMessagesByChannel((prev) => {
-          const existing = prev.get(channelId) || [];
+        const conversationId = m.message.conversationId;
+        setMessagesByConversation((prev) => {
+          const existing = prev.get(conversationId) || [];
           const next = [...existing, m.message];
-          return new Map(prev).set(channelId, next.length > CHAT_CLIENT_LIMIT ? next.slice(next.length - CHAT_CLIENT_LIMIT) : next);
+          return new Map(prev).set(conversationId, next.length > CHAT_CLIENT_LIMIT ? next.slice(next.length - CHAT_CLIENT_LIMIT) : next);
         });
-        if (channelId !== activeChannelIdRef.current) {
-          setUnreadByChannel((prev) => new Map(prev).set(channelId, (prev.get(channelId) || 0) + 1));
+        if (conversationId !== activeConversationIdRef.current) {
+          setUnreadByConversation((prev) => new Map(prev).set(conversationId, (prev.get(conversationId) || 0) + 1));
         }
-        const amLookingAtIt = document.hasFocus() && activeViewRef.current === 'chat' && channelId === activeChannelIdRef.current;
+        const amLookingAtIt = document.hasFocus() && activeViewRef.current === 'chat' && conversationId === activeConversationIdRef.current;
         if (m.message.id !== myUserIdRef.current && !amLookingAtIt) {
           playSound('newMessage');
           notifyIncomingChatMessage({
-            channelId,
-            channelName: categoriesRef.current.flatMap((c) => c.channels).find((ch) => ch.id === channelId)?.name ?? 'canal',
+            conversationId,
+            conversationName: displayNameForConversation(conversationsRef.current.find((c) => c.id === conversationId), myUserIdRef.current, allUsersRef.current),
             senderId: m.message.id,
             senderName: (m.message.id ? allUsersRef.current.get(m.message.id)?.displayName : undefined) ?? m.message.name,
             text: m.message.text,
@@ -532,33 +546,33 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         break;
       }
       case 'chat-deleted':
-        setMessagesByChannel((prev) => {
-          const existing = prev.get(m.channelId);
+        setMessagesByConversation((prev) => {
+          const existing = prev.get(m.conversationId);
           if (!existing) return prev;
-          return new Map(prev).set(m.channelId, existing.filter((msg) => msg.msgId !== m.msgId));
+          return new Map(prev).set(m.conversationId, existing.filter((msg) => msg.msgId !== m.msgId));
         });
         break;
       case 'chat-edited': {
-        const channelId = m.message.channelId;
-        setMessagesByChannel((prev) => {
-          const existing = prev.get(channelId);
+        const conversationId = m.message.conversationId;
+        setMessagesByConversation((prev) => {
+          const existing = prev.get(conversationId);
           if (!existing) return prev;
-          return new Map(prev).set(channelId, existing.map((msg) => (msg.msgId === m.message.msgId ? m.message : msg)));
+          return new Map(prev).set(conversationId, existing.map((msg) => (msg.msgId === m.message.msgId ? m.message : msg)));
         });
         break;
       }
       case 'chat-attachment-added':
-        setMessagesByChannel((prev) => {
-          const existing = prev.get(m.channelId);
+        setMessagesByConversation((prev) => {
+          const existing = prev.get(m.conversationId);
           if (!existing) return prev;
-          return new Map(prev).set(m.channelId, existing.map((msg) => (
+          return new Map(prev).set(m.conversationId, existing.map((msg) => (
             msg.msgId === m.msgId ? { ...msg, attachments: [...(msg.attachments || []), m.attachment] } : msg
           )));
         });
         break;
       case 'chat-reaction-updated':
-        setMessagesByChannel((prev) => {
-          const existing = prev.get(m.channelId);
+        setMessagesByConversation((prev) => {
+          const existing = prev.get(m.conversationId);
           if (!existing) return prev;
           const next = existing.map((msg) => {
             if (msg.msgId !== m.msgId) return msg;
@@ -566,34 +580,29 @@ export function RoomProvider({ children }: { children: ReactNode }) {
             if (m.userIds.length) reactions[m.emoji] = m.userIds; else delete reactions[m.emoji];
             return { ...msg, reactions };
           });
-          return new Map(prev).set(m.channelId, next);
+          return new Map(prev).set(m.conversationId, next);
         });
         break;
-      case 'channels-tree': {
-        setCategories(m.categories);
-        categoriesRef.current = m.categories;
-        const stillExists = m.categories.some((cat) => cat.channels.some((ch) => ch.id === activeChannelIdRef.current));
-        if (!stillExists) {
-          const fallback = m.categories.flatMap((cat) => cat.channels).find((ch) => ch.type === 'text');
-          if (fallback) openChannel(fallback.id);
-          else { activeChannelIdRef.current = null; setActiveChannelIdState(null); }
+      case 'conversation-deleted':
+        setConversations((prev) => prev.filter((c) => c.id !== m.conversationId));
+        conversationsRef.current = conversationsRef.current.filter((c) => c.id !== m.conversationId);
+        setMessagesByConversation((prev) => {
+          if (!prev.has(m.conversationId)) return prev;
+          const next = new Map(prev);
+          next.delete(m.conversationId);
+          return next;
+        });
+        setUnreadByConversation((prev) => {
+          if (!prev.has(m.conversationId)) return prev;
+          const next = new Map(prev);
+          next.delete(m.conversationId);
+          return next;
+        });
+        if (m.conversationId === activeCallConversationIdRef.current) leaveGroupCallRef.current();
+        if (m.conversationId === activeConversationIdRef.current) {
+          activeConversationIdRef.current = null;
+          setActiveConversationIdState(null);
         }
-        break;
-      }
-      case 'channel-deleted':
-        setMessagesByChannel((prev) => {
-          if (!prev.has(m.channelId)) return prev;
-          const next = new Map(prev);
-          next.delete(m.channelId);
-          return next;
-        });
-        setUnreadByChannel((prev) => {
-          if (!prev.has(m.channelId)) return prev;
-          const next = new Map(prev);
-          next.delete(m.channelId);
-          return next;
-        });
-        if (m.channelId === activeVoiceChannelIdRef.current) leaveVoiceChannelRef.current();
         break;
       case 'user-online':
         setOnlineUserIds((prev) => (prev.has(m.userId) ? prev : new Set(prev).add(m.userId)));
@@ -631,12 +640,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           intentionalCloseRef.current = true;
           try { socketRef.current?.disconnect(); } catch {  }
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Sala cheia, tente mais tarde.' });
-        } else if (m.code === 'category-not-empty' || m.code === 'cannot-delete-last-voice-channel') {
-          setChannelsError(m.message);
         } else if (m.code === 'cannot-delete-self') {
           setModerationError(m.message);
         } else if (m.code === 'livekit-unavailable') {
-          pendingVoiceChannelIdRef.current = null;
+          pendingCallConversationIdRef.current = null;
           dispatch({ type: 'SET_SHARE_ERROR', message: m.message });
         } else if (m.code === 'message-not-found') {
           pendingJumpRef.current = null;
@@ -647,7 +654,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         }
         break;
     }
-  }, [dispatch, pushReaction, livekitRoom, openChannel, activateMic, setActiveVoiceChannelId]);
+  }, [dispatch, pushReaction, livekitRoom, openConversation, activateMic, setActiveCallConversationId]);
 
   const handleServerMessageRef = useRef(handleServerMessage);
   useEffect(() => { handleServerMessageRef.current = handleServerMessage; }, [handleServerMessage]);
@@ -784,12 +791,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   }, [notificationsEnabled]);
 
   useEffect(() => {
-    setNotificationClickHandler((channelId) => {
-      openChannel(channelId);
+    setNotificationClickHandler((conversationId) => {
+      openConversation(conversationId);
       requestChatViewRef.current?.();
     });
     return () => setNotificationClickHandler(null);
-  }, [openChannel]);
+  }, [openConversation]);
 
   useEffect(() => {
     connect();
@@ -805,20 +812,21 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       value={{
         state, dispatch, sendWs, tileDomRegistry, audioRegistry, audioUnlocked, deafened, toggleDeafened, livekitRoom, notifyActiveView,
         registerRequestChatView,
-        activeVoiceChannelId, joinVoiceChannel,
-        startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted, leaveVoiceChannel,
+        activeCallConversationId, joinGroupCall, leaveGroupCall,
+        startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted,
         updateAvatar, updateProfile, uploadProfileImage, menuTarget, openTileMenu, closeTileMenu,
         reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
         hideAudioOnlyTiles, setHideAudioOnlyTiles,
-        categories, activeChannelId, openChannel, messagesByChannel, hasMoreByChannel, loadingOlderByChannel, loadOlderMessages, unreadByChannel,
-        allUsers, onlineUserIds, channelsError, clearChannelsError: () => setChannelsError(null),
-        deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null), voiceKickParticipant,
+        conversations, activeConversationId, openConversation, openDirect, createGroup, deleteGroup,
+        updateGroupTitle, addGroupMembers, removeGroupMember,
+        messagesByConversation, hasMoreByConversation, loadingOlderByConversation, loadOlderMessages, unreadByConversation,
+        allUsers, onlineUserIds,
+        deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null), kickFromCall,
         sendChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,
         replyingTo, setReplyingTo, editingMsgId, setEditingMsgId,
-        hasMoreAfterByChannel, pendingJumpTarget, clearPendingJumpTarget, jumpToMessage,
+        hasMoreAfterByConversation, pendingJumpTarget, clearPendingJumpTarget, jumpToMessage,
         searchResults, searchLoading, searchError, clearSearchError, searchMessages,
         storageUsage, sendAttachments,
-        createCategory, deleteCategory, renameCategory, createChannel, deleteChannel, renameChannel, reorderCategories, reorderChannels,
       }}
     >
       {children}

@@ -20,7 +20,7 @@ export function Stage({ allIds, onBackMobile }: StageProps) {
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Voltar pros canais"
+        aria-label="Voltar para conversas"
         onClick={onBackMobile}
         className="absolute left-2 top-2 z-20 bg-bg-tertiary/80 text-text-secondary hover:bg-bg-hover md:hidden"
       >

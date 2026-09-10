@@ -15,11 +15,11 @@ const DEBOUNCE_MS = 300;
 interface ChatSearchDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  activeChannelId: string | null;
-  activeChannelName: string | null;
+  activeConversationId: string | null;
+  activeConversationName: string | null;
 }
 
-function SearchResultRow({ result, showChannel, onSelect }: { result: SearchResult; showChannel: boolean; onSelect: () => void }) {
+function SearchResultRow({ result, showConversation, onSelect }: { result: SearchResult; showConversation: boolean; onSelect: () => void }) {
   const { allUsers } = useRoom();
   const author = result.id ? allUsers.get(result.id) : undefined;
   const displayedName = author?.displayName ?? result.name;
@@ -36,8 +36,8 @@ function SearchResultRow({ result, showChannel, onSelect }: { result: SearchResu
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-label font-medium text-text-primary">{displayedName}</span>
-          {showChannel && (
-            <span className="flex-none truncate rounded-sm bg-bg-tertiary px-1.5 py-0.5 text-caption text-text-muted">#{result.channelName}</span>
+          {showConversation && (
+            <span className="flex-none truncate rounded-sm bg-bg-tertiary px-1.5 py-0.5 text-caption text-text-muted">{result.conversationName}</span>
           )}
           <span className="flex-none text-caption text-text-muted">{formatTime(result.ts)}</span>
         </div>
@@ -47,7 +47,7 @@ function SearchResultRow({ result, showChannel, onSelect }: { result: SearchResu
   );
 }
 
-export function ChatSearchDialog({ open, onOpenChange, activeChannelId, activeChannelName }: ChatSearchDialogProps) {
+export function ChatSearchDialog({ open, onOpenChange, activeConversationId, activeConversationName }: ChatSearchDialogProps) {
   const { searchResults, searchLoading, searchError, clearSearchError, searchMessages, jumpToMessage } = useRoom();
   const [query, setQuery] = useState('');
   const [scopeAll, setScopeAll] = useState(false);
@@ -64,13 +64,13 @@ export function ChatSearchDialog({ open, onOpenChange, activeChannelId, activeCh
     if (!open) return;
     if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(() => {
-      searchMessages(query, scopeAll ? undefined : (activeChannelId ?? undefined));
+      searchMessages(query, scopeAll ? undefined : (activeConversationId ?? undefined));
     }, DEBOUNCE_MS);
     return () => { if (debounceRef.current != null) window.clearTimeout(debounceRef.current); };
-  }, [open, query, scopeAll, activeChannelId, searchMessages]);
+  }, [open, query, scopeAll, activeConversationId, searchMessages]);
 
   function handleSelect(result: SearchResult) {
-    jumpToMessage(result.channelId, result.msgId);
+    jumpToMessage(result.conversationId, result.msgId);
     onOpenChange(false);
   }
 
@@ -99,11 +99,11 @@ export function ChatSearchDialog({ open, onOpenChange, activeChannelId, activeCh
 
           <div className="flex flex-none items-center justify-between gap-3">
             <span className="min-w-0 truncate text-label text-text-muted">
-              {scopeAll ? 'Buscando em todos os canais' : `Buscando em #${activeChannelName ?? 'canal'}`}
+              {scopeAll ? 'Buscando em todas as conversas' : `Buscando em ${activeConversationName ?? 'conversa'}`}
             </span>
             <div className="flex flex-none items-center gap-2">
-              <Label htmlFor="searchScopeAll" className="text-label text-text-secondary">Todos os canais</Label>
-              <Switch id="searchScopeAll" checked={scopeAll} onCheckedChange={setScopeAll} aria-label="Buscar em todos os canais" />
+              <Label htmlFor="searchScopeAll" className="text-label text-text-secondary">Todas</Label>
+              <Switch id="searchScopeAll" checked={scopeAll} onCheckedChange={setScopeAll} aria-label="Buscar em todas as conversas" />
             </div>
           </div>
 
@@ -117,7 +117,7 @@ export function ChatSearchDialog({ open, onOpenChange, activeChannelId, activeCh
               <p className="select-none px-1 py-4 text-center text-label text-text-muted">Nenhuma mensagem encontrada.</p>
             )}
             {!searchLoading && searchResults.map((result) => (
-              <SearchResultRow key={result.msgId} result={result} showChannel={scopeAll} onSelect={() => handleSelect(result)} />
+              <SearchResultRow key={result.msgId} result={result} showConversation={scopeAll} onSelect={() => handleSelect(result)} />
             ))}
           </div>
         </div>

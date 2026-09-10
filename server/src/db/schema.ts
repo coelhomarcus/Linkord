@@ -46,31 +46,36 @@ export const sessions = pgTable('sessions', {
   index('sessions_user_id_idx').on(t.userId),
 ]);
 
-/** A category of text channels (Discord-style) — admin-only create/
- * delete. `position` decides display order; reordering reindexes the
- * whole list (see channels.ts), no fractional index. Deleting only works
- * if empty (RESTRICT) — there's no "what to do with orphaned channels" to
- * decide, the admin deletes the channels first. */
-export const categories = pgTable('categories', {
+/** A messaging conversation. `direct` rows represent a one-to-one DM and
+ * use `dmKey` (sorted user ids) to guarantee there is only one conversation
+ * per pair. `group` rows are admin-created spaces that can also host calls. */
+export const conversations = pgTable('conversations', {
   id: text('id').primaryKey(),
-  name: varchar('name', { length: 60 }).notNull(),
-  position: integer('position').notNull(),
+  type: varchar('type', { length: 12 }).notNull(), // 'direct' | 'group'
+  title: varchar('title', { length: 80 }).notNull().default(''),
+  avatar: text('avatar').notNull().default(''),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  dmKey: text('dm_key'),
+  lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
-
-/** A channel inside a category — 'text' or 'voice' (see channels.ts for
- * the "at least one voice channel" rule). Deleting a text channel CASCADEs
- * its messages (chat.ts) — that's how "delete the channel deletes
- * everything from the DB forever" works, without deleting row by row. */
-export const channels = pgTable('channels', {
-  id: text('id').primaryKey(),
-  categoryId: text('category_id').notNull().references(() => categories.id, { onDelete: 'restrict' }),
-  name: varchar('name', { length: 60 }).notNull(),
-  type: varchar('type', { length: 10 }).notNull().default('text'), // 'text' | 'voice'
-  position: integer('position').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
-  index('channels_category_id_idx').on(t.categoryId),
+  uniqueIndex('conversations_dm_key_unique').on(t.dmKey),
+  index('conversations_type_idx').on(t.type),
+]);
+
+/** Membership for both DMs and groups. DMs always have two rows; groups have
+ * the admin creator as `owner` and selected users as `member`. */
+export const conversationMembers = pgTable('conversation_members', {
+  conversationId: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  role: varchar('role', { length: 16 }).notNull().default('member'), // 'owner' | 'admin' | 'member'
+  lastReadMessageId: integer('last_read_message_id'),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('conversation_members_conversation_user_key').on(t.conversationId, t.userId),
+  index('conversation_members_user_id_idx').on(t.userId),
+  index('conversation_members_conversation_id_idx').on(t.conversationId),
 ]);
 
 /** Chat message, now persisted (used to live only in memory, lost on
@@ -80,7 +85,7 @@ export const channels = pgTable('channels', {
  * profile change updates the whole history without rewriting messages. */
 export const messages = pgTable('messages', {
   id: serial('id').primaryKey(),
-  channelId: text('channel_id').notNull().references(() => channels.id, { onDelete: 'cascade' }),
+  conversationId: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
   authorId: text('author_id').references(() => users.id, { onDelete: 'set null' }),
   text: text('text').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -94,7 +99,7 @@ export const messages = pgTable('messages', {
   // query side.
   searchVector: tsvector('search_vector').generatedAlwaysAs((): SQL => sql`to_tsvector('portuguese', ${messages.text})`),
 }, (t) => [
-  index('messages_channel_id_idx').on(t.channelId),
+  index('messages_conversation_id_idx').on(t.conversationId),
   index('messages_search_vector_idx').using('gin', t.searchVector),
 ]);
 
@@ -106,9 +111,9 @@ export const messages = pgTable('messages', {
  * toward it (one per account, always replacing the previous, see
  * deleteAvatarFile). `id` is an app-generated uuid reused as the on-disk
  * filename — Postgres doesn't know that, so deleting this row (directly or
- * via CASCADE from messages/channels) NEVER deletes the file by itself;
+ * via CASCADE from messages/conversations) NEVER deletes the file by itself;
  * that's on the code that deletes the row (see
- * deleteForMessage/deleteForChannel/deleteAvatarFile). */
+ * deleteForMessage/deleteForConversation/deleteAvatarFile). */
 export const attachments = pgTable('attachments', {
   id: text('id').primaryKey(),
   messageId: integer('message_id').references(() => messages.id, { onDelete: 'cascade' }),
@@ -126,7 +131,7 @@ export const attachments = pgTable('attachments', {
 
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
-export type Category = typeof categories.$inferSelect;
-export type Channel = typeof channels.$inferSelect;
+export type Conversation = typeof conversations.$inferSelect;
+export type ConversationMember = typeof conversationMembers.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;

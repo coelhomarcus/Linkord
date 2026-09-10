@@ -3,13 +3,13 @@ import { Server, type Socket } from 'socket.io';
 import { config } from '../config/env.js';
 import {
   participants as participantsMap, join, send, broadcast, publicParticipant, handleClose, ipOf,
-  listOnlineUserIds, setVoiceChannelId, handlers as participantHandlers,
+  listOnlineUserIds, setCallConversationId, handlers as participantHandlers,
 } from './participants.js';
 import * as livekit from './livekit.js';
 import * as reactions from './reactions.js';
 import * as floodControl from './floodControl.js';
 import * as chat from '../modules/chat.js';
-import * as channels from '../modules/channels.js';
+import * as conversations from '../modules/conversations.js';
 import * as attachments from '../modules/attachments.js';
 import * as discordWebhook from '../modules/discordWebhook.js';
 import * as moderation from '../modules/moderation.js';
@@ -27,7 +27,7 @@ const handlers: HandlerTable = Object.assign(
   participantHandlers,
   reactions.handlers,
   chat.handlers,
-  channels.handlers,
+  conversations.handlers,
   discordWebhook.handlers,
   moderation.handlers,
 );
@@ -42,7 +42,7 @@ interface JoinMessage {
 // writes/broadcasts, reactions, and profile updates all hit the DB and fan
 // out to every connected participant with no other throttle in front of
 // them. Not applied to every event on purpose: most read-only/idempotent
-// ones (channel-open, voice-join, mic-state, ...) aren't the same kind of
+// ones (conversation-open, call-join, mic-state, ...) aren't the same kind of
 // risk and a limiter here would just make normal UI usage flaky.
 // 'message-search' is the one read-only exception — it's a full-text query
 // against the DB on every call, so it gets a conservative cap as defense in
@@ -67,8 +67,8 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
   const p = join(socket, msg);
   if (!p) return;
   // LiveKit token is NOT minted here anymore — just having the tab open/
-  // logged in shouldn't open a real voice session. That now only happens
-  // in handleVoiceJoin, when someone actually clicks a voice channel.
+  // logged in shouldn't open a real call session. That now only happens
+  // in handleCallJoin, when someone joins a group call.
   send(socket, {
     t: 'welcome',
     id: p.id,
@@ -84,7 +84,7 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
     role: p.role,
     maxParticipants: config.MAX_PARTICIPANTS,
     participants: [...participantsMap.values()].filter((o) => o.id !== p.id).map(publicParticipant),
-    categories: await channels.listTree(),
+    conversations: await conversations.listForUser(p.userId),
     users: await listAllUsers(),
     onlineUserIds: listOnlineUserIds(),
     storageUsage: await attachments.getUsage(),
@@ -94,35 +94,35 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
   console.log(`[${p.id}] entrou (${p.name}) de ${socket.ip}`);
 }
 
-/** Actually joins a specific voice channel: mints a LiveKit token for that
- * channel's room (`${LIVEKIT_ROOM_NAME}-${channelId}`, one room per voice
- * channel) and sets `p.voiceChannelId` — only now (not in handleJoin), so a
- * real voice session opens only when someone actually clicks a voice
- * channel. Switching channels just calls this again; the client
- * disconnects the old Room before connecting to the new one. */
-async function handleVoiceJoin(socket: AppSocket, msg: { channelId?: string }): Promise<void> {
+/** Actually joins a group call: mints a LiveKit token for that conversation's
+ * room (`${LIVEKIT_ROOM_NAME}-${conversationId}`) and sets
+ * `p.callConversationId`. DMs are message-only and are rejected here. */
+async function handleCallJoin(socket: AppSocket, msg: { conversationId?: string }): Promise<void> {
   const p = participantsMap.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
-  const channelId = String(msg.channelId || '');
-  if (!channelId) return;
-  const type = await channels.getChannelType(channelId);
-  if (type !== 'voice') return;
+  const conversationId = String(msg.conversationId || '');
+  if (!conversationId) return;
+  const conversation = await conversations.getGroupConversationForUser(conversationId, p.userId);
+  if (!conversation) {
+    send(socket, { t: 'error', code: 'call-not-allowed', message: 'Chamadas estao disponiveis apenas em grupos.' });
+    return;
+  }
   let livekitToken: string;
   try {
-    livekitToken = await livekit.createToken(p, `${config.LIVEKIT_ROOM_NAME}-${channelId}`);
+    livekitToken = await livekit.createToken(p, `${config.LIVEKIT_ROOM_NAME}-${conversationId}`);
   } catch (err) {
     console.warn(`[${p.id}] falha ao gerar token do LiveKit: ${err instanceof Error ? err.message : err}`);
     send(socket, { t: 'error', code: 'livekit-unavailable', message: 'Video/voz indisponivel no momento.' });
     return;
   }
-  setVoiceChannelId(p, channelId);
-  send(socket, { t: 'voice-token', channelId, livekitUrl: config.LIVEKIT_URL, livekitToken });
+  setCallConversationId(p, conversationId);
+  send(socket, { t: 'call-token', conversationId, livekitUrl: config.LIVEKIT_URL, livekitToken });
 }
 
-function handleVoiceLeave(socket: AppSocket): void {
+function handleCallLeave(socket: AppSocket): void {
   const p = participantsMap.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
-  setVoiceChannelId(p, null);
+  setCallConversationId(p, null);
 }
 
 /** Runs a handler (sync or async) isolated from errors — otherwise an
@@ -176,8 +176,10 @@ export function createWsServer(httpServer: HttpServer): Server {
     socket.onAny((eventName: string, payload: unknown) => {
       if (eventName === 'join') return safeHandle('join', socket, payload || {}, (s, p) => handleJoin(s, (p || {}) as JoinMessage));
       if (eventName === 'ping') return safeHandle('ping', socket, payload || {}, (s) => send(s, { t: 'pong' }));
-      if (eventName === 'voice-join') return safeHandle('voice-join', socket, payload || {}, (s, m) => handleVoiceJoin(s, (m || {}) as { channelId?: string }));
-      if (eventName === 'voice-leave') return safeHandle('voice-leave', socket, payload || {}, (s) => handleVoiceLeave(s));
+      if (eventName === 'call-join') {
+        return safeHandle(eventName, socket, payload || {}, (s, m) => handleCallJoin(s, (m || {}) as { conversationId?: string }));
+      }
+      if (eventName === 'call-leave') return safeHandle(eventName, socket, payload || {}, (s) => handleCallLeave(s));
 
       const handler = handlers[eventName];
       if (!handler) return;

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { config } from '../config/env.js';
 import type { AppSocket } from '../types.js';
 import {
-  participants, join, removeParticipant, handleClose, isUserOnline, setVoiceChannelId, publicParticipant, handlers,
+  participants, join, removeParticipant, handleClose, isUserOnline, setCallConversationId, publicParticipant, handlers,
 } from './participants.js';
 
 /** Fake minimo de AppSocket — so os campos que participants.ts de fato le
@@ -70,7 +70,7 @@ describe('join', () => {
     assert.equal(p!.userId, userId);
     assert.equal(p!.avatarColor, 'blurple');
     assert.equal(p!.deafened, false);
-    assert.equal(p!.voiceChannelId, null);
+    assert.equal(p!.callConversationId, null);
     assert.equal(participants.get(p!.id), p);
   });
 
@@ -218,32 +218,32 @@ describe('removeParticipant', () => {
   });
 });
 
-describe('setVoiceChannelId', () => {
+describe('setCallConversationId', () => {
   test('muda o campo e reflete em publicParticipant (sem vazar token)', () => {
     const p = join(fakeSocket(`u-${Math.random()}`), {})!;
     createdIds.push(p.id);
 
-    setVoiceChannelId(p, 'canal-voz-1');
-    assert.equal(p.voiceChannelId, 'canal-voz-1');
-    assert.equal(publicParticipant(p).voiceChannelId, 'canal-voz-1');
+    setCallConversationId(p, 'grupo-1');
+    assert.equal(p.callConversationId, 'grupo-1');
+    assert.equal(publicParticipant(p).callConversationId, 'grupo-1');
     assert.equal('token' in publicParticipant(p), false);
 
-    setVoiceChannelId(p, null);
-    assert.equal(p.voiceChannelId, null);
+    setCallConversationId(p, null);
+    assert.equal(p.callConversationId, null);
   });
 
-  test('reseta os flags de midia auto-reportados a cada join/leave — nao deixa fantasma de um canal anterior', () => {
+  test('reseta os flags de midia auto-reportados a cada join/leave — nao deixa fantasma de uma call anterior', () => {
     const p = join(fakeSocket(`u-${Math.random()}`), {})!;
     createdIds.push(p.id);
 
-    setVoiceChannelId(p, 'canal-voz-1');
+    setCallConversationId(p, 'grupo-1');
     p.micActivated = true;
     p.micMuted = false;
     p.cameraOn = true;
     p.sharing = true;
     p.speaking = true;
 
-    setVoiceChannelId(p, 'canal-voz-2');
+    setCallConversationId(p, 'grupo-2');
     assert.equal(p.micActivated, false);
     assert.equal(p.micMuted, true);
     assert.equal(p.cameraOn, false);
