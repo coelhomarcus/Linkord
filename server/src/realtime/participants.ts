@@ -14,7 +14,9 @@ const newToken = () => crypto.randomBytes(24).toString('hex');
 
 // external URL (https://...) or one of our own uploads (/uploads/<id>)
 const UPLOADED_AVATAR_RE = /^\/uploads\/[0-9a-f]{32}$/;
-function sanitizeAvatar(url: unknown): string {
+// exported for modules/conversations.ts — a group avatar is validated the
+// exact same way an account's is, just stored on `conversations` instead.
+export function sanitizeAvatar(url: unknown): string {
   const s = String(url == null ? '' : url).trim().slice(0, config.MAX_AVATAR_LEN);
   return /^https?:\/\/\S+$/i.test(s) || UPLOADED_AVATAR_RE.test(s) ? s : '';
 }

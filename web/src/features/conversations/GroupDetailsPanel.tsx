@@ -1,18 +1,24 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { KeyboardEvent, ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react';
 import { motion } from 'motion/react';
-import { Check, LogOut, Pencil, Search, Trash2, UserPlus, X } from 'lucide-react';
+import { Camera, Check, LogOut, Pencil, Search, Trash2, UserPlus, X } from 'lucide-react';
 import { useAnimatedSidebar } from '@/components/motion/animated-sidebar';
 import { Drawer } from '@/components/motion/drawer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ImageCropDialog } from '@/features/settings/ImageCropDialog';
 import { Avatar } from '@/shared/Avatar';
 import { ConfirmDialog } from '@/shared/ConfirmDialog';
+import { UploadProgressBar } from '@/shared/UploadProgressBar';
+import { formatMB } from '@/shared/lib/formatBytes';
 import { SPRING_LAYOUT } from '@/shared/lib/ease';
+import { uploadWithProgress } from '@/shared/lib/uploadWithProgress';
 import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
+import { AVATAR_MIME_TYPES, MAX_AVATAR_BYTES } from '@/types/protocol';
 import type { PublicUser } from '@/types/protocol';
-import { conversationInitials, groupMembers } from './conversationUtils';
+import { groupMembers } from './conversationUtils';
+import { GroupAvatar } from './GroupAvatar';
 
 const PANEL_WIDTH = 360;
 
@@ -26,7 +32,7 @@ interface GroupDetailsPanelProps {
 export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenProfile }: GroupDetailsPanelProps) {
   const {
     state, conversations, allUsers, onlineUserIds,
-    updateGroupTitle, addGroupMembers, removeGroupMember, deleteGroup,
+    updateGroupTitle, updateGroupAvatar, addGroupMembers, removeGroupMember, deleteGroup,
   } = useRoom();
   const { isMobile } = useAnimatedSidebar();
   const conversation = conversationId ? conversations.find((c) => c.id === conversationId) ?? null : null;
@@ -42,6 +48,11 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<PublicUser | null>(null);
+  const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
 
   // the group can disappear out from under an open panel (deleted, or the
   // viewer got removed) — conversation just becomes undefined in the list.
@@ -55,6 +66,11 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
     setAddOpen(false);
     setAddQuery('');
     setAddSelected(new Set());
+    setAvatarError(null);
+    setCropSrc((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
   }, [open]);
 
   const addCandidates = useMemo(() => {
@@ -117,6 +133,47 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
     setRemoveTarget(null);
   }
 
+  function handleAvatarFilePicked(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > MAX_AVATAR_BYTES) {
+      setAvatarError(`Arquivo muito grande (máximo ${formatMB(MAX_AVATAR_BYTES)}).`);
+      return;
+    }
+    setAvatarError(null);
+    setCropSrc(URL.createObjectURL(file));
+  }
+
+  function closeCropDialog() {
+    setCropSrc((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+  }
+
+  async function handleAvatarCropConfirm(blob: Blob) {
+    if (!conversation) return;
+    const conversationId = conversation.id;
+    setAvatarError(null);
+    setAvatarUploadProgress(0);
+    setUploadingAvatar(true);
+    closeCropDialog();
+    try {
+      const body = await uploadWithProgress<{ avatar: string }>({
+        url: '/api/avatar',
+        file: blob,
+        headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+        onProgress: setAvatarUploadProgress,
+      });
+      updateGroupAvatar(conversationId, body.avatar);
+    } catch (err) {
+      setAvatarError(err instanceof Error ? err.message : 'Falha ao enviar a foto.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
+
   const content: ReactNode = conversation && (
     <>
       <div className="flex flex-none items-center gap-2 border-b border-white/10 px-5 py-4">
@@ -128,9 +185,37 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-5">
         <div className="flex flex-col items-center gap-3 text-center">
-          <div className="grid size-16 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-title font-semibold text-text-secondary">
-            {conversationInitials(conversation.title || 'Grupo')}
+          <div className="relative">
+            <GroupAvatar title={conversation.title || 'Grupo'} avatar={conversation.avatar} size={64} className="rounded-2xl" />
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => avatarFileInputRef.current?.click()}
+                disabled={uploadingAvatar}
+                aria-label="Trocar foto do grupo"
+                className="absolute -bottom-1 -right-1 grid size-6 place-items-center rounded-full border border-white/10 bg-[rgb(20_20_22)] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+              >
+                <Camera size={12} />
+              </button>
+            )}
           </div>
+          {isAdmin && (
+            <input
+              ref={avatarFileInputRef}
+              type="file"
+              accept={AVATAR_MIME_TYPES.join(',')}
+              hidden
+              aria-label="Selecionar foto do grupo"
+              onChange={handleAvatarFilePicked}
+            />
+          )}
+          {uploadingAvatar && (
+            <div className="flex w-full max-w-40 items-center gap-2">
+              <UploadProgressBar progress={avatarUploadProgress} />
+              <span className="flex-none text-caption tabular-nums text-text-muted">{Math.round(avatarUploadProgress * 100)}%</span>
+            </div>
+          )}
+          {avatarError && <p className="text-label text-red">{avatarError}</p>}
           {editingTitle ? (
             <div className="flex w-full items-center gap-2">
               <Input
@@ -292,6 +377,16 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
           </div>
         </motion.aside>
       )}
+
+      <ImageCropDialog
+        open={!!cropSrc}
+        imageSrc={cropSrc}
+        aspect={1}
+        cropShape="rect"
+        title="Recortar foto do grupo"
+        onCancel={closeCropDialog}
+        onConfirm={handleAvatarCropConfirm}
+      />
 
       <ConfirmDialog
         open={confirmLeave}

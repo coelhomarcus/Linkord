@@ -19,7 +19,8 @@ import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
 import { ALLOWED_REACTIONS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE } from '@/types/protocol';
 import type { ChatMessage, PublicUser, ReactionEmoji } from '@/types/protocol';
-import { conversationInitials, conversationTitle, directUser, groupMembers } from './conversationUtils';
+import { conversationTitle, directUser, groupMembers } from './conversationUtils';
+import { GroupAvatar } from './GroupAvatar';
 import { GroupDetailsPanel } from './GroupDetailsPanel';
 
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -119,6 +120,15 @@ function MessageRow({
     >
       {!isMine && (
         <div className="w-9 flex-none pt-5">
+          {showHeader && message.id ? (
+            <button type="button" onClick={() => onOpenProfile(message.id!)} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Avatar id={message.id} name={displayedName} avatar={displayedAvatar} avatarColor={author?.avatarColor} size={32} />
+            </button>
+          ) : null}
+        </div>
+      )}
+      {isMine && (
+        <div className="w-9 flex-none pt-5 order-last">
           {showHeader && message.id ? (
             <button type="button" onClick={() => onOpenProfile(message.id!)} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <Avatar id={message.id} name={displayedName} avatar={displayedAvatar} avatarColor={author?.avatarColor} size={32} />
@@ -263,8 +273,6 @@ function MessageRow({
           </div>
         )}
       </div>
-
-      {isMine && <div className="w-9 flex-none" />}
     </div>
   );
 }
@@ -375,10 +383,8 @@ function MessageBubbleList({ conversationId, onReply, onOpenProfile }: {
             </div>
           )}
           {items.map((item) => item.type === 'date' ? (
-            <div key={item.key} className="my-4 flex select-none items-center gap-3 px-4">
-              <div className="h-px flex-1 bg-white/10" />
-              <span className="flex-none text-caption font-medium text-text-muted">{item.label}</span>
-              <div className="h-px flex-1 bg-white/10" />
+            <div key={item.key} className="my-4 flex select-none items-center justify-center px-4">
+              <span className="flex-none text-caption font-medium text-text-muted opacity-60">{item.label}</span>
             </div>
           ) : (
             <div key={item.key} className={highlightedMsgId === item.message.msgId ? 'rounded-2xl bg-primary/10' : undefined}>
@@ -628,10 +634,10 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch }: C
               <button
                 type="button"
                 onClick={() => setDetailsOpen(true)}
-                className="grid size-10 flex-none place-items-center rounded-xl border border-white/10 bg-white/[0.06] text-label font-semibold text-text-secondary transition-colors hover:border-white/20"
+                className="transition-colors hover:border-white/20"
                 aria-label="Detalhes do grupo"
               >
-                {conversationInitials(title)}
+                <GroupAvatar title={title} avatar={conversation.avatar} size={40} />
               </button>
             )}
             <button

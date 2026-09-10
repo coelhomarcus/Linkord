@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { conversationMembers, conversations, users, type Conversation } from '../db/schema.js';
-import { participants, send } from '../realtime/participants.js';
+import { participants, sanitizeAvatar, send } from '../realtime/participants.js';
 import { resolveDisplayName } from './auth/users.js';
 import type { AppSocket, HandlerTable, Participant } from '../types.js';
 
@@ -221,17 +221,38 @@ async function handleGroupDelete(socket: AppSocket, msg: { conversationId?: stri
   await broadcastConversationListToUsers(memberRows.map((row) => row.userId));
 }
 
-/** Admin-only rename. Title validation mirrors handleGroupCreate. */
-async function handleGroupUpdate(socket: AppSocket, msg: { conversationId?: string; title?: string }): Promise<void> {
+/** Admin-only rename/re-avatar. `title` and `avatar` are each applied only
+ * when present in the message, so one can change without touching the
+ * other. Title validation mirrors handleGroupCreate; avatar validation
+ * mirrors an account's own (see realtime/participants.ts#sanitizeAvatar) —
+ * `avatar: ''` is a valid, deliberate "remove the photo". */
+async function handleGroupUpdate(socket: AppSocket, msg: { conversationId?: string; title?: string; avatar?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket || !isAdmin(p)) return;
   const conversationId = String(msg.conversationId || '');
-  const title = sanitizeConversationTitle(msg.title);
-  if (!conversationId || !title) return;
+  if (!conversationId) return;
   const [conversation] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
   if (!conversation || conversation.type !== 'group') return;
 
-  await db.update(conversations).set({ title, updatedAt: new Date() }).where(eq(conversations.id, conversationId));
+  const updates: { title?: string; avatar?: string; updatedAt: Date } = { updatedAt: new Date() };
+  if (msg.title !== undefined) {
+    const title = sanitizeConversationTitle(msg.title);
+    if (title) updates.title = title;
+  }
+  if (msg.avatar !== undefined) updates.avatar = sanitizeAvatar(msg.avatar);
+  if (updates.title === undefined && updates.avatar === undefined) return;
+
+  await db.update(conversations).set(updates).where(eq(conversations.id, conversationId));
+
+  // the old file (if it was one of our uploads) is now orphaned — same
+  // cleanup an account's own avatar change gets in handleProfile.
+  if (updates.avatar !== undefined && conversation.avatar && conversation.avatar !== updates.avatar) {
+    const { deleteAvatarFile } = await import('./attachments.js');
+    deleteAvatarFile(conversation.avatar).catch((err) => {
+      console.error(`[conversations] falha ao apagar avatar antigo do grupo ${conversationId}:`, err instanceof Error ? err.stack : err);
+    });
+  }
+
   const memberRows = await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
   await broadcastConversationListToUsers(memberRows.map((row) => row.userId));
 }

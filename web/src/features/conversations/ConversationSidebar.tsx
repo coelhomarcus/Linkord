@@ -9,23 +9,13 @@ import { formatTime } from '@/shared/lib/formatChatTime';
 import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
 import type { Conversation, PublicUser } from '@/types/protocol';
-import { conversationInitials, conversationTitle, directUser, groupMembers } from './conversationUtils';
+import { conversationTitle, directUser, groupMembers } from './conversationUtils';
+import { GroupAvatar } from './GroupAvatar';
 import { GroupCreateDialog } from './GroupCreateDialog';
 
 interface ConversationSidebarProps {
   onOpenSettings: () => void;
   onOpenProfile: (userId: string) => void;
-}
-
-function GroupAvatar({ title, active }: { title: string; active?: boolean }) {
-  return (
-    <div className={cn(
-      'grid size-11 flex-none place-items-center rounded-xl border text-label font-semibold',
-      active ? 'border-primary/50 bg-primary/20 text-text-primary' : 'border-white/10 bg-white/[0.06] text-text-secondary'
-    )}>
-      {conversationInitials(title)}
-    </div>
-  );
 }
 
 function ConversationRow({ conversation, active, onClick }: {
@@ -65,7 +55,7 @@ function ConversationRow({ conversation, active, onClick }: {
           <span className={cn('absolute -bottom-0.5 -right-0.5 size-3.5 rounded-full border-2 border-[rgb(14_14_16)]', online ? 'bg-green' : 'bg-text-muted')} />
         </div>
       ) : (
-        <GroupAvatar title={title} active={active} />
+        <GroupAvatar title={title} avatar={conversation.avatar} active={active} />
       )}
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
@@ -131,7 +121,7 @@ function CollapsedConversationButton({ conversation, active, onClick }: {
         {conversation.type === 'direct' && other ? (
           <Avatar id={other.id} name={other.displayName} avatar={other.avatar} avatarColor={other.avatarColor} size={40} />
         ) : (
-          <GroupAvatar title={title} active={active} />
+          <GroupAvatar title={title} avatar={conversation.avatar} active={active} />
         )}
         {unread > 0 && (
           <span className="absolute -right-1 -top-1 grid min-w-4.5 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground">
@@ -270,11 +260,11 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile }: Conversat
               </div>
               <Tabs value={tab} onValueChange={setTab} variant="segment" className="flex min-h-0 flex-1 flex-col">
                 <TabsList className="flex-none grid w-full grid-cols-2 rounded-xl border border-white/10 bg-black/25 p-1">
-                  <TabsTrigger value="conversations" className="gap-1.5 rounded-lg">
+                  <TabsTrigger value="conversations" className="w-full gap-1.5 rounded-lg">
                     <MessageCircle size={14} />
                     Conversas
                   </TabsTrigger>
-                  <TabsTrigger value="people" className="gap-1.5 rounded-lg">
+                  <TabsTrigger value="people" className="w-full gap-1.5 rounded-lg">
                     <UsersRound size={14} />
                     Pessoas
                   </TabsTrigger>

@@ -112,7 +112,7 @@ export type ClientMessage =
   | { t: 'direct-open'; userId: string }
   | { t: 'group-create'; title: string; memberIds: string[] }
   | { t: 'group-delete'; conversationId: string }
-  | { t: 'group-update'; conversationId: string; title: string }
+  | { t: 'group-update'; conversationId: string; title?: string; avatar?: string }
   | { t: 'group-members-add'; conversationId: string; memberIds: string[] }
   | { t: 'group-members-remove'; conversationId: string; userId: string }
   | { t: 'load-more-messages'; conversationId: string; beforeMsgId: number }

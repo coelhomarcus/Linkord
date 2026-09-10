@@ -53,6 +53,7 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     createGroup: noop,
     deleteGroup: noop,
     updateGroupTitle: noop,
+    updateGroupAvatar: noop,
     addGroupMembers: noop,
     removeGroupMember: noop,
     messagesByConversation: new Map(),
