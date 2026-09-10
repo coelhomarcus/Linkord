@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Crosshair, Maximize2, PictureInPicture2, Volume2, VolumeX } from 'lucide-react';
+import { Crosshair, Maximize2, PictureInPicture2, UserX, Volume2, VolumeX } from 'lucide-react';
 import type { Track as LKTrack } from 'livekit-client';
 import { useRoom } from '../../state/RoomContext';
 import type { AnchorRect } from '../../state/RoomContext';
@@ -49,7 +49,7 @@ function formatElapsed(totalSeconds: number): string {
 }
 
 export function TileMenu() {
-  const { state, dispatch, menuTarget, closeTileMenu, tileDomRegistry, audioRegistry, showStats } = useRoom();
+  const { state, dispatch, menuTarget, closeTileMenu, tileDomRegistry, audioRegistry, showStats, kickFromCall } = useRoom();
   const [sliderValue, setSliderValue] = useState(0);
   const [bitrateKbps, setBitrateKbps] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
@@ -104,6 +104,7 @@ export function TileMenu() {
   const handle = tileDomRegistry.current.get(key);
   const hasAudio = !isMe && audioRegistry.current.has(audioKey);
   const isFocused = state.focusedId === key;
+  const canKick = !isMe && state.me.role === 'admin';
   const pipSupported = typeof document !== 'undefined' && document.pictureInPictureEnabled
     && !!handle?.video && !handle.video.disablePictureInPicture;
   const inPip = pipSupported && document.pictureInPictureElement === handle?.video;
@@ -128,6 +129,10 @@ export function TileMenu() {
     const audio = audioRegistry.current.get(audioKey!)?.element;
     if (audio) audio.volume = v / 100;
     if (targetUserId) saveCallVolume(volumeStorageKey!, v / 100);
+  }
+  function handleKick() {
+    if (participantId) kickFromCall(participantId);
+    closeTileMenu();
   }
 
   return (
@@ -171,6 +176,15 @@ export function TileMenu() {
               <div>Bitrate: {bitrateKbps} kbps</div>
               {isMe && <div>No ar: {formatElapsed(elapsedSec)}</div>}
             </div>
+          </>
+        )}
+        {canKick && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={handleKick}>
+              <UserX size={16} />
+              <span>Remover da chamada</span>
+            </DropdownMenuItem>
           </>
         )}
       </DropdownMenuContent>

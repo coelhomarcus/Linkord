@@ -260,10 +260,27 @@ async function handleGroupMembersAdd(socket: AppSocket, msg: { conversationId?: 
   await broadcastConversationListToUsers([...currentIds, ...newIds]);
 }
 
-/** Admin removes anyone; a member can only remove THEMSELVES (leave). When
- * this empties the group, it's purged outright — with no group-discovery UI,
- * a memberless group would otherwise become an invisible, unmanageable row
- * (nobody's `conversation-list` query would ever surface it again). */
+/** Purges a group once it has zero members left (an admin-account deletion
+ * can do this too, not just handleGroupMembersRemove below — with no
+ * group-discovery UI, a memberless group would otherwise become an
+ * invisible, unmanageable row nobody's `conversation-list` query ever
+ * surfaces again). Otherwise just refreshes whoever remains. Returns
+ * whether the group was purged. */
+export async function reconcileGroupMembership(conversationId: string): Promise<boolean> {
+  const remainingRows = await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
+  if (remainingRows.length > 0) {
+    await broadcastConversationListToUsers(remainingRows.map((row) => row.userId));
+    return false;
+  }
+  const [conversation] = await db.select({ type: conversations.type }).from(conversations).where(eq(conversations.id, conversationId)).limit(1);
+  if (conversation?.type !== 'group') return false;
+  const { deleteForConversation } = await import('./attachments.js');
+  await deleteForConversation(conversationId);
+  await db.delete(conversations).where(eq(conversations.id, conversationId));
+  return true;
+}
+
+/** Admin removes anyone; a member can only remove THEMSELVES (leave). */
 async function handleGroupMembersRemove(socket: AppSocket, msg: { conversationId?: string; userId?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
@@ -290,14 +307,7 @@ async function handleGroupMembersRemove(socket: AppSocket, msg: { conversationId
     send(participant.socket, { t: 'conversation-deleted', conversationId });
   }
 
-  const remainingRows = await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
-  if (remainingRows.length === 0) {
-    const { deleteForConversation } = await import('./attachments.js');
-    await deleteForConversation(conversationId);
-    await db.delete(conversations).where(eq(conversations.id, conversationId));
-    return;
-  }
-  await broadcastConversationListToUsers(remainingRows.map((row) => row.userId));
+  await reconcileGroupMembership(conversationId);
 }
 
 export const handlers: HandlerTable = {

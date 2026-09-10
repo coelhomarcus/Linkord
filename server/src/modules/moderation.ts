@@ -1,12 +1,13 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { config } from '../config/env.js';
 import { db } from '../db/client.js';
-import { users } from '../db/schema.js';
+import { conversationMembers, conversations, users } from '../db/schema.js';
 import { findById } from './auth/users.js';
 import { invalidateSessionsForUser } from './auth/session.js';
 import { participants, broadcast, send, removeParticipant, setCallConversationId } from '../realtime/participants.js';
 import * as livekit from '../realtime/livekit.js';
 import { deleteAvatarFile } from './attachments.js';
+import { reconcileGroupMembership } from './conversations.js';
 import type { AppSocket, HandlerTable, Participant } from '../types.js';
 
 // Admin-only moderation actions — account deletion (Settings "Moderation"
@@ -36,6 +37,15 @@ async function handleUserDelete(socket: AppSocket, msg: { userId?: string }): Pr
 
   const target = await findById(targetId);
   if (!target) return; // already deleted (race with another admin, or invalid id)
+
+  // groups this account was in — read BEFORE the delete below, since the
+  // membership rows vanish via CASCADE the instant the account does.
+  const groupIds = (await db
+    .select({ conversationId: conversationMembers.conversationId })
+    .from(conversationMembers)
+    .innerJoin(conversations, eq(conversations.id, conversationMembers.conversationId))
+    .where(and(eq(conversationMembers.userId, targetId), eq(conversations.type, 'group'))))
+    .map((row) => row.conversationId);
 
   // delete the avatar FILE before the row — after the delete below there's
   // no way to know which one it was (users.avatar only exists on this row;
@@ -68,6 +78,10 @@ async function handleUserDelete(socket: AppSocket, msg: { userId?: string }): Pr
   }
 
   broadcast({ t: 'user-deleted', userId: targetId });
+
+  // a deleted account can't stay a member of anything — reuse the same
+  // "did this empty the group" cleanup a normal group-members-remove does.
+  for (const conversationId of groupIds) await reconcileGroupMembership(conversationId);
 }
 
 /** Removes one CONNECTION (not account) from its current group call —

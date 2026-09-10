@@ -105,10 +105,37 @@ Status: concluida em 2026-09-10.
 - `voiceKickParticipant` (renomeado `kickFromCall` na Fase 7) segue sem
   gatilho na UI — fica para a fase de redesign visual da chamada.
 
+### Fase 5 (parcial) - controles da chamada com beUI
+
+Status: concluida em 2026-09-10.
+
+- `CallControlBar.tsx` passou a usar o `ExpandableActionBar` do beUI (ja
+  instalado na Fase 0, nunca usado ate agora) para mic/ouvir/camera/tela —
+  vira uma pilula que expande com label ao passar o mouse. Reagir e Sair
+  continuam como botoes separados (o primeiro precisa de popover, o segundo
+  e deliberadamente destacado/vermelho, fora do grupo de toggles).
+- `TileMenu.tsx` ganhou "Remover da chamada" (admin-only, nunca no proprio
+  tile) chamando `kickFromCall` — essa acao existia no `RoomContext` desde a
+  Fase 7 mas não tinha gatilho de UI.
+- Achado e corrigido de quebra um gap adjacente: apagar uma conta (Settings
+  > Moderacao) apagava a membership via CASCADE mas nunca verificava se isso
+  esvaziava um grupo — um grupo podia ficar orfao (zero membros, invisivel
+  pra sempre) sem passar pelo purge que `group-members-remove` ja fazia.
+  Extraido `reconcileGroupMembership()` em `conversations.ts`, reusado nos
+  dois lugares.
+- Testado: como o ambiente sandbox nao consegue completar WebRTC de verdade
+  (headless Chromium com fake device de audio nao publica track — testado e
+  confirmado, LiveKit conecta mas o mic nunca ativa), a verificacao foi via
+  componente (Vitest + Testing Library, `CallControlBar.test.tsx` e novo
+  `TileMenu.test.tsx`, 8 testes) em vez de screenshot end-to-end. Cobre: os
+  botoes certos aparecem com os labels certos, clique aciona a funcao certa,
+  "Remover da chamada" so aparece pra admin e nunca no proprio tile.
+- Nao mudou: `Tile.tsx`, `TileGrid.tsx`, `FloatingPip.tsx` — ja usavam os
+  tokens de tema atuais (nao tinham "DNA Discord" real, so faltava o
+  gatilho do kick e a pilula de controles beUI).
+
 ### Proximas fases
 
-- Renovar visual da chamada em grupo com controles beUI e dar um gatilho de
-  UI para `kickFromCall` (admin remover alguem da call).
 - Ajustar telas de login, perfil e settings para a nova linguagem visual.
 - Fazer QA visual fino em desktop/mobile e ajustar microinteracoes.
 

@@ -1,38 +1,15 @@
-import { useState } from 'react';
-import type { ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { Headphones, HeadphoneOff, Mic, MicOff, Monitor, MonitorX, PhoneOff, Smile, Video, VideoOff, X } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { useParticipantMedia } from './useLiveKitTrack';
 import { ALLOWED_REACTIONS } from '../../types/protocol';
 import type { ReactionEmoji } from '../../types/protocol';
+import { ExpandableActionBar } from '@/components/motion/expandable-action-bar';
+import type { ExpandableActionBarItem } from '@/components/motion/expandable-action-bar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/shared/lib/utils';
-
-function ControlButton({ onClick, label, icon, iconColorClass }: {
-  onClick: () => void;
-  label: string;
-  icon: ReactNode;
-  iconColorClass: string;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        onClick={onClick}
-        aria-label={label}
-        className={cn(
-          buttonVariants({ variant: 'ghost', size: 'icon-lg' }),
-          'h-9 w-9 rounded-full bg-bg-tertiary hover:bg-bg-selected md:h-11 md:w-11',
-          iconColorClass
-        )}
-      >
-        {icon}
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  );
-}
 
 export function CallControlBar() {
   const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, toggleMicMuted, deafened, toggleDeafened, leaveGroupCall, sendReaction } = useRoom();
@@ -45,6 +22,33 @@ export function CallControlBar() {
     sendReaction(emoji);
     setReactionsOpen(false);
   }
+
+  const items: ExpandableActionBarItem[] = useMemo(() => [
+    {
+      id: 'mic',
+      label: myMedia.micMuted ? 'Desmutar' : 'Mutar',
+      icon: myMedia.micMuted ? <MicOff size={16} className="text-red" /> : <Mic size={16} />,
+      onClick: () => { void toggleMicMuted(); },
+    },
+    {
+      id: 'deafen',
+      label: deafened ? 'Voltar a ouvir' : 'Parar de ouvir',
+      icon: deafened ? <HeadphoneOff size={16} className="text-red" /> : <Headphones size={16} />,
+      onClick: toggleDeafened,
+    },
+    {
+      id: 'camera',
+      label: cameraOn ? 'Parar camera' : 'Ligar camera',
+      icon: cameraOn ? <Video size={16} className="text-green" /> : <VideoOff size={16} />,
+      onClick: () => { void (cameraOn ? stopCamera() : startCamera()); },
+    },
+    {
+      id: 'share',
+      label: sharing ? 'Parar compartilhamento' : 'Compartilhar tela',
+      icon: sharing ? <MonitorX size={16} className="text-primary" /> : <Monitor size={16} />,
+      onClick: () => { void (sharing ? stopSharing() : startSharing()); },
+    },
+  ], [myMedia.micMuted, deafened, cameraOn, sharing, toggleMicMuted, toggleDeafened, stopCamera, startCamera, stopSharing, startSharing]);
 
   return (
     <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
@@ -61,14 +65,14 @@ export function CallControlBar() {
           </button>
         </div>
       )}
-      <div className="flex max-w-[calc(100vw-1rem)] items-center gap-0.5 rounded-full border border-strong bg-bg-floating/90 px-2 py-2 shadow-popover backdrop-blur md:gap-1 md:px-4 md:py-2.5">
+      <div className="flex items-center gap-2">
         <Popover open={reactionsOpen} onOpenChange={setReactionsOpen}>
           <PopoverTrigger
             aria-label="Reagir"
             className={cn(
               buttonVariants({ variant: 'ghost', size: 'icon-lg' }),
-              'h-9 w-9 rounded-full md:h-11 md:w-11',
-              reactionsOpen ? 'bg-bg-selected text-text-primary' : 'bg-bg-tertiary text-text-secondary hover:bg-bg-selected hover:text-text-primary'
+              'h-11 w-11 rounded-full border border-strong bg-bg-floating/90 shadow-popover backdrop-blur-xl',
+              reactionsOpen ? 'text-text-primary' : 'text-text-secondary hover:text-text-primary'
             )}
           >
             <Smile size={18} />
@@ -89,36 +93,13 @@ export function CallControlBar() {
           </PopoverContent>
         </Popover>
 
-        <ControlButton
-          onClick={toggleMicMuted}
-          label={myMedia.micMuted ? 'Desmutar' : 'Mutar'}
-          icon={myMedia.micMuted ? <MicOff size={18} /> : <Mic size={18} />}
-          iconColorClass={myMedia.micMuted ? 'text-red' : 'text-text-secondary'}
-        />
-        <ControlButton
-          onClick={toggleDeafened}
-          label={deafened ? 'Voltar a ouvir' : 'Parar de ouvir'}
-          icon={deafened ? <HeadphoneOff size={18} /> : <Headphones size={18} />}
-          iconColorClass={deafened ? 'text-red' : 'text-text-secondary'}
-        />
-        <ControlButton
-          onClick={() => (cameraOn ? stopCamera() : startCamera())}
-          label={cameraOn ? 'Parar camera' : 'Ligar camera'}
-          icon={cameraOn ? <Video size={18} /> : <VideoOff size={18} />}
-          iconColorClass={cameraOn ? 'text-green' : 'text-text-secondary'}
-        />
-        <ControlButton
-          onClick={() => (sharing ? stopSharing() : startSharing())}
-          label={sharing ? 'Parar compartilhamento' : 'Compartilhar tela'}
-          icon={sharing ? <MonitorX size={18} /> : <Monitor size={18} />}
-          iconColorClass={sharing ? 'text-blurple' : 'text-text-secondary'}
-        />
+        <ExpandableActionBar items={items} size="md" />
 
         <Tooltip>
           <TooltipTrigger
             onClick={leaveGroupCall}
             aria-label="Sair da chamada"
-            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), 'h-9 w-9 rounded-full bg-red text-white hover:bg-red-hover md:h-11 md:w-11')}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), 'h-11 w-11 rounded-full bg-red text-white shadow-popover hover:bg-red-hover')}
           >
             <PhoneOff size={18} />
           </TooltipTrigger>
