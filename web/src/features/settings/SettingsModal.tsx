@@ -26,7 +26,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsIndicator, TabsPanel, TabsTrigger } from '@/components/ui/tabs';
 
-const settingsCardClass = 'flex flex-col gap-2 rounded-md border border-strong bg-bg-tertiary p-4';
+const settingsCardClass = 'flex flex-col gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-4';
 
 function formatGB(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
@@ -199,12 +199,12 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
       <DialogContent className="inset-0 h-full max-h-full w-full max-w-full translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-none bg-bg-modal p-0 gap-0 md:inset-auto md:top-1/2 md:left-1/2 md:h-auto md:min-h-150 md:max-h-[90vh] md:w-full md:max-w-4xl md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl">
-        <DialogHeader className="border-b border-subtle px-4 pt-5 pb-2 pr-12 md:px-6 md:pr-12">
+        <DialogHeader className="border-b border-white/10 px-4 pt-5 pb-2 pr-12 md:px-6 md:pr-12">
           <DialogTitle className="text-display font-bold text-text-primary">Ajustes</DialogTitle>
         </DialogHeader>
-        <Tabs defaultValue="profile" orientation="vertical" className="min-h-0 flex-1 flex-col items-stretch md:flex-row">
-          <TabsList className="h-auto w-full flex-none flex-row items-stretch gap-1 overflow-x-auto rounded-none bg-bg-primary p-2 md:w-44 md:flex-col md:overflow-visible md:p-3">
-            <TabsIndicator />
+        <Tabs defaultValue="profile" orientation="vertical" className="min-h-0 min-w-0 flex-1 flex-col items-stretch md:flex-row">
+          <TabsList className="h-auto w-full min-w-0 flex-none flex-row items-stretch gap-1 overflow-x-auto rounded-none border-b border-white/10 bg-transparent p-2 md:w-48 md:flex-col md:overflow-visible md:border-b-0 md:border-r md:p-3">
+            <TabsIndicator className="rounded-lg bg-primary/12" />
             <TabsTrigger value="profile" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><User size={16} /><span>Perfil</span></TabsTrigger>
             <TabsTrigger value="account" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><IdCard size={16} /><span>Conta</span></TabsTrigger>
             <TabsTrigger value="av" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><SlidersHorizontal size={16} /><span>Audio e video</span></TabsTrigger>
@@ -216,7 +216,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             )}
           </TabsList>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
             <TabsPanel value="profile" className="flex flex-col gap-6 lg:flex-row lg:items-start">
               <div className="flex flex-col gap-2 lg:sticky lg:top-0 lg:w-80 lg:flex-none">
                 <SectionLabel>Pre-visualizacao</SectionLabel>
@@ -408,7 +408,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   <p className="select-none text-caption text-text-muted">Fixo, nao pode ser trocado. O nome de exibicao (aba Perfil) e o que aparece pra todo mundo.</p>
                 </div>
                 {state.me.role === 'admin' && (
-                  <span className="flex w-fit items-center gap-1 rounded-sm bg-blurple/15 px-1.5 py-0.5 text-caption font-medium text-blurple">
+                  <span className="flex w-fit items-center gap-1 rounded-sm bg-primary/15 px-1.5 py-0.5 text-caption font-medium text-primary">
                     <ShieldCheck size={14} /> Admin
                   </span>
                 )}
@@ -455,7 +455,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 <div className="flex flex-row items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="select-none text-body font-medium text-text-primary">Notificacoes de mensagens</p>
-                    <p className="select-none text-label text-text-muted">Avisa no sistema quando chegar mensagem em um canal que voce nao esta vendo.</p>
+                    <p className="select-none text-label text-text-muted">Avisa no sistema quando chegar mensagem numa conversa que voce nao esta vendo.</p>
                   </div>
                   <Switch
                     checked={notificationsEnabled}
@@ -490,7 +490,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 </span>
                 <div className="h-2 w-full overflow-hidden rounded-full bg-bg-hover">
                   <div
-                    className="h-full rounded-full bg-blurple transition-all"
+                    className="h-full rounded-full bg-primary transition-all"
                     style={{ width: `${storageUsage.maxBytes ? Math.min(100, (storageUsage.totalBytes / storageUsage.maxBytes) * 100) : 0}%` }}
                   />
                 </div>

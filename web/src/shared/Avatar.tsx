@@ -1,7 +1,7 @@
 import { Avatar as AvatarRoot, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 export const AVATAR_COLOR_OPTIONS = [
-  { value: 'blurple', label: 'Blurple', css: 'var(--color-blurple)' },
+  { value: 'blurple', label: 'Índigo', css: 'var(--color-blurple)' },
   { value: 'green', label: 'Verde', css: 'var(--color-green)' },
   { value: 'red', label: 'Vermelho', css: 'var(--color-red)' },
   { value: 'fuchsia', label: 'Fuchsia', css: 'var(--color-fuchsia)' },

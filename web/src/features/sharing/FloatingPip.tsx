@@ -88,7 +88,7 @@ export function FloatingPip({ allIds }: { allIds: string[] }) {
             aria-label="Transmissao anterior"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => setIndex((safeIndex - 1 + descriptors.length) % descriptors.length)}
-            className="absolute left-1 top-1/2 -translate-y-1/2 bg-bg-tertiary/75 text-text-primary hover:bg-blurple"
+            className="absolute left-1 top-1/2 -translate-y-1/2 bg-bg-tertiary/75 text-text-primary hover:bg-primary"
           >
             <ChevronLeft size={14} />
           </Button>
@@ -99,7 +99,7 @@ export function FloatingPip({ allIds }: { allIds: string[] }) {
             aria-label="Proxima transmissao"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => setIndex((safeIndex + 1) % descriptors.length)}
-            className="absolute right-1 top-1/2 -translate-y-1/2 bg-bg-tertiary/75 text-text-primary hover:bg-blurple"
+            className="absolute right-1 top-1/2 -translate-y-1/2 bg-bg-tertiary/75 text-text-primary hover:bg-primary"
           >
             <ChevronRight size={14} />
           </Button>

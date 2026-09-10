@@ -208,7 +208,11 @@ export function ConversationSidebar({ mobileVisible, onSelect, onOpenSettings, o
           </Tabs>
         </div>
       </aside>
-      <GroupCreateDialog open={groupOpen} onOpenChange={setGroupOpen} />
+      <GroupCreateDialog
+        open={groupOpen}
+        onOpenChange={setGroupOpen}
+        onCreated={() => { setTab('conversations'); onSelect(); }}
+      />
     </>
   );
 }

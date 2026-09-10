@@ -28,7 +28,7 @@ function UserRow({ user, online, isMe, onDeleteRequest }: {
         </p>
         <p className="select-none text-caption text-text-muted">{online ? 'Online' : 'Offline'}</p>
       </div>
-      {user.role === 'admin' && <ShieldCheck size={16} className="flex-none text-blurple" />}
+      {user.role === 'admin' && <ShieldCheck size={16} className="flex-none text-primary" />}
       <Button
         type="button"
         variant="ghost"

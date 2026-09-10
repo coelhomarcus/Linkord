@@ -134,10 +134,68 @@ Status: concluida em 2026-09-10.
   tokens de tema atuais (nao tinham "DNA Discord" real, so faltava o
   gatilho do kick e a pilula de controles beUI).
 
-### Proximas fases
+### Fase 6 (parcial) - settings, perfil e o token `blurple`
 
-- Ajustar telas de login, perfil e settings para a nova linguagem visual.
-- Fazer QA visual fino em desktop/mobile e ajustar microinteracoes.
+Status: concluida em 2026-09-10.
+
+- Achado: o token `--color-blurple`/`bg-blurple`/`text-blurple` (o proprio
+  nome que a Discord deu pra cor de marca deles) nunca tinha sido migrado
+  pra `--color-accent-primary` como o plano original (Fase 0) pedia —
+  `--color-accent-primary` foi criado como alias, mas 15 arquivos (incluindo
+  o `Button` base) continuavam usando `bg-blurple`/`text-blurple` de
+  verdade. Migrado tudo pra `bg-primary`/`text-primary` (ja o padrao usado
+  nos componentes novos da Fase 1-5), e o hover fixo `blurple-hover` virou
+  `hover:bg-primary/90`, o padrao que o proprio beUI usa.
+- O rotulo visivel "Blurple" no seletor de cor de perfil (Settings > Perfil)
+  virou "Índigo" — o `value: 'blurple'` interno (dado ja salvo pra contas
+  reais) foi mantido, so o texto que aparece pra usuario mudou.
+- Removidos os tokens CSS mortos (zero uso fora da propria definicao):
+  `--color-bg-channel-active`, `--color-bg-panel`, `--color-bg-sidebar` e
+  `--color-surface-sidebar`.
+- Corrigido texto residual da Fase 7: notificacoes ainda diziam "mensagem
+  em um canal que voce nao esta vendo".
+- `SettingsModal.tsx`: rail vertical e cards passaram da superficie opaca
+  antiga (`border-strong bg-bg-tertiary`, bloco solido `bg-bg-primary` no
+  rail — visualmente muito perto do "User Settings" da Discord) pra
+  bordas translucidas `border-white/10`, cards `bg-white/[0.03]
+  rounded-xl` e a aba ativa como pilula `bg-primary/12 rounded-lg`,
+  mesma linguagem do `ConversationSidebar`/`GroupDetailsDrawer`.
+- `AuthScreen.tsx` foi revisado mas nao muda: e um card simples, sem
+  elementos de canal/categoria/servidor, e ja usa os tokens atuais —
+  nao carrega DNA Discord de verdade, so e visualmente mais simples do
+  que o resto do app. Nao mexido pra nao gastar tempo em algo que nao
+  era o problema.
+
+### Fase 8 - QA visual mobile
+
+Status: concluida em 2026-09-10.
+
+Testado com Playwright + emulacao de iPhone 13 (dois usuarios de teste,
+apagados no final): login, sidebar, aba Pessoas, abrir DM, mandar
+mensagem, criar grupo, drawer de detalhes do grupo, busca, settings. Dois
+bugs reais encontrados e corrigidos:
+
+- **Sidebar mobile ficava presa depois de criar um grupo.** `activeConversationId`
+  mudava (o grupo abria de verdade no estado), mas `mobileShowSidebar`
+  so virava `false` num tap direto de linha na sidebar — criar grupo, clicar
+  numa notificacao, ou qualquer outra abertura de conversa iniciada pelo
+  servidor deixava o usuario "preso" olhando a lista, sem indicio visual de
+  que algo mudou. Corrigido em `App.tsx`: um `useEffect` observa
+  `activeConversationId` e esconde a sidebar em qualquer mudanca DEPOIS da
+  primeira (a primeira e o auto-select do `welcome`, que deve continuar
+  pousando na lista, nao entrar direto numa conversa). `GroupCreateDialog`
+  ganhou `onCreated`, usado pelo `ConversationSidebar` pra tambem resetar a
+  aba de volta pra "Conversas" (senao o "Voltar" deixava a pessoa na aba
+  "Pessoas", sem ver o grupo novo).
+- **`SettingsModal` estourava a largura da tela no mobile.** O rail de abas
+  horizontal (`overflow-x-auto`) nao tinha `min-w-0` nos ancestrais flex/grid
+  — o classico problema do flexbox de nao encolher abaixo do min-content,
+  entao a MODAL inteira (nao so o rail) crescia mais larga que o viewport
+  em vez do rail rolar dentro dos proprios limites. Corrigido com `min-w-0`
+  no `Tabs`, no `TabsList` e no container de conteudo.
+- Revisados sem problema: `GroupDetailsDrawer` (drawer de 85vw, cabe bem),
+  `ChatSearchDialog`, bubbles de mensagem, `GroupCreateDialog` (lista +
+  botoes empilhados full-width — ja se adapta bem ao mobile).
 
 ## Principios De Design
 
@@ -545,26 +603,39 @@ Frontend:
 - novos componentes em `web/src/features/conversations/*`
 - componentes beUI em `web/src/components/motion/*` e `web/src/lib/*`
 
-## Decisoes Em Aberto
+## Decisoes Tomadas (eram "Em Aberto")
 
-- Nome final das abas: "Conversas", "Pessoas", "Grupos" ou outra linguagem.
-- Se admin pode ver todos os grupos, mesmo sem ser membro.
-- Se membros comuns podem sair de grupos.
-- Se admin pode adicionar/remover membros depois da criacao.
-- Se grupo default "Geral" deve existir em banco novo.
-- Se busca global pesquisa somente conversas do usuario ou tambem usuarios.
-- Se chamadas devem ter historico persistido ou continuar estado efemero.
+- Nome final das abas: "Conversas" e "Pessoas".
+- Admin pode gerenciar (renomear, adicionar/remover membro, excluir) qualquer
+  grupo por ser admin, nao por ser owner/membro — mesmo padrao que
+  `group-delete` ja usava desde a Fase 1. Nao existe visao "todos os grupos
+  do servidor" fora dos que o admin ja e membro; nunca foi pedida.
+- Membros comuns podem sair de grupos (`group-members-remove` com o proprio
+  id).
+- Admin adiciona/remove membros depois da criacao (drawer de detalhes,
+  Fase 6).
+- Sem grupo default "Geral" — banco novo comeca vazio, sem seed.
+- Busca (`message-search`) cobre so mensagens das conversas do usuario, nao
+  busca usuarios (isso already existe na aba Pessoas).
+- Chamadas continuam efemeras, sem historico persistido.
 
 ## Definition Of Done
 
-- A aplicacao nao mostra mais categorias/canais no fluxo principal.
-- A primeira tela parece um app de conversacao moderno, nao Discord.
-- DMs funcionam com qualquer usuario.
-- Admin cria grupo e adiciona usuarios.
-- Mensagens, replies, reactions, edicao, delete, anexos e busca funcionam por
-  conversa.
-- Chamadas funcionam apenas em grupos.
-- Sidebar e chat usam uma linguagem visual alinhada com beUI/Vercel dark.
-- Tokens antigos de Discord foram removidos ou isolados para compatibilidade
-  temporaria.
-- Testes e build passam.
+- [x] A aplicacao nao mostra mais categorias/canais no fluxo principal.
+- [x] A primeira tela parece um app de conversacao moderno, nao Discord.
+- [x] DMs funcionam com qualquer usuario.
+- [x] Admin cria grupo e adiciona usuarios (inclusive depois da criacao).
+- [x] Mensagens, replies, reactions, edicao, delete, anexos e busca funcionam
+  por conversa.
+- [x] Chamadas funcionam apenas em grupos.
+- [x] Sidebar e chat usam uma linguagem visual alinhada com beUI/Vercel dark.
+- [x] Tokens antigos de Discord foram removidos (`blurple`, `channel`,
+  `category`, `voiceChannel` — nenhum sobrevive fora do valor interno
+  `avatarColor: 'blurple'`, que e um dado ja salvo pra contas reais e nunca
+  aparece na tela).
+- [x] Testes e build passam (122 testes server, 106 web).
+
+Com isso as 9 fases do plano original (0 a 8) estao concluidas. O que
+ficou pra depois, sem ser bloqueador: gatilho de UI pro `kickFromCall`
+(admin remover alguem de uma call em andamento) e um fade/gradient de
+affordance na aba horizontal do Settings no mobile.

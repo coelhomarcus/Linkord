@@ -11,9 +11,10 @@ import { useRoom } from '@/state/RoomContext';
 interface GroupCreateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onCreated?: () => void;
 }
 
-export function GroupCreateDialog({ open, onOpenChange }: GroupCreateDialogProps) {
+export function GroupCreateDialog({ open, onOpenChange, onCreated }: GroupCreateDialogProps) {
   const { state, allUsers, createGroup } = useRoom();
   const [title, setTitle] = useState('');
   const [query, setQuery] = useState('');
@@ -44,6 +45,7 @@ export function GroupCreateDialog({ open, onOpenChange }: GroupCreateDialogProps
     setQuery('');
     setSelected(new Set());
     onOpenChange(false);
+    onCreated?.();
   }
 
   return (

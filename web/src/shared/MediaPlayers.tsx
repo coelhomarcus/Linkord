@@ -291,7 +291,7 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
           type="button"
           aria-label="Reproduzir video"
           onClick={togglePlay}
-          className="absolute left-1/2 top-1/2 flex size-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/65 text-white shadow-popover transition-colors hover:bg-blurple focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="absolute left-1/2 top-1/2 flex size-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/65 text-white shadow-popover transition-colors hover:bg-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         >
           <Play size={22} fill="currentColor" className="ml-0.5" />
         </button>
@@ -305,7 +305,7 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
           step={0.1}
           disabled={!duration}
           onValueChange={(value) => seek(value)}
-          className="[&_[data-slot=slider-range]]:bg-blurple [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-white/25"
+          className="[&_[data-slot=slider-range]]:bg-primary [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-white/25"
         />
         <div className="flex min-w-0 items-center gap-0.5 text-text-secondary [&_button:hover]:bg-white/10 [&_button:hover]:text-white">
           <MediaButton label={playing ? 'Pausar' : 'Reproduzir'} onClick={togglePlay}>
@@ -394,7 +394,7 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
           type="button"
           aria-label={playing ? 'Pausar' : 'Reproduzir'}
           onClick={togglePlay}
-          className="flex size-8 flex-none items-center justify-center rounded-full bg-blurple text-white transition-colors hover:bg-blurple-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="flex size-8 flex-none items-center justify-center rounded-full bg-primary text-white transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         >
           {playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
         </button>
@@ -406,7 +406,7 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
           step={0.1}
           disabled={!duration}
           onValueChange={(value) => seek(value)}
-          className="min-w-0 flex-1 [&_[data-slot=slider-range]]:bg-blurple [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-bg-hover"
+          className="min-w-0 flex-1 [&_[data-slot=slider-range]]:bg-primary [&_[data-slot=slider-thumb]]:size-2.5 [&_[data-slot=slider-track]]:bg-bg-hover"
         />
 
         <div className="flex flex-none items-center gap-0.5">

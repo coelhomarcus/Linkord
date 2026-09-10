@@ -10,21 +10,17 @@
   --color-surface-400: oklch(23.50% 0.0040 275.00);
   --color-surface-500: oklch(30.00% 0.0040 275.00);
 
-  --color-surface-sidebar: var(--color-surface-100);
   --color-surface-main: var(--color-surface-000);
   --color-surface-selected: var(--color-surface-400);
 
-  --color-bg-sidebar: var(--color-surface-sidebar);
   --color-bg-primary: var(--color-surface-main);
   --color-bg-secondary: var(--color-surface-200);
   --color-bg-tertiary: var(--color-surface-300);
-  --color-bg-panel: var(--color-surface-main);
   --color-bg-textarea: var(--color-surface-200);
   --color-bg-floating: var(--color-surface-300);
   --color-bg-modal: var(--color-surface-200);
   --color-bg-hover: var(--color-surface-400);
   --color-bg-selected: var(--color-surface-selected);
-  --color-bg-channel-active: var(--color-surface-selected);
   --color-bg-call: #000000;
 
   --color-text-primary: oklch(99.11% 0.0015 279.30);

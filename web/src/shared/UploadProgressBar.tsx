@@ -8,7 +8,7 @@ export function UploadProgressBar({ progress }: { progress: number }) {
       aria-valuemax={100}
       className="h-1 w-full overflow-hidden rounded-full bg-bg-tertiary"
     >
-      <div className="h-full rounded-full bg-blurple transition-[width] duration-150 ease-out" style={{ width: `${pct}%` }} />
+      <div className="h-full rounded-full bg-primary transition-[width] duration-150 ease-out" style={{ width: `${pct}%` }} />
     </div>
   );
 }

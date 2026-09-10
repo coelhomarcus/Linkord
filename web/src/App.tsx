@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { RoomProvider } from './state/RoomProvider';
 import { useRoom } from './state/RoomContext';
 import { AuthProvider, useAuth } from './state/AuthContext';
@@ -37,6 +37,24 @@ function Shell() {
   const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => { notifyActiveView(activeView); }, [activeView, notifyActiveView]);
+
+  // The first conversation auto-selected right after connecting shouldn't
+  // drill in on mobile (the sidebar list is the intended landing screen —
+  // see REDESIGN_PLAN.md). Every LATER change to activeConversationId is a
+  // real navigation the user should actually see: a group they just
+  // created, a notification click, or anything else that opens a
+  // conversation without going through the sidebar row's own onClick (which
+  // already hides the sidebar directly). Without this, those left the
+  // active conversation switched behind an unchanged, still-visible sidebar.
+  const hasAutoSelectedInitialConversationRef = useRef(false);
+  useEffect(() => {
+    if (!activeConversationId) return;
+    if (!hasAutoSelectedInitialConversationRef.current) {
+      hasAutoSelectedInitialConversationRef.current = true;
+      return;
+    }
+    setMobileShowSidebar(false);
+  }, [activeConversationId]);
 
   useEffect(() => { registerRequestChatView(() => setActiveView('chat')); }, [registerRequestChatView]);
 

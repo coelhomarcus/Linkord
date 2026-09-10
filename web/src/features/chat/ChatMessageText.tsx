@@ -16,14 +16,14 @@ function renderRich(text: string, mentionLookup: Map<string, PublicUser> | undef
     lastIndex = index + match[0].length;
     const [full, url, mentionName] = match;
     if (url) {
-      nodes.push(<a key={key++} href={url} target="_blank" rel="noopener noreferrer" className="break-all text-blurple hover:underline">{url}</a>);
+      nodes.push(<a key={key++} href={url} target="_blank" rel="noopener noreferrer" className="break-all text-primary hover:underline">{url}</a>);
       continue;
     }
     const user = mentionName ? mentionLookup?.get(mentionName.toLowerCase()) : undefined;
     if (!user) { nodes.push(full); continue; }
     const isMe = myUserId != null && user.id === myUserId;
     nodes.push(
-      <span key={key++} className={cn('rounded px-1 font-medium', isMe ? 'bg-yellow/25 text-yellow' : 'bg-blurple/15 text-blurple')}>
+      <span key={key++} className={cn('rounded px-1 font-medium', isMe ? 'bg-yellow/25 text-yellow' : 'bg-primary/15 text-primary')}>
         @{user.displayName}
       </span>
     );

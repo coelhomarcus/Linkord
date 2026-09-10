@@ -124,7 +124,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
         {showsVideo && <Avatar id={participantId} name={name} avatar={avatar} avatarColor={avatarColor} size={20} />}
         <span className={cn('select-none truncate font-medium text-text-primary', nameSize === 'label' ? 'text-label' : 'text-body')}>{name}</span>
         {kind !== 'camera' && !!media.cameraTrack && <Video size={14} className="flex-none text-green" />}
-        {kind !== 'screen' && !!media.screenTrack && <ScreenShare size={14} className="flex-none text-blurple" />}
+        {kind !== 'screen' && !!media.screenTrack && <ScreenShare size={14} className="flex-none text-primary" />}
         {isDeafened ? (
           <HeadphoneOff size={14} className="flex-none text-red" />
         ) : (
@@ -140,7 +140,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
         size="icon-sm"
         aria-label="Configuracoes da transmissao"
         onClick={handleGearClick}
-        className="absolute right-2 top-2 bg-bg-tertiary/75 text-text-primary hover:bg-blurple"
+        className="absolute right-2 top-2 bg-bg-tertiary/75 text-text-primary hover:bg-primary"
       >
         <Settings size={14} />
       </Button>

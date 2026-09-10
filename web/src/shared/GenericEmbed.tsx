@@ -159,7 +159,7 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="line-clamp-2 text-body font-medium text-blurple hover:underline"
+            className="line-clamp-2 text-body font-medium text-primary hover:underline"
           >
             {data.title}
           </a>

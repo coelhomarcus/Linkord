@@ -7,7 +7,7 @@ export function LoadingScreen() {
           <span className="text-display font-bold tracking-tight text-text-primary">Linkord</span>
         </div>
         <div className="relative h-1 w-40 overflow-hidden rounded-full bg-bg-secondary">
-          <div className="animate-sweep absolute inset-y-0 w-1/3 rounded-full bg-blurple" />
+          <div className="animate-sweep absolute inset-y-0 w-1/3 rounded-full bg-primary" />
         </div>
       </div>
     </div>
