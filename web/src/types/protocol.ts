@@ -109,6 +109,7 @@ export type ClientMessage =
   | { t: 'speaking'; value: boolean }
   | { t: 'conversation-open'; conversationId: string }
   | { t: 'direct-open'; userId: string }
+  | { t: 'conversation-close'; conversationId: string }
   | { t: 'group-create'; title: string; memberIds: string[] }
   | { t: 'group-delete'; conversationId: string }
   | { t: 'group-update'; conversationId: string; title?: string; avatar?: string }
@@ -141,7 +142,7 @@ export type ServerMessage =
     }
   | { t: 'call-token'; conversationId: string; livekitUrl: string; livekitToken: string }
   | { t: 'conversation-list'; conversations: Conversation[] }
-  | { t: 'conversation-opened'; conversationId: string }
+  | { t: 'conversation-opened'; conversationId: string; conversation: Conversation }
   | { t: 'conversation-history'; conversationId: string; messages: ChatMessage[]; hasMore: boolean }
   | { t: 'conversation-history-more'; conversationId: string; messages: ChatMessage[]; hasMore: boolean }
   | { t: 'conversation-history-around'; conversationId: string; msgId: number; messages: ChatMessage[]; hasMoreBefore: boolean; hasMoreAfter: boolean }

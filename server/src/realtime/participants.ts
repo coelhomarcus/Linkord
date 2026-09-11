@@ -76,7 +76,7 @@ export function publicParticipant(p: Participant): PublicParticipant {
   };
 }
 
-/** Changes which group conversation call `p` is in (or none, with null) and
+/** Changes which conversation's call `p` is in (or none, with null) and
  * notifies everyone. Also resets self-reported media flags: a fresh join/leave
  * means previous call state no longer applies. */
 export function setCallConversationId(p: Participant, conversationId: string | null): void {

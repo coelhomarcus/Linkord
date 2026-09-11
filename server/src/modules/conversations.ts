@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { conversationMembers, conversations, users, type Conversation } from '../db/schema.js';
 import { participants, sanitizeAvatar, send } from '../realtime/participants.js';
@@ -57,7 +57,25 @@ export async function listForUser(userId: string): Promise<ConversationSummary[]
     .select({ conversation: conversations })
     .from(conversationMembers)
     .innerJoin(conversations, eq(conversations.id, conversationMembers.conversationId))
-    .where(eq(conversationMembers.userId, userId))
+    .where(and(
+      eq(conversationMembers.userId, userId),
+      // groups always show. A direct conversation only counts as "history"
+      // once it has a message — opening a DM (handleDirectOpen) creates the
+      // row right away so both sides can chat, but that alone shouldn't
+      // plant it in anyone's sidebar. The same clause covers "closed"
+      // conversations (member.hiddenAt set): hidden until a message newer
+      // than the close time arrives, then it reappears on its own.
+      or(
+        eq(conversations.type, 'group'),
+        and(
+          sql`${conversations.lastMessageAt} is not null`,
+          or(
+            sql`${conversationMembers.hiddenAt} is null`,
+            sql`${conversations.lastMessageAt} > ${conversationMembers.hiddenAt}`
+          )
+        )
+      )
+    ))
     .orderBy(desc(sql`coalesce(${conversations.lastMessageAt}, ${conversations.updatedAt}, ${conversations.createdAt})`));
 
   const ids = rows.map((r) => r.conversation.id);
@@ -107,11 +125,6 @@ export async function conversationExistsForUser(conversationId: string, userId: 
   return !!(await getConversationForUser(conversationId, userId));
 }
 
-export async function getGroupConversationForUser(conversationId: string, userId: string): Promise<Conversation | null> {
-  const conversation = await getConversationForUser(conversationId, userId);
-  return conversation?.type === 'group' ? conversation : null;
-}
-
 export async function touchConversation(conversationId: string, when = new Date()): Promise<void> {
   await db.update(conversations).set({ lastMessageAt: when, updatedAt: when }).where(eq(conversations.id, conversationId));
   const memberRows = await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
@@ -137,6 +150,13 @@ async function findUser(userId: string): Promise<boolean> {
   return !!row;
 }
 
+/** Creates the DM (or finds the existing one) and hands it straight to the
+ * OPENER only — never broadcasts to the other side. `listForUser` won't
+ * surface an empty (or closed) direct conversation, so without this the
+ * opener's own client would have nothing to render for it either; sending
+ * the summary directly lets them see/type into it for this session without
+ * it being "real" history for anyone until an actual message is sent
+ * (touchConversation already broadcasts to both sides at that point). */
 async function handleDirectOpen(socket: AppSocket, msg: { userId?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
@@ -145,11 +165,11 @@ async function handleDirectOpen(socket: AppSocket, msg: { userId?: string }): Pr
 
   const dmKey = dmKeyFor(p.userId, otherUserId);
   const [existing] = await db.select().from(conversations).where(eq(conversations.dmKey, dmKey)).limit(1);
-  let conversationId = existing?.id;
-  if (!conversationId) {
+  let conversation = existing;
+  if (!conversation) {
     const now = new Date();
-    const inserted = await db.transaction(async (tx) => {
-      const [conversation] = await tx.insert(conversations).values({
+    conversation = await db.transaction(async (tx) => {
+      const [inserted] = await tx.insert(conversations).values({
         id: crypto.randomUUID(),
         type: 'direct',
         title: '',
@@ -158,16 +178,37 @@ async function handleDirectOpen(socket: AppSocket, msg: { userId?: string }): Pr
         updatedAt: now,
       }).returning();
       await tx.insert(conversationMembers).values([
-        { conversationId: conversation!.id, userId: p.userId, role: 'member' },
-        { conversationId: conversation!.id, userId: otherUserId, role: 'member' },
+        { conversationId: inserted!.id, userId: p.userId, role: 'member' },
+        { conversationId: inserted!.id, userId: otherUserId, role: 'member' },
       ]);
-      return conversation!;
+      return inserted!;
     });
-    conversationId = inserted.id;
   }
 
-  await broadcastConversationListToUsers([p.userId, otherUserId]);
-  send(socket, { t: 'conversation-opened', conversationId });
+  send(socket, {
+    t: 'conversation-opened',
+    conversationId: conversation.id,
+    conversation: rowToSummary(conversation, [p.userId, otherUserId]),
+  });
+}
+
+/** Discord-style "Close DM" — drops it from the caller's OWN sidebar
+ * without touching the conversation, its messages, or the other member's
+ * membership row. `listForUser` re-surfaces it automatically once a message
+ * newer than this arrives (from either side); reopening it before that
+ * (handleDirectOpen) shows it again for this session without un-hiding it. */
+async function handleConversationClose(socket: AppSocket, msg: { conversationId?: string }): Promise<void> {
+  const p = participants.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  const conversationId = String(msg.conversationId || '');
+  if (!conversationId) return;
+  const conversation = await getConversationForUser(conversationId, p.userId);
+  if (!conversation || conversation.type !== 'direct') return;
+
+  await db.update(conversationMembers)
+    .set({ hiddenAt: new Date() })
+    .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, p.userId)));
+  await broadcastConversationListToUser(p.userId);
 }
 
 async function handleGroupCreate(socket: AppSocket, msg: { title?: string; memberIds?: unknown }): Promise<void> {
@@ -333,6 +374,7 @@ async function handleGroupMembersRemove(socket: AppSocket, msg: { conversationId
 
 export const handlers: HandlerTable = {
   'direct-open': handleDirectOpen,
+  'conversation-close': handleConversationClose,
   'group-create': handleGroupCreate,
   'group-delete': handleGroupDelete,
   'group-update': handleGroupUpdate,

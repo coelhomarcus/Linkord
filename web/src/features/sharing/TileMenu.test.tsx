@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { initialRoomState } from '../../state/roomReducer';
 import { renderWithRoom } from '../../test/roomContextFixture';
 import { TileMenu } from './TileMenu';
-import type { Participant } from '../../types/protocol';
+import type { Conversation, Participant } from '../../types/protocol';
 
 function fakeParticipant(overrides: Partial<Participant> = {}): Participant {
   return {
@@ -14,14 +14,27 @@ function fakeParticipant(overrides: Partial<Participant> = {}): Participant {
   };
 }
 
+function fakeConversation(overrides: Partial<Conversation> = {}): Conversation {
+  return {
+    id: 'conv-1', type: 'group', title: 'Grupo', avatar: '', createdBy: 'u-1', memberIds: ['u-1', 'u-2'],
+    lastMessageAt: null, createdAt: Date.now(), updatedAt: Date.now(),
+    ...overrides,
+  };
+}
+
 const menuTarget = { key: 'p-2:avatar', participantId: 'p-2', kind: 'avatar' as const, rect: { left: 0, top: 0, right: 0, bottom: 0 } };
+// "remover da chamada" only exists for GROUP calls (mirrors the server-side
+// restriction in modules/moderation.ts#handleCallKick) — every test that
+// expects it to be reachable needs the active call to resolve to a group.
+const groupCallContext = { activeCallConversationId: 'conv-1', conversations: [fakeConversation()] };
 
 describe('TileMenu — remover da chamada', () => {
-  it('aparece para admin olhando o tile de outra pessoa', () => {
+  it('aparece para admin olhando o tile de outra pessoa em chamada de grupo', () => {
     const participants = new Map([['p-2', fakeParticipant()]]);
     renderWithRoom(<TileMenu />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', role: 'admin' }, participants },
       menuTarget,
+      ...groupCallContext,
     });
     expect(screen.getByText('Remover da chamada')).toBeInTheDocument();
   });
@@ -31,6 +44,7 @@ describe('TileMenu — remover da chamada', () => {
     renderWithRoom(<TileMenu />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', role: 'user' }, participants },
       menuTarget,
+      ...groupCallContext,
     });
     expect(screen.queryByText('Remover da chamada')).not.toBeInTheDocument();
   });
@@ -40,6 +54,18 @@ describe('TileMenu — remover da chamada', () => {
     renderWithRoom(<TileMenu />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', role: 'admin' }, participants },
       menuTarget: { ...menuTarget, participantId: 'p-1' },
+      ...groupCallContext,
+    });
+    expect(screen.queryByText('Remover da chamada')).not.toBeInTheDocument();
+  });
+
+  it('nao aparece em chamada 1:1 (direta), mesmo sendo admin', () => {
+    const participants = new Map([['p-2', fakeParticipant()]]);
+    renderWithRoom(<TileMenu />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', role: 'admin' }, participants },
+      menuTarget,
+      activeCallConversationId: 'conv-1',
+      conversations: [fakeConversation({ type: 'direct', title: '' })],
     });
     expect(screen.queryByText('Remover da chamada')).not.toBeInTheDocument();
   });
@@ -53,6 +79,7 @@ describe('TileMenu — remover da chamada', () => {
       menuTarget,
       kickFromCall,
       closeTileMenu,
+      ...groupCallContext,
     });
     fireEvent.click(screen.getByText('Remover da chamada'));
     expect(kickFromCall).toHaveBeenCalledWith('p-2');

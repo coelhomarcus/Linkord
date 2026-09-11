@@ -31,7 +31,7 @@ const SettingsModal = lazy(() => import('./features/settings/SettingsModal').the
 function Shell() {
   const {
     state, dispatch, livekitRoom, closeTileMenu, sendWs, notifyActiveView, registerRequestChatView,
-    activeCallConversationId, activeConversationId, joinGroupCall, conversations, allUsers,
+    activeCallConversationId, activeConversationId, joinCall, conversations, allUsers,
   } = useRoom();
   const [activeView, setActiveView] = useState<'chat' | 'call'>('chat');
   const roomError = state.roomError;
@@ -82,7 +82,7 @@ function Shell() {
   );
 
   function handleOpenCall(conversationId: string) {
-    joinGroupCall(conversationId);
+    joinCall(conversationId);
     setActiveView('call');
     setMobileShowSidebar(false);
   }

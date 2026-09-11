@@ -94,17 +94,18 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
   console.log(`[${p.id}] entrou (${p.name}) de ${socket.ip}`);
 }
 
-/** Actually joins a group call: mints a LiveKit token for that conversation's
- * room (`${LIVEKIT_ROOM_NAME}-${conversationId}`) and sets
- * `p.callConversationId`. DMs are message-only and are rejected here. */
+/** Actually joins a call (group or 1:1 direct): mints a LiveKit token for
+ * that conversation's room (`${LIVEKIT_ROOM_NAME}-${conversationId}`) and
+ * sets `p.callConversationId`. Rejected if the caller isn't a member of
+ * that conversation at all. */
 async function handleCallJoin(socket: AppSocket, msg: { conversationId?: string }): Promise<void> {
   const p = participantsMap.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   const conversationId = String(msg.conversationId || '');
   if (!conversationId) return;
-  const conversation = await conversations.getGroupConversationForUser(conversationId, p.userId);
+  const conversation = await conversations.getConversationForUser(conversationId, p.userId);
   if (!conversation) {
-    send(socket, { t: 'error', code: 'call-not-allowed', message: 'Chamadas estao disponiveis apenas em grupos.' });
+    send(socket, { t: 'error', code: 'call-not-allowed', message: 'Voce nao tem acesso a essa conversa.' });
     return;
   }
   let livekitToken: string;

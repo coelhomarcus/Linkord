@@ -71,6 +71,11 @@ export const conversationMembers = pgTable('conversation_members', {
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   role: varchar('role', { length: 16 }).notNull().default('member'), // 'owner' | 'admin' | 'member'
   lastReadMessageId: integer('last_read_message_id'),
+  // set when this member "closes" a direct conversation (Discord-style —
+  // leaves their own history list without deleting anything). listForUser
+  // hides it again until a message newer than this arrives. Never used for
+  // groups (those use conversation_members row deletion = actually leaving).
+  hiddenAt: timestamp('hidden_at', { withTimezone: true }),
   joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex('conversation_members_conversation_user_key').on(t.conversationId, t.userId),

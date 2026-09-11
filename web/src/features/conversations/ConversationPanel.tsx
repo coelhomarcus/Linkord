@@ -236,7 +236,7 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
               <h2 className="truncate text-title font-semibold">{title}</h2>
               {subtitle && <p className="truncate text-caption text-text-muted">{subtitle}</p>}
             </button>
-            {conversation.type === 'group' && callParticipants.length > 0 && (
+            {callParticipants.length > 0 && (
               <Tooltip>
                 <TooltipTrigger render={<div className="flex flex-none items-center -space-x-2" />}>
                   {callParticipants.slice(0, 4).map((p) => (
@@ -258,15 +258,13 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
               <Search size={16} />
             </Button>
             {conversation.type === 'group' && (
-              <>
-                <Button type="button" variant="ghost" size="icon-sm" aria-label="Detalhes do grupo" onClick={onOpenDetails} className="text-text-muted hover:text-text-primary">
-                  <Info size={16} />
-                </Button>
-                <Button type="button" size="icon-sm" aria-label="Entrar na chamada" onClick={() => onOpenCall(conversation.id)} className="bg-green text-bg-primary hover:bg-green/90">
-                  <Phone size={16} />
-                </Button>
-              </>
+              <Button type="button" variant="ghost" size="icon-sm" aria-label="Detalhes do grupo" onClick={onOpenDetails} className="text-text-muted hover:text-text-primary">
+                <Info size={16} />
+              </Button>
             )}
+            <Button type="button" size="icon-sm" aria-label="Entrar na chamada" onClick={() => onOpenCall(conversation.id)} className="bg-green text-bg-primary hover:bg-green/90">
+              <Phone size={16} />
+            </Button>
           </header>
           <ChatSurfaceWidthProvider width={surfaceWidth}>
             <MessageListBridge conversationId={conversation.id} onOpenProfile={onOpenProfile} />

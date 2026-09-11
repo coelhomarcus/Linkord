@@ -42,8 +42,8 @@ export interface RoomContextValue {
   registerRequestChatView: (fn: () => void) => void;
   requestChatView: () => void;
   activeCallConversationId: string | null;
-  joinGroupCall: (conversationId: string) => void;
-  leaveGroupCall: () => Promise<void>;
+  joinCall: (conversationId: string) => void;
+  leaveCall: () => Promise<void>;
   startSharing: () => Promise<void>;
   stopSharing: () => void;
   startCamera: () => Promise<void>;
@@ -75,6 +75,7 @@ export interface RoomContextValue {
   activeConversationId: string | null;
   openConversation: (conversationId: string) => void;
   openDirect: (userId: string) => void;
+  closeConversation: (conversationId: string) => void;
   createGroup: (title: string, memberIds: string[]) => void;
   deleteGroup: (conversationId: string) => void;
   updateGroupTitle: (conversationId: string, title: string) => void;

@@ -49,7 +49,7 @@ function formatElapsed(totalSeconds: number): string {
 }
 
 export function TileMenu() {
-  const { state, dispatch, menuTarget, closeTileMenu, tileDomRegistry, audioRegistry, showStats, kickFromCall } = useRoom();
+  const { state, dispatch, menuTarget, closeTileMenu, tileDomRegistry, audioRegistry, showStats, kickFromCall, activeCallConversationId, conversations } = useRoom();
   const [sliderValue, setSliderValue] = useState(0);
   const [bitrateKbps, setBitrateKbps] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
@@ -104,7 +104,11 @@ export function TileMenu() {
   const handle = tileDomRegistry.current.get(key);
   const hasAudio = !isMe && audioRegistry.current.has(audioKey);
   const isFocused = state.focusedId === key;
-  const canKick = !isMe && state.me.role === 'admin';
+  // "Remove from call" is a group-moderation power — not offered for 1:1
+  // direct calls, where "leave call" already covers it (mirrors the
+  // server-side check in modules/moderation.ts#handleCallKick).
+  const isGroupCall = conversations.find((c) => c.id === activeCallConversationId)?.type === 'group';
+  const canKick = !isMe && isGroupCall && state.me.role === 'admin';
   const pipSupported = typeof document !== 'undefined' && document.pictureInPictureEnabled
     && !!handle?.video && !handle.video.disablePictureInPicture;
   const inPip = pipSupported && document.pictureInPictureElement === handle?.video;

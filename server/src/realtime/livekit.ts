@@ -2,7 +2,7 @@ import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import { config } from '../config/env.js';
 import type { Participant } from '../types.js';
 
-/** Access token for ONE LiveKit room (one per group call, see
+/** Access token for ONE LiveKit room (one per call — group or 1:1, see
  * realtime/socket.ts#handleCallJoin — `roomName` comes from
  * `${LIVEKIT_ROOM_NAME}-${conversationId}`), with the same identity (p.id/p.name)
  * the participant already has in Socket.IO — no separate id<->identity

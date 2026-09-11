@@ -84,10 +84,13 @@ async function handleUserDelete(socket: AppSocket, msg: { userId?: string }): Pr
   for (const conversationId of groupIds) await reconcileGroupMembership(conversationId);
 }
 
-/** Removes one CONNECTION (not account) from its current group call —
+/** Removes one CONNECTION (not account) from its current GROUP call —
  * `participantId` here already identifies exactly which tab to kick if the
  * same account has more than one open. Not a ban: they can rejoin the
- * call immediately. */
+ * call immediately. Deliberately doesn't apply to 1:1 direct calls: a
+ * global admin force-disconnecting one side of someone else's private
+ * call isn't a moderation power this app grants — "leave call" already
+ * covers the natural 1:1 case. */
 async function handleCallKick(socket: AppSocket, msg: { participantId?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket || !isAdmin(p)) return;
@@ -97,6 +100,9 @@ async function handleCallKick(socket: AppSocket, msg: { participantId?: string }
 
   const target = participants.get(targetId);
   if (!target || !target.callConversationId) return; // already left — race with another admin, or stale UI
+
+  const [callConversation] = await db.select({ type: conversations.type }).from(conversations).where(eq(conversations.id, target.callConversationId)).limit(1);
+  if (callConversation?.type !== 'group') return;
 
   const roomName = `${config.LIVEKIT_ROOM_NAME}-${target.callConversationId}`;
   try {

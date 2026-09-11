@@ -19,7 +19,7 @@ interface CallControlBarProps {
 }
 
 export function CallControlBar({ chatOpen, onToggleChat }: CallControlBarProps) {
-  const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, toggleMicMuted, deafened, toggleDeafened, leaveGroupCall, sendReaction } = useRoom();
+  const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, toggleMicMuted, deafened, toggleDeafened, leaveCall, sendReaction } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
   const cameraOn = state.me.cameraOn;
   const sharing = state.me.sharing;
@@ -136,7 +136,7 @@ export function CallControlBar({ chatOpen, onToggleChat }: CallControlBarProps) 
 
         <Tooltip>
           <TooltipTrigger
-            onClick={leaveGroupCall}
+            onClick={leaveCall}
             aria-label="Sair da chamada"
             className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), 'h-11 w-11 rounded-full bg-red text-white shadow-popover hover:bg-red-hover')}
           >

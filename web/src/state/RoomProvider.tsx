@@ -211,6 +211,24 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   }, [sendWs, switchActiveConversation]);
 
   const openDirect = useCallback((userId: string) => sendWs({ t: 'direct-open', userId }), [sendWs]);
+  const closeConversation = useCallback((conversationId: string) => {
+    // Optimistic — same shape as the 'conversation-deleted' cleanup, minus
+    // the parts that only make sense for an actual delete (leaving a call,
+    // wiping cached messages the user could still reopen the DM to see).
+    setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+    conversationsRef.current = conversationsRef.current.filter((c) => c.id !== conversationId);
+    setUnreadByConversation((prev) => {
+      if (!prev.has(conversationId)) return prev;
+      const next = new Map(prev);
+      next.delete(conversationId);
+      return next;
+    });
+    if (conversationId === activeConversationIdRef.current) {
+      activeConversationIdRef.current = null;
+      setActiveConversationIdState(null);
+    }
+    sendWs({ t: 'conversation-close', conversationId });
+  }, [sendWs]);
   const createGroup = useCallback((title: string, memberIds: string[]) => sendWs({ t: 'group-create', title, memberIds }), [sendWs]);
   const deleteGroup = useCallback((conversationId: string) => sendWs({ t: 'group-delete', conversationId }), [sendWs]);
   const updateGroupTitle = useCallback((conversationId: string, title: string) => sendWs({ t: 'group-update', conversationId, title }), [sendWs]);
@@ -300,7 +318,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     sendWs({ t: 'deafened', value: next });
   }, [deafened, setMicMuted, sendWs]);
 
-  const leaveGroupCall = useCallback(async () => {
+  const leaveCall = useCallback(async () => {
     if (state.me.cameraOn) stopCamera();
     if (state.me.sharing) stopSharing();
     await leaveMic();
@@ -310,15 +328,15 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     setActiveCallConversationId(null);
   }, [state.me.cameraOn, state.me.sharing, stopCamera, stopSharing, leaveMic, livekitRoom, sendWs, setActiveCallConversationId]);
 
-  const joinGroupCall = useCallback(async (conversationId: string) => {
+  const joinCall = useCallback(async (conversationId: string) => {
     if (activeCallConversationIdRef.current === conversationId) return;
-    if (activeCallConversationIdRef.current) await leaveGroupCall();
+    if (activeCallConversationIdRef.current) await leaveCall();
     pendingCallConversationIdRef.current = conversationId;
     sendWs({ t: 'call-join', conversationId });
-  }, [sendWs, leaveGroupCall]);
+  }, [sendWs, leaveCall]);
 
-  const leaveGroupCallRef = useRef(leaveGroupCall);
-  useEffect(() => { leaveGroupCallRef.current = leaveGroupCall; }, [leaveGroupCall]);
+  const leaveCallRef = useRef(leaveCall);
+  useEffect(() => { leaveCallRef.current = leaveCall; }, [leaveCall]);
 
   useEffect(() => {
     const onDisconnected = (reason?: DisconnectReason) => {
@@ -479,9 +497,21 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         setConversations(m.conversations);
         conversationsRef.current = m.conversations;
         break;
-      case 'conversation-opened':
+      case 'conversation-opened': {
+        // An empty (or closed) direct conversation never shows up in
+        // conversation-list — the server sends its summary straight to the
+        // opener instead so it can still be rendered/typed into for this
+        // session; it becomes "real" history for everyone once a message
+        // is actually sent (touchConversation broadcasts the list then).
+        const idx = conversationsRef.current.findIndex((c) => c.id === m.conversation.id);
+        const nextConversations = idx === -1
+          ? [m.conversation, ...conversationsRef.current]
+          : conversationsRef.current.map((c) => (c.id === m.conversation.id ? m.conversation : c));
+        conversationsRef.current = nextConversations;
+        setConversations(nextConversations);
         openConversation(m.conversationId);
         break;
+      }
       case 'conversation-history':
         setMessagesByConversation((prev) => new Map(prev).set(m.conversationId, m.messages));
         setHasMoreByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMore));
@@ -600,7 +630,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           next.delete(m.conversationId);
           return next;
         });
-        if (m.conversationId === activeCallConversationIdRef.current) leaveGroupCallRef.current();
+        if (m.conversationId === activeCallConversationIdRef.current) leaveCallRef.current();
         if (m.conversationId === activeConversationIdRef.current) {
           activeConversationIdRef.current = null;
           setActiveConversationIdState(null);
@@ -814,12 +844,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       value={{
         state, dispatch, sendWs, tileDomRegistry, audioRegistry, audioUnlocked, deafened, toggleDeafened, livekitRoom, notifyActiveView,
         registerRequestChatView, requestChatView,
-        activeCallConversationId, joinGroupCall, leaveGroupCall,
+        activeCallConversationId, joinCall, leaveCall,
         startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted,
         updateAvatar, updateProfile, uploadProfileImage, menuTarget, openTileMenu, closeTileMenu,
         reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
         hideAudioOnlyTiles, setHideAudioOnlyTiles,
-        conversations, activeConversationId, openConversation, openDirect, createGroup, deleteGroup,
+        conversations, activeConversationId, openConversation, openDirect, closeConversation, createGroup, deleteGroup,
         updateGroupTitle, updateGroupAvatar, addGroupMembers, removeGroupMember,
         messagesByConversation, hasMoreByConversation, loadingOlderByConversation, loadOlderMessages, unreadByConversation,
         allUsers, onlineUserIds,

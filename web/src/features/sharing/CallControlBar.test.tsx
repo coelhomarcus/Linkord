@@ -31,11 +31,11 @@ describe('CallControlBar', () => {
     expect(toggleMicMuted).toHaveBeenCalledTimes(1);
   });
 
-  it('aciona leaveGroupCall ao clicar em sair da chamada', () => {
-    const leaveGroupCall = vi.fn();
-    renderWithRoom(<CallControlBar chatOpen={false} onToggleChat={vi.fn()} />, { leaveGroupCall });
+  it('aciona leaveCall ao clicar em sair da chamada', () => {
+    const leaveCall = vi.fn();
+    renderWithRoom(<CallControlBar chatOpen={false} onToggleChat={vi.fn()} />, { leaveCall });
     fireEvent.click(screen.getByLabelText('Sair da chamada'));
-    expect(leaveGroupCall).toHaveBeenCalledTimes(1);
+    expect(leaveCall).toHaveBeenCalledTimes(1);
   });
 
   it('mostra o aviso de erro de compartilhamento quando presente', () => {

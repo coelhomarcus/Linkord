@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { MessageCircle, PanelLeftClose, Plus, Search, Settings, Users, UsersRound, PhoneCall } from 'lucide-react';
+import { MessageCircle, MoreHorizontal, PanelLeftClose, Plus, Search, Settings, Users, UsersRound, PhoneCall, X } from 'lucide-react';
 import { AnimatedSidebar, useAnimatedSidebar } from '@/components/motion/animated-sidebar';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/motion/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar } from '@/shared/Avatar';
@@ -23,7 +24,7 @@ function ConversationRow({ conversation, active, onClick }: {
   active: boolean;
   onClick: () => void;
 }) {
-  const { state, allUsers, onlineUserIds, messagesByConversation, unreadByConversation } = useRoom();
+  const { state, allUsers, onlineUserIds, messagesByConversation, unreadByConversation, closeConversation } = useRoom();
   const title = conversationTitle(conversation, state.me.userId, allUsers);
   const other = directUser(conversation, state.me.userId, allUsers);
   const members = groupMembers(conversation, allUsers);
@@ -39,45 +40,62 @@ function ConversationRow({ conversation, active, onClick }: {
   const online = other ? onlineUserIds.has(other.id) : false;
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'group flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors',
-        active
-          ? 'border-primary/35 bg-primary/12 text-text-primary shadow-[inset_0_1px_0_rgb(255_255_255_/_0.06)]'
-          : 'border-transparent text-text-secondary hover:border-white/10 hover:bg-white/[0.045]'
-      )}
-    >
-      {conversation.type === 'direct' && other ? (
-        <div className="relative flex-none">
-          <Avatar id={other.id} name={other.displayName} avatar={other.avatar} avatarColor={other.avatarColor} size={44} />
-          <span className={cn('absolute -bottom-0.5 -right-0.5 size-3.5 rounded-full border-2 border-[rgb(14_14_16)]', online ? 'bg-green' : 'bg-text-muted')} />
-        </div>
-      ) : (
-        <div className="relative flex-none">
-          <GroupAvatar title={title} avatar={conversation.avatar} active={active} />
-          <span className="absolute -bottom-0.5 -right-0.5 grid size-4 place-items-center rounded-full border-2 border-[rgb(14_14_16)] bg-bg-tertiary text-text-secondary">
-            <Users size={9} />
-          </span>
-        </div>
-      )}
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-2">
-          <span className="truncate text-label font-semibold">{title}</span>
-          {hasActiveCall && <PhoneCall size={13} className="flex-none text-green" />}
-        </span>
-        <span className="mt-0.5 block truncate text-caption text-text-muted">{subtitle}</span>
-      </span>
-      <span className="flex flex-none flex-col items-end gap-1">
-        {time && <span className="text-[11px] leading-none text-text-muted">{time}</span>}
-        {unread > 0 && (
-          <span className="grid min-w-5 place-items-center rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-bold leading-none text-primary-foreground">
-            {unread > 99 ? '99+' : unread}
-          </span>
+    <div className="group relative">
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors',
+          active
+            ? 'border-primary/35 bg-primary/12 text-text-primary shadow-[inset_0_1px_0_rgb(255_255_255_/_0.06)]'
+            : 'border-transparent text-text-secondary hover:border-white/10 hover:bg-white/[0.045]'
         )}
-      </span>
-    </button>
+      >
+        {conversation.type === 'direct' && other ? (
+          <div className="relative flex-none">
+            <Avatar id={other.id} name={other.displayName} avatar={other.avatar} avatarColor={other.avatarColor} size={44} />
+            <span className={cn('absolute -bottom-0.5 -right-0.5 size-3.5 rounded-full border-2 border-[rgb(14_14_16)]', online ? 'bg-green' : 'bg-text-muted')} />
+          </div>
+        ) : (
+          <div className="relative flex-none">
+            <GroupAvatar title={title} avatar={conversation.avatar} active={active} />
+            <span className="absolute -bottom-0.5 -right-0.5 grid size-4 place-items-center rounded-full border-2 border-[rgb(14_14_16)] bg-bg-tertiary text-text-secondary">
+              <Users size={9} />
+            </span>
+          </div>
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span className="truncate text-label font-semibold">{title}</span>
+            {hasActiveCall && <PhoneCall size={13} className="flex-none text-green" />}
+          </span>
+          <span className="mt-0.5 block truncate text-caption text-text-muted">{subtitle}</span>
+        </span>
+        <span className="flex flex-none flex-col items-end gap-1">
+          {time && <span className="text-[11px] leading-none text-text-muted">{time}</span>}
+          {unread > 0 && (
+            <span className="grid min-w-5 place-items-center rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-bold leading-none text-primary-foreground">
+              {unread > 99 ? '99+' : unread}
+            </span>
+          )}
+        </span>
+      </button>
+      {conversation.type === 'direct' && (
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto">
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Mais opcoes da conversa" className="bg-[rgb(20_20_23)]" />}>
+              <MoreHorizontal size={14} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => closeConversation(conversation.id)}>
+                <X size={14} />
+                Fechar conversa
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
+    </div>
   );
 }
 
