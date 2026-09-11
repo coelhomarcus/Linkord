@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { MessageCircle, PanelLeftClose, Plus, Search, Settings, UsersRound, PhoneCall } from 'lucide-react';
+import { MessageCircle, PanelLeftClose, Plus, Search, Settings, Users, UsersRound, PhoneCall } from 'lucide-react';
 import { AnimatedSidebar, useAnimatedSidebar } from '@/components/motion/animated-sidebar';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/motion/tabs';
@@ -55,7 +55,12 @@ function ConversationRow({ conversation, active, onClick }: {
           <span className={cn('absolute -bottom-0.5 -right-0.5 size-3.5 rounded-full border-2 border-[rgb(14_14_16)]', online ? 'bg-green' : 'bg-text-muted')} />
         </div>
       ) : (
-        <GroupAvatar title={title} avatar={conversation.avatar} active={active} />
+        <div className="relative flex-none">
+          <GroupAvatar title={title} avatar={conversation.avatar} active={active} />
+          <span className="absolute -bottom-0.5 -right-0.5 grid size-4 place-items-center rounded-full border-2 border-[rgb(14_14_16)] bg-bg-tertiary text-text-secondary">
+            <Users size={9} />
+          </span>
+        </div>
       )}
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
@@ -189,7 +194,7 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile }: Conversat
 
             <div className="my-1 h-px w-8 flex-none bg-white/10" />
 
-            <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
+            <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-1">
               {filteredConversations.map((conversation) => (
                 <CollapsedConversationButton
                   key={conversation.id}

@@ -186,7 +186,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-5">
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="relative">
-            <GroupAvatar title={conversation.title || 'Grupo'} avatar={conversation.avatar} size={64} className="rounded-2xl" />
+            <GroupAvatar title={conversation.title || 'Grupo'} avatar={conversation.avatar} size={64} />
             {isAdmin && (
               <button
                 type="button"
