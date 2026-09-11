@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Headphones, HeadphoneOff, MessageCircle, Mic, MicOff, Monitor, MonitorX, PhoneOff, Smile, Video, VideoOff, X } from 'lucide-react';
+import { Headphones, HeadphoneOff, Mic, MicOff, Monitor, MonitorX, PhoneOff, Smile, Video, VideoOff, X } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { useParticipantMedia } from './useLiveKitTrack';
 import type { ReactionEmoji } from '../../types/protocol';
@@ -13,12 +13,7 @@ import { cn } from '@/shared/lib/utils';
 // Unrelated to per-message chat reactions, which now accept any emoji.
 const CALL_REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉'] as const;
 
-interface CallControlBarProps {
-  chatOpen: boolean;
-  onToggleChat: () => void;
-}
-
-export function CallControlBar({ chatOpen, onToggleChat }: CallControlBarProps) {
+export function CallControlBar() {
   const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, toggleMicMuted, deafened, toggleDeafened, leaveCall, sendReaction } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
   const cameraOn = state.me.cameraOn;
@@ -117,21 +112,6 @@ export function CallControlBar({ chatOpen, onToggleChat }: CallControlBarProps) 
             {sharing ? <MonitorX size={18} className="text-primary" /> : <Monitor size={18} />}
           </TooltipTrigger>
           <TooltipContent>{sharing ? 'Parar compartilhamento' : 'Compartilhar tela'}</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger
-            onClick={onToggleChat}
-            aria-label={chatOpen ? 'Fechar chat' : 'Abrir chat'}
-            className={cn(
-              buttonVariants({ variant: 'ghost', size: 'icon-lg' }),
-              'h-11 w-11 rounded-full border border-strong bg-bg-floating/90 shadow-popover backdrop-blur-xl',
-              chatOpen ? 'text-text-primary' : 'text-text-secondary hover:text-text-primary'
-            )}
-          >
-            <MessageCircle size={18} />
-          </TooltipTrigger>
-          <TooltipContent>{chatOpen ? 'Fechar chat' : 'Abrir chat'}</TooltipContent>
         </Tooltip>
 
         <Tooltip>

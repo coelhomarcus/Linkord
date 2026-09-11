@@ -10,10 +10,10 @@ vi.mock('../../state/AuthContext', () => ({
 }));
 
 vi.mock('./ImageCropDialog', () => ({
-  ImageCropDialog: ({ open, onConfirm, onCancel }: { open: boolean; onConfirm: (blob: Blob) => void; onCancel: () => void }) =>
+  ImageCropDialog: ({ open, onConfirm, onCancel }: { open: boolean; onConfirm: (crop: { x: number; y: number; width: number; height: number }) => void; onCancel: () => void }) =>
     open ? (
       <div>
-        <button type="button" onClick={() => onConfirm(new Blob(['x'], { type: 'image/jpeg' }))}>Confirmar recorte</button>
+        <button type="button" onClick={() => onConfirm({ x: 0, y: 0, width: 10, height: 10 })}>Confirmar recorte</button>
         <button type="button" onClick={onCancel}>Cancelar recorte</button>
       </div>
     ) : null,
@@ -174,7 +174,7 @@ describe('SettingsModal — perfil', () => {
     await user.upload(screen.getByLabelText('Selecionar foto de perfil'), file);
     await user.click(screen.getByRole('button', { name: 'Confirmar recorte' }));
 
-    expect(uploadProfileImage).toHaveBeenCalledWith('avatar', expect.any(Blob), expect.any(Function), expect.objectContaining({ avatar: '' }));
+    expect(uploadProfileImage).toHaveBeenCalledWith('avatar', file, { x: 0, y: 0, width: 10, height: 10 }, expect.any(Function), expect.objectContaining({ avatar: '' }));
   });
 
   it('remove a foto de perfil na hora, sem esperar Salvar perfil', async () => {

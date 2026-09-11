@@ -5,7 +5,7 @@ import type { Socket } from 'socket.io-client';
 import { DisconnectReason, Room, RoomEvent, Track } from 'livekit-client';
 import type { LocalTrackPublication, Track as LKTrack } from 'livekit-client';
 import { RoomContext } from './RoomContext';
-import type { AnchorRect, AudioHandle, ReactionEvent, TileDomHandle } from './RoomContext';
+import type { AnchorRect, AudioHandle, CropRect, ReactionEvent, TileDomHandle } from './RoomContext';
 import { roomReducer, initialRoomState } from './roomReducer';
 import { useAuth } from './AuthContext';
 import { loadIdentity, saveIdentity } from './useIdentitySession';
@@ -774,14 +774,15 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
   const uploadProfileImage = useCallback(async (
     field: 'avatar' | 'banner',
-    blob: Blob,
+    file: Blob,
+    crop: CropRect,
     onProgress?: (fraction: number) => void,
     profile?: { avatarColor?: string; displayName?: string; avatar?: string; banner?: string; bio?: string; profileLinks?: string[] }
   ) => {
     const body = await uploadWithProgress<{ avatar: string }>({
-      url: '/api/avatar',
-      file: blob,
-      headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+      url: `/api/avatar?crop=${encodeURIComponent(JSON.stringify(crop))}`,
+      file,
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
       onProgress,
     });
     const url = body.avatar;

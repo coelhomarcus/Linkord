@@ -13,6 +13,7 @@ import { ConversationMediaPanel } from './features/conversations/ConversationMed
 import { ChatSearchDialog } from './features/chat/ChatSearchDialog';
 import { Stage } from './features/sharing/Stage';
 import { CallControlBar } from './features/sharing/CallControlBar';
+import { CallChatToggleButton } from './features/sharing/CallChatToggleButton';
 import { CallChatPanel } from './features/sharing/CallChatPanel';
 import { ParticipantAudioLayer } from './features/sharing/ParticipantAudioLayer';
 import { FloatingPip } from './features/sharing/FloatingPip';
@@ -144,7 +145,10 @@ function Shell() {
             />
           )}
           {activeView === 'call' && inCall && (
-            <CallControlBar chatOpen={callChatOpen} onToggleChat={() => setCallChatOpen((v) => !v)} />
+            <>
+              <CallControlBar />
+              <CallChatToggleButton chatOpen={callChatOpen} onToggleChat={() => setCallChatOpen((v) => !v)} />
+            </>
           )}
           {inCall && <ParticipantAudioLayer participantIds={callIds} />}
           {inCall && activeView !== 'call' && <FloatingPip allIds={callIds} onExpand={() => setActiveView('call')} />}

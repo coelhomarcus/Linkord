@@ -28,6 +28,15 @@ export interface AnchorRect {
   bottom: number;
 }
 
+// Same shape as react-easy-crop's `Area` — kept local so the state layer
+// doesn't depend on that UI library's types.
+export interface CropRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface RoomContextValue {
   state: RoomState;
   dispatch: Dispatch<RoomAction>;
@@ -54,7 +63,8 @@ export interface RoomContextValue {
   updateProfile: (profile: { avatar: string; avatarColor: string; displayName: string; banner: string; bio: string; profileLinks: string[] }) => void;
   uploadProfileImage: (
     field: 'avatar' | 'banner',
-    blob: Blob,
+    file: Blob,
+    crop: CropRect,
     onProgress?: (fraction: number) => void,
     profile?: { avatar?: string; avatarColor?: string; displayName?: string; banner?: string; bio?: string; profileLinks?: string[] }
   ) => Promise<string>;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
+import type { Area } from 'react-easy-crop';
 import { Bell, HardDrive, IdCard, LogOut, Settings2, ShieldCheck, SlidersHorizontal, User, Volume2, VolumeX } from 'lucide-react';
 import { ModerationTab } from './ModerationTab';
 import { ImageCropDialog } from './ImageCropDialog';
@@ -81,7 +82,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [cropTarget, setCropTarget] = useState<{ field: 'avatar' | 'banner'; src: string } | null>(null);
+  const [cropTarget, setCropTarget] = useState<{ field: 'avatar' | 'banner'; file: File; src: string } | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -152,7 +153,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       return;
     }
     setError(null);
-    setCropTarget({ field, src: URL.createObjectURL(file) });
+    setCropTarget({ field, file, src: URL.createObjectURL(file) });
   }
 
   function closeCropDialog() {
@@ -160,9 +161,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setCropTarget(null);
   }
 
-  async function handleCropConfirm(blob: Blob) {
+  async function handleCropConfirm(crop: Area) {
     if (!cropTarget) return;
-    const { field } = cropTarget;
+    const { field, file } = cropTarget;
     const setUploading = field === 'avatar' ? setUploadingAvatar : setUploadingBanner;
     const setProgress = field === 'avatar' ? setAvatarUploadProgress : setBannerUploadProgress;
     const setError = field === 'avatar' ? setAvatarError : setBannerError;
@@ -171,7 +172,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setUploading(true);
     closeCropDialog();
     try {
-      const url = await uploadProfileImage(field, blob, setProgress, { avatar, avatarColor, displayName, banner, bio, profileLinks: profileLinksForSubmit() });
+      const url = await uploadProfileImage(field, file, crop, setProgress, { avatar, avatarColor, displayName, banner, bio, profileLinks: profileLinksForSubmit() });
       if (field === 'avatar') setAvatar(url); else setBanner(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Falha ao enviar ${field === 'avatar' ? 'a foto' : 'o banner'}.`);

@@ -5,7 +5,6 @@ import { ZoomIn } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { getCroppedImageBlob } from '@/shared/lib/cropImage';
 
 interface ImageCropDialogProps {
   open: boolean;
@@ -14,33 +13,28 @@ interface ImageCropDialogProps {
   cropShape: 'round' | 'rect';
   title: string;
   onCancel: () => void;
-  onConfirm: (blob: Blob) => void;
+  // Just the crop rect — the actual pixel crop happens server-side (see
+  // modules/attachments.ts#handleAvatarUpload) so animated GIFs/WebPs stay
+  // animated instead of being flattened by a <canvas> round-trip.
+  onConfirm: (crop: Area) => void;
 }
 
 export function ImageCropDialog({ open, imageSrc, aspect, cropShape, title, onCancel, onConfirm }: ImageCropDialogProps) {
   const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
       setCrop({ x: 0, y: 0 });
       setZoom(1);
       setCroppedAreaPixels(null);
-      setSaving(false);
     }
   }, [open, imageSrc]);
 
-  async function handleSave() {
-    if (!imageSrc || !croppedAreaPixels) return;
-    setSaving(true);
-    try {
-      const blob = await getCroppedImageBlob(imageSrc, croppedAreaPixels);
-      onConfirm(blob);
-    } finally {
-      setSaving(false);
-    }
+  function handleSave() {
+    if (!croppedAreaPixels) return;
+    onConfirm(croppedAreaPixels);
   }
 
   return (
@@ -82,8 +76,8 @@ export function ImageCropDialog({ open, imageSrc, aspect, cropShape, title, onCa
           <Button type="button" variant="ghost" onClick={onCancel}>
             <span>Cancelar</span>
           </Button>
-          <Button type="button" disabled={saving || !croppedAreaPixels} onClick={handleSave}>
-            <span>{saving ? 'Salvando…' : 'Salvar'}</span>
+          <Button type="button" disabled={!croppedAreaPixels} onClick={handleSave}>
+            <span>Salvar</span>
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react';
+import type { Area } from 'react-easy-crop';
 import { motion } from 'motion/react';
 import { Camera, Check, LogOut, Pencil, Search, Trash2, UserPlus, X } from 'lucide-react';
 import { useAnimatedSidebar } from '@/components/motion/animated-sidebar';
@@ -49,7 +50,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<PublicUser | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [cropTarget, setCropTarget] = useState<{ file: File; src: string } | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
   const [avatarError, setAvatarError] = useState<string | null>(null);
@@ -67,8 +68,8 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
     setAddQuery('');
     setAddSelected(new Set());
     setAvatarError(null);
-    setCropSrc((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
+    setCropTarget((prev) => {
+      if (prev) URL.revokeObjectURL(prev.src);
       return null;
     });
   }, [open]);
@@ -142,28 +143,29 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
       return;
     }
     setAvatarError(null);
-    setCropSrc(URL.createObjectURL(file));
+    setCropTarget({ file, src: URL.createObjectURL(file) });
   }
 
   function closeCropDialog() {
-    setCropSrc((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
+    setCropTarget((prev) => {
+      if (prev) URL.revokeObjectURL(prev.src);
       return null;
     });
   }
 
-  async function handleAvatarCropConfirm(blob: Blob) {
-    if (!conversation) return;
+  async function handleAvatarCropConfirm(crop: Area) {
+    if (!conversation || !cropTarget) return;
     const conversationId = conversation.id;
+    const { file } = cropTarget;
     setAvatarError(null);
     setAvatarUploadProgress(0);
     setUploadingAvatar(true);
     closeCropDialog();
     try {
       const body = await uploadWithProgress<{ avatar: string }>({
-        url: '/api/avatar',
-        file: blob,
-        headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+        url: `/api/avatar?crop=${encodeURIComponent(JSON.stringify(crop))}`,
+        file,
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
         onProgress: setAvatarUploadProgress,
       });
       updateGroupAvatar(conversationId, body.avatar);
@@ -379,8 +381,8 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
       )}
 
       <ImageCropDialog
-        open={!!cropSrc}
-        imageSrc={cropSrc}
+        open={!!cropTarget}
+        imageSrc={cropTarget?.src ?? null}
         aspect={1}
         cropShape="rect"
         title="Recortar foto do grupo"

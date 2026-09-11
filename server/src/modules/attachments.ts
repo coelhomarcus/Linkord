@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import fsStreams from 'node:fs'; // only for createReadStream/createWriteStream (chunk assembly), see assembleChunks
 import path from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import sharp from 'sharp';
 import { eq, and, asc, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
 import { config } from '../config/env.js';
 import { db } from '../db/client.js';
@@ -38,6 +39,22 @@ function newId(): string {
 
 function filePathFor(id: string): string {
   return path.join(config.UPLOAD_DIR, id);
+}
+
+const MAX_CROP_DIMENSION = 4096; // sane ceiling, well under sharp's own decompression-bomb guard
+
+/** Parses the `?crop=` query param (JSON `{x,y,width,height}`, same shape as
+ * react-easy-crop's `Area`) into the rect handleAvatarUpload extracts. */
+function parseCropRect(raw: string | undefined): { left: number; top: number; width: number; height: number } | null {
+  if (!raw) return null;
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return null; }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const { x, y, width, height } = parsed as Record<string, unknown>;
+  if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number'
+    || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) return null;
+  if (width <= 0 || height <= 0 || x < 0 || y < 0 || width > MAX_CROP_DIMENSION || height > MAX_CROP_DIMENSION) return null;
+  return { left: Math.round(x), top: Math.round(y), width: Math.round(width), height: Math.round(height) };
 }
 
 export async function ensureUploadDir(): Promise<void> {
@@ -517,9 +534,17 @@ export async function handleAttachmentCancel(request: FastifyRequest<{ Params: {
 /** Avatar upload — same storage/serving route as chat attachments
  * (`/uploads/<id>`), but the row is born with `messageId: null` (marks it
  * as an avatar, see schema.ts/getUsage) and skips the 30GB quota. Client
- * sends raw image bytes; applying the result as the account's avatar
- * happens in the existing `profile` websocket flow (realtime/participants.ts),
- * which also cleans up the old file (see deleteAvatarFile above). */
+ * sends the ORIGINAL (uncropped) image bytes plus a `?crop=` rect (the
+ * react-easy-crop pixel area) — the crop itself happens here via sharp, not
+ * client-side canvas, so an animated GIF/WebP survives as an animated
+ * GIF/WebP instead of being flattened to one frame (`{ animated: true }`
+ * makes sharp treat every frame as one page of a stacked canvas; `.extract()`
+ * with a rect against ONE frame's bounds applies that same rect to every
+ * page). Static images keep today's behavior (re-encoded to JPEG). Applying
+ * the result as the
+ * account's avatar happens in the existing `profile` websocket flow
+ * (realtime/participants.ts), which also cleans up the old file (see
+ * deleteAvatarFile above). */
 async function handleAvatarUpload(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
@@ -533,10 +558,37 @@ async function handleAvatarUpload(request: FastifyRequest, reply: FastifyReply):
   const buffer = request.body as Buffer;
   if (buffer.length === 0) return sendError(reply, 400, 'empty_file', 'Arquivo vazio.');
 
-  const id = newId();
-  await fs.writeFile(filePathFor(id), buffer);
+  const cropRect = parseCropRect((request.query as Record<string, string | undefined>).crop);
+  if (!cropRect) return sendError(reply, 400, 'invalid_crop', 'Recorte invalido.');
+
+  let outBuffer: Buffer;
+  let outMime: string;
   try {
-    await db.insert(attachmentsTable).values({ id, messageId: null, fileName: 'avatar', mimeType, size: buffer.length });
+    const image = sharp(buffer, { animated: true });
+    const meta = await image.metadata();
+    const frameHeight = meta.pageHeight ?? meta.height ?? 0;
+    if (!meta.width || !frameHeight
+      || cropRect.left + cropRect.width > meta.width
+      || cropRect.top + cropRect.height > frameHeight) {
+      return sendError(reply, 400, 'invalid_crop', 'Recorte fora dos limites da imagem.');
+    }
+    const extracted = image.extract(cropRect);
+    if ((meta.pages ?? 1) > 1) {
+      outBuffer = await extracted.gif().toBuffer();
+      outMime = 'image/gif';
+    } else {
+      outBuffer = await extracted.jpeg({ quality: 92 }).toBuffer();
+      outMime = 'image/jpeg';
+    }
+  } catch (err) {
+    console.warn(`[attachments] falha ao recortar avatar: ${err instanceof Error ? err.message : err}`);
+    return sendError(reply, 400, 'crop_failed', 'Nao foi possivel processar a imagem.');
+  }
+
+  const id = newId();
+  await fs.writeFile(filePathFor(id), outBuffer);
+  try {
+    await db.insert(attachmentsTable).values({ id, messageId: null, fileName: 'avatar', mimeType: outMime, size: outBuffer.length });
   } catch (err) {
     await fs.unlink(filePathFor(id)).catch(() => {});
     throw err;
