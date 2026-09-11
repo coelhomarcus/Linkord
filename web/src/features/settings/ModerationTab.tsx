@@ -28,10 +28,7 @@ function UserRow({ user, online, isMe, onDeleteRequest }: {
         </p>
         <p className="select-none text-caption text-text-muted">{online ? 'Online' : 'Offline'}</p>
       </div>
-      {user.role === 'admin' && <ShieldCheck size={16} className="flex-none text-blurple" />}
-      {/* deleting your own account here is blocked both in the UI
-          (disabled) and on the server (moderation.ts revalidates again) —
-          the UI just avoids a useless click, it's never the only guard. */}
+      {user.role === 'admin' && <ShieldCheck size={16} className="flex-none text-primary" />}
       <Button
         type="button"
         variant="ghost"
@@ -47,12 +44,6 @@ function UserRow({ user, online, isMe, onDeleteRequest }: {
   );
 }
 
-/** Settings' "Moderation" tab — admin-only (SettingsModal only shows the
- * TabsTrigger when state.me.role==='admin', and the server revalidates
- * again on every action, never trusting a hidden button alone). Does one
- * thing today: delete an account. Reuses the same `allUsers`/
- * `onlineUserIds` that already feeds chat's UserDirectory — fetches
- * nothing new, just lists what the app already has in memory. */
 export function ModerationTab() {
   const { state, allUsers, onlineUserIds, deleteUserAccount, moderationError, clearModerationError } = useRoom();
   const [confirmTarget, setConfirmTarget] = useState<PublicUser | null>(null);

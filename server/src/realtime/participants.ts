@@ -14,7 +14,9 @@ const newToken = () => crypto.randomBytes(24).toString('hex');
 
 // external URL (https://...) or one of our own uploads (/uploads/<id>)
 const UPLOADED_AVATAR_RE = /^\/uploads\/[0-9a-f]{32}$/;
-function sanitizeAvatar(url: unknown): string {
+// exported for modules/conversations.ts — a group avatar is validated the
+// exact same way an account's is, just stored on `conversations` instead.
+export function sanitizeAvatar(url: unknown): string {
   const s = String(url == null ? '' : url).trim().slice(0, config.MAX_AVATAR_LEN);
   return /^https?:\/\/\S+$/i.test(s) || UPLOADED_AVATAR_RE.test(s) ? s : '';
 }
@@ -69,18 +71,16 @@ export function publicParticipant(p: Participant): PublicParticipant {
   return {
     id: p.id, userId: p.userId, name: p.name, displayName: p.displayName,
     avatar: p.avatar, avatarColor: p.avatarColor, banner: p.banner, bio: p.bio, profileLinks: p.profileLinks, role: p.role,
-    deafened: p.deafened, voiceChannelId: p.voiceChannelId,
+    deafened: p.deafened, callConversationId: p.callConversationId,
     micActivated: p.micActivated, micMuted: p.micMuted, cameraOn: p.cameraOn, sharing: p.sharing, speaking: p.speaking,
   };
 }
 
-/** Changes which voice channel `p` is in (or none, with null) and notifies
- * everyone — called from realtime/socket.ts (handleVoiceJoin/Leave) after it
- * validates the channel and mints the token. Also resets the self-reported
- * media flags: a fresh join/leave means whatever they were reporting for a
- * PREVIOUS channel (or before ever joining) no longer applies. */
-export function setVoiceChannelId(p: Participant, channelId: string | null): void {
-  p.voiceChannelId = channelId;
+/** Changes which conversation's call `p` is in (or none, with null) and
+ * notifies everyone. Also resets self-reported media flags: a fresh join/leave
+ * means previous call state no longer applies. */
+export function setCallConversationId(p: Participant, conversationId: string | null): void {
+  p.callConversationId = conversationId;
   p.micActivated = false;
   p.micMuted = true;
   p.cameraOn = false;
@@ -201,7 +201,7 @@ export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
       // the same way); a resume above reuses the existing `p` and
       // PRESERVES the value.
       deafened: false,
-      voiceChannelId: null,
+      callConversationId: null,
       micActivated: false,
       micMuted: true,
       cameraOn: false,

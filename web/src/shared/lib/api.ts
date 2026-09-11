@@ -1,9 +1,3 @@
-/** Thin HTTP client for the routes outside the WebSocket — the rest of the
- * app speaks Socket.IO; this covers what must exist BEFORE any socket
- * (login/register, since the handshake requires a session cookie) and
- * what's simpler as plain REST (Settings' Media tab, see
- * server/src/modules/media.ts — a paginated listing, no state to keep
- * alive in a socket). */
 
 import type { ChatAttachment } from '../../types/protocol';
 import type { DetectedEmbed } from './chatEmbeds';
@@ -34,13 +28,18 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
     credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+    // Only when there IS a body — Fastify's default JSON parser 400s a
+    // request that declares Content-Type: application/json but sends an
+    // empty body (e.g. POST /api/auth/logout), which used to fail silently
+    // (swallowed by AuthContext's logout() try/catch) and leave the real
+    // session cookie alive on the server after a client-side "logout".
+    headers: { ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(init?.headers || {}) },
   });
 
   if (res.status === 204) return undefined as T;
 
   let body: unknown = null;
-  try { body = await res.json(); } catch { /* empty/non-JSON body — handled below */ }
+  try { body = await res.json(); } catch {  }
 
   if (!res.ok) {
     const err = (body && typeof body === 'object' ? (body as { error?: { code?: string; message?: string } }).error : null) || {};
@@ -67,12 +66,10 @@ export function logout(): Promise<void> {
 
 export type MediaKind = 'uploads' | 'embeds';
 
-/** An entry in the Media tab — always has EITHER `attachment` (kind=uploads)
- * OR `embed` (kind=embeds), never both, never neither (see media.ts). */
 export interface MediaItem {
   msgId: number;
-  channelId: string;
-  channelName: string;
+  conversationId: string;
+  conversationName: string;
   authorId: string | null;
   authorName: string;
   authorAvatar: string;
@@ -84,13 +81,11 @@ export interface MediaItem {
 
 export interface MediaPage {
   items: MediaItem[];
-  /** `msgId` to send as `before` on the next call — null once it reaches
-   * the end (see media.ts#fetchUploadsPage/fetchEmbedsPage). */
   nextBefore: number | null;
 }
 
-export function fetchMedia(kind: MediaKind, before: number | null, limit = 24): Promise<MediaPage> {
-  const params = new URLSearchParams({ kind, limit: String(limit) });
+export function fetchMedia(kind: MediaKind, before: number | null, conversationId: string, limit = 24): Promise<MediaPage> {
+  const params = new URLSearchParams({ kind, limit: String(limit), conversationId });
   if (before != null) params.set('before', String(before));
   return apiFetch(`/api/media?${params.toString()}`);
 }

@@ -4,7 +4,6 @@ import { createApp } from './http/app.js';
 import { createWsServer } from './realtime/socket.js';
 import { runMigrations } from './db/migrate.js';
 import { sweepExpiredSessions } from './modules/auth/session.js';
-import { ensureSeeded, ensureVoiceChannelExists } from './modules/channels.js';
 import { ensureUploadDir, sweepStaleUploads } from './modules/attachments.js';
 
 // backstop behind the try/catch in each handler in realtime/socket.ts —
@@ -31,17 +30,6 @@ async function bootstrap(): Promise<void> {
       console.error('[db] falha ao aplicar migrations:', err instanceof Error ? err.stack : err);
       process.exit(1);
     }
-  }
-
-  // default category+channel ("General"/"general") the first time the DB
-  // is empty — covers both a fresh install and upgrading from the old
-  // single in-memory chat.
-  try {
-    await ensureSeeded();
-    await ensureVoiceChannelExists();
-  } catch (err) {
-    console.error('[channels] falha ao semear categoria/canal padrao:', err instanceof Error ? err.stack : err);
-    process.exit(1);
   }
 
   // attachments folder (config.UPLOAD_DIR, usually a bind mount) — create

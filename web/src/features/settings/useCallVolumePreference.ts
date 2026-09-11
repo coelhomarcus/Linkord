@@ -1,10 +1,3 @@
-/** Per-person/stream volume in a call (mic or shared screen audio),
- * persisted in localStorage — without this, every remote audio resets to
- * max on each reload (see ParticipantAudioLayer/TileMenu). Key: userId
- * (stable across reconnects/tabs) for the mic, `${userId}:screen` for
- * screen audio — same suffix scheme audioKey/audioRegistry already use,
- * just swapping participantId (LiveKit identity, changes on every
- * connection) for userId. */
 
 const CALL_VOLUME_KEY = 'ss-call-volumes';
 

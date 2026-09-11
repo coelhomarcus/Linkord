@@ -3,11 +3,6 @@ import type { ReactNode } from 'react';
 import { ApiError, fetchMe, login as apiLogin, logout as apiLogout, register as apiRegister } from '../shared/lib/api';
 import type { ApiUser } from '../shared/lib/api';
 
-// Owns the logged-in account (or lack of one). Lives ABOVE RoomProvider on
-// purpose: RoomProvider should only mount (and open the socket) once a
-// session already exists — there must never be an anonymous socket.
-// 'loading' is the initial state (checking /api/auth/me) so the login
-// screen doesn't flash before knowing whether a valid cookie exists.
 
 type AuthStatus = 'loading' | 'anon' | 'authed';
 
@@ -17,9 +12,6 @@ interface AuthContextValue {
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string, confirmPassword: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
-  /** Re-queries /api/auth/me — used when the socket rejects the handshake
-   * (session expired/revoked in another tab) to fall back to the login
-   * screen without waiting for a page reload. */
   refresh: () => Promise<void>;
 }
 
@@ -63,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    try { await apiLogout(); } catch { /* forget locally even if the server call fails */ }
+    try { await apiLogout(); } catch {  }
     setUser(null);
     setStatus('anon');
   }, []);

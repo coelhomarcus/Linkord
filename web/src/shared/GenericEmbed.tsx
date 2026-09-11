@@ -5,28 +5,23 @@ import { ExternalLink, Play } from 'lucide-react';
 import type { DetectedEmbed } from './lib/chatEmbeds';
 import { loadLinkPreview } from './lib/linkPreviewCache';
 import type { LinkPreviewData } from './lib/api';
+import { availableAttachmentWidth, useChatSurfaceWidth } from './lib/chatSurfaceWidth';
 import { VideoPlayer } from './MediaPlayers';
 
 interface GenericEmbedProps {
   embed: DetectedEmbed;
   className?: string;
+  /** True when this is the message's only content — drops the outer
+   * border/rounding so the card fills the bubble instead of sitting in a
+   * second frame nested inside it. */
+  edgeToEdge?: boolean;
 }
 
-function isHexColor(color: string | null | undefined): color is string {
-  return !!color && /^#[0-9a-f]{3,8}$/i.test(color);
-}
-
-// known site without depending on scraping — covers the whole card (name,
-// favicon, accent color) when the link is YouTube/Twitch, whose player we
-// already know how to build from just the ID extracted from the URL
-// (chatEmbeds.ts). So if the Open Graph fetch fails (flaky network, site
-// briefly down), the video/stream still plays — only the real description
-// is missing.
-const KNOWN_SITE: Partial<Record<DetectedEmbed['kind'], { name: string; favicon: string; accent: string }>> = {
-  youtube: { name: 'YouTube', favicon: 'https://www.youtube.com/favicon.ico', accent: '#ff0000' },
-  'twitch-channel': { name: 'Twitch', favicon: 'https://www.twitch.tv/favicon.ico', accent: '#9146ff' },
-  'twitch-vod': { name: 'Twitch', favicon: 'https://www.twitch.tv/favicon.ico', accent: '#9146ff' },
-  'twitch-clip': { name: 'Twitch', favicon: 'https://www.twitch.tv/favicon.ico', accent: '#9146ff' },
+const KNOWN_SITE: Partial<Record<DetectedEmbed['kind'], { name: string; favicon: string }>> = {
+  youtube: { name: 'YouTube', favicon: 'https://www.youtube.com/favicon.ico' },
+  'twitch-channel': { name: 'Twitch', favicon: 'https://www.twitch.tv/favicon.ico' },
+  'twitch-vod': { name: 'Twitch', favicon: 'https://www.twitch.tv/favicon.ico' },
+  'twitch-clip': { name: 'Twitch', favicon: 'https://www.twitch.tv/favicon.ico' },
 };
 
 function TwitchPlayer({ embed }: { embed: DetectedEmbed }) {
@@ -39,7 +34,6 @@ function TwitchPlayer({ embed }: { embed: DetectedEmbed }) {
         ? 'VOD da Twitch'
         : 'Clip da Twitch';
     return (
-      // plain button on purpose: the whole area is clickable, not an icon button
       <button
         type="button"
         onClick={() => setLoaded(true)}
@@ -65,20 +59,10 @@ function TwitchPlayer({ embed }: { embed: DetectedEmbed }) {
   );
 }
 
-/**
- * Link embed card, styled like Discord's link embed: colored bar on the
- * left, favicon + site name, highlighted title, truncated description, and
- * the player/image below. Covers THREE cases with the same look:
- *  - a generic link with no known format (kind:'link', see chatEmbeds.ts)
- *    — everything comes from Open Graph fetched on the server
- *    (server/linkPreview.ts);
- *  - YouTube/Twitch — the player takes the image's place, but title/
- *    description/favicon still come from that page's own Open Graph
- *    (YouTube and Twitch also publish those tags);
- *  - any link whose Open Graph points at a playable og:video (e.g. a post
- *    with an externally hosted mp4) — same logic as the generic link.
- */
-export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
+export function GenericEmbed({ embed, className = '', edgeToEdge }: GenericEmbedProps) {
+  const cardBorderClass = edgeToEdge ? 'rounded-2xl border-0' : 'rounded-md border border-white/10';
+  const surfaceWidth = useChatSurfaceWidth(384 + 120);
+  const maxWidth = availableAttachmentWidth(surfaceWidth, 384);
   const { url } = embed;
   const [data, setData] = useState<LinkPreviewData | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
@@ -102,25 +86,21 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
 
   if (!data) {
     return (
-      <div className={`flex w-full max-w-sm animate-pulse flex-col gap-1.5 rounded-md border border-strong bg-bg-tertiary px-3 py-2.5 ${className}`}>
+      <div style={{ maxWidth }} className={`flex w-full animate-pulse flex-col gap-1.5 ${cardBorderClass} bg-bg-tertiary px-3 py-2.5 ${className}`}>
         <div className="h-2.5 w-1/3 rounded-sm bg-bg-hover" />
         <div className="h-3.5 w-3/4 rounded-sm bg-bg-hover" />
       </div>
     );
   }
 
-  // scraping didn't turn up anything usable (blocked, down, site with no
-  // meta tags) — falls back to the minimal link-only card, EXCEPT when we
-  // already know how to build the player from just the URL's ID (YouTube/
-  // Twitch): in that case the video still plays, only the real description
-  // is missing (see KNOWN_SITE).
   if (!data.title && !data.description && !data.image && !hasKnownPlayer) {
     return (
       <a
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className={`flex w-full max-w-sm items-center gap-2 rounded-md border border-strong bg-bg-tertiary px-3 py-2.5 text-label text-text-muted transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${className}`}
+        style={{ maxWidth }}
+        className={`flex w-full items-center gap-2 ${cardBorderClass} bg-bg-tertiary px-3 py-2.5 text-label text-text-muted transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${className}`}
       >
         <ExternalLink size={14} className="flex-none" />
         <span className="truncate">{data.siteName}</span>
@@ -130,7 +110,6 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
 
   const siteName = data.siteName || known?.name || url;
   const favicon = !faviconFailed ? (data.favicon || known?.favicon) : null;
-  const accent = isHexColor(data.themeColor) ? data.themeColor : (known?.accent ?? null);
   const playableVideo = !!data.video && !videoFailed;
 
   let media: ReactNode = null;
@@ -170,10 +149,7 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
   }
 
   return (
-    <div
-      className={`flex w-full max-w-sm flex-col overflow-hidden rounded-md border border-strong bg-bg-tertiary ${className}`}
-      style={{ borderLeftWidth: 4, borderLeftColor: accent ?? 'var(--color-border-strong)' }}
-    >
+    <div style={{ maxWidth }} className={`flex w-full flex-col overflow-hidden bg-bg-tertiary ${cardBorderClass} ${className}`}>
       <div className="flex flex-col gap-1 px-3 pt-2.5 pb-2">
         <div className="flex items-center gap-1.5 text-caption text-text-muted">
           {favicon && <img src={favicon} alt="" onError={() => setFaviconFailed(true)} className="h-3.5 w-3.5 flex-none rounded-[3px]" />}
@@ -184,7 +160,7 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="line-clamp-2 text-body font-medium text-blurple hover:underline"
+            className="line-clamp-2 text-body font-medium text-primary hover:underline"
           >
             {data.title}
           </a>

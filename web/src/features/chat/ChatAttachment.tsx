@@ -1,47 +1,51 @@
 import { useState } from 'react';
-import { File as FileIcon } from 'lucide-react';
+import { Download } from 'lucide-react';
 import type { ChatAttachment as ChatAttachmentData } from '../../types/protocol';
+import { DocumentAttachmentCard } from '../../shared/DocumentAttachmentCard';
 import { ImageLightbox } from '../../shared/ImageLightbox';
 import { AudioPlayer, VideoPlayer } from '../../shared/MediaPlayers';
-import { formatFileSize } from '../../shared/lib/formatBytes';
+import { availableAttachmentWidth, useChatSurfaceWidth } from '../../shared/lib/chatSurfaceWidth';
+import { cn } from '../../shared/lib/utils';
 
-// mirrors INLINE_MIME_TYPES from server/src/modules/attachments.ts — only
-// decides HOW to render here; the server decides how it actually serves it
-// back (Content-Type/Content-Disposition), this list is UI-only.
-const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
-const VIDEO_MIME_TYPES = new Set(['video/mp4', 'video/webm', 'video/ogg']);
-const AUDIO_MIME_TYPES = new Set(['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4']);
+export const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+export const VIDEO_MIME_TYPES = new Set(['video/mp4', 'video/webm', 'video/ogg']);
+export const AUDIO_MIME_TYPES = new Set(['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4']);
 
-/** An attachment (image, video, audio, or any other file) inside a message.
- * Images open a fullscreen modal on click (ImageLightbox, Discord-style —
- * no longer a new tab); video/audio play inline; any other type becomes a
- * name+size chip that downloads on click (the server already forces
- * download via Content-Disposition in that case, see
- * server/src/modules/attachments.ts).
- *
- * `target="_blank"` on the download chip is NOT cosmetic: without it, a
- * click navigates OUR OWN tab to the link (even with server-forced
- * download, some browsers still navigate first) — unmounting the whole app
- * and dropping an ongoing call with it. With _blank, the worst case is a
- * new tab, never ours. */
-export function ChatAttachment({ attachment }: { attachment: ChatAttachmentData }) {
+/** Whether this attachment can render flush with the bubble's own edges
+ * (see `edgeToEdge` on ChatAttachment) instead of sitting in its own
+ * bordered card — image/video/audio all have chrome substantial enough to
+ * read as the bubble itself rather than a floating box nested inside it. */
+export function isEdgeToEdgeMime(mime: string): boolean {
+  return IMAGE_MIME_TYPES.has(mime) || VIDEO_MIME_TYPES.has(mime) || AUDIO_MIME_TYPES.has(mime);
+}
+
+interface ChatAttachmentProps {
+  attachment: ChatAttachmentData;
+  /** True when this is the message's only content (no caption, no reply) —
+   * drops the outer border/rounding/padding so the player fills the bubble
+   * instead of sitting in a second frame nested inside it. */
+  edgeToEdge?: boolean;
+}
+
+export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) {
   const url = `/uploads/${attachment.id}`;
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const surfaceWidth = useChatSurfaceWidth(384 + 120);
+  const maxWidth = availableAttachmentWidth(surfaceWidth, 384);
 
   if (IMAGE_MIME_TYPES.has(attachment.mime)) {
     return (
       <>
-        <button type="button" onClick={() => setLightboxOpen(true)} className="mt-1.5 block w-fit cursor-zoom-in">
+        <button type="button" onClick={() => setLightboxOpen(true)} className={cn('block max-w-full cursor-zoom-in', !edgeToEdge && 'mt-1.5')}>
           <img
             src={url}
             alt={attachment.name}
             loading="lazy"
-            // fixed max-w (not just max-w-full): otherwise a much-wider-than-
-            // tall image grows to the chat column's full width to fit
-            // max-h — huge even though it's "just" a thumbnail. min(24rem,100%)
-            // keeps that cap while still shrinking below it on narrow columns,
-            // instead of overflowing them like a bare max-w-sm would.
-            className="max-h-80 max-w-[min(24rem,100%)] rounded-md border border-strong object-contain"
+            style={{ maxWidth }}
+            className={cn(
+              'block h-auto max-h-80 max-w-full object-contain',
+              edgeToEdge ? 'rounded-2xl' : 'rounded-md border border-white/10'
+            )}
           />
         </button>
         <ImageLightbox src={url} alt={attachment.name} open={lightboxOpen} onOpenChange={setLightboxOpen} />
@@ -50,11 +54,23 @@ export function ChatAttachment({ attachment }: { attachment: ChatAttachmentData 
   }
 
   if (VIDEO_MIME_TYPES.has(attachment.mime)) {
-    return <VideoPlayer src={url} title={attachment.name} className="mt-1.5" />;
+    return (
+      <VideoPlayer
+        src={url}
+        title={attachment.name}
+        className={edgeToEdge ? 'rounded-2xl border-0' : 'mt-1.5'}
+      />
+    );
   }
 
   if (AUDIO_MIME_TYPES.has(attachment.mime)) {
-    return <AudioPlayer src={url} title={attachment.name} className="mt-1.5" />;
+    return (
+      <AudioPlayer
+        src={url}
+        title={attachment.name}
+        className={edgeToEdge ? 'max-w-full rounded-2xl border-0 bg-transparent shadow-none' : 'mt-1.5'}
+      />
+    );
   }
 
   return (
@@ -63,11 +79,10 @@ export function ChatAttachment({ attachment }: { attachment: ChatAttachmentData 
       target="_blank"
       rel="noopener noreferrer"
       download={attachment.name}
-      className="mt-1.5 flex w-fit max-w-sm items-center gap-2 rounded-md border border-strong bg-bg-tertiary px-3 py-2 text-label transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="mt-1.5 flex w-full max-w-sm items-center gap-3 rounded-xl border border-white/10 bg-bg-tertiary px-3 py-2.5 transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
     >
-      <FileIcon size={16} className="flex-none text-text-muted" />
-      <span className="min-w-0 flex-1 truncate font-medium text-text-secondary">{attachment.name}</span>
-      <span className="flex-none text-text-muted">{formatFileSize(attachment.size)}</span>
+      <DocumentAttachmentCard name={attachment.name} size={attachment.size} mime={attachment.mime} className="flex-1" />
+      <Download size={16} className="flex-none text-text-muted" />
     </a>
   );
 }

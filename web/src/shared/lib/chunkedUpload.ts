@@ -1,13 +1,5 @@
 import { ApiError } from './api';
 
-/** Uploads a chat attachment in chunks — needed for the 2GB cap (see
- * server/src/modules/attachments.ts): a single POST that size wouldn't get
- * past any proxy in front (Cloudflare/nginx block large request bodies),
- * nor would it be safe for the server to hold it all in memory at once.
- * Flow: init (declares the file, server returns the chunk size) -> N chunks
- * (limited concurrency, with retry) -> complete (server assembles the file
- * and creates the message). On unrecoverable failure, cancels the session
- * on the server so no chunk sits orphaned until the periodic sweep. */
 
 interface InitResponse {
   uploadId: string;
@@ -16,25 +8,20 @@ interface InitResponse {
 }
 
 export interface ChunkedUploadOptions {
-  channelId: string;
+  conversationId: string;
   file: File;
   caption: string;
-  // present only for the 2nd-4th attachment of a message — attaches to a
-  // message the FIRST attachment (this same send) already created, instead
-  // of creating a new one. See RoomProvider.tsx#sendAttachments.
   targetMsgId?: number;
   onProgress?: (fraction: number) => void;
 }
 
 async function toApiError(res: Response): Promise<ApiError> {
   let body: unknown = null;
-  try { body = await res.json(); } catch { /* empty/non-JSON body */ }
+  try { body = await res.json(); } catch {  }
   const err = (body && typeof body === 'object' ? (body as { error?: { code?: string; message?: string } }).error : null) || {};
   return new ApiError(res.status, err.code || 'unknown_error', err.message || 'Erro inesperado.');
 }
 
-/** Runs `task(i)` for i in [0, count), at most `limit` in parallel — stops
- * on the first failure (in-flight tasks finish, no new ones start). */
 async function runWithConcurrency(count: number, limit: number, task: (i: number) => Promise<void>): Promise<void> {
   let next = 0;
   let firstError: unknown;
@@ -56,20 +43,17 @@ async function runWithConcurrency(count: number, limit: number, task: (i: number
 const MAX_CHUNK_RETRIES = 3;
 const MAX_CONCURRENT_CHUNKS = 3;
 
-export async function uploadFileInChunks({ channelId, file, caption, targetMsgId, onProgress }: ChunkedUploadOptions): Promise<number> {
+export async function uploadFileInChunks({ conversationId, file, caption, targetMsgId, onProgress }: ChunkedUploadOptions): Promise<number> {
+  if (!conversationId) throw new ApiError(400, 'missing_conversation', 'Conversa nao informada.');
   const initRes = await fetch('/api/attachments/init', {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ channelId, fileName: file.name, mimeType: file.type || 'application/octet-stream', totalSize: file.size, caption }),
+    body: JSON.stringify({ conversationId, fileName: file.name, mimeType: file.type || 'application/octet-stream', totalSize: file.size, caption }),
   });
   if (!initRes.ok) throw await toApiError(initRes);
   const { uploadId, chunkSize, totalChunks } = await initRes.json() as InitResponse;
 
-  // progress aggregated by bytes CONFIRMED per chunk — ~8MB granularity,
-  // enough for a readable progress bar even on a file up to 2GB (fetch has
-  // no upload-progress event, and doesn't need one: the finer granularity
-  // isn't worth pulling in XHR just for this).
   const sentPerChunk = new Array(totalChunks).fill(0);
   function reportProgress() {
     if (file.size <= 0) return;
@@ -102,8 +86,6 @@ export async function uploadFileInChunks({ channelId, file, caption, targetMsgId
   try {
     await runWithConcurrency(totalChunks, MAX_CONCURRENT_CHUNKS, uploadChunk);
   } catch (err) {
-    // best-effort: frees the chunks on the server right away instead of
-    // waiting for the periodic sweep (attachments.ts#sweepStaleUploads).
     fetch(`/api/attachments/${uploadId}`, { method: 'DELETE', credentials: 'same-origin' }).catch(() => {});
     throw err;
   }
@@ -115,8 +97,6 @@ export async function uploadFileInChunks({ channelId, file, caption, targetMsgId
     body: JSON.stringify(targetMsgId != null ? { targetMsgId } : {}),
   });
   if (!completeRes.ok) throw await toApiError(completeRes);
-  // attaching to an existing message: the caller already knows the msgId
-  // (it's what it just sent) — no need to round-trip it through the body.
   if (targetMsgId != null) return targetMsgId;
   const { message } = await completeRes.json() as { message: { msgId: number } };
   return message.msgId;

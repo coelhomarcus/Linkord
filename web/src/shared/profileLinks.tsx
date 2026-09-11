@@ -43,8 +43,6 @@ export function linkInfo(rawUrl: string): LinkInfo | null {
   if (hostMatches(host, 'tiktok.com')) return { url: rawUrl, kind: 'tiktok', label: 'TikTok' };
   if (hostMatches(host, 'spotify.com')) return { url: rawUrl, kind: 'spotify', label: 'Spotify' };
   if (hostMatches(host, 'discord.com') || hostMatches(host, 'discord.gg')) return { url: rawUrl, kind: 'discord', label: 'Discord' };
-  // steamcommunity.com (profiles/groups) and store.steampowered.com (a
-  // specific game/app page) — both count as "a Steam link".
   if (hostMatches(host, 'steamcommunity.com') || hostMatches(host, 'steampowered.com')) return { url: rawUrl, kind: 'steam', label: 'Steam' };
   if (hostMatches(host, 'reddit.com')) return { url: rawUrl, kind: 'reddit', label: 'Reddit' };
   if (hostMatches(host, 'facebook.com') || hostMatches(host, 'fb.com')) return { url: rawUrl, kind: 'facebook', label: 'Facebook' };
@@ -64,11 +62,6 @@ export function linkInfo(rawUrl: string): LinkInfo | null {
   return { url: rawUrl, kind: 'generic', label: host || 'Link' };
 }
 
-// every brand icon renders in the app's plain "white" text token — a wall
-// of each platform's own color looked noisy next to everything else in the
-// (otherwise monochrome) UI. react-icons/si covers most of these as flat
-// single-color logos already shaped for exactly this; fa6 fills the two
-// gaps si doesn't have (LinkedIn, Xbox).
 const BRAND_ICONS: Record<Exclude<LinkKind, 'generic'>, ComponentType<{ size?: number }>> = {
   youtube: SiYoutube,
   twitter: SiX,
@@ -102,6 +95,12 @@ export function BrandIcon({ kind }: { kind: LinkKind }) {
   const Icon = BRAND_ICONS[kind];
   return <Icon size={17} />;
 }
+
+// 16:9 — same shape a call tile fills via `background-size: cover` (see
+// Tile.tsx), so a banner crops/displays consistently everywhere it shows up
+// (profile card, settings, in-call background) instead of each spot picking
+// its own ratio.
+export const BANNER_ASPECT_RATIO = 16 / 9;
 
 export function bannerStyle(user: { id: string; avatarColor: string; banner: string }): CSSProperties {
   const accent = colorFor(user.id, user.avatarColor);

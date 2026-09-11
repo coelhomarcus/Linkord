@@ -9,14 +9,11 @@ vi.mock('../../state/AuthContext', () => ({
   useAuth: () => ({ logout: vi.fn() }),
 }));
 
-// the real dialog wraps react-easy-crop (canvas-driven drag/zoom, doesn't
-// mean anything in jsdom, and is a third-party lib's job to test, not
-// ours) — stubbed to two buttons so tests can drive confirm/cancel directly.
 vi.mock('./ImageCropDialog', () => ({
-  ImageCropDialog: ({ open, onConfirm, onCancel }: { open: boolean; onConfirm: (blob: Blob) => void; onCancel: () => void }) =>
+  ImageCropDialog: ({ open, onConfirm, onCancel }: { open: boolean; onConfirm: (crop: { x: number; y: number; width: number; height: number }) => void; onCancel: () => void }) =>
     open ? (
       <div>
-        <button type="button" onClick={() => onConfirm(new Blob(['x'], { type: 'image/jpeg' }))}>Confirmar recorte</button>
+        <button type="button" onClick={() => onConfirm({ x: 0, y: 0, width: 10, height: 10 })}>Confirmar recorte</button>
         <button type="button" onClick={onCancel}>Cancelar recorte</button>
       </div>
     ) : null,
@@ -72,7 +69,7 @@ describe('SettingsModal — perfil', () => {
 
     renderWithRoom(<SettingsModal open onClose={vi.fn()} />, { state, updateProfile });
 
-    const input = screen.getByLabelText('Como voce aparece pra todo mundo');
+    const input = screen.getByLabelText('Nome de exibicao');
     await user.clear(input);
     await user.type(input, 'Apelido Legal');
     await user.click(screen.getByRole('button', { name: 'Salvar perfil' }));
@@ -105,9 +102,6 @@ describe('SettingsModal — perfil', () => {
 
     renderWithRoom(<SettingsModal open onClose={vi.fn()} />, { state, updateProfile });
 
-    // userEvent nao simula bem <input type="color"> (nao ha "digitar" num
-    // color picker nativo) — um change direto e o jeito certo de testar,
-    // igual o proprio browser dispara ao fechar o picker do SO.
     fireEvent.change(screen.getByLabelText('Escolher cor personalizada'), { target: { value: '#a1b2c3' } });
     await user.click(screen.getByRole('button', { name: 'Salvar perfil' }));
 
@@ -139,7 +133,7 @@ describe('SettingsModal — perfil', () => {
 
     renderWithRoom(<SettingsModal open onClose={vi.fn()} />, { state, updateProfile });
 
-    await user.type(screen.getByLabelText('Um resumo curto sobre voce'), 'Oi, eu sou a Fulana.');
+    await user.type(screen.getByLabelText('Bio'), 'Oi, eu sou a Fulana.');
     await user.type(screen.getByLabelText('Link 1'), 'https://youtube.com/@fulana');
     await user.click(screen.getByRole('button', { name: 'Adicionar link' }));
     await user.click(screen.getByRole('button', { name: 'Salvar perfil' }));
@@ -180,7 +174,7 @@ describe('SettingsModal — perfil', () => {
     await user.upload(screen.getByLabelText('Selecionar foto de perfil'), file);
     await user.click(screen.getByRole('button', { name: 'Confirmar recorte' }));
 
-    expect(uploadProfileImage).toHaveBeenCalledWith('avatar', expect.any(Blob), expect.any(Function), expect.objectContaining({ avatar: '' }));
+    expect(uploadProfileImage).toHaveBeenCalledWith('avatar', file, { x: 0, y: 0, width: 10, height: 10 }, expect.any(Function), expect.objectContaining({ avatar: '' }));
   });
 
   it('remove a foto de perfil na hora, sem esperar Salvar perfil', async () => {

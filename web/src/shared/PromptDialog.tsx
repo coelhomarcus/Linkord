@@ -13,15 +13,10 @@ interface PromptDialogProps {
   label: string;
   placeholder?: string;
   confirmLabel?: string;
-  /** Initial field value on open — used by "rename" (pre-fills the current
-   * name); "create" doesn't pass this, so it starts empty. */
   initialValue?: string;
   onConfirm: (value: string) => void;
 }
 
-/** Generic "type a name, confirm" modal — used instead of window.prompt()
- * for creating/renaming a category/channel, to stay consistent with the
- * rest of the UI (same spirit as ConfirmDialog, but with a text field). */
 export function PromptDialog({ open, onOpenChange, title, label, placeholder, confirmLabel = 'Criar', initialValue = '', onConfirm }: PromptDialogProps) {
   const [value, setValue] = useState(initialValue);
 

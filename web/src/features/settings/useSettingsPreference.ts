@@ -1,5 +1,3 @@
-/** General app preferences (not per-stream), persisted in localStorage —
- * shown in the sidebar's "Settings" tab. */
 
 const SHOW_STATS_KEY = 'ss-show-stats';
 
@@ -11,10 +9,6 @@ export function saveShowStats(value: boolean): void {
   localStorage.setItem(SHOW_STATS_KEY, value ? '1' : '0');
 }
 
-// Sound effects volume (mute/unmute, deafen, join/leave call, camera/
-// screen, new message) — one slider for all of them, see
-// shared/sounds.ts#setVolume. Defaults to 0.65, not 1: full volume was
-// too loud.
 const NOTIFY_VOLUME_KEY = 'ss-notify-volume';
 const DEFAULT_NOTIFY_VOLUME = 0.65;
 

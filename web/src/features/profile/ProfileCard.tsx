@@ -1,9 +1,13 @@
-import { AtSign, BadgeCheck, Camera, ExternalLink, Loader2, Trash2, Upload } from 'lucide-react';
-import { Avatar } from '@/shared/Avatar';
-import { BrandIcon, bannerStyle, linkInfo } from '@/shared/profileLinks';
+import { useLayoutEffect, useRef } from 'react';
+import { AtSign, BadgeCheck, Camera, Check, ExternalLink, Link2, Loader2, Palette, Plus, Trash2, Upload, X } from 'lucide-react';
+import { Avatar, AVATAR_COLOR_OPTIONS } from '@/shared/Avatar';
+import { BANNER_ASPECT_RATIO, BrandIcon, bannerStyle, linkInfo } from '@/shared/profileLinks';
 import type { LinkInfo } from '@/shared/profileLinks';
+import { MAX_DISPLAY_NAME_LEN } from '@/shared/lib/displayName';
+import { MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '@/types/protocol';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/shared/lib/utils';
 
 export interface ProfileCardData {
@@ -21,15 +25,8 @@ export interface ProfileCardData {
 interface ProfileCardProps {
   user: ProfileCardData;
   online?: boolean;
-  /** View-only context (ProfileModal) — opens a lightbox. Ignored
-   * whenever the matching *Upload prop below is present (edit mode wins). */
   onAvatarClick?: () => void;
   onBannerClick?: () => void;
-  /** Edit mode (SettingsModal's own live preview) — presence of
-   * onAvatarUpload/onBannerUpload swaps the plain image for a hover
-   * overlay (camera icon) opening a menu with "Enviar"/"Remover", X-style.
-   * Unlike the view-only click above, this stays clickable even when the
-   * field is empty — you need to be able to upload the FIRST photo. */
   onAvatarUpload?: () => void;
   onAvatarRemove?: () => void;
   avatarUploading?: boolean;
@@ -37,24 +34,62 @@ interface ProfileCardProps {
   onBannerRemove?: () => void;
   bannerUploading?: boolean;
   className?: string;
+  /** Makes the display name an inline text field instead of a heading —
+   * editing happens right where the value is shown, Twitter-style. */
+  onDisplayNameChange?: (value: string) => void;
+  /** Makes the bio an inline, auto-growing textarea instead of a paragraph. */
+  onBioChange?: (value: string) => void;
+  onAvatarColorChange?: (value: string) => void;
+  /** Makes the links list an editable set of URL fields instead of icon
+   * pills — pass the raw (possibly invalid/in-progress) strings here. */
+  editableLinks?: string[];
+  onLinkChange?: (index: number, value: string) => void;
+  onAddLink?: () => void;
+  onRemoveLink?: (index: number) => void;
 }
 
-/** The visual profile card — banner, overlapping avatar, name/@handle/role,
- * bio and link icons. Shared by ProfileModal (a real person, clickable
- * media) and SettingsModal's "Perfil" tab (a live preview of your own
- * in-progress edits, static). */
+function EditableBio({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
+  return (
+    <div className="mt-4 flex flex-col items-end gap-1">
+      <textarea
+        ref={ref}
+        aria-label="Bio"
+        value={value}
+        onChange={(e) => onChange(e.target.value.slice(0, MAX_PROFILE_BIO_LEN))}
+        placeholder="Fale um pouco sobre voce..."
+        rows={1}
+        className="w-full resize-none overflow-hidden whitespace-pre-wrap bg-transparent text-body leading-relaxed text-text-secondary outline-none placeholder:text-text-muted/70"
+      />
+      <span className="select-none text-caption tabular-nums text-text-muted">{value.length}/{MAX_PROFILE_BIO_LEN}</span>
+    </div>
+  );
+}
+
 export function ProfileCard({
   user, online, onAvatarClick, onBannerClick,
   onAvatarUpload, onAvatarRemove, avatarUploading,
   onBannerUpload, onBannerRemove, bannerUploading,
   className,
+  onDisplayNameChange, onBioChange, onAvatarColorChange,
+  editableLinks, onLinkChange, onAddLink, onRemoveLink,
 }: ProfileCardProps) {
   const links = (user.profileLinks ?? []).map(linkInfo).filter((item): item is LinkInfo => !!item);
+  const linksEditable = editableLinks !== undefined && onLinkChange && onAddLink && onRemoveLink;
+  const isCustomAvatarColor = !AVATAR_COLOR_OPTIONS.some((option) => option.value === user.avatarColor);
 
   return (
     <div className={cn('overflow-hidden rounded-xl border border-strong bg-bg-modal', className)}>
       {onBannerUpload ? (
-        <div className="group relative h-40 w-full" style={bannerStyle(user)}>
+        <div className="group relative w-full" style={{ ...bannerStyle(user), aspectRatio: BANNER_ASPECT_RATIO }}>
           <DropdownMenu>
             <DropdownMenuTrigger
               disabled={bannerUploading}
@@ -87,11 +122,11 @@ export function ProfileCard({
           type="button"
           aria-label="Ver banner em tela cheia"
           onClick={onBannerClick}
-          className="block h-40 w-full cursor-zoom-in"
-          style={bannerStyle(user)}
+          className="block w-full cursor-zoom-in"
+          style={{ ...bannerStyle(user), aspectRatio: BANNER_ASPECT_RATIO }}
         />
       ) : (
-        <div className="h-40 w-full" style={bannerStyle(user)} />
+        <div className="w-full" style={{ ...bannerStyle(user), aspectRatio: BANNER_ASPECT_RATIO }} />
       )}
       <div className="px-6 pb-6">
         <div className="-mt-12 flex items-end gap-3">
@@ -140,49 +175,157 @@ export function ProfileCard({
             )}
             {online && <span className="absolute right-1 bottom-1 h-5 w-5 rounded-full border-2 border-bg-modal bg-green" />}
           </div>
+
+          {onAvatarColorChange && (
+            <div className="mb-1 flex flex-wrap items-center gap-1.5">
+              {AVATAR_COLOR_OPTIONS.map((option) => {
+                const selected = user.avatarColor === option.value;
+                return (
+                  <Tooltip key={option.value}>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          type="button"
+                          aria-label={`Usar ${option.label}`}
+                          aria-pressed={selected}
+                          onClick={() => onAvatarColorChange(option.value)}
+                          className={cn(
+                            'relative h-5 w-5 rounded-full border transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+                            selected ? 'border-text-primary ring-2 ring-ring/40 ring-offset-1 ring-offset-bg-modal' : 'border-strong hover:border-text-muted'
+                          )}
+                          style={{ background: option.css }}
+                        />
+                      }
+                    >
+                      {selected && <Check size={11} className="pointer-events-none absolute inset-0 m-auto text-white drop-shadow" />}
+                    </TooltipTrigger>
+                    <TooltipContent side="top">{option.label}</TooltipContent>
+                  </Tooltip>
+                );
+              })}
+              <label
+                title="Cor personalizada"
+                className={cn(
+                  'relative flex h-5 w-5 items-center justify-center rounded-full border transition focus-within:outline-none focus-within:ring-3 focus-within:ring-ring/40',
+                  isCustomAvatarColor ? 'border-text-primary ring-2 ring-ring/40 ring-offset-1 ring-offset-bg-modal' : 'border-strong hover:border-text-muted'
+                )}
+              >
+                <input
+                  type="color"
+                  aria-label="Escolher cor personalizada"
+                  aria-pressed={isCustomAvatarColor}
+                  value={isCustomAvatarColor ? user.avatarColor : '#6b7280'}
+                  onChange={(e) => onAvatarColorChange(e.target.value)}
+                  className="avatar-color-custom-input h-5 w-5 cursor-pointer"
+                />
+                <span className="pointer-events-none absolute inset-0 m-auto flex h-2.5 w-2.5 items-center justify-center">
+                  {isCustomAvatarColor ? <Check size={10} className="text-white drop-shadow" /> : <Palette size={9} className="text-white/90 drop-shadow" />}
+                </span>
+              </label>
+            </div>
+          )}
         </div>
 
         <div className="mt-3 flex min-w-0 flex-col gap-1">
-          <h2 className="truncate text-display font-bold text-text-primary">{user.displayName}</h2>
+          {onDisplayNameChange ? (
+            <input
+              aria-label="Nome de exibicao"
+              maxLength={MAX_DISPLAY_NAME_LEN}
+              placeholder={user.username}
+              value={user.displayName === user.username ? '' : user.displayName}
+              onChange={(e) => onDisplayNameChange(e.target.value)}
+              className="w-full min-w-0 bg-transparent text-display font-bold text-text-primary outline-none placeholder:text-text-muted/70"
+            />
+          ) : (
+            <h2 className="truncate text-display font-bold text-text-primary">{user.displayName}</h2>
+          )}
           <div className="flex min-w-0 items-center gap-2">
             <p className="flex min-w-0 items-center gap-0.5 truncate text-label text-text-muted">
               <AtSign size={14} className="flex-none" />
               <span className="truncate">{user.username}</span>
             </p>
             {user.role === 'admin' && (
-              <span className="flex flex-none items-center gap-1 rounded-sm bg-blurple/15 px-1.5 py-0.5 text-caption font-medium text-blurple">
+              <span className="flex flex-none items-center gap-1 rounded-sm bg-primary/15 px-1.5 py-0.5 text-caption font-medium text-primary">
                 <BadgeCheck size={13} /> Admin
               </span>
             )}
           </div>
         </div>
 
-        {user.bio && <p className="mt-4 whitespace-pre-wrap text-body leading-relaxed text-text-secondary">{user.bio}</p>}
+        {onBioChange ? (
+          <EditableBio value={user.bio} onChange={onBioChange} />
+        ) : (
+          user.bio && <p className="mt-4 whitespace-pre-wrap text-body leading-relaxed text-text-secondary">{user.bio}</p>
+        )}
 
-        {links.length > 0 && (
-          <div className="mt-5 flex flex-wrap gap-2">
-            {links.map((link) => (
-              <Tooltip key={link.url}>
-                <TooltipTrigger
-                  render={
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label={`Abrir ${link.label}`}
-                      className="flex h-9 w-9 items-center justify-center rounded-md border border-strong bg-bg-tertiary text-text-primary transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                    />
-                  }
-                >
-                  <BrandIcon kind={link.kind} />
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="flex items-center gap-1.5">
-                  <span>{link.label}</span>
-                  <ExternalLink size={12} />
-                </TooltipContent>
-              </Tooltip>
-            ))}
+        {linksEditable ? (
+          <div className="mt-5 flex flex-col gap-2">
+            {editableLinks!.map((link, index) => {
+              const info = linkInfo(link);
+              return (
+                <div key={index} className="flex items-center gap-2">
+                  <span className="flex size-8 flex-none items-center justify-center rounded-full border border-strong bg-bg-tertiary text-text-muted">
+                    {info ? <BrandIcon kind={info.kind} /> : <Link2 size={15} />}
+                  </span>
+                  <input
+                    aria-label={`Link ${index + 1}`}
+                    maxLength={MAX_PROFILE_LINK_LEN}
+                    placeholder="https://..."
+                    value={link}
+                    onChange={(e) => onLinkChange!(index, e.target.value)}
+                    className="min-w-0 flex-1 border-b border-transparent bg-transparent py-1 text-body text-text-primary outline-none placeholder:text-text-muted/70 focus:border-primary/50"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Remover link"
+                    className="flex-none text-text-muted hover:bg-red/12 hover:text-red"
+                    onClick={() => onRemoveLink!(index)}
+                  >
+                    <X size={15} />
+                  </Button>
+                </div>
+              );
+            })}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-fit text-text-muted hover:text-text-primary"
+              disabled={editableLinks!.length >= MAX_PROFILE_LINKS}
+              onClick={onAddLink}
+            >
+              <Plus size={14} />
+              <span>Adicionar link</span>
+            </Button>
           </div>
+        ) : (
+          links.length > 0 && (
+            <div className="mt-5 flex flex-wrap gap-2">
+              {links.map((link) => (
+                <Tooltip key={link.url}>
+                  <TooltipTrigger
+                    render={
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Abrir ${link.label}`}
+                        className="flex h-9 w-9 items-center justify-center rounded-md border border-strong bg-bg-tertiary text-text-primary transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                      />
+                    }
+                  >
+                    <BrandIcon kind={link.kind} />
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="flex items-center gap-1.5">
+                    <span>{link.label}</span>
+                    <ExternalLink size={12} />
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+            </div>
+          )
         )}
       </div>
     </div>

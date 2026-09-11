@@ -1,49 +1,20 @@
 import { useState } from 'react';
-import type { ReactNode } from 'react';
 import { Headphones, HeadphoneOff, Mic, MicOff, Monitor, MonitorX, PhoneOff, Smile, Video, VideoOff, X } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { useParticipantMedia } from './useLiveKitTrack';
-import { ALLOWED_REACTIONS } from '../../types/protocol';
 import type { ReactionEmoji } from '../../types/protocol';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/shared/lib/utils';
 
-/** The button background stays neutral — the ICON color carries the state's
- * meaning (mic muted = red, camera on = green, etc.). Subtler than painting
- * the whole button, and lets several controls' state be read at a glance
- * without each becoming a big colored blob. */
-function ControlButton({ onClick, label, icon, iconColorClass }: {
-  onClick: () => void;
-  label: string;
-  icon: ReactNode;
-  iconColorClass: string;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        onClick={onClick}
-        aria-label={label}
-        className={cn(
-          buttonVariants({ variant: 'ghost', size: 'icon-lg' }),
-          'h-9 w-9 rounded-full bg-bg-tertiary hover:bg-bg-selected md:h-11 md:w-11',
-          iconColorClass
-        )}
-      >
-        {icon}
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  );
-}
+// Floating call reactions (burst animation on everyone's screen) stay a
+// short fixed set — server (realtime/reactions.ts) enforces the same list.
+// Unrelated to per-message chat reactions, which now accept any emoji.
+const CALL_REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉'] as const;
 
-/** Discord-style floating bar with mic/camera/screen controls — only mounts
- * when `inCall` is true (App.tsx), so the mic here never needs a "not yet
- * activated" state: that already happened before this existed (see the
- * click on a voice channel in the sidebar). */
 export function CallControlBar() {
-  const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, toggleMicMuted, deafened, toggleDeafened, leaveVoiceChannel, sendReaction } = useRoom();
+  const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, toggleMicMuted, deafened, toggleDeafened, leaveCall, sendReaction } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
   const cameraOn = state.me.cameraOn;
   const sharing = state.me.sharing;
@@ -54,16 +25,9 @@ export function CallControlBar() {
     setReactionsOpen(false);
   }
 
+  const callButtonClass = 'h-11 w-11 rounded-full border border-strong bg-bg-floating/90 text-text-secondary shadow-popover backdrop-blur-xl hover:text-text-primary';
+
   return (
-    // column: the sharing warning (when present) STACKS on top of the
-    // control pill, both centered together — needs only ONE anchor point
-    // (bottom-6/centered) instead of two absolute blocks computing the
-    // distance between them.
-    // `env(safe-area-inset-bottom)` (index.html sets viewport-fit=cover,
-    // needed for the rest of the app to draw edge-to-edge) — without it,
-    // this floating bar sits flush with the true screen edge on an iPhone
-    // and ends up partially hidden behind the home-indicator/gesture area;
-    // 0 on any device without a safe-area inset, so bottom-6 alone unchanged there.
     <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
       {state.shareError && (
         <div className="flex max-w-[calc(100vw-2rem)] items-start gap-2 rounded-md border border-strong bg-bg-floating px-3 py-2 text-label text-text-secondary shadow-popover md:max-w-100">
@@ -78,21 +42,21 @@ export function CallControlBar() {
           </button>
         </div>
       )}
-      <div className="flex max-w-[calc(100vw-1rem)] items-center gap-0.5 rounded-full border border-strong bg-bg-floating/90 px-2 py-2 shadow-popover backdrop-blur md:gap-1 md:px-4 md:py-2.5">
+      <div className="flex items-center gap-2">
         <Popover open={reactionsOpen} onOpenChange={setReactionsOpen}>
           <PopoverTrigger
             aria-label="Reagir"
             className={cn(
               buttonVariants({ variant: 'ghost', size: 'icon-lg' }),
-              'h-9 w-9 rounded-full md:h-11 md:w-11',
-              reactionsOpen ? 'bg-bg-selected text-text-primary' : 'bg-bg-tertiary text-text-secondary hover:bg-bg-selected hover:text-text-primary'
+              'h-11 w-11 rounded-full border border-strong bg-bg-floating/90 shadow-popover backdrop-blur-xl',
+              reactionsOpen ? 'text-text-primary' : 'text-text-secondary hover:text-text-primary'
             )}
           >
             <Smile size={18} />
           </PopoverTrigger>
           <PopoverContent className="w-auto p-1.5" side="top">
             <div className="flex gap-1">
-              {ALLOWED_REACTIONS.map((emoji) => (
+              {CALL_REACTIONS.map((emoji) => (
                 <button
                   key={emoji}
                   type="button"
@@ -106,38 +70,55 @@ export function CallControlBar() {
           </PopoverContent>
         </Popover>
 
-        <ControlButton
-          onClick={toggleMicMuted}
-          label={myMedia.micMuted ? 'Desmutar' : 'Mutar'}
-          icon={myMedia.micMuted ? <MicOff size={18} /> : <Mic size={18} />}
-          // muted: red (warning — no one hears you). unmuted: normal gray,
-          // the expected state while talking.
-          iconColorClass={myMedia.micMuted ? 'text-red' : 'text-text-secondary'}
-        />
-        <ControlButton
-          onClick={toggleDeafened}
-          label={deafened ? 'Voltar a ouvir' : 'Parar de ouvir'}
-          icon={deafened ? <HeadphoneOff size={18} /> : <Headphones size={18} />}
-          iconColorClass={deafened ? 'text-red' : 'text-text-secondary'}
-        />
-        <ControlButton
-          onClick={() => (cameraOn ? stopCamera() : startCamera())}
-          label={cameraOn ? 'Parar camera' : 'Ligar camera'}
-          icon={cameraOn ? <Video size={18} /> : <VideoOff size={18} />}
-          iconColorClass={cameraOn ? 'text-green' : 'text-text-secondary'}
-        />
-        <ControlButton
-          onClick={() => (sharing ? stopSharing() : startSharing())}
-          label={sharing ? 'Parar compartilhamento' : 'Compartilhar tela'}
-          icon={sharing ? <MonitorX size={18} /> : <Monitor size={18} />}
-          iconColorClass={sharing ? 'text-blurple' : 'text-text-secondary'}
-        />
+        <Tooltip>
+          <TooltipTrigger
+            onClick={() => { void toggleMicMuted(); }}
+            aria-label={myMedia.micMuted ? 'Desmutar' : 'Mutar'}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), callButtonClass)}
+          >
+            {myMedia.micMuted ? <MicOff size={18} className="text-red" /> : <Mic size={18} />}
+          </TooltipTrigger>
+          <TooltipContent>{myMedia.micMuted ? 'Desmutar' : 'Mutar'}</TooltipContent>
+        </Tooltip>
 
         <Tooltip>
           <TooltipTrigger
-            onClick={leaveVoiceChannel}
+            onClick={toggleDeafened}
+            aria-label={deafened ? 'Voltar a ouvir' : 'Parar de ouvir'}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), callButtonClass)}
+          >
+            {deafened ? <HeadphoneOff size={18} className="text-red" /> : <Headphones size={18} />}
+          </TooltipTrigger>
+          <TooltipContent>{deafened ? 'Voltar a ouvir' : 'Parar de ouvir'}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger
+            onClick={() => { void (cameraOn ? stopCamera() : startCamera()); }}
+            aria-label={cameraOn ? 'Parar camera' : 'Ligar camera'}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), callButtonClass)}
+          >
+            {cameraOn ? <Video size={18} className="text-green" /> : <VideoOff size={18} />}
+          </TooltipTrigger>
+          <TooltipContent>{cameraOn ? 'Parar camera' : 'Ligar camera'}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger
+            onClick={() => { void (sharing ? stopSharing() : startSharing()); }}
+            aria-label={sharing ? 'Parar compartilhamento' : 'Compartilhar tela'}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), callButtonClass)}
+          >
+            {sharing ? <MonitorX size={18} className="text-primary" /> : <Monitor size={18} />}
+          </TooltipTrigger>
+          <TooltipContent>{sharing ? 'Parar compartilhamento' : 'Compartilhar tela'}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger
+            onClick={leaveCall}
             aria-label="Sair da chamada"
-            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), 'h-9 w-9 rounded-full bg-red text-white hover:bg-red-hover md:h-11 md:w-11')}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), 'h-11 w-11 rounded-full bg-red text-white shadow-popover hover:bg-red-hover')}
           >
             <PhoneOff size={18} />
           </TooltipTrigger>

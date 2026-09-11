@@ -21,9 +21,6 @@ function Switch({
     >
       <SwitchPrimitive.Thumb
         data-slot="switch-thumb"
-        /* cor do thumb promovida de dark: pro estado base — o app nunca
-           aplica .dark, entao essas duas regras jamais disparavam e o thumb
-           ficava bg-background (escuro) sobre trilho escuro, quase invisivel. */
         className="pointer-events-none block rounded-full ring-0 transition-transform group-data-[size=default]/switch:size-4 group-data-[size=sm]/switch:size-3 group-data-[size=default]/switch:data-checked:translate-x-[calc(100%-2px)] group-data-[size=sm]/switch:data-checked:translate-x-[calc(100%-2px)] data-checked:bg-primary-foreground group-data-[size=default]/switch:data-unchecked:translate-x-0 group-data-[size=sm]/switch:data-unchecked:translate-x-0 data-unchecked:bg-foreground"
       />
     </SwitchPrimitive.Root>

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RoomProvider } from './state/RoomProvider';
 import { useRoom } from './state/RoomContext';
 import { AuthProvider, useAuth } from './state/AuthContext';
@@ -6,108 +6,96 @@ import { AuthScreen } from './features/auth/AuthScreen';
 import { RoomErrorScreen } from './features/room/RoomErrorScreen';
 import { LoadingScreen } from './features/room/LoadingScreen';
 import { ReconnectBanner } from './shared/ReconnectBanner';
-import { LeftSidebar } from './components/LeftSidebar';
-import type { AppView } from './components/LeftSidebar';
-import { ChatPage } from './features/chat/ChatPage';
+import { ConversationSidebar } from './features/conversations/ConversationSidebar';
+import { ConversationPanel } from './features/conversations/ConversationPanel';
+import { GroupDetailsPanel } from './features/conversations/GroupDetailsPanel';
+import { ConversationMediaPanel } from './features/conversations/ConversationMediaPanel';
+import { ChatSearchDialog } from './features/chat/ChatSearchDialog';
 import { Stage } from './features/sharing/Stage';
-import { VoiceIdleScreen } from './features/sharing/VoiceIdleScreen';
 import { CallControlBar } from './features/sharing/CallControlBar';
+import { CallChatToggleButton } from './features/sharing/CallChatToggleButton';
+import { CallChatPanel } from './features/sharing/CallChatPanel';
 import { ParticipantAudioLayer } from './features/sharing/ParticipantAudioLayer';
 import { FloatingPip } from './features/sharing/FloatingPip';
 import { useParticipantMedia } from './features/sharing/useLiveKitTrack';
+import { callParticipantIds, conversationTitle } from './features/conversations/conversationUtils';
 import { TileMenu } from './features/sharing/TileMenu';
 import { ReactionsOverlay } from './features/reactions/ReactionsOverlay';
 import { GlobalContextMenu } from './components/GlobalContextMenu';
 import { ProfileModal } from './features/profile/ProfileModal';
+import { AnimatedSidebarInset, AnimatedSidebarProvider } from '@/components/motion/animated-sidebar';
+import { loadSidebarCollapsed, saveSidebarCollapsed } from './shared/lib/useSidebarCollapsedPreference';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { cn } from '@/shared/lib/utils';
 
-// lazy: SettingsModal pulls in MediaTab/ModerationTab (which in turn pull
-// LinkPreview/GenericEmbed/react-player) — a lot of weight for something
-// most sessions never open. Kept out of the initial bundle, downloads in
-// parallel without blocking first paint.
 const SettingsModal = lazy(() => import('./features/settings/SettingsModal').then((m) => ({ default: m.SettingsModal })));
 
 function Shell() {
-  const { state, dispatch, livekitRoom, closeTileMenu, sendWs, notifyActiveView, registerRequestChatView, activeVoiceChannelId } = useRoom();
-  const [activeView, setActiveView] = useState<AppView>('chat');
-  // which voice channel the Call tab is showing — independent of
-  // `activeVoiceChannelId` (the one actually connected via LiveKit) so
-  // leaving a call doesn't strand the live Stage on screen: Stage only
-  // renders while this still matches activeVoiceChannelId, otherwise the
-  // Call tab falls back to VoiceIdleScreen (see below). Set whenever a
-  // voice channel is picked (LeftSidebar#handleSelectChannel), never
-  // cleared on leave — that's exactly what lets the idle screen keep
-  // showing which channel to rejoin.
-  const [viewedVoiceChannelId, setViewedVoiceChannelId] = useState<string | null>(null);
+  const {
+    state, dispatch, livekitRoom, closeTileMenu, sendWs, notifyActiveView, registerRequestChatView,
+    activeCallConversationId, activeConversationId, joinCall, conversations, allUsers,
+  } = useRoom();
+  const [activeView, setActiveView] = useState<'chat' | 'call'>('chat');
   const roomError = state.roomError;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
-  // mobile-only: below md there's no room for sidebar + content side by
-  // side, so they become two panels shown one at a time (see LeftSidebar's
-  // and the content wrapper's `md:flex` below, which ignores this and
-  // always shows both from md up).
   const [mobileShowSidebar, setMobileShowSidebar] = useState(true);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [mediaOpen, setMediaOpen] = useState(false);
+  const [callChatOpen, setCallChatOpen] = useState(false);
 
-  // only so the new-message sound (RoomProvider) knows if the person is
-  // already looking at chat.
+  const [sidebarOpen, setSidebarOpenState] = useState(() => !loadSidebarCollapsed());
+  const setSidebarOpen = useCallback((next: boolean) => {
+    setSidebarOpenState(next);
+    saveSidebarCollapsed(!next);
+  }, []);
+
   useEffect(() => { notifyActiveView(activeView); }, [activeView, notifyActiveView]);
 
-  // lets a desktop-notification click switch to the Chat tab (RoomProvider
-  // only owns the active channel, not this view state).
+  // The first conversation auto-selected right after connecting shouldn't
+  // drill in on mobile (the sidebar list is the intended landing screen —
+  // see REDESIGN_PLAN.md). Every LATER change to activeConversationId is a
+  // real navigation the user should actually see: a group they just
+  // created, a notification click, or anything else that opens a
+  // conversation without going through the sidebar row's own onClick (which
+  // already closes the mobile sheet directly). Without this, those left the
+  // active conversation switched behind an unchanged, still-open sidebar.
+  const hasAutoSelectedInitialConversationRef = useRef(false);
+  useEffect(() => {
+    if (!activeConversationId) return;
+    if (!hasAutoSelectedInitialConversationRef.current) {
+      hasAutoSelectedInitialConversationRef.current = true;
+      return;
+    }
+    setMobileShowSidebar(false);
+  }, [activeConversationId]);
+
   useEffect(() => { registerRequestChatView(() => setActiveView('chat')); }, [registerRequestChatView]);
 
-  // mic isn't included: with the "native" model (activate once, only
-  // mute/unmute), it stays published in the background for most of the
-  // session — including it would fire the warning uselessly. Screen/camera
-  // are still things that really "stop" if the tab closes unintentionally.
   const publishing = state.me.sharing || state.me.cameraOn;
 
-  // "am I actually connected to the channel the Call tab is showing" — as
-  // opposed to just having it selected (see viewedVoiceChannelId above).
-  const viewingLiveChannel = !!viewedVoiceChannelId && viewedVoiceChannelId === activeVoiceChannelId;
-
-  // "am I in the call" = my mic was activated this session — LiveKit
-  // (micActivated) is already the source of truth, like the rest of the app.
   const myMedia = useParticipantMedia(state.me.id ?? '');
   const inCall = myMedia.micActivated;
 
-  // everyone in the room (me + participants) — passed down to whoever
-  // filters who's actually in the call (useCallTiles already only makes a
-  // tile for a published mic; ParticipantAudioLayer only mounts once I'm
-  // in the call, see below).
-  const allIds = useMemo(() => {
-    const ids: string[] = [];
-    if (state.me.id) ids.push(state.me.id);
-    for (const p of state.participants.values()) ids.push(p.id);
-    return ids;
-  }, [state.participants, state.me.id]);
+  const callIds = useMemo(
+    () => callParticipantIds(state.me.id, state.participants, activeCallConversationId),
+    [activeCallConversationId, state.me.id, state.participants]
+  );
 
-  // only switches the visible tab — actually joining a voice channel
-  // (connecting the Room, activating the mic) is triggered by
-  // joinVoiceChannel, called when clicking the specific channel in the
-  // sidebar (LeftSidebar.tsx#handleSelectChannel), not here anymore just
-  // by switching tabs.
-  function handleViewChange(next: AppView, voiceChannelId?: string) {
-    setActiveView(next);
-    if (next === 'call' && voiceChannelId) setViewedVoiceChannelId(voiceChannelId);
-  }
-
-  // picking a channel on mobile should show its content right away, not
-  // leave the person staring at the sidebar they just tapped in.
-  function handleSelectChannelMobile() {
+  function handleOpenCall(conversationId: string) {
+    joinCall(conversationId);
+    setActiveView('call');
     setMobileShowSidebar(false);
   }
+
+  const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId);
+  const activeConversationName = conversationTitle(activeConversation, state.me.userId, allUsers);
 
   useEffect(() => {
     function onBeforeUnload(e: BeforeUnloadEvent) {
       if (publishing) { e.preventDefault(); e.returnValue = ''; }
     }
     function onPageHide() {
-      // leaves the room immediately instead of waiting for the server's
-      // reconnect window (that should only apply to network drops, not a
-      // tab actually closing/reloading) — disconnecting the LiveKit Room
-      // already stops camera/mic/screen at once.
       sendWs({ t: 'leave' });
       livekitRoom.disconnect();
     }
@@ -126,72 +114,82 @@ function Shell() {
     };
   }, [publishing, livekitRoom, closeTileMenu, state.focusedId, dispatch, sendWs]);
 
-  // room-level error (e.g. room full) — the socket was already
-  // deliberately disconnected at this point (see RoomProvider), so there's
-  // no normal UI to show behind it. After all hooks, on purpose (rules of hooks).
   if (roomError) return <RoomErrorScreen message={roomError} />;
-  // socket connected but welcome hasn't arrived yet — without this the UI
-  // would appear "assembling" empty (sidebar with no channels, chat with
-  // no history) for an instant until the data arrives.
   if (!state.joined) return <LoadingScreen />;
 
   return (
-    <GlobalContextMenu>
-      <div className="flex h-dvh overflow-hidden bg-bg-primary text-text-primary">
+    <GlobalContextMenu onOpenProfile={setProfileUserId}>
+      <AnimatedSidebarProvider
+        open={sidebarOpen}
+        onOpenChange={setSidebarOpen}
+        openMobile={mobileShowSidebar}
+        onOpenMobileChange={setMobileShowSidebar}
+        className="h-dvh bg-bg-primary text-text-primary"
+        style={{ '--sidebar-width': '22rem', '--sidebar-width-icon': '4.5rem' }}
+      >
         <ReconnectBanner />
-        <LeftSidebar
-          activeView={activeView}
-          onViewChange={handleViewChange}
-          inCall={inCall}
+        <ConversationSidebar
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenProfile={setProfileUserId}
-          mobileVisible={mobileShowSidebar}
-          onSelectChannelMobile={handleSelectChannelMobile}
         />
-        <div className={cn('relative min-h-0 flex-1 md:flex', mobileShowSidebar ? 'hidden' : 'flex')}>
-          {activeView === 'chat' && <ChatPage onBackMobile={() => setMobileShowSidebar(true)} onOpenProfile={setProfileUserId} />}
-          {activeView === 'call' && viewedVoiceChannelId && (
-            viewingLiveChannel
-              ? <Stage allIds={allIds} onBackMobile={() => setMobileShowSidebar(true)} />
-              : (
-                <VoiceIdleScreen
-                  channelId={viewedVoiceChannelId}
-                  onBackMobile={() => setMobileShowSidebar(true)}
-                  onOpenChat={() => setActiveView('chat')}
-                />
-              )
+        <AnimatedSidebarInset className="relative min-h-0 overflow-hidden bg-[rgb(10_10_12)] md:my-2 md:mr-2 md:ml-2 md:rounded-2xl md:border md:border-white/10">
+          {activeView === 'call' && activeCallConversationId && inCall ? (
+            <Stage allIds={callIds} />
+          ) : (
+            <ConversationPanel
+              onOpenProfile={setProfileUserId}
+              onOpenCall={handleOpenCall}
+              onOpenSearch={() => setSearchOpen(true)}
+              onOpenDetails={() => { setMediaOpen(false); setDetailsOpen(true); }}
+              onOpenMedia={() => { setDetailsOpen(false); setMediaOpen(true); }}
+            />
           )}
-          {/* full floating bar (mic/camera/screen/reactions) only on the
-              Call tab itself — elsewhere the LeftSidebar's compact panel
-              covers it. */}
-          {activeView === 'call' && inCall && <CallControlBar />}
-          {/* only hears others if I'm in the call myself — like Discord,
-              seeing/knowing who's connected (LeftSidebar) isn't the same
-              as hearing their audio. */}
-          {inCall && <ParticipantAudioLayer participantIds={allIds} />}
-          {inCall && activeView !== 'call' && <FloatingPip allIds={allIds} />}
+          {activeView === 'call' && inCall && (
+            <>
+              <CallControlBar />
+              <CallChatToggleButton chatOpen={callChatOpen} onToggleChat={() => setCallChatOpen((v) => !v)} />
+            </>
+          )}
+          {inCall && <ParticipantAudioLayer participantIds={callIds} />}
+          {inCall && activeView !== 'call' && <FloatingPip allIds={callIds} onExpand={() => setActiveView('call')} />}
           <ReactionsOverlay />
-        </div>
+        </AnimatedSidebarInset>
+        <GroupDetailsPanel
+          conversationId={activeConversation?.type === 'group' ? activeConversation.id : null}
+          open={detailsOpen && activeConversation?.type === 'group' && activeView !== 'call'}
+          onOpenChange={setDetailsOpen}
+          onOpenProfile={setProfileUserId}
+        />
+        <ConversationMediaPanel
+          conversationId={activeConversation?.id ?? null}
+          open={mediaOpen && !!activeConversation && activeView !== 'call'}
+          onOpenChange={setMediaOpen}
+        />
+        <CallChatPanel
+          conversationId={activeCallConversationId}
+          open={callChatOpen && activeView === 'call' && inCall}
+          onOpenChange={setCallChatOpen}
+          onOpenProfile={setProfileUserId}
+        />
         <TileMenu />
         <ProfileModal userId={profileUserId} onClose={() => setProfileUserId(null)} />
         <Suspense fallback={null}>
           <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
         </Suspense>
-      </div>
+        <ChatSearchDialog
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          activeConversationId={activeConversationId}
+          activeConversationName={activeConversationName}
+        />
+      </AnimatedSidebarProvider>
     </GlobalContextMenu>
   );
 }
 
-/** Decides between the login screen and the real app. RoomProvider (which
- * opens the socket) only mounts once `status === 'authed'` — no anonymous
- * socket should ever exist (the server would reject it anyway via
- * io.use), but it doesn't even try. `key={user.id}` forces a NEW
- * RoomProvider if the logged-in account changes (e.g. logout then login as
- * someone else in the same tab), instead of an old one surviving with
- * someone else's state. */
 function AuthGate() {
   const { status, user } = useAuth();
-  if (status === 'loading') return <LoadingScreen />; // avoids flashing the login screen before knowing if a session already exists
+  if (status === 'loading') return <LoadingScreen />;
   if (status === 'anon' || !user) return <AuthScreen />;
   return (
     <RoomProvider key={user.id}>

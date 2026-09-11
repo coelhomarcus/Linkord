@@ -29,9 +29,6 @@ describe('loadCallVolume / saveCallVolume', () => {
 
   it('clampa entre 0 e 1', () => {
     saveCallVolume('user-1', 5);
-    // saveCallVolume nao clampa na escrita (quem chama ja manda 0..1) — o
-    // clamp de protecao e no LOAD, contra um valor que tenha entrado torto
-    // de qualquer jeito (edicao manual do localStorage, versao antiga etc.).
     expect(loadCallVolume('user-1')).toBe(1);
   });
 });

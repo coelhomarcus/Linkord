@@ -1,6 +1,3 @@
-/** Identity (id + token) persisted in sessionStorage — per tab, so a
- * reconnect (network drop, reload of the same tab) resumes as the same
- * person instead of duplicating in the participant list. */
 
 interface StoredIdentity {
   id: string;

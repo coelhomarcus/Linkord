@@ -83,13 +83,22 @@ const MAX_PASSWORD_LEN = 200; // hygiene cap — hashing a 1MB password would be
 const LIVEKIT_URL = process.env.LIVEKIT_URL || '';
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || '';
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || '';
-// prefix for each voice channel's LiveKit room name (see
-// realtime/livekit.ts) — one room per channel, not a single shared one.
+// prefix for each group call's LiveKit room name (see
+// realtime/livekit.ts) — one room per group, not a single shared one.
 const LIVEKIT_ROOM_NAME = process.env.LIVEKIT_ROOM_NAME || 'linkord-room';
 
 // optional — notifies a Discord channel when someone joins the call or
 // starts sharing (see modules/discordWebhook.ts). Empty disables it silently.
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || '';
+
+// optional, dev convenience only: when DATABASE_URL points at the same DB a
+// deployed instance uses, `attachments` rows exist locally but the actual
+// FILES only live on that instance's disk (UPLOAD_DIR is always local, never
+// synced). Set this to that instance's base URL and serveUpload will fetch
+// (and cache) a missing file from there on first request instead of 404ing.
+// Never needed in the deployment this var would point AT. Trailing slash
+// stripped so `${UPLOADS_REMOTE_URL}/uploads/<id>` doesn't double up.
+const UPLOADS_REMOTE_URL = (process.env.UPLOADS_REMOTE_URL || '').trim().replace(/\/+$/, '');
 
 export const config = {
   PORT, HOST_BIND, MAX_PARTICIPANTS, TRUST_PROXY, MAX_MSG_BYTES, RECONNECT_GRACE_MS,
@@ -103,4 +112,5 @@ export const config = {
   MIN_USERNAME_LEN, MAX_USERNAME_LEN, MAX_DISPLAY_NAME_LEN, MIN_PASSWORD_LEN, MAX_PASSWORD_LEN,
   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_ROOM_NAME,
   DISCORD_WEBHOOK_URL,
+  UPLOADS_REMOTE_URL,
 };

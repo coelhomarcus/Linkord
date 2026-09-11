@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import fsStreams from 'node:fs'; // only for createReadStream/createWriteStream (chunk assembly), see assembleChunks
 import path from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import sharp from 'sharp';
 import { eq, and, asc, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
 import { config } from '../config/env.js';
 import { db } from '../db/client.js';
@@ -11,7 +12,7 @@ import { broadcast } from '../realtime/participants.js';
 import { sendJson, sendError, jsonBody } from '../http/respond.js';
 import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from './auth/session.js';
-import { channelExists } from './channels.js';
+import { broadcastToConversationMembers, conversationExistsForUser, touchConversation } from './conversations.js';
 
 // Chat attachments: up to MAX_ATTACHMENTS_PER_MESSAGE per message, stored on
 // disk keyed by a uuid (no extension — real mime type lives in the
@@ -40,6 +41,22 @@ function filePathFor(id: string): string {
   return path.join(config.UPLOAD_DIR, id);
 }
 
+const MAX_CROP_DIMENSION = 4096; // sane ceiling, well under sharp's own decompression-bomb guard
+
+/** Parses the `?crop=` query param (JSON `{x,y,width,height}`, same shape as
+ * react-easy-crop's `Area`) into the rect handleAvatarUpload extracts. */
+function parseCropRect(raw: string | undefined): { left: number; top: number; width: number; height: number } | null {
+  if (!raw) return null;
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return null; }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const { x, y, width, height } = parsed as Record<string, unknown>;
+  if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number'
+    || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) return null;
+  if (width <= 0 || height <= 0 || x < 0 || y < 0 || width > MAX_CROP_DIMENSION || height > MAX_CROP_DIMENSION) return null;
+  return { left: Math.round(x), top: Math.round(y), width: Math.round(width), height: Math.round(height) };
+}
+
 export async function ensureUploadDir(): Promise<void> {
   await fs.mkdir(config.UPLOAD_DIR, { recursive: true });
 }
@@ -53,7 +70,7 @@ export async function ensureUploadDir(): Promise<void> {
 interface UploadManifest {
   uploadId: string;
   userId: string;
-  channelId: string;
+  conversationId: string;
   fileName: string;
   mimeType: string;
   totalSize: number;
@@ -204,15 +221,16 @@ export async function deleteForMessage(messageId: number): Promise<void> {
   await Promise.all(rows.map((row) => fs.unlink(filePathFor(row.id)).catch((err: NodeJS.ErrnoException) => { if (err.code !== 'ENOENT') throw err; })));
 }
 
-/** Same idea in bulk — deleting a channel CASCADEs messages/attachments in
- * Postgres without going through deleteForMessage, so this exists purely to
- * avoid orphaned files. Called by modules/channels.ts before the delete. */
-export async function deleteForChannel(channelId: string): Promise<void> {
+/** Same idea in bulk — deleting a conversation CASCADEs messages/attachments
+ * in Postgres without going through deleteForMessage, so this exists purely
+ * to avoid orphaned files. Called by modules/conversations.ts before the
+ * delete. */
+export async function deleteForConversation(conversationId: string): Promise<void> {
   const rows = await db
     .select({ id: attachmentsTable.id })
     .from(attachmentsTable)
     .innerJoin(messages, eq(attachmentsTable.messageId, messages.id))
-    .where(eq(messages.channelId, channelId));
+    .where(eq(messages.conversationId, conversationId));
   await Promise.all(rows.map((row) => fs.unlink(filePathFor(row.id)).catch((err: NodeJS.ErrnoException) => { if (err.code !== 'ENOENT') throw err; })));
 }
 
@@ -282,16 +300,18 @@ function withInitLock<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /** Step 1/3 — declares the file before any bytes are sent, so an invalid
- * channel/quota/size fails fast. Server decides chunkSize; the client never
- * hardcodes it. */
+ * conversation/quota/size fails fast. Server decides chunkSize; the client
+ * never hardcodes it. */
 async function handleAttachmentInit(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
   if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
 
   const body = jsonBody(request.body);
-  const channelId = String(body.channelId || '');
-  if (!channelId || !(await channelExists(channelId))) return sendError(reply, 404, 'channel_not_found', 'Canal nao encontrado.');
+  const conversationId = String(body.conversationId || '');
+  if (!conversationId || !(await conversationExistsForUser(conversationId, sess.userId))) {
+    return sendError(reply, 404, 'conversation_not_found', 'Conversa nao encontrada.');
+  }
 
   const fileName = sanitizeFileName(body.fileName);
   const mimeType = String(body.mimeType || 'application/octet-stream').split(';')[0]!.trim() || 'application/octet-stream';
@@ -322,7 +342,7 @@ async function handleAttachmentInit(request: FastifyRequest, reply: FastifyReply
   try {
     await fs.mkdir(tmpDirFor(uploadId), { recursive: true });
     await fs.writeFile(manifestPathFor(uploadId), JSON.stringify({
-      uploadId, userId: sess.userId, channelId, fileName, mimeType, totalSize, caption,
+      uploadId, userId: sess.userId, conversationId, fileName, mimeType, totalSize, caption,
       chunkSize, totalChunks, createdAt: new Date().toISOString(),
     } satisfies UploadManifest));
   } catch (err) {
@@ -384,7 +404,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
     const [existing] = await db.select().from(messages).where(eq(messages.id, targetMsgId)).limit(1);
     if (!existing) return sendError(reply, 404, 'target_message_not_found', 'Mensagem de destino nao encontrada.');
     if (existing.authorId !== sess.userId) return sendError(reply, 403, 'not_your_message', 'Voce so pode anexar arquivos as suas proprias mensagens.');
-    if (existing.channelId !== manifest.channelId) return sendError(reply, 400, 'channel_mismatch', 'Canal nao bate com o upload.');
+    if (existing.conversationId !== manifest.conversationId) return sendError(reply, 400, 'conversation_mismatch', 'Conversa nao bate com o upload.');
     if (Date.now() - existing.createdAt.getTime() > config.ATTACH_TO_MESSAGE_WINDOW_MS) {
       return sendError(reply, 400, 'target_message_too_old', 'Mensagem de destino e antiga demais pra receber mais anexos.');
     }
@@ -436,7 +456,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
       } else {
         const inserted = await db.transaction(async (tx) => {
           const [messageRow] = await tx.insert(messages).values({
-            channelId: manifest.channelId, authorId: sess.userId, text: manifest.caption,
+            conversationId: manifest.conversationId, authorId: sess.userId, text: manifest.caption,
           }).returning();
           const [attachmentRow] = await tx.insert(attachmentsTable).values({
             id: uploadId, messageId: messageRow!.id, fileName: manifest.fileName, mimeType: manifest.mimeType, size: manifest.totalSize,
@@ -467,7 +487,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
     if (message) {
       const chatMessage = {
         msgId: message.id,
-        channelId: message.channelId,
+        conversationId: message.conversationId,
         id: message.authorId,
         name: sess.displayName,
         avatar: sess.avatar,
@@ -475,11 +495,18 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
         ts: message.createdAt.getTime(),
         attachments: [attachmentPayload],
       };
-      broadcast({ t: 'chat', message: chatMessage });
+      await touchConversation(message.conversationId, message.createdAt);
+      await broadcastToConversationMembers(message.conversationId, { t: 'chat', message: chatMessage });
       await broadcastUsage();
       sendJson(reply, 201, { message: chatMessage });
     } else {
-      broadcast({ t: 'chat-attachment-added', channelId: manifest.channelId, msgId: targetMsgId!, attachment: attachmentPayload });
+      await touchConversation(manifest.conversationId);
+      await broadcastToConversationMembers(manifest.conversationId, {
+        t: 'chat-attachment-added',
+        conversationId: manifest.conversationId,
+        msgId: targetMsgId!,
+        attachment: attachmentPayload,
+      });
       await broadcastUsage();
       sendJson(reply, 201, { attachment: attachmentPayload });
     }
@@ -507,9 +534,17 @@ export async function handleAttachmentCancel(request: FastifyRequest<{ Params: {
 /** Avatar upload — same storage/serving route as chat attachments
  * (`/uploads/<id>`), but the row is born with `messageId: null` (marks it
  * as an avatar, see schema.ts/getUsage) and skips the 30GB quota. Client
- * sends raw image bytes; applying the result as the account's avatar
- * happens in the existing `profile` websocket flow (realtime/participants.ts),
- * which also cleans up the old file (see deleteAvatarFile above). */
+ * sends the ORIGINAL (uncropped) image bytes plus a `?crop=` rect (the
+ * react-easy-crop pixel area) — the crop itself happens here via sharp, not
+ * client-side canvas, so an animated GIF/WebP survives as an animated
+ * GIF/WebP instead of being flattened to one frame (`{ animated: true }`
+ * makes sharp treat every frame as one page of a stacked canvas; `.extract()`
+ * with a rect against ONE frame's bounds applies that same rect to every
+ * page). Static images keep today's behavior (re-encoded to JPEG). Applying
+ * the result as the
+ * account's avatar happens in the existing `profile` websocket flow
+ * (realtime/participants.ts), which also cleans up the old file (see
+ * deleteAvatarFile above). */
 async function handleAvatarUpload(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
@@ -523,15 +558,68 @@ async function handleAvatarUpload(request: FastifyRequest, reply: FastifyReply):
   const buffer = request.body as Buffer;
   if (buffer.length === 0) return sendError(reply, 400, 'empty_file', 'Arquivo vazio.');
 
-  const id = newId();
-  await fs.writeFile(filePathFor(id), buffer);
+  const cropRect = parseCropRect((request.query as Record<string, string | undefined>).crop);
+  if (!cropRect) return sendError(reply, 400, 'invalid_crop', 'Recorte invalido.');
+
+  let outBuffer: Buffer;
+  let outMime: string;
   try {
-    await db.insert(attachmentsTable).values({ id, messageId: null, fileName: 'avatar', mimeType, size: buffer.length });
+    const image = sharp(buffer, { animated: true });
+    const meta = await image.metadata();
+    const frameHeight = meta.pageHeight ?? meta.height ?? 0;
+    if (!meta.width || !frameHeight
+      || cropRect.left + cropRect.width > meta.width
+      || cropRect.top + cropRect.height > frameHeight) {
+      return sendError(reply, 400, 'invalid_crop', 'Recorte fora dos limites da imagem.');
+    }
+    const extracted = image.extract(cropRect);
+    if ((meta.pages ?? 1) > 1) {
+      outBuffer = await extracted.gif().toBuffer();
+      outMime = 'image/gif';
+    } else {
+      outBuffer = await extracted.jpeg({ quality: 92 }).toBuffer();
+      outMime = 'image/jpeg';
+    }
+  } catch (err) {
+    console.warn(`[attachments] falha ao recortar avatar: ${err instanceof Error ? err.message : err}`);
+    return sendError(reply, 400, 'crop_failed', 'Nao foi possivel processar a imagem.');
+  }
+
+  const id = newId();
+  await fs.writeFile(filePathFor(id), outBuffer);
+  try {
+    await db.insert(attachmentsTable).values({ id, messageId: null, fileName: 'avatar', mimeType: outMime, size: outBuffer.length });
   } catch (err) {
     await fs.unlink(filePathFor(id)).catch(() => {});
     throw err;
   }
   sendJson(reply, 201, { avatar: `/uploads/${id}` });
+}
+
+/** Dev convenience only (see config.UPLOADS_REMOTE_URL) — pulls a file this
+ * instance doesn't have on disk from the instance that does, and caches it
+ * locally so it's a plain local read next time. Forwards the caller's own
+ * session cookie: since both instances read the SAME `attachments`/`sessions`
+ * rows (shared DATABASE_URL), a session valid here is valid there too — no
+ * separate credential needed. Written to a temp file + renamed so a
+ * concurrent request never reads a half-downloaded file. Returns false (and
+ * leaves nothing on disk) on any failure — the caller just 404s as before. */
+async function tryCacheFromRemote(id: string, cookieHeader: string): Promise<boolean> {
+  if (!config.UPLOADS_REMOTE_URL) return false;
+  const tmpPath = `${filePathFor(id)}.fetching-${crypto.randomUUID()}`;
+  try {
+    const res = await fetch(`${config.UPLOADS_REMOTE_URL}/uploads/${id}`, {
+      headers: cookieHeader ? { cookie: cookieHeader } : {},
+    });
+    if (!res.ok || !res.body) return false;
+    await fs.writeFile(tmpPath, Buffer.from(await res.arrayBuffer()));
+    await fs.rename(tmpPath, filePathFor(id));
+    return true;
+  } catch (err) {
+    console.warn(`[attachments] falha ao buscar ${id} de UPLOADS_REMOTE_URL: ${err instanceof Error ? err.message : err}`);
+    await fs.unlink(tmpPath).catch(() => {});
+    return false;
+  }
 }
 
 export async function serveUpload(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<FastifyReply> {
@@ -550,7 +638,12 @@ export async function serveUpload(request: FastifyRequest<{ Params: { id: string
   try {
     size = (await fs.stat(path)).size;
   } catch {
-    return reply.code(404).send('nao encontrado');
+    if (!(await tryCacheFromRemote(id, request.headers.cookie || ''))) return reply.code(404).send('nao encontrado');
+    try {
+      size = (await fs.stat(path)).size;
+    } catch {
+      return reply.code(404).send('nao encontrado');
+    }
   }
 
   const inline = INLINE_MIME_TYPES.has(row.mimeType);

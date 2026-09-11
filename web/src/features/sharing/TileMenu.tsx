@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Crosshair, Maximize2, PictureInPicture2, Volume2, VolumeX } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Crosshair, Maximize2, PictureInPicture2, UserX, Volume2, VolumeX } from 'lucide-react';
 import type { Track as LKTrack } from 'livekit-client';
 import { useRoom } from '../../state/RoomContext';
 import type { AnchorRect } from '../../state/RoomContext';
@@ -8,15 +8,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Slider } from '@/components/ui/slider';
 import { saveCallVolume } from '../settings/useCallVolumePreference';
 
-/** LocalTrack and RemoteTrack (Track's only concrete subclasses) have this
- * method, but the abstract base class doesn't declare it — could import
- * both concrete types, but a local type with just what we use here is
- * simpler. */
 type StatsCapableTrack = { getRTCStatsReport?: () => Promise<RTCStatsReport | undefined> };
 
-/** Live bitrate of a specific track, via WebRTC's native
- * getRTCStatsReport() — same API on both sides (local: outbound-rtp/
- * bytesSent, remote: inbound-rtp/bytesReceived), just a different field name. */
 async function getTrackBytes(track: LKTrack | null): Promise<number> {
   if (!track) return 0;
   try {
@@ -27,13 +20,10 @@ async function getTrackBytes(track: LKTrack | null): Promise<number> {
       if (s.type === 'outbound-rtp' && typeof s.bytesSent === 'number') return s.bytesSent;
       if (s.type === 'inbound-rtp' && typeof s.bytesReceived === 'number') return s.bytesReceived;
     }
-  } catch { /* ok */ }
+  } catch {  }
   return 0;
 }
 
-/** Base UI accepts a "virtual element" (just needs getBoundingClientRect)
- * as the menu's anchor — fits directly into the rectangle already computed
- * on right-click or the gear button, no real Trigger needed. */
 function rectToVirtualElement(rect: AnchorRect) {
   return {
     getBoundingClientRect: (): DOMRect => ({
@@ -59,42 +49,34 @@ function formatElapsed(totalSeconds: number): string {
 }
 
 export function TileMenu() {
-  const { state, dispatch, menuTarget, closeTileMenu, tileDomRegistry, audioRegistry, showStats } = useRoom();
+  const { state, dispatch, menuTarget, closeTileMenu, tileDomRegistry, audioRegistry, showStats, kickFromCall, activeCallConversationId, conversations } = useRoom();
   const [sliderValue, setSliderValue] = useState(0);
   const [bitrateKbps, setBitrateKbps] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
+  // What the mute-toggle button restores to — the target's own volume when
+  // the menu opened if it was already above 0, else 40% (there's nothing
+  // meaningful to "go back to" if it was already at/left at 0).
+  const unmuteToRef = useRef(40);
 
   const key = menuTarget?.key ?? null;
   const participantId = menuTarget?.participantId ?? null;
   const kind = menuTarget?.kind ?? null;
   const isMe = participantId !== null && participantId === state.me.id;
   const audioKey = kind === 'screen' ? `${participantId}:screen` : participantId;
-  // stable key for persisting the volume (userId, not participantId — see
-  // useCallVolumePreference.ts).
   const targetUserId = participantId !== null ? (state.participants.get(participantId)?.userId ?? null) : null;
   const volumeStorageKey = kind === 'screen' ? `${targetUserId}:screen` : targetUserId;
 
-  // the track feeding the bitrate stats below — the same one the Tile of
-  // this specific kind is showing.
   const media = useParticipantMedia(participantId ?? '');
   const mainTrack = kind === 'screen' ? media.screenTrack : kind === 'camera' ? media.cameraTrack : media.micTrack;
 
-  // reads the actual current volume only when the menu opens for a new
-  // target (same behavior as before: a snapshot at open time, not a live
-  // value synced with the video). audio.muted here does NOT factor in —
-  // that's just the autoplay block (global, see audioUnlocked in
-  // RoomProvider), unrelated to volume; mixing the two made all audio
-  // appear "at minimum" until a manual click per tile.
   useEffect(() => {
     if (!key || !audioKey) return;
     const audio = audioRegistry.current.get(audioKey)?.element;
-    setSliderValue(audio ? Math.round(audio.volume * 100) : 100);
+    const initial = audio ? Math.round(audio.volume * 100) : 100;
+    setSliderValue(initial);
+    unmuteToRef.current = initial > 0 ? initial : 40;
   }, [key, audioKey, audioRegistry]);
 
-  // live bitrate while the menu stays open: measures the main track's byte
-  // delta (native getRTCStatsReport) every 1.5s. Disabled via the general
-  // setting (sidebar Settings tab) so it doesn't waste the interval for
-  // nothing.
   useEffect(() => {
     if (!key || !showStats || !mainTrack) { setBitrateKbps(0); return; }
     let cancelled = false;
@@ -128,6 +110,11 @@ export function TileMenu() {
   const handle = tileDomRegistry.current.get(key);
   const hasAudio = !isMe && audioRegistry.current.has(audioKey);
   const isFocused = state.focusedId === key;
+  // "Remove from call" is a group-moderation power — not offered for 1:1
+  // direct calls, where "leave call" already covers it (mirrors the
+  // server-side check in modules/moderation.ts#handleCallKick).
+  const isGroupCall = conversations.find((c) => c.id === activeCallConversationId)?.type === 'group';
+  const canKick = !isMe && isGroupCall && state.me.role === 'admin';
   const pipSupported = typeof document !== 'undefined' && document.pictureInPictureEnabled
     && !!handle?.video && !handle.video.disablePictureInPicture;
   const inPip = pipSupported && document.pictureInPictureElement === handle?.video;
@@ -149,9 +136,17 @@ export function TileMenu() {
   function handleVolumeChange(value: number | readonly number[]) {
     const v = Array.isArray(value) ? (value[0] ?? 0) : (value as number);
     setSliderValue(v);
+    if (v > 0) unmuteToRef.current = v;
     const audio = audioRegistry.current.get(audioKey!)?.element;
     if (audio) audio.volume = v / 100;
     if (targetUserId) saveCallVolume(volumeStorageKey!, v / 100);
+  }
+  function toggleMute() {
+    handleVolumeChange(sliderValue > 0 ? 0 : unmuteToRef.current);
+  }
+  function handleKick() {
+    if (participantId) kickFromCall(participantId);
+    closeTileMenu();
   }
 
   return (
@@ -181,9 +176,14 @@ export function TileMenu() {
           <>
             <DropdownMenuSeparator />
             <div className="flex items-center gap-2.5 px-2.5 py-2">
-              <span className="flex-none text-text-secondary">
+              <button
+                type="button"
+                onClick={toggleMute}
+                aria-label={sliderValue === 0 ? 'Reativar audio' : 'Silenciar audio'}
+                className="flex-none text-text-secondary transition-colors hover:text-text-primary"
+              >
                 {sliderValue === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
-              </span>
+              </button>
               <Slider value={[sliderValue]} onValueChange={handleVolumeChange} min={0} max={100} />
             </div>
           </>
@@ -195,6 +195,15 @@ export function TileMenu() {
               <div>Bitrate: {bitrateKbps} kbps</div>
               {isMe && <div>No ar: {formatElapsed(elapsedSec)}</div>}
             </div>
+          </>
+        )}
+        {canKick && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={handleKick}>
+              <UserX size={16} />
+              <span>Remover da chamada</span>
+            </DropdownMenuItem>
           </>
         )}
       </DropdownMenuContent>

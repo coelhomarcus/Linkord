@@ -5,7 +5,7 @@ import type { Socket } from 'socket.io-client';
 import { DisconnectReason, Room, RoomEvent, Track } from 'livekit-client';
 import type { LocalTrackPublication, Track as LKTrack } from 'livekit-client';
 import { RoomContext } from './RoomContext';
-import type { AnchorRect, AudioHandle, ReactionEvent, TileDomHandle } from './RoomContext';
+import type { AnchorRect, AudioHandle, CropRect, ReactionEvent, TileDomHandle } from './RoomContext';
 import { roomReducer, initialRoomState } from './roomReducer';
 import { useAuth } from './AuthContext';
 import { loadIdentity, saveIdentity } from './useIdentitySession';
@@ -26,16 +26,12 @@ import { uploadWithProgress } from '../shared/lib/uploadWithProgress';
 import { uploadFileInChunks } from '../shared/lib/chunkedUpload';
 import { DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../shared/Avatar';
 import { sanitizeDisplayName } from '../shared/lib/displayName';
-import type { Category, ChatMessage, ClientMessage, Participant, PublicUser, ReactionEmoji, SearchResult, ServerMessage, StorageUsage } from '../types/protocol';
+import type { ChatMessage, ClientMessage, Conversation, Participant, PublicUser, ReactionEmoji, SearchResult, ServerMessage, StorageUsage } from '../types/protocol';
 import { MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '../types/protocol';
 
-const REACTION_DURATION_MS = 3000; // must match --animate-float-up in index.css
-const CHAT_CLIENT_LIMIT = 300; // client-side cap only — server already limits history sent on welcome
+const REACTION_DURATION_MS = 3000;
+const CHAT_CLIENT_LIMIT = 300;
 
-/** Thrown by sendAttachments when the message was already created (its
- * first attachment succeeded) but a LATER attachment (2nd-4th) failed —
- * distinguishes "nothing was sent" from "the message exists, missing some
- * attachments" so the composer can word the error accordingly. */
 export class PartialAttachmentError extends Error {
   sentCount: number;
   totalCount: number;
@@ -46,9 +42,6 @@ export class PartialAttachmentError extends Error {
   }
 }
 
-/** Syncs allUsers (account directory) with a participant's current avatar/
- * role — otherwise avatar changes only reached other users' sidebars after
- * a reload. */
 function mergeUserFromParticipant(prev: Map<string, PublicUser>, participant: Participant): Map<string, PublicUser> {
   const existing = prev.get(participant.userId);
   if (!existing || (
@@ -67,6 +60,14 @@ function mergeUserFromParticipant(prev: Map<string, PublicUser>, participant: Pa
     profileLinks: participant.profileLinks, role: participant.role,
   });
   return next;
+}
+
+function displayNameForConversation(conversation: Conversation | undefined, meUserId: string | null, users: Map<string, PublicUser>): string {
+  if (!conversation) return 'Conversa';
+  if (conversation.type === 'group') return conversation.title || 'Grupo';
+  const otherId = conversation.memberIds.find((id) => id !== meUserId) ?? conversation.memberIds[0];
+  const other = otherId ? users.get(otherId) : undefined;
+  return other?.displayName || other?.username || 'Conversa direta';
 }
 
 function sanitizeBanner(value: unknown): string {
@@ -101,17 +102,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const socketRef = useRef<Socket | null>(null);
   const myIdRef = useRef<string | null>(null);
   const myUserIdRef = useRef<string | null>(null);
-  // username is immutable (server never changes it) — set once in
-  // 'welcome', used for mention-detection inside handleServerMessage,
-  // which can't read allUsers (state) without going stale.
   const myUsernameRef = useRef<string | null>(null);
   const tokenRef = useRef<string | null>(null);
   const intentionalCloseRef = useRef(false);
   const tileDomRegistry = useRef<Map<string, TileDomHandle>>(new Map());
   const audioRegistry = useRef<Map<string, AudioHandle>>(new Map());
 
-  // browsers block autoplay-with-sound until a user gesture; one gesture
-  // unlocks it for the whole page (not per-tile), for the rest of the session.
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   useEffect(() => {
     if (audioUnlocked) return;
@@ -124,18 +120,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     };
   }, [audioUnlocked]);
 
-  // real toggleDeafened (which also mutes the mic) is defined after
-  // useMicrophone exists below.
   const [deafened, setDeafened] = useState(false);
 
   const [livekitRoom] = useState(() => new Room({
-    // this (plus simulcast, which the SDK already defaults to `true`) is
-    // the whole "automatic quality" mechanism: adaptiveStream tells the SFU
-    // to size each SUBSCRIBER's stream to their actual tile size/bandwidth,
-    // dynacast stops encoding/forwarding simulcast layers nobody's
-    // currently subscribed to. Replaces the old manual "Qualidade de envio"
-    // setting, which was just a single fixed bitrate cap applied equally to
-    // every viewer regardless of their own tile size or connection.
     adaptiveStream: true,
     dynacast: true,
   }));
@@ -146,8 +133,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     saveShowStats(value);
   }, []);
 
-  // read via shared/sounds.ts#setVolume, not props — also called outside
-  // components (useMicrophone.ts).
   const [notifyVolume, setNotifyVolumeState] = useState(loadNotifyVolume);
   const setNotifyVolume = useCallback((value: number) => {
     setNotifyVolumeState(value);
@@ -172,148 +157,130 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     if (socketRef.current?.connected) socketRef.current.emit(msg.t, msg);
   }, []);
 
-  const [categories, setCategories] = useState<Category[]>([]);
-  // same staleness reason as activeChannelIdRef — lets handleServerMessage
-  // resolve a channel's name (for desktop notifications) without depending
-  // on `categories` (state).
-  const categoriesRef = useRef<Category[]>([]);
-  const [activeChannelId, setActiveChannelIdState] = useState<string | null>(null);
-  // ref (not state) — socket handlers outlive React renders and must always
-  // read the current active channel.
-  const activeChannelIdRef = useRef<string | null>(null);
-  const [activeVoiceChannelId, setActiveVoiceChannelIdState] = useState<string | null>(null);
-  // same staleness reason as activeChannelIdRef. pendingVoiceChannelIdRef
-  // lets the 'voice-token' handler discard a stale reply if the channel was
-  // switched again before it arrived.
-  const activeVoiceChannelIdRef = useRef<string | null>(null);
-  const pendingVoiceChannelIdRef = useRef<string | null>(null);
-  const setActiveVoiceChannelId = useCallback((id: string | null) => {
-    activeVoiceChannelIdRef.current = id;
-    setActiveVoiceChannelIdState(id);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const conversationsRef = useRef<Conversation[]>([]);
+  const [activeConversationId, setActiveConversationIdState] = useState<string | null>(null);
+  const activeConversationIdRef = useRef<string | null>(null);
+  const [activeCallConversationId, setActiveCallConversationIdState] = useState<string | null>(null);
+  const activeCallConversationIdRef = useRef<string | null>(null);
+  const pendingCallConversationIdRef = useRef<string | null>(null);
+  const setActiveCallConversationId = useCallback((id: string | null) => {
+    activeCallConversationIdRef.current = id;
+    setActiveCallConversationIdState(id);
   }, []);
-  // same staleness reason — lets the new-message sound know if the user is
-  // already looking at chat (view lives in Shell/App.tsx, not here).
   const activeViewRef = useRef<'chat' | 'call'>('chat');
   const notifyActiveView = useCallback((view: 'chat' | 'call') => { activeViewRef.current = view; }, []);
-  // set once by Shell on mount (see App.tsx) — lets a desktop-notification
-  // click switch to the Chat tab, not just select the channel.
   const requestChatViewRef = useRef<(() => void) | null>(null);
   const registerRequestChatView = useCallback((fn: () => void) => { requestChatViewRef.current = fn; }, []);
-  const [messagesByChannel, setMessagesByChannel] = useState<Map<string, ChatMessage[]>>(new Map());
-  // both reachable from the message list/composer AND GlobalContextMenu
-  // (mounted at the app root, outside ChatPage) — see RoomContext.tsx.
+  const requestChatView = useCallback(() => { requestChatViewRef.current?.(); }, []);
+  const [messagesByConversation, setMessagesByConversation] = useState<Map<string, ChatMessage[]>>(new Map());
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
-  // ref mirror — loadOlderMessages is stable (mounted-once scroll listeners
-  // in ChatMessageList call it directly) so it can't close over the state
-  // above; same staleness pattern as activeChannelIdRef.
-  const messagesByChannelRef = useRef<Map<string, ChatMessage[]>>(new Map());
-  useEffect(() => { messagesByChannelRef.current = messagesByChannel; }, [messagesByChannel]);
-  // per-channel: whether OLDER history beyond what's loaded may still
-  // exist — undefined (channel never opened yet) is treated as "maybe".
-  const [hasMoreByChannel, setHasMoreByChannel] = useState<Map<string, boolean>>(new Map());
-  const hasMoreByChannelRef = useRef<Map<string, boolean>>(new Map());
-  useEffect(() => { hasMoreByChannelRef.current = hasMoreByChannel; }, [hasMoreByChannel]);
-  // per-channel: whether we're NOT caught up to the live tail (only true
-  // right after a search-result jump recentered the view — see
-  // jumpToMessage/'channel-history-around' below) — gates ChatMessageList's
-  // "back to now" pill. Unlike hasMoreByChannel, absent must mean false: a
-  // channel that was never recentered definitely has nothing "after" to
-  // page in.
-  const [hasMoreAfterByChannel, setHasMoreAfterByChannel] = useState<Map<string, boolean>>(new Map());
-  // in-flight 'load-more-messages' requests, by channelId — prevents firing
-  // a second request for the same channel before the first page lands.
-  const [loadingOlderByChannel, setLoadingOlderByChannel] = useState<Set<string>>(new Set());
+  const messagesByConversationRef = useRef<Map<string, ChatMessage[]>>(new Map());
+  useEffect(() => { messagesByConversationRef.current = messagesByConversation; }, [messagesByConversation]);
+  const [hasMoreByConversation, setHasMoreByConversation] = useState<Map<string, boolean>>(new Map());
+  const hasMoreByConversationRef = useRef<Map<string, boolean>>(new Map());
+  useEffect(() => { hasMoreByConversationRef.current = hasMoreByConversation; }, [hasMoreByConversation]);
+  const [hasMoreAfterByConversation, setHasMoreAfterByConversation] = useState<Map<string, boolean>>(new Map());
+  const [loadingOlderByConversation, setLoadingOlderByConversation] = useState<Set<string>>(new Set());
   const loadingOlderRef = useRef<Set<string>>(new Set());
-  const [unreadByChannel, setUnreadByChannel] = useState<Map<string, number>>(new Map());
+  const [unreadByConversation, setUnreadByConversation] = useState<Map<string, number>>(new Map());
   const [allUsers, setAllUsers] = useState<Map<string, PublicUser>>(new Map());
-  // same staleness reason as categoriesRef/activeChannelIdRef — lets the
-  // 'chat' case below resolve the sender's CURRENT displayName without
-  // handleServerMessage closing
-  // over a stale allUsers.
   const allUsersRef = useRef<Map<string, PublicUser>>(new Map());
   useEffect(() => { allUsersRef.current = allUsers; }, [allUsers]);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [storageUsage, setStorageUsage] = useState<StorageUsage>({ totalBytes: 0, totalFiles: 0, maxBytes: 0 });
-  // recoverable channel-management error, distinct from state.roomError
-  // (which is a full-screen blocker).
-  const [channelsError, setChannelsError] = useState<string | null>(null);
-  // same idea, for the Moderation tab.
   const [moderationError, setModerationError] = useState<string | null>(null);
 
-  /** Just the "switching to a different channel" bookkeeping, without also
-   * requesting 'channel-open' — factored out so jumpToMessage (below) can
-   * reuse it for a cross-channel jump WITHOUT also firing channel-open,
-   * which would race 'load-messages-around's reply and could silently
-   * discard the recentered window depending on which lands second. */
-  const switchActiveChannel = useCallback((channelId: string) => {
-    activeChannelIdRef.current = channelId;
-    setActiveChannelIdState(channelId);
-    setUnreadByChannel((prev) => {
-      if (!prev.has(channelId)) return prev;
+  const switchActiveConversation = useCallback((conversationId: string) => {
+    activeConversationIdRef.current = conversationId;
+    setActiveConversationIdState(conversationId);
+    setUnreadByConversation((prev) => {
+      if (!prev.has(conversationId)) return prev;
       const next = new Map(prev);
-      next.delete(channelId);
+      next.delete(conversationId);
       return next;
     });
-    // a reply/edit in progress references a message from the channel just
-    // left — carrying it into the new one would reply/save-edit to the
-    // WRONG channel.
     setReplyingTo(null);
     setEditingMsgId(null);
   }, []);
 
-  /** Also used internally for the first channel on join, as a fallback when
-   * the open channel gets deleted, and as "back to now" after a
-   * search-result jump (see ChatMessageList's pill). */
-  const openChannel = useCallback((channelId: string) => {
-    switchActiveChannel(channelId);
-    sendWs({ t: 'channel-open', channelId });
-  }, [sendWs, switchActiveChannel]);
+  const openConversation = useCallback((conversationId: string) => {
+    switchActiveConversation(conversationId);
+    sendWs({ t: 'conversation-open', conversationId });
+  }, [sendWs, switchActiveConversation]);
 
-  /** Scrolled to the top of an already-open channel — fetches the next
-   * OLDER page to prepend. No-ops if a page is already in flight for this
-   * channel, if history definitely ends, or if nothing's loaded yet
-   * (nothing to page "before"). Stable (empty deps beyond sendWs) so
-   * ChatMessageList's scroll listener always calls the current logic
-   * without re-subscribing. */
-  const loadOlderMessages = useCallback((channelId: string) => {
-    if (loadingOlderRef.current.has(channelId)) return;
-    if (hasMoreByChannelRef.current.get(channelId) === false) return;
-    const oldest = messagesByChannelRef.current.get(channelId)?.[0];
+  const openDirect = useCallback((userId: string) => sendWs({ t: 'direct-open', userId }), [sendWs]);
+  const closeConversation = useCallback((conversationId: string) => {
+    // Optimistic — same shape as the 'conversation-deleted' cleanup, minus
+    // the parts that only make sense for an actual delete (leaving a call,
+    // wiping cached messages the user could still reopen the DM to see).
+    setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+    conversationsRef.current = conversationsRef.current.filter((c) => c.id !== conversationId);
+    setUnreadByConversation((prev) => {
+      if (!prev.has(conversationId)) return prev;
+      const next = new Map(prev);
+      next.delete(conversationId);
+      return next;
+    });
+    if (conversationId === activeConversationIdRef.current) {
+      activeConversationIdRef.current = null;
+      setActiveConversationIdState(null);
+    }
+    sendWs({ t: 'conversation-close', conversationId });
+  }, [sendWs]);
+  const pinConversation = useCallback((conversationId: string, pinned: boolean) => {
+    // Optimistic re-sort — mirrors listForUser's ORDER BY (pinned first,
+    // then by recency) so the row jumps immediately instead of waiting on
+    // the round-trip; the real conversation-list broadcast settles it.
+    const next = conversationsRef.current
+      .map((c) => (c.id === conversationId ? { ...c, pinnedAt: pinned ? Date.now() : null } : c))
+      .sort((a, b) => (
+        Number(!!b.pinnedAt) - Number(!!a.pinnedAt)
+        || (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0)
+        || (b.lastMessageAt ?? b.updatedAt) - (a.lastMessageAt ?? a.updatedAt)
+      ));
+    conversationsRef.current = next;
+    setConversations(next);
+    sendWs({ t: 'conversation-pin', conversationId, pinned });
+  }, [sendWs]);
+  const createGroup = useCallback((title: string, memberIds: string[]) => sendWs({ t: 'group-create', title, memberIds }), [sendWs]);
+  const deleteGroup = useCallback((conversationId: string) => sendWs({ t: 'group-delete', conversationId }), [sendWs]);
+  const updateGroupTitle = useCallback((conversationId: string, title: string) => sendWs({ t: 'group-update', conversationId, title }), [sendWs]);
+  const updateGroupAvatar = useCallback((conversationId: string, avatar: string) => sendWs({ t: 'group-update', conversationId, avatar }), [sendWs]);
+  const addGroupMembers = useCallback((conversationId: string, memberIds: string[]) => sendWs({ t: 'group-members-add', conversationId, memberIds }), [sendWs]);
+  const removeGroupMember = useCallback((conversationId: string, userId: string) => sendWs({ t: 'group-members-remove', conversationId, userId }), [sendWs]);
+
+  const loadOlderMessages = useCallback((conversationId: string) => {
+    if (loadingOlderRef.current.has(conversationId)) return;
+    if (hasMoreByConversationRef.current.get(conversationId) === false) return;
+    const oldest = messagesByConversationRef.current.get(conversationId)?.[0];
     if (!oldest) return;
-    loadingOlderRef.current.add(channelId);
-    setLoadingOlderByChannel((prev) => new Set(prev).add(channelId));
-    sendWs({ t: 'load-more-messages', channelId, beforeMsgId: oldest.msgId });
+    loadingOlderRef.current.add(conversationId);
+    setLoadingOlderByConversation((prev) => new Set(prev).add(conversationId));
+    sendWs({ t: 'load-more-messages', conversationId, beforeMsgId: oldest.msgId });
   }, [sendWs]);
 
-  // search-result click target, or a reply-quote click on a message that
-  // isn't loaded yet. `pendingJumpTarget` is consumed by ChatMessageList
-  // (one effect per mounted channel view) to actually scroll/highlight once
-  // the target is in `chatMessages` — see clearPendingJumpTarget below.
-  const [pendingJumpTarget, setPendingJumpTargetState] = useState<{ channelId: string; msgId: number } | null>(null);
-  // staleness guard for an in-flight 'load-messages-around' — same idiom as
-  // pendingVoiceChannelIdRef above.
-  const pendingJumpRef = useRef<{ channelId: string; msgId: number } | null>(null);
+  const [pendingJumpTarget, setPendingJumpTargetState] = useState<{ conversationId: string; msgId: number } | null>(null);
+  const pendingJumpRef = useRef<{ conversationId: string; msgId: number } | null>(null);
   const clearPendingJumpTarget = useCallback(() => setPendingJumpTargetState(null), []);
 
-  const jumpToMessage = useCallback((channelId: string, msgId: number) => {
-    const alreadyLoaded = messagesByChannelRef.current.get(channelId)?.some((msg) => msg.msgId === msgId) ?? false;
-    if (channelId !== activeChannelIdRef.current) switchActiveChannel(channelId);
-    setPendingJumpTargetState({ channelId, msgId });
-    if (alreadyLoaded) return; // already in the DOM once this channel is active — ChatMessageList finds it on the next render
-    pendingJumpRef.current = { channelId, msgId };
-    sendWs({ t: 'load-messages-around', channelId, msgId });
-  }, [sendWs, switchActiveChannel]);
+  const jumpToMessage = useCallback((conversationId: string, msgId: number) => {
+    const alreadyLoaded = messagesByConversationRef.current.get(conversationId)?.some((msg) => msg.msgId === msgId) ?? false;
+    if (conversationId !== activeConversationIdRef.current) switchActiveConversation(conversationId);
+    setPendingJumpTargetState({ conversationId, msgId });
+    if (alreadyLoaded) return;
+    pendingJumpRef.current = { conversationId, msgId };
+    sendWs({ t: 'load-messages-around', conversationId, msgId });
+  }, [sendWs, switchActiveConversation]);
 
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  // guards a stale reply to an earlier query (or a scope toggle mid-flight)
-  // from clobbering a newer one's results.
-  const pendingSearchRef = useRef<{ query: string; channelId?: string } | null>(null);
+  const pendingSearchRef = useRef<{ query: string; conversationId?: string } | null>(null);
   const clearSearchError = useCallback(() => setSearchError(null), []);
 
-  const searchMessages = useCallback((query: string, channelId?: string) => {
+  const searchMessages = useCallback((query: string, conversationId?: string) => {
     const trimmed = query.trim();
     if (!trimmed) {
       pendingSearchRef.current = null;
@@ -321,14 +288,14 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       setSearchLoading(false);
       return;
     }
-    pendingSearchRef.current = { query: trimmed, channelId };
+    pendingSearchRef.current = { query: trimmed, conversationId };
     setSearchLoading(true);
-    sendWs({ t: 'message-search', query: trimmed, ...(channelId ? { channelId } : {}) });
+    sendWs({ t: 'message-search', query: trimmed, ...(conversationId ? { conversationId } : {}) });
   }, [sendWs]);
 
-  const sendChatMessage = useCallback((channelId: string, text: string, replyTo?: number) => {
+  const sendChatMessage = useCallback((conversationId: string, text: string, replyTo?: number) => {
     const trimmed = text.trim();
-    if (trimmed) sendWs({ t: 'chat', channelId, text: trimmed, ...(replyTo ? { replyTo } : {}) });
+    if (trimmed) sendWs({ t: 'chat', conversationId, text: trimmed, ...(replyTo ? { replyTo } : {}) });
   }, [sendWs]);
   const deleteChatMessage = useCallback((msgId: number) => sendWs({ t: 'chat-delete', msgId }), [sendWs]);
   const editChatMessage = useCallback((msgId: number, text: string) => {
@@ -337,117 +304,66 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   }, [sendWs]);
   const reactToChatMessage = useCallback((msgId: number, emoji: ReactionEmoji) => sendWs({ t: 'chat-react', msgId, emoji }), [sendWs]);
 
-  // plain HTTP, not the websocket — raw binary avoids base64 inflate, and
-  // always chunked (a 2GB body wouldn't survive most proxies, and buffering
-  // it all in memory wouldn't be safe). The FIRST file creates the message
-  // (arrives via the usual 'chat' broadcast); the rest (2nd-4th) attach to
-  // that same message (arrive via 'chat-attachment-added') — sequential on
-  // purpose, both to keep this simple and because attaching needs the
-  // message id the first upload produces. This just handles the upload +
-  // per-file progress; message/attachment state itself comes from the WS
-  // broadcasts handled below.
   const sendAttachments = useCallback(async (
-    channelId: string, files: File[], caption: string, onProgress?: (fileIndex: number, fraction: number) => void
+    conversationId: string, files: File[], caption: string, onProgress?: (fileIndex: number, fraction: number) => void
   ): Promise<void> => {
     if (!files.length) return;
-    const msgId = await uploadFileInChunks({ channelId, file: files[0]!, caption, onProgress: (f) => onProgress?.(0, f) });
+    const msgId = await uploadFileInChunks({ conversationId, file: files[0]!, caption, onProgress: (f) => onProgress?.(0, f) });
     for (let i = 1; i < files.length; i++) {
       try {
-        await uploadFileInChunks({ channelId, file: files[i]!, caption: '', targetMsgId: msgId, onProgress: (f) => onProgress?.(i, f) });
+        await uploadFileInChunks({ conversationId, file: files[i]!, caption: '', targetMsgId: msgId, onProgress: (f) => onProgress?.(i, f) });
       } catch {
-        // the message (and whatever attached before this one) already
-        // exists and is visible to everyone — stop here instead of
-        // continuing to try the rest.
         throw new PartialAttachmentError(i, files.length);
       }
     }
   }, []);
 
-  const createCategory = useCallback((name: string) => sendWs({ t: 'category-create', name }), [sendWs]);
-  const deleteCategory = useCallback((categoryId: string) => sendWs({ t: 'category-delete', categoryId }), [sendWs]);
-  const renameCategory = useCallback((categoryId: string, name: string) => sendWs({ t: 'category-rename', categoryId, name }), [sendWs]);
-  const createChannel = useCallback((categoryId: string, name: string, type?: 'text' | 'voice') => sendWs({ t: 'channel-create', categoryId, name, type }), [sendWs]);
-  const deleteChannel = useCallback((channelId: string) => sendWs({ t: 'channel-delete', channelId }), [sendWs]);
-  const renameChannel = useCallback((channelId: string, name: string) => sendWs({ t: 'channel-rename', channelId, name }), [sendWs]);
-  const reorderCategories = useCallback((orderedIds: string[]) => sendWs({ t: 'categories-reorder', orderedIds }), [sendWs]);
-  const reorderChannels = useCallback((categoryId: string, orderedIds: string[]) => sendWs({ t: 'channels-reorder', categoryId, orderedIds }), [sendWs]);
   const deleteUserAccount = useCallback((userId: string) => sendWs({ t: 'user-delete', userId }), [sendWs]);
-  // targets a CONNECTION (ChannelTree's CallParticipantRow's `id`), not an
-  // account — see moderation.ts#handleVoiceKick. No local state changes
-  // here: the kicked connection's own cleanup happens via the
-  // RoomEvent.Disconnected handler below, everyone else's view updates via
-  // the server's 'participant-updated' broadcast.
-  const voiceKickParticipant = useCallback((participantId: string) => sendWs({ t: 'voice-kick', participantId }), [sendWs]);
+  const kickFromCall = useCallback((participantId: string) => sendWs({ t: 'call-kick', participantId }), [sendWs]);
 
   const { startSharing, stopSharing } = useScreenShare(livekitRoom, dispatch);
   const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch);
   const { activateMic, toggleMicMuted, setMicMuted, leaveMic } = useMicrophone(livekitRoom, dispatch);
 
-  // deafening also force-mutes (otherwise others still hear you while you
-  // hear no one); undeafening does NOT auto-unmute (deliberate).
   const toggleDeafened = useCallback(() => {
-    // read directly, not the setState updater form — needed outside the
-    // updater to play the sound once; the updater form re-runs in dev
-    // StrictMode and would double it.
     const next = !deafened;
     setDeafened(next);
     if (next) setMicMuted(true);
     playSound(next ? 'deafened' : 'undeafened');
-    // no LiveKit track equivalent for deafened — must announce it
-    // explicitly so others can show the icon.
     sendWs({ t: 'deafened', value: next });
   }, [deafened, setMicMuted, sendWs]);
 
-  const leaveVoiceChannel = useCallback(async () => {
+  const leaveCall = useCallback(async () => {
     if (state.me.cameraOn) stopCamera();
     if (state.me.sharing) stopSharing();
     await leaveMic();
     livekitRoom.disconnect();
-    sendWs({ t: 'voice-leave' });
-    pendingVoiceChannelIdRef.current = null;
-    setActiveVoiceChannelId(null);
-  }, [state.me.cameraOn, state.me.sharing, stopCamera, stopSharing, leaveMic, livekitRoom, sendWs, setActiveVoiceChannelId]);
+    sendWs({ t: 'call-leave' });
+    pendingCallConversationIdRef.current = null;
+    setActiveCallConversationId(null);
+  }, [state.me.cameraOn, state.me.sharing, stopCamera, stopSharing, leaveMic, livekitRoom, sendWs, setActiveCallConversationId]);
 
-  // only one voice channel at a time — leaves the current one first if
-  // switching. Connect + mic activation continue in the 'voice-token' case
-  // in handleServerMessage below.
-  const joinVoiceChannel = useCallback(async (channelId: string) => {
-    if (activeVoiceChannelIdRef.current === channelId) return;
-    if (activeVoiceChannelIdRef.current) await leaveVoiceChannel();
-    pendingVoiceChannelIdRef.current = channelId;
-    sendWs({ t: 'voice-join', channelId });
-  }, [sendWs, leaveVoiceChannel]);
+  const joinCall = useCallback(async (conversationId: string) => {
+    if (activeCallConversationIdRef.current === conversationId) return;
+    if (activeCallConversationIdRef.current) await leaveCall();
+    pendingCallConversationIdRef.current = conversationId;
+    sendWs({ t: 'call-join', conversationId });
+  }, [sendWs, leaveCall]);
 
-  // leaveVoiceChannel's identity changes with cameraOn/sharing, but socket
-  // messages call it through the long-lived handleServerMessage ref below —
-  // without this ref it would run with stale (always-false) values.
-  const leaveVoiceChannelRef = useRef(leaveVoiceChannel);
-  useEffect(() => { leaveVoiceChannelRef.current = leaveVoiceChannel; }, [leaveVoiceChannel]);
+  const leaveCallRef = useRef(leaveCall);
+  useEffect(() => { leaveCallRef.current = leaveCall; }, [leaveCall]);
 
-  // Cleans up local voice state on any UNEXPECTED disconnect (kicked via
-  // RoomServiceClient.removeParticipant — see moderation.ts#handleVoiceKick
-  // — a network drop, or the room ending) — without this there was no
-  // handler for RoomEvent.Disconnected at all, so local camera/sharing
-  // indicators and activeVoiceChannelId got stuck showing "still connected"
-  // after anything other than the user's own explicit leaveVoiceChannel().
-  // CLIENT_INITIATED is exactly that self-leave — it already ran this exact
-  // cleanup (plus disconnect()+'voice-leave', which this handler must NOT
-  // repeat), so it's the one reason to skip.
   useEffect(() => {
     const onDisconnected = (reason?: DisconnectReason) => {
       if (reason === DisconnectReason.CLIENT_INITIATED) return;
       if (state.me.cameraOn) stopCamera();
       if (state.me.sharing) stopSharing();
-      setActiveVoiceChannelId(null);
+      setActiveCallConversationId(null);
     };
     livekitRoom.on(RoomEvent.Disconnected, onDisconnected);
     return () => { livekitRoom.off(RoomEvent.Disconnected, onDisconnected); };
-  }, [livekitRoom, stopCamera, stopSharing, setActiveVoiceChannelId, state.me.cameraOn, state.me.sharing]);
+  }, [livekitRoom, stopCamera, stopSharing, setActiveCallConversationId, state.me.cameraOn, state.me.sharing]);
 
-  // syncs state when camera/screen stop via the browser's native controls
-  // (e.g. Chrome's "Stop sharing" button) — LiveKit already unpublishes the
-  // track, this just reflects it in the reducer. Mic doesn't need this:
-  // its state is always read live from LiveKit (useParticipantMedia).
   useEffect(() => {
     const onLocalUnpublished = (pub: LocalTrackPublication) => {
       if (pub.source === Track.Source.ScreenShare) dispatch({ type: 'SET_LOCAL_SHARING', sharing: false });
@@ -457,17 +373,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     return () => { livekitRoom.off(RoomEvent.LocalTrackUnpublished, onLocalUnpublished); };
   }, [livekitRoom, dispatch]);
 
-  // Track*/LocalTrack* events together cover both remote and local join/
-  // leave sounds — mic uses join/leave sounds, screen/camera only get a
-  // start sound (stopping stays silent).
   useEffect(() => {
     const onPublished = (pub: { source: Track.Source }) => {
       if (pub.source === Track.Source.Microphone) playSound('incomingUser');
       if (pub.source === Track.Source.ScreenShare) playSound('screenshare');
       if (pub.source === Track.Source.Camera) playSound('camera');
     };
-    // only MY publish reports the Discord webhook — the server has no
-    // visibility into who's in the call/sharing (that lives in LiveKit only).
     const onLocalPublished = (pub: { source: Track.Source }) => {
       onPublished(pub);
       if (pub.source === Track.Source.Microphone) sendWs({ t: 'call-event', kind: 'joined' });
@@ -488,14 +399,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     };
   }, [livekitRoom, sendWs]);
 
-  // self-reports my own mic/camera/screen state to the server via
-  // Socket.IO — the ONLY way anyone NOT connected to my current voice
-  // channel's LiveKit room can know whether I'm muted, on camera, or
-  // sharing (LiveKit only tells people already in that specific room, see
-  // ChannelTree.tsx#CallParticipantRow). Also keeps the mic track/muted
-  // state in plain React state here, since RoomProvider PROVIDES useRoom()'s
-  // context and so can't consume useParticipantMedia/useIsSpeaking itself
-  // (needed below to detect and report 'speaking' the same way).
   const [localMic, setLocalMic] = useState<{ track: LKTrack | null; muted: boolean }>({ track: null, muted: true });
   useEffect(() => {
     function reportMic() {
@@ -514,8 +417,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       if (pub.source === Track.Source.Camera) reportCamera();
       if (pub.source === Track.Source.ScreenShare) reportSharing();
     };
-    // TrackMuted/Unmuted fire for ANY participant — filtered to my own
-    // publication, the only one I should be reporting.
     const onMuteChange = (pub: { source: Track.Source }, participant: { identity: string }) => {
       if (participant.identity === livekitRoom.localParticipant.identity && pub.source === Track.Source.Microphone) reportMic();
     };
@@ -531,8 +432,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     };
   }, [livekitRoom, sendWs]);
 
-  // 'speaking' is detected 100% locally (see useTrackSpeaking) — this only
-  // reports the already-debounced on/off transitions, not a continuous stream.
   const isSpeakingLocal = useTrackSpeaking(localMic.track, localMic.muted);
   useEffect(() => {
     sendWs({ t: 'speaking', value: isSpeakingLocal });
@@ -575,30 +474,24 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           role: m.role,
           participants: m.participants,
         });
-        setCategories(m.categories);
-        categoriesRef.current = m.categories;
-        setAllUsers(new Map(m.users.map((u) => [u.id, u])));
+        setConversations(m.conversations ?? []);
+        conversationsRef.current = m.conversations ?? [];
+        const usersMap = new Map(m.users.map((u) => [u.id, u]));
+        setAllUsers(usersMap);
         setOnlineUserIds(new Set(m.onlineUserIds));
         setStorageUsage(m.storageUsage);
         {
-          // first TEXT channel becomes active on join (skip a voice channel
-          // if it comes first in the tree — opening it wouldn't make sense).
-          const firstChannel = m.categories.flatMap((cat) => cat.channels).find((ch) => ch.type === 'text');
-          if (firstChannel) openChannel(firstChannel.id);
+          const firstConversation = (m.conversations ?? [])[0];
+          if (firstConversation) openConversation(firstConversation.id);
         }
-        // does NOT connect to LiveKit here — just having the tab open
-        // shouldn't open a real voice session. That only happens in
-        // joinVoiceChannel (see 'voice-token' below).
         break;
       }
-      case 'voice-token': {
-        // race: a second voice-join (fast channel switch) can reply out of
-        // order — only apply if this is still the most recent request.
-        if (m.channelId !== pendingVoiceChannelIdRef.current) break;
+      case 'call-token': {
+        if (m.conversationId !== pendingCallConversationIdRef.current) break;
         livekitRoom.connect(m.livekitUrl, m.livekitToken)
           .then(() => activateMic())
           .catch((err) => console.warn('LiveKit connect falhou', err));
-        setActiveVoiceChannelId(m.channelId);
+        setActiveCallConversationId(m.conversationId);
         break;
       }
       case 'participant-joined':
@@ -615,67 +508,82 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'reaction':
         pushReaction(m.id, m.emoji);
         break;
-      case 'channel-history':
-        setMessagesByChannel((prev) => new Map(prev).set(m.channelId, m.messages));
-        setHasMoreByChannel((prev) => new Map(prev).set(m.channelId, m.hasMore));
-        // a normal open always loads the true live tail — any "not caught
-        // up" state from a previous jump into this channel no longer applies.
-        setHasMoreAfterByChannel((prev) => new Map(prev).set(m.channelId, false));
+      case 'conversation-list':
+        setConversations(m.conversations);
+        conversationsRef.current = m.conversations;
         break;
-      case 'channel-history-around': {
+      case 'conversation-opened': {
+        // An empty (or closed) direct conversation never shows up in
+        // conversation-list — the server sends its summary straight to the
+        // opener instead so it can still be rendered/typed into for this
+        // session; it becomes "real" history for everyone once a message
+        // is actually sent (touchConversation broadcasts the list then).
+        const idx = conversationsRef.current.findIndex((c) => c.id === m.conversation.id);
+        const nextConversations = idx === -1
+          ? [m.conversation, ...conversationsRef.current]
+          : conversationsRef.current.map((c) => (c.id === m.conversation.id ? m.conversation : c));
+        conversationsRef.current = nextConversations;
+        setConversations(nextConversations);
+        openConversation(m.conversationId);
+        break;
+      }
+      case 'conversation-history':
+        setMessagesByConversation((prev) => new Map(prev).set(m.conversationId, m.messages));
+        setHasMoreByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMore));
+        setHasMoreAfterByConversation((prev) => new Map(prev).set(m.conversationId, false));
+        break;
+      case 'conversation-history-around': {
         const pending = pendingJumpRef.current;
-        if (!pending || pending.channelId !== m.channelId || pending.msgId !== m.msgId) break; // superseded by a later jump
+        if (!pending || pending.conversationId !== m.conversationId || pending.msgId !== m.msgId) break;
         pendingJumpRef.current = null;
-        setMessagesByChannel((prev) => new Map(prev).set(m.channelId, m.messages));
-        setHasMoreByChannel((prev) => new Map(prev).set(m.channelId, m.hasMoreBefore));
-        setHasMoreAfterByChannel((prev) => new Map(prev).set(m.channelId, m.hasMoreAfter));
+        setMessagesByConversation((prev) => new Map(prev).set(m.conversationId, m.messages));
+        setHasMoreByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMoreBefore));
+        setHasMoreAfterByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMoreAfter));
         break;
       }
       case 'message-search-results': {
         const pending = pendingSearchRef.current;
-        if (!pending || pending.query !== m.query || pending.channelId !== m.channelId) break; // superseded by a newer query/scope
+        if (!pending || pending.query !== m.query || pending.conversationId !== m.conversationId) break;
         setSearchResults(m.results);
         setSearchLoading(false);
         break;
       }
-      case 'channel-history-more': {
-        const channelId = m.channelId;
-        loadingOlderRef.current.delete(channelId);
-        setLoadingOlderByChannel((prev) => {
-          if (!prev.has(channelId)) return prev;
+      case 'conversation-history-more': {
+        const conversationId = m.conversationId;
+        loadingOlderRef.current.delete(conversationId);
+        setLoadingOlderByConversation((prev) => {
+          if (!prev.has(conversationId)) return prev;
           const next = new Set(prev);
-          next.delete(channelId);
+          next.delete(conversationId);
           return next;
         });
-        setHasMoreByChannel((prev) => new Map(prev).set(channelId, m.hasMore));
+        setHasMoreByConversation((prev) => new Map(prev).set(conversationId, m.hasMore));
         if (m.messages.length > 0) {
-          setMessagesByChannel((prev) => {
-            const existing = prev.get(channelId) || [];
+          setMessagesByConversation((prev) => {
+            const existing = prev.get(conversationId) || [];
             const existingIds = new Set(existing.map((msg) => msg.msgId));
             const older = m.messages.filter((msg) => !existingIds.has(msg.msgId));
-            return new Map(prev).set(channelId, [...older, ...existing]);
+            return new Map(prev).set(conversationId, [...older, ...existing]);
           });
         }
         break;
       }
       case 'chat': {
-        const channelId = m.message.channelId;
-        setMessagesByChannel((prev) => {
-          const existing = prev.get(channelId) || [];
+        const conversationId = m.message.conversationId;
+        setMessagesByConversation((prev) => {
+          const existing = prev.get(conversationId) || [];
           const next = [...existing, m.message];
-          return new Map(prev).set(channelId, next.length > CHAT_CLIENT_LIMIT ? next.slice(next.length - CHAT_CLIENT_LIMIT) : next);
+          return new Map(prev).set(conversationId, next.length > CHAT_CLIENT_LIMIT ? next.slice(next.length - CHAT_CLIENT_LIMIT) : next);
         });
-        if (channelId !== activeChannelIdRef.current) {
-          setUnreadByChannel((prev) => new Map(prev).set(channelId, (prev.get(channelId) || 0) + 1));
+        if (conversationId !== activeConversationIdRef.current) {
+          setUnreadByConversation((prev) => new Map(prev).set(conversationId, (prev.get(conversationId) || 0) + 1));
         }
-        // skip the sound/notification for my own messages (echoed back) and
-        // when I'm already looking at this exact channel.
-        const amLookingAtIt = document.hasFocus() && activeViewRef.current === 'chat' && channelId === activeChannelIdRef.current;
+        const amLookingAtIt = document.hasFocus() && activeViewRef.current === 'chat' && conversationId === activeConversationIdRef.current;
         if (m.message.id !== myUserIdRef.current && !amLookingAtIt) {
           playSound('newMessage');
           notifyIncomingChatMessage({
-            channelId,
-            channelName: categoriesRef.current.flatMap((c) => c.channels).find((ch) => ch.id === channelId)?.name ?? 'canal',
+            conversationId,
+            conversationName: displayNameForConversation(conversationsRef.current.find((c) => c.id === conversationId), myUserIdRef.current, allUsersRef.current),
             senderId: m.message.id,
             senderName: (m.message.id ? allUsersRef.current.get(m.message.id)?.displayName : undefined) ?? m.message.name,
             text: m.message.text,
@@ -685,33 +593,33 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         break;
       }
       case 'chat-deleted':
-        setMessagesByChannel((prev) => {
-          const existing = prev.get(m.channelId);
+        setMessagesByConversation((prev) => {
+          const existing = prev.get(m.conversationId);
           if (!existing) return prev;
-          return new Map(prev).set(m.channelId, existing.filter((msg) => msg.msgId !== m.msgId));
+          return new Map(prev).set(m.conversationId, existing.filter((msg) => msg.msgId !== m.msgId));
         });
         break;
       case 'chat-edited': {
-        const channelId = m.message.channelId;
-        setMessagesByChannel((prev) => {
-          const existing = prev.get(channelId);
+        const conversationId = m.message.conversationId;
+        setMessagesByConversation((prev) => {
+          const existing = prev.get(conversationId);
           if (!existing) return prev;
-          return new Map(prev).set(channelId, existing.map((msg) => (msg.msgId === m.message.msgId ? m.message : msg)));
+          return new Map(prev).set(conversationId, existing.map((msg) => (msg.msgId === m.message.msgId ? m.message : msg)));
         });
         break;
       }
       case 'chat-attachment-added':
-        setMessagesByChannel((prev) => {
-          const existing = prev.get(m.channelId);
+        setMessagesByConversation((prev) => {
+          const existing = prev.get(m.conversationId);
           if (!existing) return prev;
-          return new Map(prev).set(m.channelId, existing.map((msg) => (
+          return new Map(prev).set(m.conversationId, existing.map((msg) => (
             msg.msgId === m.msgId ? { ...msg, attachments: [...(msg.attachments || []), m.attachment] } : msg
           )));
         });
         break;
       case 'chat-reaction-updated':
-        setMessagesByChannel((prev) => {
-          const existing = prev.get(m.channelId);
+        setMessagesByConversation((prev) => {
+          const existing = prev.get(m.conversationId);
           if (!existing) return prev;
           const next = existing.map((msg) => {
             if (msg.msgId !== m.msgId) return msg;
@@ -719,36 +627,29 @@ export function RoomProvider({ children }: { children: ReactNode }) {
             if (m.userIds.length) reactions[m.emoji] = m.userIds; else delete reactions[m.emoji];
             return { ...msg, reactions };
           });
-          return new Map(prev).set(m.channelId, next);
+          return new Map(prev).set(m.conversationId, next);
         });
         break;
-      case 'channels-tree': {
-        setCategories(m.categories);
-        categoriesRef.current = m.categories;
-        const stillExists = m.categories.some((cat) => cat.channels.some((ch) => ch.id === activeChannelIdRef.current));
-        if (!stillExists) {
-          const fallback = m.categories.flatMap((cat) => cat.channels).find((ch) => ch.type === 'text');
-          if (fallback) openChannel(fallback.id);
-          else { activeChannelIdRef.current = null; setActiveChannelIdState(null); }
+      case 'conversation-deleted':
+        setConversations((prev) => prev.filter((c) => c.id !== m.conversationId));
+        conversationsRef.current = conversationsRef.current.filter((c) => c.id !== m.conversationId);
+        setMessagesByConversation((prev) => {
+          if (!prev.has(m.conversationId)) return prev;
+          const next = new Map(prev);
+          next.delete(m.conversationId);
+          return next;
+        });
+        setUnreadByConversation((prev) => {
+          if (!prev.has(m.conversationId)) return prev;
+          const next = new Map(prev);
+          next.delete(m.conversationId);
+          return next;
+        });
+        if (m.conversationId === activeCallConversationIdRef.current) leaveCallRef.current();
+        if (m.conversationId === activeConversationIdRef.current) {
+          activeConversationIdRef.current = null;
+          setActiveConversationIdState(null);
         }
-        break;
-      }
-      case 'channel-deleted':
-        setMessagesByChannel((prev) => {
-          if (!prev.has(m.channelId)) return prev;
-          const next = new Map(prev);
-          next.delete(m.channelId);
-          return next;
-        });
-        setUnreadByChannel((prev) => {
-          if (!prev.has(m.channelId)) return prev;
-          const next = new Map(prev);
-          next.delete(m.channelId);
-          return next;
-        });
-        // voice channel deleted while I was in it — server already cleared
-        // my voiceChannelId, this just tears down the local Room/mic/camera/screen.
-        if (m.channelId === activeVoiceChannelIdRef.current) leaveVoiceChannelRef.current();
         break;
       case 'user-online':
         setOnlineUserIds((prev) => (prev.has(m.userId) ? prev : new Set(prev).add(m.userId)));
@@ -784,38 +685,29 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'error':
         if (m.code === 'full') {
           intentionalCloseRef.current = true;
-          try { socketRef.current?.disconnect(); } catch { /* ok */ }
+          try { socketRef.current?.disconnect(); } catch {  }
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Sala cheia, tente mais tarde.' });
-        } else if (m.code === 'category-not-empty' || m.code === 'cannot-delete-last-voice-channel') {
-          setChannelsError(m.message);
         } else if (m.code === 'cannot-delete-self') {
           setModerationError(m.message);
         } else if (m.code === 'livekit-unavailable') {
-          pendingVoiceChannelIdRef.current = null;
+          pendingCallConversationIdRef.current = null;
           dispatch({ type: 'SET_SHARE_ERROR', message: m.message });
         } else if (m.code === 'message-not-found') {
-          // a search result (or reply-quote) pointed at a message deleted
-          // since — clear the pending jump instead of leaving it stuck
-          // waiting for a reply that will never arrive.
           pendingJumpRef.current = null;
           setPendingJumpTargetState(null);
           setSearchError(m.message);
         } else {
-          // unknown code — log it instead of failing silently (happened
-          // before with this handler).
           console.warn('[ws] erro nao tratado do servidor:', m.code, m.message);
         }
         break;
     }
-  }, [dispatch, pushReaction, livekitRoom, openChannel, activateMic, setActiveVoiceChannelId]);
+  }, [dispatch, pushReaction, livekitRoom, openConversation, activateMic, setActiveCallConversationId]);
 
   const handleServerMessageRef = useRef(handleServerMessage);
   useEffect(() => { handleServerMessageRef.current = handleServerMessage; }, [handleServerMessage]);
 
   const connect = useCallback(() => {
     intentionalCloseRef.current = false;
-    // withCredentials: the handshake must carry the session cookie —
-    // io.use on the server rejects any connection without it.
     const socket = io(location.origin, { path: '/ws', transports: ['websocket'], withCredentials: true });
     socketRef.current = socket;
 
@@ -831,9 +723,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_RECONNECTING', value: true });
     });
 
-    // io.use rejection (invalid/expired session) sets socket.active=false
-    // and it won't auto-reconnect; auth.refresh() re-checks /api/auth/me and
-    // AuthGate falls back to login if the session is truly dead.
     socket.on('connect_error', () => {
       if (!socket.active) refreshAuth();
     });
@@ -842,8 +731,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const updateProfile = useCallback((profile: { avatar: string; avatarColor: string; displayName: string; banner: string; bio: string; profileLinks: string[] }) => {
     const finalAvatar = profile.avatar.trim().slice(0, 500);
     const finalAvatarColor = normalizeAvatarColor(profile.avatarColor) || DEFAULT_AVATAR_COLOR;
-    // blank/whitespace-only resets to the username, same idea as avatarColor
-    // falling back to the default on an invalid value.
     const finalDisplayName = sanitizeDisplayName(profile.displayName) || state.me.name;
     const finalBanner = sanitizeBanner(profile.banner);
     const finalBio = sanitizeBio(profile.bio);
@@ -900,23 +787,17 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     });
   }, [state.me.avatarColor, state.me.banner, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
 
-  // same upload folder/route regardless of field — the endpoint just
-  // stores the file and hands back a URL (its `{ avatar: ... }` response
-  // shape is a historical artifact, not a constraint: server/src/modules/
-  // attachments.ts#handleAvatarUpload never touches the users table, and
-  // sanitizeBanner already whitelists this exact /uploads/<id> pattern —
-  // see participants.ts). `field` decides which profile field the result
-  // (and the rest of the in-progress draft) gets saved to.
   const uploadProfileImage = useCallback(async (
     field: 'avatar' | 'banner',
-    blob: Blob,
+    file: Blob,
+    crop: CropRect,
     onProgress?: (fraction: number) => void,
     profile?: { avatarColor?: string; displayName?: string; avatar?: string; banner?: string; bio?: string; profileLinks?: string[] }
   ) => {
     const body = await uploadWithProgress<{ avatar: string }>({
-      url: '/api/avatar',
-      file: blob,
-      headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+      url: `/api/avatar?crop=${encodeURIComponent(JSON.stringify(crop))}`,
+      file,
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
       onProgress,
     });
     const url = body.avatar;
@@ -931,8 +812,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     return url;
   }, [state.me.avatar, state.me.avatarColor, state.me.banner, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
 
-  // menuOpenRef exists so closeTileMenu can answer synchronously whether it
-  // actually closed something (setState isn't synchronous enough for that).
   const [menuTarget, setMenuTarget] = useState<{ key: string; participantId: string; kind: TileKind; rect: AnchorRect } | null>(null);
   const menuOpenRef = useRef(false);
 
@@ -960,15 +839,13 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   }, [notificationsEnabled]);
 
   useEffect(() => {
-    setNotificationClickHandler((channelId) => {
-      openChannel(channelId);
+    setNotificationClickHandler((conversationId) => {
+      openConversation(conversationId);
       requestChatViewRef.current?.();
     });
     return () => setNotificationClickHandler(null);
-  }, [openChannel]);
+  }, [openConversation]);
 
-  // connect once on mount — RoomProvider only mounts once there's a valid
-  // session (AuthGate), so no "am I logged in?" check needed here.
   useEffect(() => {
     connect();
     return () => {
@@ -982,21 +859,22 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     <RoomContext.Provider
       value={{
         state, dispatch, sendWs, tileDomRegistry, audioRegistry, audioUnlocked, deafened, toggleDeafened, livekitRoom, notifyActiveView,
-        registerRequestChatView,
-        activeVoiceChannelId, joinVoiceChannel,
-        startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted, leaveVoiceChannel,
+        registerRequestChatView, requestChatView,
+        activeCallConversationId, joinCall, leaveCall,
+        startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted,
         updateAvatar, updateProfile, uploadProfileImage, menuTarget, openTileMenu, closeTileMenu,
         reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
         hideAudioOnlyTiles, setHideAudioOnlyTiles,
-        categories, activeChannelId, openChannel, messagesByChannel, hasMoreByChannel, loadingOlderByChannel, loadOlderMessages, unreadByChannel,
-        allUsers, onlineUserIds, channelsError, clearChannelsError: () => setChannelsError(null),
-        deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null), voiceKickParticipant,
+        conversations, activeConversationId, openConversation, openDirect, closeConversation, pinConversation, createGroup, deleteGroup,
+        updateGroupTitle, updateGroupAvatar, addGroupMembers, removeGroupMember,
+        messagesByConversation, hasMoreByConversation, loadingOlderByConversation, loadOlderMessages, unreadByConversation,
+        allUsers, onlineUserIds,
+        deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null), kickFromCall,
         sendChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,
         replyingTo, setReplyingTo, editingMsgId, setEditingMsgId,
-        hasMoreAfterByChannel, pendingJumpTarget, clearPendingJumpTarget, jumpToMessage,
+        hasMoreAfterByConversation, pendingJumpTarget, clearPendingJumpTarget, jumpToMessage,
         searchResults, searchLoading, searchError, clearSearchError, searchMessages,
         storageUsage, sendAttachments,
-        createCategory, deleteCategory, renameCategory, createChannel, deleteChannel, renameChannel, reorderCategories, reorderChannels,
       }}
     >
       {children}
