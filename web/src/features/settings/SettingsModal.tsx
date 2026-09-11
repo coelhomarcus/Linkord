@@ -64,12 +64,11 @@ function DevicePicker({ label, room, kind }: { label: string; room: import('live
 }
 
 type ProfileCropTarget =
-  | { field: 'avatar' | 'banner'; kind: 'file'; file: File; src: string }
-  | { field: 'avatar' | 'banner'; kind: 'url'; url: string; src: string };
+  { field: 'avatar' | 'banner'; kind: 'file'; file: File; src: string };
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const {
-    state, updateProfile, uploadProfileImage, uploadProfileImageFromUrl, showStats, setShowStats,
+    state, updateProfile, uploadProfileImage, showStats, setShowStats,
     notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled, livekitRoom, storageUsage,
   } = useRoom();
   const { logout } = useAuth();
@@ -166,8 +165,17 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   function handleUrlPicked(field: 'avatar' | 'banner', url: string) {
     const setError = field === 'avatar' ? setAvatarError : setBannerError;
     setError(null);
+    const nextProfile = {
+      avatar: field === 'avatar' ? url : avatar,
+      avatarColor,
+      displayName,
+      banner: field === 'banner' ? url : banner,
+      bio,
+      profileLinks: profileLinksForSubmit(),
+    };
+    if (field === 'avatar') setAvatar(url); else setBanner(url);
+    updateProfile(nextProfile);
     setUrlDialogField(null);
-    setCropTarget({ field, kind: 'url', url, src: url });
   }
 
   function closeCropDialog() {
@@ -188,9 +196,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setUploading(true);
     closeCropDialog();
     try {
-      const url = target.kind === 'file'
-        ? await uploadProfileImage(field, target.file, crop, setProgress, profile)
-        : await uploadProfileImageFromUrl(field, target.url, crop, setProgress, profile);
+      const url = await uploadProfileImage(field, target.file, crop, setProgress, profile);
       if (field === 'avatar') setAvatar(url); else setBanner(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Falha ao enviar ${field === 'avatar' ? 'a foto' : 'o banner'}.`);

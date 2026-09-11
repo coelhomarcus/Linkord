@@ -52,7 +52,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<PublicUser | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [cropTarget, setCropTarget] = useState<{ kind: 'file'; file: File; src: string } | { kind: 'url'; url: string; src: string } | null>(null);
+  const [cropTarget, setCropTarget] = useState<{ kind: 'file'; file: File; src: string } | null>(null);
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
@@ -151,9 +151,10 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
   }
 
   function handleAvatarUrlPicked(url: string) {
+    if (!conversation) return;
     setAvatarError(null);
+    updateGroupAvatar(conversation.id, url);
     setUrlDialogOpen(false);
-    setCropTarget({ kind: 'url', url, src: url });
   }
 
   function closeCropDialog() {
@@ -172,19 +173,12 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
     setUploadingAvatar(true);
     closeCropDialog();
     try {
-      const body = target.kind === 'file'
-        ? await uploadWithProgress<{ avatar: string }>({
-          url: `/api/avatar?crop=${encodeURIComponent(JSON.stringify(crop))}`,
-          file: target.file,
-          headers: { 'Content-Type': target.file.type || 'application/octet-stream' },
-          onProgress: setAvatarUploadProgress,
-        })
-        : await uploadWithProgress<{ avatar: string }>({
-          url: `/api/avatar?crop=${encodeURIComponent(JSON.stringify(crop))}`,
-          file: new Blob([JSON.stringify({ url: target.url })], { type: 'application/json' }),
-          headers: { 'Content-Type': 'application/json' },
-          onProgress: setAvatarUploadProgress,
-        });
+      const body = await uploadWithProgress<{ avatar: string }>({
+        url: `/api/avatar?crop=${encodeURIComponent(JSON.stringify(crop))}`,
+        file: target.file,
+        headers: { 'Content-Type': target.file.type || 'application/octet-stream' },
+        onProgress: setAvatarUploadProgress,
+      });
       updateGroupAvatar(conversationId, body.avatar);
     } catch (err) {
       setAvatarError(err instanceof Error ? err.message : 'Falha ao enviar a foto.');
