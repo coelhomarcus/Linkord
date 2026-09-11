@@ -370,7 +370,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
           initial={false}
           animate={{ width: open && conversation ? PANEL_WIDTH : 0, opacity: open && conversation ? 1 : 0 }}
           transition={SPRING_LAYOUT}
-          className="my-2 mr-2 flex-none overflow-hidden rounded-2xl border border-white/10 bg-[rgb(14_14_16)] text-text-primary will-change-[width]"
+          className="flex-none overflow-hidden bg-bg-primary text-text-primary will-change-[width]"
         >
           <div className="flex h-full flex-col" style={{ width: PANEL_WIDTH }}>
             {content}

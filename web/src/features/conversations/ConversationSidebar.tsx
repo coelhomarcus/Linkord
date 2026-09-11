@@ -119,7 +119,7 @@ function CollapsedConversationButton({ conversation, active, onClick }: {
         onClick={onClick}
         aria-label={title}
         className={cn(
-          'relative grid size-11 flex-none place-items-center rounded-xl transition-colors',
+          'relative grid size-11 flex-none place-items-center rounded-full transition-colors',
           active ? 'bg-primary/20 ring-1 ring-primary/50' : 'hover:bg-white/[0.06]'
         )}
       >
@@ -194,7 +194,7 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile }: Conversat
 
             <div className="my-1 h-px w-8 flex-none bg-white/10" />
 
-            <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-1">
+            <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-1">
               {filteredConversations.map((conversation) => (
                 <CollapsedConversationButton
                   key={conversation.id}
@@ -232,7 +232,7 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile }: Conversat
           </div>
         ) : (
           <div className="flex h-full min-h-0 flex-col">
-            <div className="flex flex-none items-center gap-3 border-b border-white/10 px-4 py-4">
+            <div className="flex flex-none items-center gap-3 px-4 py-4">
               <img src="/logo.svg" alt="" className="size-8 flex-none" />
               <div className="min-w-0 flex-1">
                 <h1 className="truncate text-title font-semibold">Linkord</h1>

@@ -21,7 +21,6 @@ import { ALLOWED_REACTIONS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE } 
 import type { ChatMessage, PublicUser, ReactionEmoji } from '@/types/protocol';
 import { conversationTitle, directUser, groupMembers } from './conversationUtils';
 import { GroupAvatar } from './GroupAvatar';
-import { GroupDetailsPanel } from './GroupDetailsPanel';
 
 const GROUP_GAP_MS = 5 * 60 * 1000;
 const EMPTY_MESSAGES: ChatMessage[] = [];
@@ -611,9 +610,10 @@ interface ConversationPanelProps {
   onOpenProfile: (userId: string) => void;
   onOpenCall: (conversationId: string) => void;
   onOpenSearch: () => void;
+  onOpenDetails: () => void;
 }
 
-export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch }: ConversationPanelProps) {
+export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onOpenDetails }: ConversationPanelProps) {
   const { state, conversations, activeConversationId, allUsers, onlineUserIds } = useRoom();
   const { setOpenMobile } = useAnimatedSidebar();
   const conversation = conversations.find((item) => item.id === activeConversationId) ?? null;
@@ -624,11 +624,9 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch }: C
   const subtitle = conversation?.type === 'group'
     ? `${members.length} membros`
     : other ? (online ? 'Online' : 'Offline') : '';
-  const [detailsOpen, setDetailsOpen] = useState(false);
 
   return (
-    <div className="flex h-full min-w-0 flex-1">
-      <main className="flex min-w-0 flex-1 flex-col text-text-primary">
+    <main className="flex h-full min-w-0 flex-1 flex-col text-text-primary">
       {conversation ? (
         <>
           <header className="flex h-16 flex-none items-center gap-3 border-b border-white/10 bg-[rgb(12_12_14)]/90 px-4 backdrop-blur">
@@ -640,7 +638,7 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch }: C
             ) : (
               <button
                 type="button"
-                onClick={() => setDetailsOpen(true)}
+                onClick={onOpenDetails}
                 className="transition-colors hover:border-white/20"
                 aria-label="Detalhes do grupo"
               >
@@ -649,7 +647,7 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch }: C
             )}
             <button
               type="button"
-              onClick={conversation.type === 'group' ? () => setDetailsOpen(true) : undefined}
+              onClick={conversation.type === 'group' ? onOpenDetails : undefined}
               className="min-w-0 flex-1 text-left"
             >
               <h2 className="truncate text-title font-semibold">{title}</h2>
@@ -660,7 +658,7 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch }: C
             </Button>
             {conversation.type === 'group' && (
               <>
-                <Button type="button" variant="ghost" size="icon-sm" aria-label="Detalhes do grupo" onClick={() => setDetailsOpen(true)} className="text-text-muted hover:text-text-primary">
+                <Button type="button" variant="ghost" size="icon-sm" aria-label="Detalhes do grupo" onClick={onOpenDetails} className="text-text-muted hover:text-text-primary">
                   <Info size={16} />
                 </Button>
                 <Button type="button" size="icon-sm" aria-label="Entrar na chamada" onClick={() => onOpenCall(conversation.id)}>
@@ -679,14 +677,7 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch }: C
           </div>
         </div>
       )}
-      </main>
-      <GroupDetailsPanel
-        conversationId={conversation?.type === 'group' ? conversation.id : null}
-        open={detailsOpen && conversation?.type === 'group'}
-        onOpenChange={setDetailsOpen}
-        onOpenProfile={onOpenProfile}
-      />
-    </div>
+    </main>
   );
 }
 

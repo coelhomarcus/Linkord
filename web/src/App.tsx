@@ -8,6 +8,7 @@ import { LoadingScreen } from './features/room/LoadingScreen';
 import { ReconnectBanner } from './shared/ReconnectBanner';
 import { ConversationSidebar } from './features/conversations/ConversationSidebar';
 import { ConversationPanel } from './features/conversations/ConversationPanel';
+import { GroupDetailsPanel } from './features/conversations/GroupDetailsPanel';
 import { ChatSearchDialog } from './features/chat/ChatSearchDialog';
 import { Stage } from './features/sharing/Stage';
 import { CallControlBar } from './features/sharing/CallControlBar';
@@ -36,6 +37,7 @@ function Shell() {
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [mobileShowSidebar, setMobileShowSidebar] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const [sidebarOpen, setSidebarOpenState] = useState(() => !loadSidebarCollapsed());
   const setSidebarOpen = useCallback((next: boolean) => {
@@ -133,6 +135,7 @@ function Shell() {
               onOpenProfile={setProfileUserId}
               onOpenCall={handleOpenCall}
               onOpenSearch={() => setSearchOpen(true)}
+              onOpenDetails={() => setDetailsOpen(true)}
             />
           )}
           {activeView === 'call' && inCall && <CallControlBar />}
@@ -140,6 +143,12 @@ function Shell() {
           {inCall && activeView !== 'call' && <FloatingPip allIds={callIds} />}
           <ReactionsOverlay />
         </AnimatedSidebarInset>
+        <GroupDetailsPanel
+          conversationId={activeConversation?.type === 'group' ? activeConversation.id : null}
+          open={detailsOpen && activeConversation?.type === 'group'}
+          onOpenChange={setDetailsOpen}
+          onOpenProfile={setProfileUserId}
+        />
         <TileMenu />
         <ProfileModal userId={profileUserId} onClose={() => setProfileUserId(null)} />
         <Suspense fallback={null}>
