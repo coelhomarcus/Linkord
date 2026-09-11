@@ -175,7 +175,7 @@ function bubbleSurfaceClass(
     variant === "solid" && "bg-foreground",
     variant === "soft" && "bg-muted",
     variant === "tint" && "bg-primary/10",
-    variant === "outline" && "border border-border/70 bg-background",
+    variant === "outline" && "border border-white/10 bg-bg-tertiary",
     variant === "danger" && "bg-destructive/10",
   );
 }
