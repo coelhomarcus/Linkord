@@ -262,10 +262,25 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile }: Conversat
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex flex-none items-center gap-3 px-4 py-4">
               <img src="/logo.svg" alt="" className="size-8 flex-none" />
-              <div className="min-w-0 flex-1">
+              <button
+                type="button"
+                aria-label="Abrir seu perfil"
+                onClick={() => { if (state.me.userId) onOpenProfile(state.me.userId); }}
+                className="min-w-0 flex-1 rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-white/[0.045] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
                 <h1 className="truncate text-title font-semibold">Linkord</h1>
-                <p className="truncate text-caption text-text-muted">{state.me.displayName}</p>
-              </div>
+                <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                  <Avatar
+                    id={state.me.userId ?? state.me.id ?? 'me'}
+                    name={state.me.displayName}
+                    avatar={state.me.avatar}
+                    avatarColor={state.me.avatarColor}
+                    size={20}
+                    className="flex-none"
+                  />
+                  <p className="min-w-0 truncate text-caption text-text-muted">{state.me.displayName}</p>
+                </div>
+              </button>
               {isAdmin && (
                 <Button type="button" size="icon-sm" aria-label="Criar grupo" onClick={() => setGroupOpen(true)} className="flex-none">
                   <Plus size={16} />

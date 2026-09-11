@@ -19,7 +19,7 @@ interface TileProps {
 }
 
 export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 96, nameSize = 'body' }: TileProps) {
-  const { state, dispatch, openTileMenu, tileDomRegistry, deafened } = useRoom();
+  const { state, dispatch, openTileMenu, tileDomRegistry, deafened, showTileBanners } = useRoom();
   const key = tileKey(participantId, kind);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -29,7 +29,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
   const name = isMine ? state.me.displayName : (participant?.displayName ?? '');
   const avatar = isMine ? state.me.avatar : (participant?.avatar ?? '');
   const avatarColor = isMine ? state.me.avatarColor : (participant?.avatarColor ?? '');
-  const banner = isMine ? state.me.banner : (participant?.banner ?? '');
+  const banner = showTileBanners ? (isMine ? state.me.banner : (participant?.banner ?? '')) : '';
   const isDeafened = isMine ? deafened : (participant?.deafened ?? false);
 
   const media = useParticipantMedia(participantId);
