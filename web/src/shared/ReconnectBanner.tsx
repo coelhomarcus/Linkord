@@ -14,7 +14,7 @@ export function ReconnectBanner() {
         <span className="relative inline-flex size-2.5 rounded-full bg-red" />
       </span>
       <WifiOff size={15} className="flex-none" />
-      <span className="min-w-0 truncate">Conexao com o servidor caiu. Reconectando...</span>
+      <span className="min-w-0 truncate">A conexão com o servidor caiu. Reconectando...</span>
     </div>
   );
 }

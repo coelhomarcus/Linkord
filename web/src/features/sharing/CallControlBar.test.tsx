@@ -11,7 +11,7 @@ describe('CallControlBar', () => {
     // sem publicacao de mic ainda (estado inicial), entao o botao mostra "Desmutar".
     expect(screen.getByLabelText('Desmutar')).toBeInTheDocument();
     expect(screen.getByLabelText('Parar de ouvir')).toBeInTheDocument();
-    expect(screen.getByLabelText('Ligar camera')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ligar câmera')).toBeInTheDocument();
     expect(screen.getByLabelText('Compartilhar tela')).toBeInTheDocument();
     expect(screen.getByLabelText('Sair da chamada')).toBeInTheDocument();
   });

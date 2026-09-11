@@ -10,7 +10,7 @@ import { resolveSession } from './auth/session.js';
 import { resolveDisplayName } from './auth/users.js';
 import { firstEmbed, type DetectedEmbed } from './link-preview/embeds.js';
 
-// GET /api/media — the per-conversation "Midias e links" panel: aggregates
+// GET /api/media — the per-conversation "Mídias e links" panel: aggregates
 // every uploaded attachment and every embeddable link, newest first. Two
 // lists (?kind=uploads or embeds), each cursor-paginated (?before=<msgId>,
 // exclusive) instead of offset — a cursor can't skip or repeat an item if a
@@ -39,7 +39,7 @@ const EMBED_SCAN_CEILING = 400;
 // "no cursor yet" sentinel overflows Postgres's int4 range. This is the
 // column's real ceiling.
 const PG_INT4_MAX = 2147483647;
-const DELETED_AUTHOR_NAME = 'Usuario apagado';
+const DELETED_AUTHOR_NAME = 'Usuário apagado';
 
 const otherMembers = alias(conversationMembers, 'other_members');
 const otherUsers = alias(users, 'other_users');
@@ -221,7 +221,7 @@ async function fetchEmbedsPage(viewerId: string, before: number | null, limit: n
 async function handleMedia(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
 
   const query = request.query as Record<string, string | undefined>;
   const kind = query.kind === 'embeds' ? 'embeds' : 'uploads';

@@ -24,7 +24,7 @@ function UserRow({ user, online, isMe, onDeleteRequest }: {
         <p className="truncate text-body font-medium text-text-primary">
           {user.displayName}
           {user.displayName !== user.username && <span className="ml-1.5 text-label font-normal text-text-muted">@{user.username}</span>}
-          {isMe && <span className="ml-1.5 text-label font-normal text-text-muted">(voce)</span>}
+          {isMe && <span className="ml-1.5 text-label font-normal text-text-muted">(você)</span>}
         </p>
         <p className="select-none text-caption text-text-muted">{online ? 'Online' : 'Offline'}</p>
       </div>
@@ -61,7 +61,7 @@ export function ModerationTab() {
   return (
     <div className="flex flex-col gap-3">
       <p className="select-none text-label text-text-muted">
-        Apagar uma conta e definitivo. A pessoa nao consegue mais entrar. As mensagens que ela ja mandou continuam no historico do chat.
+        Apagar uma conta é definitivo. A pessoa não consegue mais entrar. As mensagens que ela já mandou continuam no histórico do chat.
       </p>
 
       {moderationError && (
@@ -94,7 +94,7 @@ export function ModerationTab() {
         open={!!confirmTarget}
         onOpenChange={(open) => { if (!open) setConfirmTarget(null); }}
         title="Apagar conta"
-        description={`Isso apaga a conta de "${confirmTarget?.username}" pra sempre. As mensagens que ela ja mandou continuam no historico, mas ela nao consegue mais entrar.`}
+        description={`Isso apaga a conta de "${confirmTarget?.username}" para sempre. As mensagens que ela já mandou continuam no histórico, mas ela não consegue mais entrar.`}
         confirmLabel="Apagar"
         destructive
         onConfirm={handleConfirm}

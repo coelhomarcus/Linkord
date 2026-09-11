@@ -71,18 +71,18 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
   if (!config.REGISTRATION_CODE) return sendError(reply, 403, 'registration_closed', 'Registro fechado.');
   if (!safeCompare(code, config.REGISTRATION_CODE)) {
     ratelimit.recordFailure(ipKey);
-    return sendError(reply, 403, 'invalid_code', 'Codigo de convite invalido.');
+    return sendError(reply, 403, 'invalid_code', 'Código de convite inválido.');
   }
   ratelimit.reset(ipKey);
 
   if (!USERNAME_RE.test(username)) {
-    return sendError(reply, 400, 'invalid_username', `Nome de usuario deve ter entre ${config.MIN_USERNAME_LEN} e ${config.MAX_USERNAME_LEN} caracteres (letras, numeros, . _ -).`);
+    return sendError(reply, 400, 'invalid_username', `Nome de usuário deve ter entre ${config.MIN_USERNAME_LEN} e ${config.MAX_USERNAME_LEN} caracteres (letras, números, . _ -).`);
   }
   if (password.length < config.MIN_PASSWORD_LEN || password.length > config.MAX_PASSWORD_LEN) {
     return sendError(reply, 400, 'weak_password', `Senha deve ter pelo menos ${config.MIN_PASSWORD_LEN} caracteres.`);
   }
   if (confirmPassword !== password) {
-    return sendError(reply, 400, 'password_mismatch', 'As senhas nao coincidem.');
+    return sendError(reply, 400, 'password_mismatch', 'As senhas não coincidem.');
   }
 
   const passwordHash = await hashPassword(password);
@@ -92,7 +92,7 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
   try {
     user = await createUser({ username, passwordHash, role });
   } catch (err: unknown) {
-    if (err && (err as { code?: string }).code === 'username_taken') return sendError(reply, 409, 'username_taken', 'Esse nome de usuario ja esta em uso.');
+    if (err && (err as { code?: string }).code === 'username_taken') return sendError(reply, 409, 'username_taken', 'Esse nome de usuário já está em uso.');
     throw err;
   }
 
@@ -133,7 +133,7 @@ async function handleLogin(request: FastifyRequest, reply: FastifyReply): Promis
   if (!user || !ok) {
     ratelimit.recordFailure(ipKey);
     ratelimit.recordFailure(userKey);
-    return sendError(reply, 401, 'invalid_credentials', 'Usuario ou senha invalidos.');
+    return sendError(reply, 401, 'invalid_credentials', 'Usuário ou senha inválidos.');
   }
 
   ratelimit.reset(ipKey);
@@ -160,7 +160,7 @@ async function handleLogout(request: FastifyRequest, reply: FastifyReply): Promi
 async function handleMe(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
   sendJson(reply, 200, {
     user: {
       id: sess.userId,

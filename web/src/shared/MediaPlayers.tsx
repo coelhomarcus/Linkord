@@ -240,7 +240,7 @@ function VideoChrome({
       {!playing && (
         <button
           type="button"
-          aria-label="Reproduzir video"
+              aria-label="Reproduzir vídeo"
           onClick={togglePlay}
           className="absolute left-1/2 top-1/2 flex size-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/65 text-white shadow-popover transition-colors hover:bg-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         >

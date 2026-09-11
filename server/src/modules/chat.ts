@@ -22,7 +22,7 @@ import type { AppSocket, HandlerTable, Participant } from '../types.js';
 // The client compares against `state.me.userId`, not `state.me.id`.
 
 const REPLY_PREVIEW_LEN = 120;
-const DELETED_AUTHOR_NAME = 'Usuario apagado';
+const DELETED_AUTHOR_NAME = 'Usuário apagado';
 // split of CHAT_HISTORY_LIMIT for handleLoadMessagesAround — half before
 // the target, half from (and including) it.
 const AROUND_BEFORE_LIMIT = Math.floor(config.CHAT_HISTORY_LIMIT / 2);
@@ -240,7 +240,7 @@ async function handleLoadMessagesAround(socket: AppSocket, msg: { conversationId
   const [target] = await db.select({ id: messages.id }).from(messages)
     .where(and(eq(messages.id, msgId), eq(messages.conversationId, conversationId))).limit(1);
   if (!target) {
-      send(socket, { t: 'error', code: 'message-not-found', message: 'Essa mensagem nao existe mais.' });
+      send(socket, { t: 'error', code: 'message-not-found', message: 'Essa mensagem não existe mais.' });
     return;
   }
 

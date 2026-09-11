@@ -12,15 +12,15 @@ export interface ScreenShareApi {
 export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): ScreenShareApi {
   const startSharing = useCallback(async () => {
     if (room.state !== ConnectionState.Connected) {
-      dispatch({ type: 'SET_SHARE_ERROR', message: 'Ainda conectando ao servidor de video, tente de novo em instantes.' });
+      dispatch({ type: 'SET_SHARE_ERROR', message: 'Ainda conectando ao servidor de vídeo, tente de novo em instantes.' });
       return;
     }
     if (!navigator.mediaDevices?.getDisplayMedia) {
-      dispatch({ type: 'SET_SHARE_ERROR', message: 'Seu navegador nao suporta captura de tela. Use Chrome, Edge ou Firefox no computador.' });
+      dispatch({ type: 'SET_SHARE_ERROR', message: 'Seu navegador não suporta captura de tela. Use Chrome, Edge ou Firefox no computador.' });
       return;
     }
     if (!window.isSecureContext) {
-      dispatch({ type: 'SET_SHARE_ERROR', message: 'Compartilhar tela exige HTTPS (ou http://localhost pra testar).' });
+      dispatch({ type: 'SET_SHARE_ERROR', message: 'Compartilhar tela exige HTTPS (ou http://localhost para testar).' });
       return;
     }
 
@@ -44,7 +44,7 @@ export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): Scre
     } catch (err) {
       const name = (err as DOMException)?.name;
       const aborted = name === 'NotAllowedError' || name === 'AbortError';
-      if (!aborted) dispatch({ type: 'SET_SHARE_ERROR', message: `Nao foi possivel capturar a tela: ${(err as Error)?.message}` });
+      if (!aborted) dispatch({ type: 'SET_SHARE_ERROR', message: `Não foi possível capturar a tela: ${(err as Error)?.message}` });
       return;
     }
 
@@ -58,11 +58,11 @@ export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): Scre
     if (!gotAudio) {
       let reason: string;
       if (displaySurface === 'window') {
-        reason = 'compartilhar uma JANELA nunca inclui audio, em nenhum navegador.';
+        reason = 'compartilhar uma JANELA nunca inclui áudio, em nenhum navegador.';
       } else if (displaySurface === 'monitor') {
-        reason = 'tela inteira so vem com audio se a caixa "Tambem compartilhar audio do sistema" estiver marcada (nao existe essa opcao no macOS).';
+        reason = 'tela inteira só vem com áudio se a caixa "Também compartilhar áudio do sistema" estiver marcada (não existe essa opção no macOS).';
       } else {
-        reason = 'a pessoa desmarcou a opcao de audio, ou o navegador nao suporta audio de tela (ex.: Firefox).';
+        reason = 'a pessoa desmarcou a opção de áudio, ou o navegador não suporta áudio de tela (ex.: Firefox).';
       }
       console.log(`[screen-share] compartilhado sem audio (displaySurface=${displaySurface ?? 'desconhecido'}): ${reason}`);
     }

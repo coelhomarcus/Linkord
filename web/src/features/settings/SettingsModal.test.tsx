@@ -40,6 +40,7 @@ describe('SettingsModal — perfil', () => {
 
     await user.click(screen.getByRole('button', { name: 'Usar Fuchsia' }));
     await user.click(screen.getByRole('button', { name: 'Salvar perfil' }));
+    expect(screen.getByRole('button', { name: 'Perfil salvo' })).toBeInTheDocument();
 
     expect(updateProfile).toHaveBeenCalledWith({
       avatar: '',
@@ -69,7 +70,7 @@ describe('SettingsModal — perfil', () => {
 
     renderWithRoom(<SettingsModal open onClose={vi.fn()} />, { state, updateProfile });
 
-    const input = screen.getByLabelText('Nome de exibicao');
+    const input = screen.getByLabelText('Nome de exibição');
     await user.clear(input);
     await user.type(input, 'Apelido Legal');
     await user.click(screen.getByRole('button', { name: 'Salvar perfil' }));

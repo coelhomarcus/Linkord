@@ -98,14 +98,14 @@ describe('TileMenu — botao de mutar transmissao', () => {
       audioRegistry: { current: new Map([['p-2', { element: audio }]]) },
     });
 
-    const button = screen.getByLabelText('Silenciar audio');
+    const button = screen.getByLabelText('Silenciar áudio');
     fireEvent.click(button);
     expect(audio.volume).toBe(0);
-    expect(screen.getByLabelText('Reativar audio')).toBeInTheDocument();
+    expect(screen.getByLabelText('Reativar áudio')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText('Reativar audio'));
+    fireEvent.click(screen.getByLabelText('Reativar áudio'));
     expect(audio.volume).toBeCloseTo(0.8);
-    expect(screen.getByLabelText('Silenciar audio')).toBeInTheDocument();
+    expect(screen.getByLabelText('Silenciar áudio')).toBeInTheDocument();
   });
 
   it('quando ja esta em 0%, o clique de reativar deixa em 40%', () => {
@@ -118,7 +118,7 @@ describe('TileMenu — botao de mutar transmissao', () => {
       audioRegistry: { current: new Map([['p-2', { element: audio }]]) },
     });
 
-    fireEvent.click(screen.getByLabelText('Reativar audio'));
+    fireEvent.click(screen.getByLabelText('Reativar áudio'));
     expect(audio.volume).toBeCloseTo(0.4);
   });
 });

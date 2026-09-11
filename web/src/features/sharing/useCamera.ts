@@ -12,11 +12,11 @@ export interface CameraApi {
 export function useCamera(room: Room, dispatch: Dispatch<RoomAction>): CameraApi {
   const startCamera = useCallback(async () => {
     if (room.state !== ConnectionState.Connected) {
-      dispatch({ type: 'SET_SHARE_ERROR', message: 'Ainda conectando ao servidor de video, tente de novo em instantes.' });
+      dispatch({ type: 'SET_SHARE_ERROR', message: 'Ainda conectando ao servidor de vídeo, tente de novo em instantes.' });
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
-      dispatch({ type: 'SET_SHARE_ERROR', message: 'Seu navegador nao suporta acesso a camera.' });
+      dispatch({ type: 'SET_SHARE_ERROR', message: 'Seu navegador não suporta acesso à câmera.' });
       return;
     }
 
@@ -29,7 +29,7 @@ export function useCamera(room: Room, dispatch: Dispatch<RoomAction>): CameraApi
     } catch (err) {
       const name = (err as DOMException)?.name;
       const denied = name === 'NotAllowedError' || name === 'NotFoundError' || name === 'AbortError';
-      if (!denied) dispatch({ type: 'SET_SHARE_ERROR', message: `Nao foi possivel acessar a camera: ${(err as Error)?.message}` });
+      if (!denied) dispatch({ type: 'SET_SHARE_ERROR', message: `Não foi possível acessar a câmera: ${(err as Error)?.message}` });
       return;
     }
 

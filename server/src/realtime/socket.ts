@@ -105,7 +105,7 @@ async function handleCallJoin(socket: AppSocket, msg: { conversationId?: string 
   if (!conversationId) return;
   const conversation = await conversations.getConversationForUser(conversationId, p.userId);
   if (!conversation) {
-    send(socket, { t: 'error', code: 'call-not-allowed', message: 'Voce nao tem acesso a essa conversa.' });
+    send(socket, { t: 'error', code: 'call-not-allowed', message: 'Você não tem acesso a essa conversa.' });
     return;
   }
   let livekitToken: string;
@@ -113,7 +113,7 @@ async function handleCallJoin(socket: AppSocket, msg: { conversationId?: string 
     livekitToken = await livekit.createToken(p, `${config.LIVEKIT_ROOM_NAME}-${conversationId}`);
   } catch (err) {
     console.warn(`[${p.id}] falha ao gerar token do LiveKit: ${err instanceof Error ? err.message : err}`);
-    send(socket, { t: 'error', code: 'livekit-unavailable', message: 'Video/voz indisponivel no momento.' });
+    send(socket, { t: 'error', code: 'livekit-unavailable', message: 'Vídeo/voz indisponível no momento.' });
     return;
   }
   setCallConversationId(p, conversationId);
@@ -161,11 +161,11 @@ export function createWsServer(httpServer: HttpServer): Server {
     try {
       const cookies = parseCookies(socket.handshake.headers.cookie || '');
       const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-      if (!sess) return next(Object.assign(new Error('Sessao invalida ou expirada.'), { data: { code: 'unauthorized' } }));
+      if (!sess) return next(Object.assign(new Error('Sessão inválida ou expirada.'), { data: { code: 'unauthorized' } }));
       (socket as AppSocket).user = sess;
       next();
     } catch {
-      next(Object.assign(new Error('Erro de autenticacao.'), { data: { code: 'auth_error' } }));
+      next(Object.assign(new Error('Erro de autenticação.'), { data: { code: 'auth_error' } }));
     }
   });
 
@@ -191,7 +191,7 @@ export function createWsServer(httpServer: HttpServer): Server {
         // no participant yet (never joined) — the handler's own `p.socket
         // !== socket` guard already no-ops it, nothing to rate-limit.
         if (userId && !floodControl.allow(`${eventName}:${userId}`, rule)) {
-          send(socket, { t: 'error', code: 'rate_limited', message: 'Voce esta enviando rapido demais. Espere um pouco.' });
+          send(socket, { t: 'error', code: 'rate_limited', message: 'Você está enviando rápido demais. Espere um pouco.' });
           return;
         }
       }

@@ -44,7 +44,7 @@ const MAX_CHUNK_RETRIES = 3;
 const MAX_CONCURRENT_CHUNKS = 3;
 
 export async function uploadFileInChunks({ conversationId, file, caption, targetMsgId, onProgress }: ChunkedUploadOptions): Promise<number> {
-  if (!conversationId) throw new ApiError(400, 'missing_conversation', 'Conversa nao informada.');
+  if (!conversationId) throw new ApiError(400, 'missing_conversation', 'Conversa não informada.');
   const initRes = await fetch('/api/attachments/init', {
     method: 'POST',
     credentials: 'same-origin',

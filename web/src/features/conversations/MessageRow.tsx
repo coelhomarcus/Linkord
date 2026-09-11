@@ -16,7 +16,7 @@ import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
 import type { ChatMessage, PublicUser, ReactionEmoji } from '@/types/protocol';
 
-const DELETED_AUTHOR_NAME = 'Usuario apagado';
+const DELETED_AUTHOR_NAME = 'Usuário apagado';
 
 function ReactionButton({ onPick }: { onPick: (emoji: string) => void }) {
   const [open, setOpen] = useState(false);

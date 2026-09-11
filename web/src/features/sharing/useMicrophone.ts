@@ -34,7 +34,7 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
     if (activatingRef.current) return;
     if (room.localParticipant.getTrackPublication(Track.Source.Microphone)) return;
     if (!navigator.mediaDevices?.getUserMedia) {
-      dispatch({ type: 'SET_SHARE_ERROR', message: 'Seu navegador nao suporta acesso ao microfone.' });
+      dispatch({ type: 'SET_SHARE_ERROR', message: 'Seu navegador não suporta acesso ao microfone.' });
       return;
     }
 
@@ -44,12 +44,12 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
       await room.localParticipant.setMicrophoneEnabled(true);
     } catch (err) {
       if (err instanceof Error && err.message === 'timeout') {
-        dispatch({ type: 'SET_SHARE_ERROR', message: 'Nao foi possivel conectar ao servidor de video. Verifique sua conexao e tente de novo.' });
+        dispatch({ type: 'SET_SHARE_ERROR', message: 'Não foi possível conectar ao servidor de vídeo. Verifique sua conexão e tente de novo.' });
         return;
       }
       const name = (err as DOMException)?.name;
       const denied = name === 'NotAllowedError' || name === 'NotFoundError' || name === 'AbortError';
-      if (!denied) dispatch({ type: 'SET_SHARE_ERROR', message: `Nao foi possivel acessar o microfone: ${(err as Error)?.message}` });
+      if (!denied) dispatch({ type: 'SET_SHARE_ERROR', message: `Não foi possível acessar o microfone: ${(err as Error)?.message}` });
     } finally {
       activatingRef.current = false;
     }

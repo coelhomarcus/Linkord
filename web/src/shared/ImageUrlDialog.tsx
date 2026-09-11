@@ -30,17 +30,17 @@ function validateImageUrl(url: string): Promise<void> {
     const image = new Image();
     const timeout = window.setTimeout(() => {
       image.src = '';
-      reject(new Error('Nao foi possivel carregar essa imagem.'));
+      reject(new Error('Não foi possível carregar essa imagem.'));
     }, 10_000);
 
     image.onload = () => {
       window.clearTimeout(timeout);
       if (image.naturalWidth > 0 && image.naturalHeight > 0) resolve();
-      else reject(new Error('Essa URL nao parece ser uma imagem.'));
+      else reject(new Error('Essa URL não parece ser uma imagem.'));
     };
     image.onerror = () => {
       window.clearTimeout(timeout);
-      reject(new Error('Nao foi possivel carregar essa imagem.'));
+      reject(new Error('Não foi possível carregar essa imagem.'));
     };
     image.src = url;
   });
@@ -63,7 +63,7 @@ export function ImageUrlDialog({ open, title, onOpenChange, onConfirm }: ImageUr
     e.preventDefault();
     const url = normalizeImageUrl(value);
     if (!url) {
-      setError('Cole uma URL valida (http ou https).');
+      setError('Cole uma URL válida (http ou https).');
       return;
     }
     setChecking(true);
@@ -72,7 +72,7 @@ export function ImageUrlDialog({ open, title, onOpenChange, onConfirm }: ImageUr
       await validateImageUrl(url);
       await onConfirm(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nao foi possivel carregar essa imagem.');
+      setError(err instanceof Error ? err.message : 'Não foi possível carregar essa imagem.');
     } finally {
       setChecking(false);
     }
