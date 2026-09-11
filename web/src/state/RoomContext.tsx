@@ -81,6 +81,8 @@ export interface RoomContextValue {
   setNotificationsEnabled: (value: boolean) => void;
   hideAudioOnlyTiles: boolean;
   setHideAudioOnlyTiles: (value: boolean) => void;
+  showTileBanners: boolean;
+  setShowTileBanners: (value: boolean) => void;
   conversations: Conversation[];
   activeConversationId: string | null;
   openConversation: (conversationId: string) => void;

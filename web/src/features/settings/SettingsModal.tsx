@@ -69,7 +69,7 @@ type ProfileCropTarget =
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const {
     state, updateProfile, uploadProfileImage, showStats, setShowStats,
-    notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled, livekitRoom, storageUsage,
+    notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled, showTileBanners, setShowTileBanners, livekitRoom, storageUsage,
   } = useRoom();
   const { logout } = useAuth();
   const [avatar, setAvatar] = useState(state.me.avatar);
@@ -419,6 +419,19 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             </TabsPanel>
 
             <TabsPanel value="prefs" className="flex flex-col gap-4">
+              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
+                <div className="min-w-0">
+                  <p className="select-none text-body font-medium text-text-primary">Mostrar banners nos tiles</p>
+                  <p className="select-none text-label text-text-muted">Exibe o banner do perfil como fundo dos tiles da chamada.</p>
+                </div>
+                <Switch
+                  checked={showTileBanners}
+                  onCheckedChange={setShowTileBanners}
+                  aria-label="Mostrar banners nos tiles"
+                  className="mt-0.5 flex-none"
+                />
+              </div>
+
               <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
                 <div className="min-w-0">
                   <p className="select-none text-body font-medium text-text-primary">Mostrar estatísticas</p>

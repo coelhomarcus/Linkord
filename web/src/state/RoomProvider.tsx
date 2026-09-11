@@ -16,6 +16,7 @@ import { useTrackSpeaking } from '../features/sharing/useLiveKitTrack';
 import type { TileKind } from '../features/sharing/tileTypes';
 import { loadShowStats, saveShowStats, loadNotifyVolume, saveNotifyVolume } from '../features/settings/useSettingsPreference';
 import { loadHideAudioOnlyTiles, saveHideAudioOnlyTiles } from '../features/settings/useStageViewPreference';
+import { loadShowTileBanners, saveShowTileBanners } from '../features/settings/useTileBannerPreference';
 import { playSound, preloadSounds, setVolume } from '../shared/sounds';
 import {
   loadNotificationsEnabled, saveNotificationsEnabled, setNotificationsModuleEnabled,
@@ -151,6 +152,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const setHideAudioOnlyTiles = useCallback((value: boolean) => {
     setHideAudioOnlyTilesState(value);
     saveHideAudioOnlyTiles(value);
+  }, []);
+
+  const [showTileBanners, setShowTileBannersState] = useState(loadShowTileBanners);
+  const setShowTileBanners = useCallback((value: boolean) => {
+    setShowTileBannersState(value);
+    saveShowTileBanners(value);
   }, []);
 
   const sendWs = useCallback((msg: ClientMessage) => {
@@ -874,7 +881,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted,
         updateAvatar, updateProfile, uploadProfileImage, menuTarget, openTileMenu, closeTileMenu,
         reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
-        hideAudioOnlyTiles, setHideAudioOnlyTiles,
+        hideAudioOnlyTiles, setHideAudioOnlyTiles, showTileBanners, setShowTileBanners,
         conversations, activeConversationId, openConversation, openDirect, closeConversation, pinConversation, createGroup, deleteGroup,
         updateGroupTitle, updateGroupAvatar, addGroupMembers, removeGroupMember,
         messagesByConversation, hasMoreByConversation, loadingOlderByConversation, loadOlderMessages, unreadByConversation,

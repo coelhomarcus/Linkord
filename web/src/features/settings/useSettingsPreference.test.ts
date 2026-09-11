@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { loadShowStats, saveShowStats, loadNotifyVolume, saveNotifyVolume } from './useSettingsPreference';
+import { loadShowTileBanners, saveShowTileBanners } from './useTileBannerPreference';
 
 beforeEach(() => {
   localStorage.clear();
@@ -42,5 +43,22 @@ describe('loadNotifyVolume / saveNotifyVolume', () => {
     expect(loadNotifyVolume()).toBe(1);
     localStorage.setItem('ss-notify-volume', '-2');
     expect(loadNotifyVolume()).toBe(0);
+  });
+});
+
+describe('loadShowTileBanners / saveShowTileBanners', () => {
+  it('sem valor salvo, default e true', () => {
+    expect(loadShowTileBanners()).toBe(true);
+  });
+
+  it('save(false) depois load() devolve false', () => {
+    saveShowTileBanners(false);
+    expect(loadShowTileBanners()).toBe(false);
+  });
+
+  it('save(true) depois load() devolve true', () => {
+    saveShowTileBanners(false);
+    saveShowTileBanners(true);
+    expect(loadShowTileBanners()).toBe(true);
   });
 });

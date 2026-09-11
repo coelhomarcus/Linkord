@@ -38,7 +38,6 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
   useEffect(() => {
-    if (focus) return;
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
@@ -47,59 +46,59 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [focus]);
+  }, []);
 
   const isMine = (participantId: string) => participantId === state.me.id;
-
-  if (focus) {
-    const focusedDescriptor = descriptors.find((d) => d.key === focus);
-    const thumbs = descriptors.filter((d) => d.key !== focus);
-    if (!focusedDescriptor) return null;
-    return (
-      <div className="flex h-full w-full flex-col gap-3">
-        <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center">
-          <Tile
-            participantId={focusedDescriptor.participantId}
-            kind={focusedDescriptor.kind}
-            isMine={isMine(focusedDescriptor.participantId)}
-            fit="contain"
-            avatarSize={104}
-            nameSize="label"
-          />
-        </div>
-        {thumbs.length > 0 && (
-          <div className="flex flex-none justify-center gap-3 overflow-x-auto pb-0.5">
-            {thumbs.map((d) => (
-              <div key={d.key} style={{ width: THUMB_W, height: THUMB_H }} className="flex-none">
-                <Tile participantId={d.participantId} kind={d.kind} isMine={isMine(d.participantId)} avatarSize={32} />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
 
   const n = descriptors.length;
   const refN = referenceCount(n);
   const cols = Math.max(1, Math.ceil(Math.sqrt(refN || 1)));
   const refRows = Math.max(1, Math.ceil(refN / cols));
   const { tileW, tileH } = fitTileSize(cols, refRows, containerSize.w, containerSize.h);
-
-  const rows: TileDescriptor[][] = [];
-  for (let i = 0; i < descriptors.length; i += cols) rows.push(descriptors.slice(i, i + cols));
+  const thumbs = focus ? descriptors.filter((d) => d.key !== focus) : [];
+  const thumbCols = focus ? Math.max(1, Math.floor((containerSize.w + GRID_GAP) / (THUMB_W + GRID_GAP))) : 1;
+  const thumbRows = focus ? Math.max(1, Math.ceil(thumbs.length / thumbCols)) : 1;
+  const gridTemplateColumns = focus
+    ? `repeat(${thumbCols}, minmax(0, 1fr))`
+    : `repeat(${cols}, ${tileW}px)`;
+  const gridTemplateRows = focus
+    ? (thumbs.length ? `minmax(0, 1fr) repeat(${thumbRows}, ${THUMB_H}px)` : 'minmax(0, 1fr)')
+    : `repeat(${refRows}, ${tileH}px)`;
+  let thumbnailIndex = 0;
 
   return (
-    <div ref={containerRef} className="flex h-full w-full flex-col items-center justify-center gap-3">
-      {rows.map((rowItems, ri) => (
-        <div key={ri} className="flex justify-center gap-3">
-          {rowItems.map((d) => (
-            <div key={d.key} style={{ width: tileW, height: tileH }} className="flex-none">
-              <Tile participantId={d.participantId} kind={d.kind} isMine={isMine(d.participantId)} />
-            </div>
-          ))}
-        </div>
-      ))}
+    <div
+      ref={containerRef}
+      className={`grid h-full w-full gap-3 ${focus ? 'items-center justify-items-center' : 'place-content-center'}`}
+      style={{ gridTemplateColumns, gridTemplateRows }}
+    >
+      {descriptors.map((d) => {
+        const isFocused = d.key === focus;
+        const currentThumbnailIndex = isFocused ? -1 : thumbnailIndex++;
+        const style = focus
+          ? isFocused
+            ? { gridColumn: '1 / -1', gridRow: '1', width: '100%', height: '100%' }
+            : {
+                gridColumn: String((currentThumbnailIndex % thumbCols) + 1),
+                gridRow: String(Math.floor(currentThumbnailIndex / thumbCols) + 2),
+                width: THUMB_W,
+                height: THUMB_H,
+              }
+          : { width: tileW, height: tileH };
+
+        return (
+          <div key={d.key} style={style} className="min-h-0 min-w-0">
+            <Tile
+              participantId={d.participantId}
+              kind={d.kind}
+              isMine={isMine(d.participantId)}
+              fit={isFocused ? 'contain' : 'cover'}
+              avatarSize={isFocused ? 104 : focus ? 32 : 96}
+              nameSize={isFocused ? 'label' : 'body'}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
