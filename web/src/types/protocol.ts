@@ -84,6 +84,7 @@ export interface Conversation {
   lastMessageAt: number | null;
   createdAt: number;
   updatedAt: number;
+  pinnedAt: number | null;
 }
 
 export interface PublicUser {
@@ -110,6 +111,7 @@ export type ClientMessage =
   | { t: 'conversation-open'; conversationId: string }
   | { t: 'direct-open'; userId: string }
   | { t: 'conversation-close'; conversationId: string }
+  | { t: 'conversation-pin'; conversationId: string; pinned: boolean }
   | { t: 'group-create'; title: string; memberIds: string[] }
   | { t: 'group-delete'; conversationId: string }
   | { t: 'group-update'; conversationId: string; title?: string; avatar?: string }

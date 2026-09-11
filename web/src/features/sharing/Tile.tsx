@@ -18,7 +18,7 @@ interface TileProps {
   nameSize?: 'body' | 'label';
 }
 
-export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 80, nameSize = 'body' }: TileProps) {
+export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 96, nameSize = 'body' }: TileProps) {
   const { state, dispatch, openTileMenu, tileDomRegistry, deafened } = useRoom();
   const key = tileKey(participantId, kind);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -29,6 +29,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
   const name = isMine ? state.me.displayName : (participant?.displayName ?? '');
   const avatar = isMine ? state.me.avatar : (participant?.avatar ?? '');
   const avatarColor = isMine ? state.me.avatarColor : (participant?.avatarColor ?? '');
+  const banner = isMine ? state.me.banner : (participant?.banner ?? '');
   const isDeafened = isMine ? deafened : (participant?.deafened ?? false);
 
   const media = useParticipantMedia(participantId);
@@ -91,9 +92,23 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
     openTileMenu(key, participantId, kind, e.currentTarget.getBoundingClientRect());
   }, [key, participantId, kind, openTileMenu]);
 
-  const rootStyle = kind === 'screen'
+  // A banner replaces the flat tint (still shown as letterbox filler behind
+  // a `contain`-fit camera track, same as the tint was). Rendered as its
+  // own absolutely-positioned layer (not the root's own background) so the
+  // root's `border` + `border-radius` + `overflow-hidden` never have to
+  // reconcile with a background-image's own box/clip math on the SAME
+  // element — that combination was leaving a hairline gap at the rounded
+  // corners where the overlay wasn't fully covering the image underneath.
+  const rootStyle = kind === 'screen' || banner
     ? undefined
     : { background: `color-mix(in srgb, ${tint} 22%, var(--color-bg-tertiary))` };
+  const bannerLayerStyle = banner
+    ? {
+        backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.15), rgba(0,0,0,0.45)), url(${JSON.stringify(banner)})`,
+        backgroundPosition: 'center',
+        backgroundSize: 'cover',
+      }
+    : undefined;
 
   return (
     <div
@@ -109,6 +124,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
       onClick={handleClick}
       onContextMenu={handleContextMenu}
     >
+      {kind !== 'screen' && banner && <div className="absolute inset-0" style={bannerLayerStyle} />}
       {showsVideo ? (
         <video ref={videoRef} autoPlay playsInline muted={isMine} className={`h-full w-full object-cover ${kind === 'screen' ? 'bg-black' : ''}`} />
       ) : (

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import { AtSign, BadgeCheck, Camera, Check, ExternalLink, Link2, Loader2, Palette, Plus, Trash2, Upload, X } from 'lucide-react';
 import { Avatar, AVATAR_COLOR_OPTIONS } from '@/shared/Avatar';
-import { BrandIcon, bannerStyle, linkInfo } from '@/shared/profileLinks';
+import { BANNER_ASPECT_RATIO, BrandIcon, bannerStyle, linkInfo } from '@/shared/profileLinks';
 import type { LinkInfo } from '@/shared/profileLinks';
 import { MAX_DISPLAY_NAME_LEN } from '@/shared/lib/displayName';
 import { MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '@/types/protocol';
@@ -89,7 +89,7 @@ export function ProfileCard({
   return (
     <div className={cn('overflow-hidden rounded-xl border border-strong bg-bg-modal', className)}>
       {onBannerUpload ? (
-        <div className="group relative h-40 w-full" style={bannerStyle(user)}>
+        <div className="group relative w-full" style={{ ...bannerStyle(user), aspectRatio: BANNER_ASPECT_RATIO }}>
           <DropdownMenu>
             <DropdownMenuTrigger
               disabled={bannerUploading}
@@ -122,11 +122,11 @@ export function ProfileCard({
           type="button"
           aria-label="Ver banner em tela cheia"
           onClick={onBannerClick}
-          className="block h-40 w-full cursor-zoom-in"
-          style={bannerStyle(user)}
+          className="block w-full cursor-zoom-in"
+          style={{ ...bannerStyle(user), aspectRatio: BANNER_ASPECT_RATIO }}
         />
       ) : (
-        <div className="h-40 w-full" style={bannerStyle(user)} />
+        <div className="w-full" style={{ ...bannerStyle(user), aspectRatio: BANNER_ASPECT_RATIO }} />
       )}
       <div className="px-6 pb-6">
         <div className="-mt-12 flex items-end gap-3">

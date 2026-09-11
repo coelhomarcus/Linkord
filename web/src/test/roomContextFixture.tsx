@@ -52,6 +52,7 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     openConversation: noop,
     openDirect: noop,
     closeConversation: noop,
+    pinConversation: noop,
     createGroup: noop,
     deleteGroup: noop,
     updateGroupTitle: noop,

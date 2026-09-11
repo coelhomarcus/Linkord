@@ -10,6 +10,7 @@ import { useAuth } from '../../state/AuthContext';
 import { useMediaDevices } from './useMediaDevices';
 import { requestNotificationPermission } from '../../shared/notifications';
 import { DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../../shared/Avatar';
+import { BANNER_ASPECT_RATIO } from '../../shared/profileLinks';
 import { UploadProgressBar } from '../../shared/UploadProgressBar';
 import { SectionLabel, sectionLabelClass } from '../../shared/SectionLabel';
 import { cn } from '@/shared/lib/utils';
@@ -283,7 +284,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               <ImageCropDialog
                 open={!!cropTarget}
                 imageSrc={cropTarget?.src ?? null}
-                aspect={cropTarget?.field === 'banner' ? 3 : 1}
+                aspect={cropTarget?.field === 'banner' ? BANNER_ASPECT_RATIO : 1}
                 cropShape={cropTarget?.field === 'banner' ? 'rect' : 'round'}
                 title={cropTarget?.field === 'banner' ? 'Recortar banner' : 'Recortar foto de perfil'}
                 onCancel={closeCropDialog}

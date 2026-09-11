@@ -19,6 +19,7 @@ export interface ConversationSummary {
   lastMessageAt: number | null;
   createdAt: number;
   updatedAt: number;
+  pinnedAt: number | null;
 }
 
 function isAdmin(p: Participant | undefined): boolean {
@@ -38,7 +39,7 @@ function normalizeConversationType(type: string): ConversationType {
   return type === 'group' ? 'group' : 'direct';
 }
 
-function rowToSummary(row: Conversation, memberIds: string[]): ConversationSummary {
+function rowToSummary(row: Conversation, memberIds: string[], pinnedAt: Date | null = null): ConversationSummary {
   return {
     id: row.id,
     type: normalizeConversationType(row.type),
@@ -49,12 +50,13 @@ function rowToSummary(row: Conversation, memberIds: string[]): ConversationSumma
     lastMessageAt: row.lastMessageAt ? row.lastMessageAt.getTime() : null,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
+    pinnedAt: pinnedAt ? pinnedAt.getTime() : null,
   };
 }
 
 export async function listForUser(userId: string): Promise<ConversationSummary[]> {
   const rows = await db
-    .select({ conversation: conversations })
+    .select({ conversation: conversations, pinnedAt: conversationMembers.pinnedAt })
     .from(conversationMembers)
     .innerJoin(conversations, eq(conversations.id, conversationMembers.conversationId))
     .where(and(
@@ -76,7 +78,13 @@ export async function listForUser(userId: string): Promise<ConversationSummary[]
         )
       )
     ))
-    .orderBy(desc(sql`coalesce(${conversations.lastMessageAt}, ${conversations.updatedAt}, ${conversations.createdAt})`));
+    // pinned conversations first (most recently pinned first among those),
+    // then everyone else by the usual recency rule.
+    .orderBy(
+      desc(sql`${conversationMembers.pinnedAt} is not null`),
+      desc(conversationMembers.pinnedAt),
+      desc(sql`coalesce(${conversations.lastMessageAt}, ${conversations.updatedAt}, ${conversations.createdAt})`)
+    );
 
   const ids = rows.map((r) => r.conversation.id);
   const members = new Map<string, string[]>();
@@ -89,7 +97,7 @@ export async function listForUser(userId: string): Promise<ConversationSummary[]
     }
   }
 
-  return rows.map((r) => rowToSummary(r.conversation, members.get(r.conversation.id) ?? []));
+  return rows.map((r) => rowToSummary(r.conversation, members.get(r.conversation.id) ?? [], r.pinnedAt));
 }
 
 export async function broadcastConversationListToUser(userId: string): Promise<void> {
@@ -207,6 +215,22 @@ async function handleConversationClose(socket: AppSocket, msg: { conversationId?
 
   await db.update(conversationMembers)
     .set({ hiddenAt: new Date() })
+    .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, p.userId)));
+  await broadcastConversationListToUser(p.userId);
+}
+
+/** Per-member pin (direct or group) — a personal sort-to-top on the
+ * caller's own sidebar, doesn't touch the conversation or anyone else's
+ * row. Symmetric with handleConversationClose but not DM-only. */
+async function handleConversationPin(socket: AppSocket, msg: { conversationId?: string; pinned?: boolean }): Promise<void> {
+  const p = participants.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  const conversationId = String(msg.conversationId || '');
+  if (!conversationId) return;
+  if (!(await conversationExistsForUser(conversationId, p.userId))) return;
+
+  await db.update(conversationMembers)
+    .set({ pinnedAt: msg.pinned ? new Date() : null })
     .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, p.userId)));
   await broadcastConversationListToUser(p.userId);
 }
@@ -375,6 +399,7 @@ async function handleGroupMembersRemove(socket: AppSocket, msg: { conversationId
 export const handlers: HandlerTable = {
   'direct-open': handleDirectOpen,
   'conversation-close': handleConversationClose,
+  'conversation-pin': handleConversationPin,
   'group-create': handleGroupCreate,
   'group-delete': handleGroupDelete,
   'group-update': handleGroupUpdate,

@@ -86,6 +86,7 @@ export interface RoomContextValue {
   openConversation: (conversationId: string) => void;
   openDirect: (userId: string) => void;
   closeConversation: (conversationId: string) => void;
+  pinConversation: (conversationId: string, pinned: boolean) => void;
   createGroup: (title: string, memberIds: string[]) => void;
   deleteGroup: (conversationId: string) => void;
   updateGroupTitle: (conversationId: string, title: string) => void;

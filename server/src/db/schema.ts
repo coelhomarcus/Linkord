@@ -76,6 +76,10 @@ export const conversationMembers = pgTable('conversation_members', {
   // hides it again until a message newer than this arrives. Never used for
   // groups (those use conversation_members row deletion = actually leaving).
   hiddenAt: timestamp('hidden_at', { withTimezone: true }),
+  // per-member pin (works for both direct and group) — purely a personal
+  // sidebar preference, doesn't touch the conversation itself or anyone
+  // else's row. Pinned conversations sort first in listForUser.
+  pinnedAt: timestamp('pinned_at', { withTimezone: true }),
   joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex('conversation_members_conversation_user_key').on(t.conversationId, t.userId),

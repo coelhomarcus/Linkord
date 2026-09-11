@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
-import { MessageCircle, MoreHorizontal, PanelLeftClose, Plus, Search, Settings, Users, UsersRound, PhoneCall, X } from 'lucide-react';
+import { MessageCircle, PanelLeftClose, Pin, Plus, Search, Settings, Users, UsersRound, PhoneCall } from 'lucide-react';
 import { AnimatedSidebar, useAnimatedSidebar } from '@/components/motion/animated-sidebar';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/motion/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar } from '@/shared/Avatar';
@@ -24,7 +23,7 @@ function ConversationRow({ conversation, active, onClick }: {
   active: boolean;
   onClick: () => void;
 }) {
-  const { state, allUsers, onlineUserIds, messagesByConversation, unreadByConversation, closeConversation, activeCallConversationId } = useRoom();
+  const { state, allUsers, onlineUserIds, messagesByConversation, unreadByConversation, activeCallConversationId } = useRoom();
   const title = conversationTitle(conversation, state.me.userId, allUsers);
   const other = directUser(conversation, state.me.userId, allUsers);
   const members = groupMembers(conversation, allUsers);
@@ -47,7 +46,7 @@ function ConversationRow({ conversation, active, onClick }: {
   const online = other ? onlineUserIds.has(other.id) : false;
 
   return (
-    <div className="group relative">
+    <div data-conversation-id={conversation.id}>
       <button
         type="button"
         onClick={onClick}
@@ -93,7 +92,10 @@ function ConversationRow({ conversation, active, onClick }: {
           <span className="mt-0.5 block truncate text-caption text-text-muted">{subtitle}</span>
         </span>
         <span className="flex flex-none flex-col items-end gap-1">
-          {time && <span className="text-[11px] leading-none text-text-muted">{time}</span>}
+          <span className="flex items-center gap-1">
+            {!!conversation.pinnedAt && <Pin size={11} className="fill-text-muted text-text-muted" />}
+            {time && <span className="text-[11px] leading-none text-text-muted">{time}</span>}
+          </span>
           {unread > 0 && (
             <span className="grid min-w-5 place-items-center rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-bold leading-none text-primary-foreground">
               {unread > 99 ? '99+' : unread}
@@ -101,21 +103,6 @@ function ConversationRow({ conversation, active, onClick }: {
           )}
         </span>
       </button>
-      {conversation.type === 'direct' && (
-        <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto">
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Mais opcoes da conversa" className="bg-[rgb(20_20_23)]" />}>
-              <MoreHorizontal size={14} />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => closeConversation(conversation.id)}>
-                <X size={14} />
-                Fechar conversa
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      )}
     </div>
   );
 }

@@ -91,6 +91,15 @@ const LIVEKIT_ROOM_NAME = process.env.LIVEKIT_ROOM_NAME || 'linkord-room';
 // starts sharing (see modules/discordWebhook.ts). Empty disables it silently.
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || '';
 
+// optional, dev convenience only: when DATABASE_URL points at the same DB a
+// deployed instance uses, `attachments` rows exist locally but the actual
+// FILES only live on that instance's disk (UPLOAD_DIR is always local, never
+// synced). Set this to that instance's base URL and serveUpload will fetch
+// (and cache) a missing file from there on first request instead of 404ing.
+// Never needed in the deployment this var would point AT. Trailing slash
+// stripped so `${UPLOADS_REMOTE_URL}/uploads/<id>` doesn't double up.
+const UPLOADS_REMOTE_URL = (process.env.UPLOADS_REMOTE_URL || '').trim().replace(/\/+$/, '');
+
 export const config = {
   PORT, HOST_BIND, MAX_PARTICIPANTS, TRUST_PROXY, MAX_MSG_BYTES, RECONNECT_GRACE_MS,
   MAX_AVATAR_LEN, MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINKS, MAX_PROFILE_LINK_LEN,
@@ -103,4 +112,5 @@ export const config = {
   MIN_USERNAME_LEN, MAX_USERNAME_LEN, MAX_DISPLAY_NAME_LEN, MIN_PASSWORD_LEN, MAX_PASSWORD_LEN,
   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_ROOM_NAME,
   DISCORD_WEBHOOK_URL,
+  UPLOADS_REMOTE_URL,
 };

@@ -96,6 +96,12 @@ export function BrandIcon({ kind }: { kind: LinkKind }) {
   return <Icon size={17} />;
 }
 
+// 16:9 — same shape a call tile fills via `background-size: cover` (see
+// Tile.tsx), so a banner crops/displays consistently everywhere it shows up
+// (profile card, settings, in-call background) instead of each spot picking
+// its own ratio.
+export const BANNER_ASPECT_RATIO = 16 / 9;
+
 export function bannerStyle(user: { id: string; avatarColor: string; banner: string }): CSSProperties {
   const accent = colorFor(user.id, user.avatarColor);
   if (!user.banner) return { background: `linear-gradient(135deg, ${accent}, var(--color-bg-tertiary))` };

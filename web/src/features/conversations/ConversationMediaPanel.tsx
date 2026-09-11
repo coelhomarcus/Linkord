@@ -34,7 +34,15 @@ function UploadItemCard({ item, onOpenImage }: { item: MediaItem; onOpenImage: (
         onClick={() => onOpenImage(url, attachment.name)}
         className="block w-full cursor-zoom-in overflow-hidden rounded-xl border border-white/10 bg-bg-tertiary transition-opacity hover:opacity-90"
       >
-        <img src={url} alt={attachment.name} loading="lazy" className="block h-auto w-full object-cover" />
+        {/* Fixed aspect ratio (not h-auto/intrinsic) — InfiniteMasonry
+            positions items via an estimated height that gets corrected once
+            the real element is measured, but an <img> with intrinsic sizing
+            reports height 0 until its bytes finish loading, so the
+            correction lands late and the row below (already positioned
+            against the 0-height guess) ends up overlapping it. A fixed
+            ratio makes the box's real height known at layout time, same
+            fix already applied to the video card's aspect-video below. */}
+        <img src={url} alt={attachment.name} loading="lazy" className="block aspect-square w-full object-cover" />
       </button>
     );
   }

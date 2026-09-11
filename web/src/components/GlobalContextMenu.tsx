@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ContextMenuRootActions } from '@base-ui/react/context-menu';
-import { Copy, Download, Pencil, Reply, Trash2 } from 'lucide-react';
+import { Copy, Download, Pencil, Pin, PinOff, Reply, Trash2, X } from 'lucide-react';
 import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/components/ui/emoji-picker';
 import { useRoom } from '../state/RoomContext';
@@ -23,11 +23,13 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
   const {
     state, hideAudioOnlyTiles, setHideAudioOnlyTiles,
     activeConversationId, messagesByConversation, reactToChatMessage, deleteChatMessage, setReplyingTo, setEditingMsgId,
+    conversations, closeConversation, pinConversation,
   } = useRoom();
   const [hasSelection, setHasSelection] = useState(false);
   const [stageTarget, setStageTarget] = useState(false);
   const [downloadTarget, setDownloadTarget] = useState<{ url: string; name: string } | null>(null);
   const [messageTarget, setMessageTarget] = useState<number | null>(null);
+  const [conversationTarget, setConversationTarget] = useState<string | null>(null);
   const contextMenuActionsRef = useRef<ContextMenuRootActions | null>(null);
   const isAdmin = state.me.role === 'admin';
   const targetMessage = messageTarget != null
@@ -35,11 +37,13 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
     : undefined;
   const targetIsMine = !!targetMessage && targetMessage.id === state.me.userId;
   const targetCanDelete = targetIsMine || isAdmin;
+  const targetConversation = conversationTarget ? conversations.find((c) => c.id === conversationTarget) : undefined;
 
   const showMessageBlock = !!targetMessage;
   const showDownloadBlock = !!downloadTarget;
   const showSelectionBlock = hasSelection;
   const showStageBlock = stageTarget;
+  const showConversationBlock = !!targetConversation;
 
   useEffect(() => {
     function captureTarget(e: MouseEvent) {
@@ -49,11 +53,14 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
       const downloadEl = element?.closest<HTMLElement>('[data-download-url]') ?? null;
       const messageEl = element?.closest<HTMLElement>('[data-message-id]') ?? null;
       const nextMessageTarget = messageEl ? Number(messageEl.dataset.messageId) : null;
+      const conversationEl = element?.closest<HTMLElement>('[data-conversation-id]') ?? null;
+      const nextConversationTarget = conversationEl?.dataset.conversationId ?? null;
       const nextHasSelection = !wantsNativeMenu && !!window.getSelection()?.toString();
 
       setStageTarget(nextStageTarget);
       setDownloadTarget(downloadEl ? { url: downloadEl.dataset.downloadUrl!, name: downloadEl.dataset.downloadName || '' } : null);
       setMessageTarget(nextMessageTarget);
+      setConversationTarget(nextConversationTarget);
       setHasSelection(nextHasSelection);
 
       if (wantsNativeMenu) return;
@@ -63,7 +70,8 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
       const hasVisibleItems = nextHasMessageBlock
         || !!downloadEl
         || nextHasSelection
-        || nextStageTarget;
+        || nextStageTarget
+        || !!nextConversationTarget;
 
       if (!hasVisibleItems) {
         contextMenuActionsRef.current?.close();
@@ -107,7 +115,12 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
       onOpenChange={(open) => { if (open) setHasSelection(!!window.getSelection()?.toString()); }}
     >
       <ContextMenuTrigger className="contents">{children}</ContextMenuTrigger>
-      <ContextMenuContent className="w-75">
+      {/* Only the message block's emoji picker needs a wide, fixed viewport
+          — every other block (conversation actions, download, selection,
+          stage) is a handful of short text items, so leave those at the
+          component's own natural (min-w-48, content-sized) width instead of
+          forcing them as wide as the emoji picker. */}
+      <ContextMenuContent className={showMessageBlock ? 'w-75' : undefined}>
         {showMessageBlock && targetMessage && (
           <>
             <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => reactToChatMessage(targetMessage.msgId, emoji)}>
@@ -165,6 +178,20 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
           >
             <span>Ocultar sem video</span>
           </ContextMenuCheckboxItem>
+        )}
+        {showConversationBlock && targetConversation && (
+          <>
+            <ContextMenuItem onClick={() => pinConversation(targetConversation.id, !targetConversation.pinnedAt)}>
+              {targetConversation.pinnedAt ? <PinOff size={14} /> : <Pin size={14} />}
+              <span>{targetConversation.pinnedAt ? 'Desafixar conversa' : 'Fixar conversa'}</span>
+            </ContextMenuItem>
+            {targetConversation.type === 'direct' && (
+              <ContextMenuItem onClick={() => closeConversation(targetConversation.id)}>
+                <X size={14} />
+                <span>Fechar conversa</span>
+              </ContextMenuItem>
+            )}
+          </>
         )}
       </ContextMenuContent>
     </ContextMenu>

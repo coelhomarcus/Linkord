@@ -229,6 +229,21 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     }
     sendWs({ t: 'conversation-close', conversationId });
   }, [sendWs]);
+  const pinConversation = useCallback((conversationId: string, pinned: boolean) => {
+    // Optimistic re-sort — mirrors listForUser's ORDER BY (pinned first,
+    // then by recency) so the row jumps immediately instead of waiting on
+    // the round-trip; the real conversation-list broadcast settles it.
+    const next = conversationsRef.current
+      .map((c) => (c.id === conversationId ? { ...c, pinnedAt: pinned ? Date.now() : null } : c))
+      .sort((a, b) => (
+        Number(!!b.pinnedAt) - Number(!!a.pinnedAt)
+        || (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0)
+        || (b.lastMessageAt ?? b.updatedAt) - (a.lastMessageAt ?? a.updatedAt)
+      ));
+    conversationsRef.current = next;
+    setConversations(next);
+    sendWs({ t: 'conversation-pin', conversationId, pinned });
+  }, [sendWs]);
   const createGroup = useCallback((title: string, memberIds: string[]) => sendWs({ t: 'group-create', title, memberIds }), [sendWs]);
   const deleteGroup = useCallback((conversationId: string) => sendWs({ t: 'group-delete', conversationId }), [sendWs]);
   const updateGroupTitle = useCallback((conversationId: string, title: string) => sendWs({ t: 'group-update', conversationId, title }), [sendWs]);
@@ -850,7 +865,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         updateAvatar, updateProfile, uploadProfileImage, menuTarget, openTileMenu, closeTileMenu,
         reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
         hideAudioOnlyTiles, setHideAudioOnlyTiles,
-        conversations, activeConversationId, openConversation, openDirect, closeConversation, createGroup, deleteGroup,
+        conversations, activeConversationId, openConversation, openDirect, closeConversation, pinConversation, createGroup, deleteGroup,
         updateGroupTitle, updateGroupAvatar, addGroupMembers, removeGroupMember,
         messagesByConversation, hasMoreByConversation, loadingOlderByConversation, loadOlderMessages, unreadByConversation,
         allUsers, onlineUserIds,

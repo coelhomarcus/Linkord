@@ -17,7 +17,7 @@ function fakeParticipant(overrides: Partial<Participant> = {}): Participant {
 function fakeConversation(overrides: Partial<Conversation> = {}): Conversation {
   return {
     id: 'conv-1', type: 'group', title: 'Grupo', avatar: '', createdBy: 'u-1', memberIds: ['u-1', 'u-2'],
-    lastMessageAt: null, createdAt: Date.now(), updatedAt: Date.now(),
+    lastMessageAt: null, createdAt: Date.now(), updatedAt: Date.now(), pinnedAt: null,
     ...overrides,
   };
 }
@@ -84,5 +84,41 @@ describe('TileMenu — remover da chamada', () => {
     fireEvent.click(screen.getByText('Remover da chamada'));
     expect(kickFromCall).toHaveBeenCalledWith('p-2');
     expect(closeTileMenu).toHaveBeenCalled();
+  });
+});
+
+describe('TileMenu — botao de mutar transmissao', () => {
+  it('muta (volume -> 0) e o clique seguinte restaura o volume anterior', () => {
+    const audio = new Audio();
+    audio.volume = 0.8;
+    const participants = new Map([['p-2', fakeParticipant()]]);
+    renderWithRoom(<TileMenu />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants },
+      menuTarget,
+      audioRegistry: { current: new Map([['p-2', { element: audio }]]) },
+    });
+
+    const button = screen.getByLabelText('Silenciar audio');
+    fireEvent.click(button);
+    expect(audio.volume).toBe(0);
+    expect(screen.getByLabelText('Reativar audio')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Reativar audio'));
+    expect(audio.volume).toBeCloseTo(0.8);
+    expect(screen.getByLabelText('Silenciar audio')).toBeInTheDocument();
+  });
+
+  it('quando ja esta em 0%, o clique de reativar deixa em 40%', () => {
+    const audio = new Audio();
+    audio.volume = 0;
+    const participants = new Map([['p-2', fakeParticipant()]]);
+    renderWithRoom(<TileMenu />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants },
+      menuTarget,
+      audioRegistry: { current: new Map([['p-2', { element: audio }]]) },
+    });
+
+    fireEvent.click(screen.getByLabelText('Reativar audio'));
+    expect(audio.volume).toBeCloseTo(0.4);
   });
 });

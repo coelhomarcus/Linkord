@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Crosshair, Maximize2, PictureInPicture2, UserX, Volume2, VolumeX } from 'lucide-react';
 import type { Track as LKTrack } from 'livekit-client';
 import { useRoom } from '../../state/RoomContext';
@@ -53,6 +53,10 @@ export function TileMenu() {
   const [sliderValue, setSliderValue] = useState(0);
   const [bitrateKbps, setBitrateKbps] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
+  // What the mute-toggle button restores to — the target's own volume when
+  // the menu opened if it was already above 0, else 40% (there's nothing
+  // meaningful to "go back to" if it was already at/left at 0).
+  const unmuteToRef = useRef(40);
 
   const key = menuTarget?.key ?? null;
   const participantId = menuTarget?.participantId ?? null;
@@ -68,7 +72,9 @@ export function TileMenu() {
   useEffect(() => {
     if (!key || !audioKey) return;
     const audio = audioRegistry.current.get(audioKey)?.element;
-    setSliderValue(audio ? Math.round(audio.volume * 100) : 100);
+    const initial = audio ? Math.round(audio.volume * 100) : 100;
+    setSliderValue(initial);
+    unmuteToRef.current = initial > 0 ? initial : 40;
   }, [key, audioKey, audioRegistry]);
 
   useEffect(() => {
@@ -130,9 +136,13 @@ export function TileMenu() {
   function handleVolumeChange(value: number | readonly number[]) {
     const v = Array.isArray(value) ? (value[0] ?? 0) : (value as number);
     setSliderValue(v);
+    if (v > 0) unmuteToRef.current = v;
     const audio = audioRegistry.current.get(audioKey!)?.element;
     if (audio) audio.volume = v / 100;
     if (targetUserId) saveCallVolume(volumeStorageKey!, v / 100);
+  }
+  function toggleMute() {
+    handleVolumeChange(sliderValue > 0 ? 0 : unmuteToRef.current);
   }
   function handleKick() {
     if (participantId) kickFromCall(participantId);
@@ -166,9 +176,14 @@ export function TileMenu() {
           <>
             <DropdownMenuSeparator />
             <div className="flex items-center gap-2.5 px-2.5 py-2">
-              <span className="flex-none text-text-secondary">
+              <button
+                type="button"
+                onClick={toggleMute}
+                aria-label={sliderValue === 0 ? 'Reativar audio' : 'Silenciar audio'}
+                className="flex-none text-text-secondary transition-colors hover:text-text-primary"
+              >
                 {sliderValue === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
-              </span>
+              </button>
               <Slider value={[sliderValue]} onValueChange={handleVolumeChange} min={0} max={100} />
             </div>
           </>
