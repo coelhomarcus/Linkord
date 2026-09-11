@@ -29,19 +29,18 @@ export function useChatSurfaceWidth(fallback: number): number {
 }
 
 // Between the chat surface's own edge and an attachment's content box sit:
-// the message list's scroll padding, the message row's padding, the
-// avatar column + its gap, and (for a captioned, non-edge-to-edge bubble)
-// the bubble's own padding. Using this worst-case figure for every
-// attachment under-uses a little space on edge-to-edge bubbles (no bubble
-// padding there) rather than risk overflowing a captioned one.
-const BUBBLE_CHROME_OVERHEAD = 120;
+// the message list's scroll padding (MessageList, px-2 both sides), the
+// message row's own padding (MessageRow, px-4 both sides), and the avatar
+// column + its gap (w-10 + gap-3) on the left only. There's no bubble
+// anymore (see MessageRow) so no bubble padding to add on top.
+const ROW_CHROME_OVERHEAD = 100;
 const MIN_ATTACHMENT_WIDTH = 120;
 
 /** How wide an attachment (video/audio/image/embed) can render before it
  * risks overflowing the chat surface it's laid out in — `cap` is the
  * attachment's own preferred max (e.g. 384 for a mini video). */
 export function availableAttachmentWidth(surfaceWidth: number, cap: number): number {
-  return Math.max(MIN_ATTACHMENT_WIDTH, Math.min(cap, surfaceWidth - BUBBLE_CHROME_OVERHEAD));
+  return Math.max(MIN_ATTACHMENT_WIDTH, Math.min(cap, surfaceWidth - ROW_CHROME_OVERHEAD));
 }
 
 /** Tracks `ref`'s own rendered content width for a surface whose width isn't

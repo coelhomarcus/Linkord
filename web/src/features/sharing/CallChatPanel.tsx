@@ -7,7 +7,7 @@ import { SPRING_LAYOUT } from '@/shared/lib/ease';
 import { ChatSurfaceWidthProvider } from '@/shared/lib/chatSurfaceWidth';
 import { useRoom } from '@/state/RoomContext';
 import { conversationTitle } from '../conversations/conversationUtils';
-import { MessageBubbleListBridge } from '../conversations/ConversationPanel';
+import { MessageListBridge } from '../conversations/ConversationPanel';
 
 const PANEL_WIDTH = 360;
 const MOBILE_PANEL_WIDTH = 384;
@@ -37,7 +37,7 @@ export function CallChatPanel({ conversationId, open, onOpenChange, onOpenProfil
           <X size={16} />
         </Button>
       </div>
-      <MessageBubbleListBridge conversationId={conversation.id} onOpenProfile={onOpenProfile} />
+      <MessageListBridge conversationId={conversation.id} onOpenProfile={onOpenProfile} />
     </ChatSurfaceWidthProvider>
   );
 

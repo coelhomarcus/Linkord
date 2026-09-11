@@ -1,43 +1,25 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent, ClipboardEvent } from 'react';
-import { ArrowLeft, ImageIcon, Info, MoreHorizontal, Paperclip, Phone, Reply, Search, Trash2, X, Pencil } from 'lucide-react';
-import { MessageBubble, MessageBubbleContent } from '@/components/agents/message-bubble';
-import { PromptInput } from '@/components/agents/prompt-input';
+import { ArrowLeft, ImageIcon, Info, Phone, Search } from 'lucide-react';
 import { useAnimatedSidebar } from '@/components/motion/animated-sidebar';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar } from '@/shared/Avatar';
-import { ChatAttachment, isEdgeToEdgeMime } from '@/features/chat/ChatAttachment';
-import { ChatMessageText } from '@/features/chat/ChatMessageText';
-import { DocumentAttachmentCard } from '@/shared/DocumentAttachmentCard';
-import { firstEmbed } from '@/shared/lib/chatEmbeds';
 import { ChatSurfaceWidthProvider, useMeasuredWidth } from '@/shared/lib/chatSurfaceWidth';
-import { UploadProgressBar } from '@/shared/UploadProgressBar';
-import { formatDateHeading, formatTime } from '@/shared/lib/formatChatTime';
-import { formatFileSize, formatSizeLimit } from '@/shared/lib/formatBytes';
-import { mentionsUser, buildMentionLookup } from '@/shared/lib/mentions';
-import { cn } from '@/shared/lib/utils';
+import { formatDateHeading } from '@/shared/lib/formatChatTime';
+import { buildMentionLookup } from '@/shared/lib/mentions';
 import { useRoom } from '@/state/RoomContext';
-import { ALLOWED_REACTIONS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE } from '@/types/protocol';
-import type { ChatMessage, PublicUser, ReactionEmoji } from '@/types/protocol';
+import type { ChatMessage } from '@/types/protocol';
 import { conversationTitle, directUser, groupMembers } from './conversationUtils';
 import { GroupAvatar } from './GroupAvatar';
+import { MessageRow } from './MessageRow';
+import { MessageComposer } from './MessageComposer';
 
 const GROUP_GAP_MS = 5 * 60 * 1000;
 const EMPTY_MESSAGES: ChatMessage[] = [];
-const DELETED_AUTHOR_NAME = 'Usuario apagado';
 
 type RenderItem =
   | { type: 'date'; key: string; label: string }
   | { type: 'message'; key: string; message: ChatMessage; showHeader: boolean };
-
-export interface PendingAttachment {
-  id: string;
-  file: File;
-  previewUrl: string | null;
-}
 
 function buildRenderItems(messages: ChatMessage[]): RenderItem[] {
   const items: RenderItem[] = [];
@@ -57,217 +39,7 @@ function buildRenderItems(messages: ChatMessage[]): RenderItem[] {
   return items;
 }
 
-function MessageRow({
-  message,
-  showHeader,
-  allUsers,
-  mentionLookup,
-  onOpenProfile,
-  onReply,
-  onJumpTo,
-}: {
-  message: ChatMessage;
-  showHeader: boolean;
-  allUsers: Map<string, PublicUser>;
-  mentionLookup: Map<string, PublicUser>;
-  onOpenProfile: (userId: string) => void;
-  onReply: () => void;
-  onJumpTo: (msgId: number) => void;
-}) {
-  const { state, deleteChatMessage, editChatMessage, reactToChatMessage, editingMsgId, setEditingMsgId } = useRoom();
-  const [editText, setEditText] = useState(message.text);
-  const isMine = message.id === state.me.userId;
-  const isMod = state.me.role === 'admin';
-  const canDelete = isMine || isMod;
-  const author = message.id ? allUsers.get(message.id) : undefined;
-  const displayedName = author?.displayName ?? message.name;
-  const displayedAvatar = author?.avatar ?? message.avatar;
-  const replyAuthor = message.replyTo?.authorId ? allUsers.get(message.replyTo.authorId) : undefined;
-  const mentionsMe = !isMine && mentionsUser(message.text, mentionLookup, state.me.userId);
-  const isEditing = editingMsgId === message.msgId;
-  // A lone attachment or link embed (no caption, no reply) fills the bubble
-  // edge-to-edge instead of sitting in a second frame nested inside it.
-  const soloAttachment = message.attachments?.length === 1 ? message.attachments[0] : null;
-  const soloEmbed = !message.attachments?.length ? firstEmbed(message.text) : null;
-  const isSoloEmbedMessage = !!soloEmbed && message.text.trim() === soloEmbed.url;
-  const edgeToEdge = !isEditing && !message.replyTo && (
-    (!!soloAttachment && !message.text.trim() && isEdgeToEdgeMime(soloAttachment.mime)) || isSoloEmbedMessage
-  );
-  const edgeToEdgeImage = edgeToEdge && (
-    (soloAttachment?.mime.startsWith('image/') ?? false) || soloEmbed?.kind === 'image'
-  );
-  const edgeToEdgeAudio = edgeToEdge && (
-    (soloAttachment?.mime.startsWith('audio/') ?? false) || soloEmbed?.kind === 'audio'
-  );
-  const edgeToEdgeBubbleClass = edgeToEdgeImage
-    ? 'w-fit max-w-[min(24rem,76vw)] overflow-hidden p-0'
-    : edgeToEdgeAudio
-      ? 'w-80 max-w-full overflow-hidden p-0'
-      : edgeToEdge
-        ? 'w-fit max-w-[min(24rem,76vw)] overflow-hidden p-0'
-        : undefined;
-
-  function saveEdit() {
-    const trimmed = editText.trim();
-    if (trimmed) editChatMessage(message.msgId, trimmed);
-    setEditingMsgId(null);
-  }
-
-  function handleEditKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      saveEdit();
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      setEditingMsgId(null);
-      setEditText(message.text);
-    }
-  }
-
-  return (
-    <div
-      id={`chat-msg-${message.msgId}`}
-      data-message-id={message.msgId}
-      className={cn(
-        'flex w-full gap-2 px-4 py-1',
-        isMine ? 'justify-end' : 'justify-start',
-        showHeader ? 'mt-4' : 'mt-1'
-      )}
-    >
-      {!isMine && (
-        <div className="w-9 flex-none pt-5">
-          {showHeader && message.id ? (
-            <button type="button" onClick={() => onOpenProfile(message.id!)} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <Avatar id={message.id} name={displayedName} avatar={displayedAvatar} avatarColor={author?.avatarColor} size={32} />
-            </button>
-          ) : null}
-        </div>
-      )}
-      {isMine && (
-        <div className="w-9 flex-none pt-5 order-last">
-          {showHeader && message.id ? (
-            <button type="button" onClick={() => onOpenProfile(message.id!)} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <Avatar id={message.id} name={displayedName} avatar={displayedAvatar} avatarColor={author?.avatarColor} size={32} />
-            </button>
-          ) : null}
-        </div>
-      )}
-
-      <div className={cn('flex max-w-[min(680px,calc(100%-3rem))] flex-col', isMine ? 'items-end' : 'items-start')}>
-        {showHeader && (
-          <div className={cn('mb-1 flex items-center gap-2 px-1', isMine && 'flex-row-reverse')}>
-            {message.id ? (
-              <button type="button" onClick={() => onOpenProfile(message.id!)} className="truncate text-caption font-medium text-text-secondary hover:text-text-primary">
-                {displayedName}
-              </button>
-            ) : (
-              <span className="truncate text-caption font-medium text-text-secondary">{displayedName}</span>
-            )}
-            <span className="text-[11px] text-text-muted">{formatTime(message.ts)}</span>
-          </div>
-        )}
-
-        <div className={cn('relative flex items-center gap-1.5', isMine && 'flex-row-reverse')}>
-          <MessageBubble align={isMine ? 'end' : 'start'} variant={mentionsMe ? 'tint' : isMine ? 'tint' : 'outline'} animateIn>
-            <MessageBubbleContent
-              className={cn(
-                'max-w-[min(620px,76vw)] whitespace-pre-wrap break-words border-white/10',
-                isMine && 'bg-primary text-primary-foreground',
-                mentionsMe && !isMine && 'border-yellow/30 bg-yellow/10',
-                edgeToEdgeBubbleClass
-              )}
-            >
-              {message.replyTo && (
-                <button
-                  type="button"
-                  onClick={() => onJumpTo(message.replyTo!.msgId)}
-                  className={cn(
-                    'mb-2 block max-w-full truncate rounded-lg border px-2.5 py-1.5 text-left text-xs',
-                    isMine ? 'border-white/20 bg-black/15 text-white/85' : 'border-white/10 bg-white/[0.04] text-text-muted'
-                  )}
-                >
-                  <span className="font-medium">{replyAuthor?.displayName ?? DELETED_AUTHOR_NAME}</span>
-                  {message.replyTo.text ? <span> - {message.replyTo.text}</span> : null}
-                </button>
-              )}
-              {isEditing ? (
-                <div className="flex min-w-72 flex-col gap-2">
-                  <Textarea
-                    value={editText}
-                    onChange={(event) => setEditText(event.target.value)}
-                    onKeyDown={handleEditKeyDown}
-                    autoFocus
-                    rows={2}
-                    className="resize-none border-white/15 bg-black/20 text-sm"
-                  />
-                  <div className="flex justify-end gap-2">
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setEditingMsgId(null)}>Cancelar</Button>
-                    <Button type="button" size="sm" onClick={saveEdit}>Salvar</Button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <ChatMessageText text={message.text} mentionLookup={mentionLookup} myUserId={state.me.userId} edgeToEdge={edgeToEdge} />
-                  {message.editedAt && <span className="ml-1 text-caption opacity-70">(editado)</span>}
-                  {message.attachments?.map((attachment) => (
-                    <ChatAttachment key={attachment.id} attachment={attachment} edgeToEdge={edgeToEdge} />
-                  ))}
-                </>
-              )}
-            </MessageBubbleContent>
-          </MessageBubble>
-
-          <div className="md:hidden">
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Acoes" />}>
-                <MoreHorizontal size={13} />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <div className="flex gap-1 px-1 py-1">
-                  {ALLOWED_REACTIONS.map((emoji) => (
-                    <button key={emoji} type="button" onClick={() => reactToChatMessage(message.msgId, emoji)} className="rounded-md p-1.5 text-[18px] leading-none hover:bg-muted">
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={onReply}><Reply size={14} />Responder</DropdownMenuItem>
-                {isMine && <DropdownMenuItem onClick={() => setEditingMsgId(message.msgId)}><Pencil size={14} />Editar</DropdownMenuItem>}
-                {canDelete && <DropdownMenuItem variant="destructive" onClick={() => deleteChatMessage(message.msgId)}><Trash2 size={14} />Apagar</DropdownMenuItem>}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-
-        {message.reactions && (
-          <div className={cn('mt-1 flex flex-wrap gap-1 px-1', isMine && 'justify-end')}>
-            {(Object.entries(message.reactions) as [ReactionEmoji, string[]][]).map(([emoji, userIds]) => {
-              if (!userIds?.length) return null;
-              const mine = !!state.me.userId && userIds.includes(state.me.userId);
-              return (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => reactToChatMessage(message.msgId, emoji)}
-                  className={cn(
-                    'flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-label transition-colors',
-                    mine ? 'border-primary/50 bg-primary/15 text-text-primary' : 'border-white/10 bg-white/[0.04] text-text-secondary hover:bg-white/[0.08]'
-                  )}
-                >
-                  <span>{emoji}</span>
-                  <span>{userIds.length}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function MessageBubbleList({ conversationId, onReply, onOpenProfile }: {
+function MessageList({ conversationId, onReply, onOpenProfile }: {
   conversationId: string;
   onReply: (message: ChatMessage) => void;
   onOpenProfile: (userId: string) => void;
@@ -377,17 +149,17 @@ function MessageBubbleList({ conversationId, onReply, onOpenProfile }: {
               <span className="flex-none text-caption font-medium text-text-muted opacity-60">{item.label}</span>
             </div>
           ) : (
-            <div key={item.key} className={highlightedMsgId === item.message.msgId ? 'rounded-2xl bg-primary/10' : undefined}>
-              <MessageRow
-                message={item.message}
-                showHeader={item.showHeader}
-                allUsers={allUsers}
-                mentionLookup={mentionLookup}
-                onReply={() => onReply(item.message)}
-                onOpenProfile={onOpenProfile}
-                onJumpTo={jumpToMessage}
-              />
-            </div>
+            <MessageRow
+              key={item.key}
+              message={item.message}
+              showHeader={item.showHeader}
+              highlighted={highlightedMsgId === item.message.msgId}
+              allUsers={allUsers}
+              mentionLookup={mentionLookup}
+              onReply={() => onReply(item.message)}
+              onOpenProfile={onOpenProfile}
+              onJumpTo={jumpToMessage}
+            />
           ))}
         </div>
       </div>
@@ -403,201 +175,6 @@ function MessageBubbleList({ conversationId, onReply, onOpenProfile }: {
           Voltar para o mais recente
         </button>
       )}
-    </div>
-  );
-}
-
-function Composer({ conversationId }: { conversationId: string }) {
-  const { state, allUsers, sendChatMessage, sendAttachments, replyingTo, setReplyingTo } = useRoom();
-  const [text, setText] = useState('');
-  const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([]);
-  const [attachError, setAttachError] = useState<string | null>(null);
-  const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const pendingFilesRef = useRef<PendingAttachment[]>([]);
-  const isSubmittingRef = useRef(false);
-  const disabled = !state.joined || activeUploadId !== null;
-
-  useEffect(() => { pendingFilesRef.current = pendingFiles; }, [pendingFiles]);
-  useEffect(() => () => {
-    pendingFilesRef.current.forEach((file) => {
-      if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
-    });
-  }, []);
-
-  function addFiles(files: File[]) {
-    if (!files.length) return;
-    const remainingSlots = MAX_ATTACHMENTS_PER_MESSAGE - pendingFiles.length;
-    const accepted: PendingAttachment[] = [];
-    let error: string | null = null;
-    for (const file of files) {
-      if (accepted.length >= remainingSlots) {
-        error = `Maximo de ${MAX_ATTACHMENTS_PER_MESSAGE} anexos por mensagem.`;
-        break;
-      }
-      if (file.size > MAX_ATTACHMENT_BYTES) {
-        error = `"${file.name}" e grande demais (maximo ${formatSizeLimit(MAX_ATTACHMENT_BYTES)}).`;
-        continue;
-      }
-      accepted.push({
-        id: crypto.randomUUID(),
-        file,
-        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
-      });
-    }
-    if (accepted.length) setPendingFiles((prev) => [...prev, ...accepted]);
-    setAttachError(error);
-  }
-
-  function removeFile(id: string) {
-    setPendingFiles((prev) => {
-      const found = prev.find((file) => file.id === id);
-      if (found?.previewUrl) URL.revokeObjectURL(found.previewUrl);
-      return prev.filter((file) => file.id !== id);
-    });
-  }
-
-  function clearFiles() {
-    setPendingFiles((prev) => {
-      prev.forEach((file) => {
-        if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
-      });
-      return [];
-    });
-  }
-
-  async function submit(value: string) {
-    // Guard against a second submit firing before `disabled` (an async
-    // state update) has re-rendered — e.g. a fast double-click, or the
-    // Enter key and the send button both landing in the same tick.
-    if (isSubmittingRef.current) return;
-    const trimmed = value.trim();
-    if (!pendingFiles.length && !trimmed) return;
-    isSubmittingRef.current = true;
-    try {
-      if (pendingFiles.length) {
-        setAttachError(null);
-        setUploadProgress(0);
-        // Mark the first file as "uploading" immediately, before the
-        // network round-trip, so the UI reacts the instant the user submits
-        // instead of waiting on the first progress event to arrive.
-        setActiveUploadId(pendingFiles[0]?.id ?? null);
-        await sendAttachments(conversationId, pendingFiles.map((item) => item.file), trimmed, (fileIndex, fraction) => {
-          setActiveUploadId(pendingFiles[fileIndex]?.id ?? null);
-          setUploadProgress(fraction);
-        });
-        clearFiles();
-        setText('');
-        setReplyingTo(null);
-        return;
-      }
-      sendChatMessage(conversationId, trimmed, replyingTo?.msgId);
-      setText('');
-      setReplyingTo(null);
-    } catch (err) {
-      setAttachError(err instanceof Error ? err.message : 'Falha ao enviar.');
-    } finally {
-      isSubmittingRef.current = false;
-      setActiveUploadId(null);
-    }
-  }
-
-  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = '';
-    addFiles(files);
-  }
-
-  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
-    const files = Array.from(event.clipboardData.items)
-      .filter((item) => item.type.startsWith('image/'))
-      .map((item) => item.getAsFile())
-      .filter((file): file is File => !!file);
-    if (!files.length) return;
-    event.preventDefault();
-    addFiles(files);
-  }
-
-  const replyAuthor = replyingTo?.id ? allUsers.get(replyingTo.id) : undefined;
-  const replyName = replyAuthor?.displayName ?? replyingTo?.name;
-
-  return (
-    <div className="mx-auto w-full max-w-4xl flex-none px-4 pb-4">
-      {replyingTo && (
-        <div className="mb-2 flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-label">
-          <Reply size={14} className="text-text-muted" />
-          <span className="min-w-0 flex-1 truncate">
-            <span className="font-medium text-text-secondary">{replyName}</span>
-            {replyingTo.text ? <span className="text-text-muted"> - {replyingTo.text}</span> : null}
-          </span>
-          <Button type="button" variant="ghost" size="icon-xs" aria-label="Cancelar resposta" onClick={() => setReplyingTo(null)}>
-            <X size={14} />
-          </Button>
-        </div>
-      )}
-
-      {pendingFiles.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2">
-          {pendingFiles.map((item) => {
-            const uploading = activeUploadId === item.id;
-            return (
-              <div
-                key={item.id}
-                title={`${item.file.name} - ${formatFileSize(item.file.size)}`}
-                className={cn(
-                  'relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]',
-                  item.previewUrl ? 'size-18' : 'flex w-56 max-w-full items-center py-2.5 pl-2.5 pr-8'
-                )}
-              >
-                {item.previewUrl ? (
-                  <img src={item.previewUrl} alt="" className="size-full object-cover" />
-                ) : (
-                  <DocumentAttachmentCard name={item.file.name} size={item.file.size} mime={item.file.type} className="min-w-0" />
-                )}
-                {uploading ? (
-                  <>
-                    <div className="absolute inset-0 bg-black/55" />
-                    <div className="absolute inset-x-1.5 bottom-1.5"><UploadProgressBar progress={uploadProgress} /></div>
-                  </>
-                ) : (
-                  <Button type="button" variant="ghost" size="icon-xs" aria-label="Remover anexo" onClick={() => removeFile(item.id)} className="absolute right-1 top-1 size-5 rounded-full bg-black/60 text-white hover:bg-black/80 hover:text-white">
-                    <X size={12} />
-                  </Button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {attachError && <p className="mb-2 rounded-lg border border-red/20 bg-red/10 px-3 py-2 text-label text-red">{attachError}</p>}
-
-      <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileChange} />
-      <PromptInput
-        value={text}
-        onValueChange={setText}
-        onSubmit={(value) => { void submit(value); }}
-        disabled={disabled}
-        allowEmptySubmit={pendingFiles.length > 0}
-        minRows={1}
-        maxRows={6}
-        maxLength={2000}
-        placeholder={pendingFiles.length ? 'Adicionar legenda' : 'Mensagem'}
-        onPaste={handlePaste}
-        actions={[
-          {
-            value: 'attach',
-            label: 'Anexar arquivo',
-            description: 'Imagem, video, audio ou documento',
-            icon: <Paperclip size={16} />,
-          },
-        ]}
-        onAction={(action) => {
-          if (action === 'attach') fileInputRef.current?.click();
-        }}
-        className="border-white/10 bg-[rgb(18_18_20)] shadow-[0_16px_50px_rgb(0_0_0_/_0.25)]"
-      />
     </div>
   );
 }
@@ -692,7 +269,7 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
             )}
           </header>
           <ChatSurfaceWidthProvider width={surfaceWidth}>
-            <MessageBubbleListBridge conversationId={conversation.id} onOpenProfile={onOpenProfile} />
+            <MessageListBridge conversationId={conversation.id} onOpenProfile={onOpenProfile} />
           </ChatSurfaceWidthProvider>
         </>
       ) : (
@@ -707,12 +284,12 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
   );
 }
 
-export function MessageBubbleListBridge({ conversationId, onOpenProfile }: { conversationId: string; onOpenProfile: (userId: string) => void }) {
+export function MessageListBridge({ conversationId, onOpenProfile }: { conversationId: string; onOpenProfile: (userId: string) => void }) {
   const { setReplyingTo } = useRoom();
   return (
     <>
-      <MessageBubbleList conversationId={conversationId} onReply={setReplyingTo} onOpenProfile={onOpenProfile} />
-      <Composer conversationId={conversationId} />
+      <MessageList conversationId={conversationId} onReply={setReplyingTo} onOpenProfile={onOpenProfile} />
+      <MessageComposer conversationId={conversationId} />
     </>
   );
 }
