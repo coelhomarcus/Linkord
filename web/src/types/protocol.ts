@@ -50,7 +50,7 @@ export interface ChatAttachment {
 }
 export const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_MESSAGE = 4;
-export const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+export const MAX_AVATAR_BYTES = 12 * 1024 * 1024;
 export const AVATAR_MIME_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
 export const MAX_BANNER_LEN = 500;
 export const MAX_PROFILE_BIO_LEN = 300;

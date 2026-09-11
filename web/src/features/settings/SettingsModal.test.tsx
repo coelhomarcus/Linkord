@@ -157,7 +157,7 @@ describe('SettingsModal — perfil', () => {
     renderWithRoom(<SettingsModal open onClose={vi.fn()} />, { state: stateSemFoto });
 
     await user.click(screen.getByRole('button', { name: 'Alterar foto de perfil' }));
-    expect(await screen.findByRole('menuitem', { name: 'Enviar foto' })).toBeInTheDocument();
+    expect(await screen.findByRole('menuitem', { name: 'Enviar do computador' })).toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Remover foto' })).not.toBeInTheDocument();
   });
 

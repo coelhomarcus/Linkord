@@ -787,20 +787,21 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     });
   }, [state.me.avatarColor, state.me.banner, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
 
-  const uploadProfileImage = useCallback(async (
+  const uploadProfileImageBody = useCallback(async (
     field: 'avatar' | 'banner',
-    file: Blob,
+    body: Blob,
+    headers: Record<string, string>,
     crop: CropRect,
     onProgress?: (fraction: number) => void,
     profile?: { avatarColor?: string; displayName?: string; avatar?: string; banner?: string; bio?: string; profileLinks?: string[] }
   ) => {
-    const body = await uploadWithProgress<{ avatar: string }>({
+    const res = await uploadWithProgress<{ avatar: string }>({
       url: `/api/avatar?crop=${encodeURIComponent(JSON.stringify(crop))}`,
-      file,
-      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      file: body,
+      headers,
       onProgress,
     });
-    const url = body.avatar;
+    const url = res.avatar;
     updateProfile({
       avatar: field === 'avatar' ? url : (profile?.avatar ?? state.me.avatar),
       avatarColor: profile?.avatarColor ?? state.me.avatarColor,
@@ -811,6 +812,31 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     });
     return url;
   }, [state.me.avatar, state.me.avatarColor, state.me.banner, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
+
+  const uploadProfileImage = useCallback((
+    field: 'avatar' | 'banner',
+    file: Blob,
+    crop: CropRect,
+    onProgress?: (fraction: number) => void,
+    profile?: { avatarColor?: string; displayName?: string; avatar?: string; banner?: string; bio?: string; profileLinks?: string[] }
+  ) => uploadProfileImageBody(field, file, { 'Content-Type': file.type || 'application/octet-stream' }, crop, onProgress, profile),
+  [uploadProfileImageBody]);
+
+  // "usar URL" flow — the image itself is downloaded server-side (see
+  // handleAvatarUpload's application/json branch), the client just hands
+  // over the URL plus the crop rect picked against a plain <img> preview.
+  const uploadProfileImageFromUrl = useCallback((
+    field: 'avatar' | 'banner',
+    sourceUrl: string,
+    crop: CropRect,
+    onProgress?: (fraction: number) => void,
+    profile?: { avatarColor?: string; displayName?: string; avatar?: string; banner?: string; bio?: string; profileLinks?: string[] }
+  ) => uploadProfileImageBody(
+    field,
+    new Blob([JSON.stringify({ url: sourceUrl })], { type: 'application/json' }),
+    { 'Content-Type': 'application/json' },
+    crop, onProgress, profile
+  ), [uploadProfileImageBody]);
 
   const [menuTarget, setMenuTarget] = useState<{ key: string; participantId: string; kind: TileKind; rect: AnchorRect } | null>(null);
   const menuOpenRef = useRef(false);
@@ -862,7 +888,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         registerRequestChatView, requestChatView,
         activeCallConversationId, joinCall, leaveCall,
         startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted,
-        updateAvatar, updateProfile, uploadProfileImage, menuTarget, openTileMenu, closeTileMenu,
+        updateAvatar, updateProfile, uploadProfileImage, uploadProfileImageFromUrl, menuTarget, openTileMenu, closeTileMenu,
         reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
         hideAudioOnlyTiles, setHideAudioOnlyTiles,
         conversations, activeConversationId, openConversation, openDirect, closeConversation, pinConversation, createGroup, deleteGroup,

@@ -4,6 +4,7 @@ import type { Area } from 'react-easy-crop';
 import { Bell, HardDrive, IdCard, LogOut, Settings2, ShieldCheck, SlidersHorizontal, User, Volume2, VolumeX } from 'lucide-react';
 import { ModerationTab } from './ModerationTab';
 import { ImageCropDialog } from './ImageCropDialog';
+import { ImageUrlDialog } from '../../shared/ImageUrlDialog';
 import { ProfileCard } from '../profile/ProfileCard';
 import { useRoom } from '../../state/RoomContext';
 import { useAuth } from '../../state/AuthContext';
@@ -62,9 +63,13 @@ function DevicePicker({ label, room, kind }: { label: string; room: import('live
   );
 }
 
+type ProfileCropTarget =
+  | { field: 'avatar' | 'banner'; kind: 'file'; file: File; src: string }
+  | { field: 'avatar' | 'banner'; kind: 'url'; url: string; src: string };
+
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const {
-    state, updateProfile, uploadProfileImage, showStats, setShowStats,
+    state, updateProfile, uploadProfileImage, uploadProfileImageFromUrl, showStats, setShowStats,
     notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled, livekitRoom, storageUsage,
   } = useRoom();
   const { logout } = useAuth();
@@ -83,7 +88,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [cropTarget, setCropTarget] = useState<{ field: 'avatar' | 'banner'; file: File; src: string } | null>(null);
+  const [cropTarget, setCropTarget] = useState<ProfileCropTarget | null>(null);
+  const [urlDialogField, setUrlDialogField] = useState<'avatar' | 'banner' | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -154,26 +160,37 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       return;
     }
     setError(null);
-    setCropTarget({ field, file, src: URL.createObjectURL(file) });
+    setCropTarget({ field, kind: 'file', file, src: URL.createObjectURL(file) });
+  }
+
+  function handleUrlPicked(field: 'avatar' | 'banner', url: string) {
+    const setError = field === 'avatar' ? setAvatarError : setBannerError;
+    setError(null);
+    setUrlDialogField(null);
+    setCropTarget({ field, kind: 'url', url, src: url });
   }
 
   function closeCropDialog() {
-    if (cropTarget) URL.revokeObjectURL(cropTarget.src);
+    if (cropTarget?.kind === 'file') URL.revokeObjectURL(cropTarget.src);
     setCropTarget(null);
   }
 
   async function handleCropConfirm(crop: Area) {
     if (!cropTarget) return;
-    const { field, file } = cropTarget;
+    const target = cropTarget;
+    const { field } = target;
     const setUploading = field === 'avatar' ? setUploadingAvatar : setUploadingBanner;
     const setProgress = field === 'avatar' ? setAvatarUploadProgress : setBannerUploadProgress;
     const setError = field === 'avatar' ? setAvatarError : setBannerError;
+    const profile = { avatar, avatarColor, displayName, banner, bio, profileLinks: profileLinksForSubmit() };
     setError(null);
     setProgress(0);
     setUploading(true);
     closeCropDialog();
     try {
-      const url = await uploadProfileImage(field, file, crop, setProgress, { avatar, avatarColor, displayName, banner, bio, profileLinks: profileLinksForSubmit() });
+      const url = target.kind === 'file'
+        ? await uploadProfileImage(field, target.file, crop, setProgress, profile)
+        : await uploadProfileImageFromUrl(field, target.url, crop, setProgress, profile);
       if (field === 'avatar') setAvatar(url); else setBanner(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Falha ao enviar ${field === 'avatar' ? 'a foto' : 'o banner'}.`);
@@ -229,9 +246,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   }}
                   online
                   onAvatarUpload={() => avatarFileInputRef.current?.click()}
+                  onAvatarUploadUrl={() => setUrlDialogField('avatar')}
                   onAvatarRemove={handleRemoveAvatar}
                   avatarUploading={uploadingAvatar}
                   onBannerUpload={() => bannerFileInputRef.current?.click()}
+                  onBannerUploadUrl={() => setUrlDialogField('banner')}
                   onBannerRemove={handleRemoveBanner}
                   bannerUploading={uploadingBanner}
                   onDisplayNameChange={setDisplayName}
@@ -289,6 +308,13 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 title={cropTarget?.field === 'banner' ? 'Recortar banner' : 'Recortar foto de perfil'}
                 onCancel={closeCropDialog}
                 onConfirm={handleCropConfirm}
+              />
+
+              <ImageUrlDialog
+                open={urlDialogField !== null}
+                title={urlDialogField === 'banner' ? 'URL do banner' : 'URL da foto de perfil'}
+                onOpenChange={(next) => { if (!next) setUrlDialogField(null); }}
+                onConfirm={(url) => handleUrlPicked(urlDialogField!, url)}
               />
             </TabsPanel>
 

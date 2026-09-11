@@ -2,14 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react';
 import type { Area } from 'react-easy-crop';
 import { motion } from 'motion/react';
-import { Camera, Check, LogOut, Pencil, Search, Trash2, UserPlus, X } from 'lucide-react';
+import { Camera, Check, Link2, LogOut, Pencil, Search, Trash2, Upload, UserPlus, X } from 'lucide-react';
 import { useAnimatedSidebar } from '@/components/motion/animated-sidebar';
 import { Drawer } from '@/components/motion/drawer';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { ImageCropDialog } from '@/features/settings/ImageCropDialog';
 import { Avatar } from '@/shared/Avatar';
 import { ConfirmDialog } from '@/shared/ConfirmDialog';
+import { ImageUrlDialog } from '@/shared/ImageUrlDialog';
 import { UploadProgressBar } from '@/shared/UploadProgressBar';
 import { formatMB } from '@/shared/lib/formatBytes';
 import { SPRING_LAYOUT } from '@/shared/lib/ease';
@@ -50,7 +52,8 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<PublicUser | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [cropTarget, setCropTarget] = useState<{ file: File; src: string } | null>(null);
+  const [cropTarget, setCropTarget] = useState<{ kind: 'file'; file: File; src: string } | { kind: 'url'; url: string; src: string } | null>(null);
+  const [urlDialogOpen, setUrlDialogOpen] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
   const [avatarError, setAvatarError] = useState<string | null>(null);
@@ -68,8 +71,9 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
     setAddQuery('');
     setAddSelected(new Set());
     setAvatarError(null);
+    setUrlDialogOpen(false);
     setCropTarget((prev) => {
-      if (prev) URL.revokeObjectURL(prev.src);
+      if (prev?.kind === 'file') URL.revokeObjectURL(prev.src);
       return null;
     });
   }, [open]);
@@ -143,12 +147,18 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
       return;
     }
     setAvatarError(null);
-    setCropTarget({ file, src: URL.createObjectURL(file) });
+    setCropTarget({ kind: 'file', file, src: URL.createObjectURL(file) });
+  }
+
+  function handleAvatarUrlPicked(url: string) {
+    setAvatarError(null);
+    setUrlDialogOpen(false);
+    setCropTarget({ kind: 'url', url, src: url });
   }
 
   function closeCropDialog() {
     setCropTarget((prev) => {
-      if (prev) URL.revokeObjectURL(prev.src);
+      if (prev?.kind === 'file') URL.revokeObjectURL(prev.src);
       return null;
     });
   }
@@ -156,18 +166,25 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
   async function handleAvatarCropConfirm(crop: Area) {
     if (!conversation || !cropTarget) return;
     const conversationId = conversation.id;
-    const { file } = cropTarget;
+    const target = cropTarget;
     setAvatarError(null);
     setAvatarUploadProgress(0);
     setUploadingAvatar(true);
     closeCropDialog();
     try {
-      const body = await uploadWithProgress<{ avatar: string }>({
-        url: `/api/avatar?crop=${encodeURIComponent(JSON.stringify(crop))}`,
-        file,
-        headers: { 'Content-Type': file.type || 'application/octet-stream' },
-        onProgress: setAvatarUploadProgress,
-      });
+      const body = target.kind === 'file'
+        ? await uploadWithProgress<{ avatar: string }>({
+          url: `/api/avatar?crop=${encodeURIComponent(JSON.stringify(crop))}`,
+          file: target.file,
+          headers: { 'Content-Type': target.file.type || 'application/octet-stream' },
+          onProgress: setAvatarUploadProgress,
+        })
+        : await uploadWithProgress<{ avatar: string }>({
+          url: `/api/avatar?crop=${encodeURIComponent(JSON.stringify(crop))}`,
+          file: new Blob([JSON.stringify({ url: target.url })], { type: 'application/json' }),
+          headers: { 'Content-Type': 'application/json' },
+          onProgress: setAvatarUploadProgress,
+        });
       updateGroupAvatar(conversationId, body.avatar);
     } catch (err) {
       setAvatarError(err instanceof Error ? err.message : 'Falha ao enviar a foto.');
@@ -190,15 +207,30 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
           <div className="relative">
             <GroupAvatar title={conversation.title || 'Grupo'} avatar={conversation.avatar} size={64} />
             {isAdmin && (
-              <button
-                type="button"
-                onClick={() => avatarFileInputRef.current?.click()}
-                disabled={uploadingAvatar}
-                aria-label="Trocar foto do grupo"
-                className="absolute -bottom-1 -right-1 grid size-6 place-items-center rounded-full border border-white/10 bg-[rgb(20_20_22)] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
-              >
-                <Camera size={12} />
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  disabled={uploadingAvatar}
+                  render={
+                    <button
+                      type="button"
+                      aria-label="Trocar foto do grupo"
+                      className="absolute -bottom-1 -right-1 grid size-6 place-items-center rounded-full border border-white/10 bg-[rgb(20_20_22)] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+                    />
+                  }
+                >
+                  <Camera size={12} />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center">
+                  <DropdownMenuItem onClick={() => avatarFileInputRef.current?.click()}>
+                    <Upload size={14} />
+                    <span>Enviar do computador</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setUrlDialogOpen(true)}>
+                    <Link2 size={14} />
+                    <span>Usar URL</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
           {isAdmin && (
@@ -388,6 +420,13 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
         title="Recortar foto do grupo"
         onCancel={closeCropDialog}
         onConfirm={handleAvatarCropConfirm}
+      />
+
+      <ImageUrlDialog
+        open={urlDialogOpen}
+        title="URL da foto do grupo"
+        onOpenChange={setUrlDialogOpen}
+        onConfirm={handleAvatarUrlPicked}
       />
 
       <ConfirmDialog

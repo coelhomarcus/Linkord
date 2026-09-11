@@ -68,6 +68,13 @@ export interface RoomContextValue {
     onProgress?: (fraction: number) => void,
     profile?: { avatar?: string; avatarColor?: string; displayName?: string; banner?: string; bio?: string; profileLinks?: string[] }
   ) => Promise<string>;
+  uploadProfileImageFromUrl: (
+    field: 'avatar' | 'banner',
+    sourceUrl: string,
+    crop: CropRect,
+    onProgress?: (fraction: number) => void,
+    profile?: { avatar?: string; avatarColor?: string; displayName?: string; banner?: string; bio?: string; profileLinks?: string[] }
+  ) => Promise<string>;
   menuTarget: { key: string; participantId: string; kind: TileKind; rect: AnchorRect } | null;
   openTileMenu: (key: string, participantId: string, kind: TileKind, rect: AnchorRect) => void;
   closeTileMenu: () => boolean;

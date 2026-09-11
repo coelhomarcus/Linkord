@@ -39,7 +39,7 @@ const UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
 const UPLOAD_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 // avatar — same folder/route as attachments, smaller cap, one per account,
 // excluded from the attachment quota.
-const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+const MAX_AVATAR_BYTES = 12 * 1024 * 1024;
 
 // required now that identity lives in the DB — the process won't boot
 // without it (see bootstrap in index.ts).
