@@ -3,7 +3,7 @@ import { config } from '../config/env.js';
 import { db } from '../db/client.js';
 import { messages, conversationMembers, users, type Message, type Attachment } from '../db/schema.js';
 import { participants, send } from '../realtime/participants.js';
-import { ALLOWED_REACTIONS } from '../realtime/reactions.js';
+import { isSingleEmoji } from './emoji.js';
 import {
   broadcastToConversationMembers,
   conversationDisplayName,
@@ -369,7 +369,7 @@ async function handleChatReact(socket: AppSocket, msg: { msgId?: unknown; emoji?
   if (!p || p.socket !== socket) return;
   const msgId = Number(msg.msgId);
   const emoji = String(msg.emoji || '');
-  if (!Number.isFinite(msgId) || !ALLOWED_REACTIONS.has(emoji)) return;
+  if (!Number.isFinite(msgId) || !isSingleEmoji(emoji)) return;
   const [existing] = await db.select().from(messages).where(eq(messages.id, msgId)).limit(1);
   if (!existing) return;
   if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return;

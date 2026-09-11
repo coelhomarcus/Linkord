@@ -19,8 +19,7 @@ export interface Participant {
   speaking: boolean;
 }
 
-export const ALLOWED_REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉'] as const;
-export type ReactionEmoji = (typeof ALLOWED_REACTIONS)[number];
+export type ReactionEmoji = string;
 
 export interface ChatReplyRef {
   msgId: number;

@@ -5,17 +5,40 @@ import { Avatar } from '@/shared/Avatar';
 import { ChatAttachment } from '@/features/chat/ChatAttachment';
 import { ChatMessageText } from '@/features/chat/ChatMessageText';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/components/ui/emoji-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
 import { formatTime } from '@/shared/lib/formatChatTime';
 import { mentionsUser } from '@/shared/lib/mentions';
 import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
-import { ALLOWED_REACTIONS } from '@/types/protocol';
 import type { ChatMessage, PublicUser, ReactionEmoji } from '@/types/protocol';
 
 const DELETED_AUTHOR_NAME = 'Usuario apagado';
+
+function ReactionButton({ onPick }: { onPick: (emoji: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Reagir" />}>
+        <SmilePlus size={13} />
+      </PopoverTrigger>
+      <PopoverContent className="w-75 p-0" side="top" align="center">
+        <EmojiPicker
+          className="h-80 w-full"
+          onEmojiSelect={({ emoji }) => {
+            onPick(emoji);
+            setOpen(false);
+          }}
+        >
+          <EmojiPickerSearch />
+          <EmojiPickerContent />
+        </EmojiPicker>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 interface MessageRowProps {
   message: ChatMessage;
@@ -31,7 +54,6 @@ interface MessageRowProps {
 export function MessageRow({ message, showHeader, highlighted, allUsers, mentionLookup, onOpenProfile, onReply, onJumpTo }: MessageRowProps) {
   const { state, deleteChatMessage, editChatMessage, reactToChatMessage, editingMsgId, setEditingMsgId } = useRoom();
   const [editText, setEditText] = useState(message.text);
-  const [reactOpen, setReactOpen] = useState(false);
   const isMine = message.id === state.me.userId;
   const isMod = state.me.role === 'admin';
   const canDelete = isMine || isMod;
@@ -63,11 +85,6 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
       setEditingMsgId(null);
       setEditText(message.text);
     }
-  }
-
-  function pickReaction(emoji: ReactionEmoji) {
-    reactToChatMessage(message.msgId, emoji);
-    setReactOpen(false);
   }
 
   return (
@@ -177,22 +194,15 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
       </div>
 
       {/* Desktop hover toolbar — right-click (GlobalContextMenu) covers the
-          same actions, this is just the discoverable, no-right-click path. */}
-      <div className="absolute right-3 top-0 hidden -translate-y-1/2 items-center gap-0.5 rounded-full border border-white/10 bg-[rgb(20_20_23)] p-0.5 opacity-0 shadow-popover transition-opacity group-hover/row:opacity-100 md:group-hover/row:flex">
-        <Popover open={reactOpen} onOpenChange={setReactOpen}>
-          <PopoverTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Reagir" />}>
-            <SmilePlus size={13} />
-          </PopoverTrigger>
-          <PopoverContent className="w-auto border-white/10 bg-[rgb(20_20_23)] p-1.5" side="top" align="center">
-            <div className="flex gap-1">
-              {ALLOWED_REACTIONS.map((emoji) => (
-                <button key={emoji} type="button" onClick={() => pickReaction(emoji)} className="rounded-md p-1.5 text-[18px] leading-none hover:bg-white/10">
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          </PopoverContent>
-        </Popover>
+          same actions, this is just the discoverable, no-right-click path.
+          Stays laid out (flex) at all times at md+ and only fades via
+          opacity/pointer-events on hover — toggling `display` here instead
+          would collapse the reaction trigger's anchor rect to zero the
+          moment the mouse leaves the row (e.g. to move onto the open emoji
+          picker, which is portaled outside this row), snapping the open
+          popover to the viewport's top-left corner. */}
+      <div className="absolute right-3 top-0 hidden -translate-y-1/2 items-center gap-0.5 rounded-full border border-white/10 bg-[rgb(20_20_23)] p-0.5 opacity-0 shadow-popover transition-opacity pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto md:flex">
+        <ReactionButton onPick={(emoji) => reactToChatMessage(message.msgId, emoji)} />
         <Button type="button" variant="ghost" size="icon-xs" aria-label="Responder" onClick={onReply}>
           <Reply size={13} />
         </Button>
@@ -208,22 +218,15 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
         )}
       </div>
 
-      {/* Mobile — no hover, so the toolbar above is unreachable; a tap menu
-          covers the same actions. */}
-      <div className="absolute right-3 top-1 md:hidden">
+      {/* Mobile — no hover, so the toolbar above is unreachable; a persistent
+          reaction button plus a tap menu for the rest cover the same actions. */}
+      <div className="absolute right-3 top-1 flex items-center gap-0.5 md:hidden">
+        <ReactionButton onPick={(emoji) => reactToChatMessage(message.msgId, emoji)} />
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Acoes" />}>
             <MoreHorizontal size={13} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <div className="flex gap-1 px-1 py-1">
-              {ALLOWED_REACTIONS.map((emoji) => (
-                <button key={emoji} type="button" onClick={() => reactToChatMessage(message.msgId, emoji)} className="rounded-md p-1.5 text-[18px] leading-none hover:bg-muted">
-                  {emoji}
-                </button>
-              ))}
-            </div>
-            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onReply}><Reply size={14} />Responder</DropdownMenuItem>
             {isMine && <DropdownMenuItem onClick={startEdit}><Pencil size={14} />Editar</DropdownMenuItem>}
             {canDelete && <DropdownMenuItem variant="destructive" onClick={() => deleteChatMessage(message.msgId)}><Trash2 size={14} />Apagar</DropdownMenuItem>}

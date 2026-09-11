@@ -3,9 +3,9 @@ import type { ReactNode } from 'react';
 import type { ContextMenuRootActions } from '@base-ui/react/context-menu';
 import { Copy, Download, Pencil, Reply, Trash2 } from 'lucide-react';
 import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
+import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/components/ui/emoji-picker';
 import { useRoom } from '../state/RoomContext';
 import { downloadFile } from '../shared/lib/download';
-import { ALLOWED_REACTIONS } from '../types/protocol';
 
 interface GlobalContextMenuProps {
   children: ReactNode;
@@ -107,21 +107,14 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
       onOpenChange={(open) => { if (open) setHasSelection(!!window.getSelection()?.toString()); }}
     >
       <ContextMenuTrigger className="contents">{children}</ContextMenuTrigger>
-      <ContextMenuContent className="w-64">
+      <ContextMenuContent className="w-75">
         {showMessageBlock && targetMessage && (
           <>
-            <div className="flex items-center justify-between gap-0.5 px-1 py-1">
-              {ALLOWED_REACTIONS.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => reactToChatMessage(targetMessage.msgId, emoji)}
-                  className="rounded-md p-1 text-base leading-none transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
+            <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => reactToChatMessage(targetMessage.msgId, emoji)}>
+              <EmojiPickerSearch />
+              <EmojiPickerContent />
+            </EmojiPicker>
+            <ContextMenuSeparator />
             <ContextMenuItem onClick={() => setReplyingTo(targetMessage)}>
               <Reply size={14} />
               <span>Responder</span>

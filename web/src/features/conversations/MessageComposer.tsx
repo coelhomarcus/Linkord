@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, ClipboardEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { ArrowUp, Paperclip, Reply, X } from 'lucide-react';
+import { ArrowUp, Paperclip, Reply, Smile, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/components/ui/emoji-picker';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
 import { DocumentAttachmentCard } from '@/shared/DocumentAttachmentCard';
 import { UploadProgressBar } from '@/shared/UploadProgressBar';
@@ -23,7 +25,9 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
   const [attachError, setAttachError] = useState<string | null>(null);
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingFilesRef = useRef<PendingAttachment[]>([]);
   const isSubmittingRef = useRef(false);
   const disabled = !state.joined || activeUploadId !== null;
@@ -125,6 +129,21 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
     addFiles(files);
   }
 
+  function insertEmoji(emoji: string) {
+    const el = textareaRef.current;
+    const start = el?.selectionStart ?? text.length;
+    const end = el?.selectionEnd ?? text.length;
+    setText(text.slice(0, start) + emoji + text.slice(end));
+    setEmojiPickerOpen(false);
+    // caret restore has to wait for the controlled value to actually reach
+    // the DOM (this same tick's setText hasn't rendered yet).
+    requestAnimationFrame(() => {
+      const caret = start + emoji.length;
+      el?.focus();
+      el?.setSelectionRange(caret, caret);
+    });
+  }
+
   function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     const files = Array.from(event.clipboardData.items)
       .filter((item) => item.type.startsWith('image/'))
@@ -204,6 +223,7 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
           <Paperclip size={18} />
         </Button>
         <Textarea
+          ref={textareaRef}
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={handleKeyDown}
@@ -214,6 +234,28 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
           placeholder={pendingFiles.length ? 'Adicionar legenda' : 'Mensagem'}
           className="min-h-9 max-h-40 flex-1 resize-none border-none bg-transparent px-1 py-1.5 text-body shadow-none focus-visible:ring-0"
         />
+        <Popover open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
+          <PopoverTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Inserir emoji"
+                disabled={disabled}
+                className="flex-none rounded-full text-text-muted hover:text-text-primary"
+              />
+            }
+          >
+            <Smile size={18} />
+          </PopoverTrigger>
+          <PopoverContent className="w-75 p-0" side="top" align="end">
+            <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => insertEmoji(emoji)}>
+              <EmojiPickerSearch />
+              <EmojiPickerContent />
+            </EmojiPicker>
+          </PopoverContent>
+        </Popover>
         <Button
           type="button"
           size="icon"

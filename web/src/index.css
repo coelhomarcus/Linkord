@@ -111,26 +111,6 @@ html, body {
   border-radius: 0;
 }
 
-.epr-dark-theme {
-  --epr-dark-bg-color: var(--color-bg-floating) !important;
-  --epr-dark-category-label-bg-color: var(--color-bg-floating) !important;
-  --epr-dark-search-input-bg-color: var(--color-bg-textarea) !important;
-  --epr-dark-search-input-bg-color-active: var(--color-bg-textarea) !important;
-  --epr-dark-text-color: var(--color-text-primary) !important;
-  --epr-dark-category-icon-active-color: var(--color-blurple) !important;
-  --epr-dark-highlight-color: var(--color-blurple) !important;
-  --epr-dark-hover-bg-color: var(--color-bg-hover) !important;
-  --epr-dark-focus-bg-color: var(--color-bg-hover) !important;
-  --epr-dark-reactions-bg-color: var(--color-bg-hover) !important;
-  --epr-dark-picker-border-color: var(--color-border-strong) !important;
-  --epr-picker-border-radius: var(--radius-md) !important;
-  --epr-header-padding: 8px var(--epr-horizontal-padding) !important;
-}
-
-.epr-emoji-category-label {
-  text-transform: none !important;
-}
-
 button:not(:disabled) {
   cursor: pointer;
 }

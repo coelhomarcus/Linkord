@@ -2,12 +2,16 @@ import { useState } from 'react';
 import { Headphones, HeadphoneOff, MessageCircle, Mic, MicOff, Monitor, MonitorX, PhoneOff, Smile, Video, VideoOff, X } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { useParticipantMedia } from './useLiveKitTrack';
-import { ALLOWED_REACTIONS } from '../../types/protocol';
 import type { ReactionEmoji } from '../../types/protocol';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/shared/lib/utils';
+
+// Floating call reactions (burst animation on everyone's screen) stay a
+// short fixed set — server (realtime/reactions.ts) enforces the same list.
+// Unrelated to per-message chat reactions, which now accept any emoji.
+const CALL_REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉'] as const;
 
 interface CallControlBarProps {
   chatOpen: boolean;
@@ -57,7 +61,7 @@ export function CallControlBar({ chatOpen, onToggleChat }: CallControlBarProps) 
           </PopoverTrigger>
           <PopoverContent className="w-auto p-1.5" side="top">
             <div className="flex gap-1">
-              {ALLOWED_REACTIONS.map((emoji) => (
+              {CALL_REACTIONS.map((emoji) => (
                 <button
                   key={emoji}
                   type="button"
