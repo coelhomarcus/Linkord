@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="web/public/icon-512.png" alt="Linkord" width="120" />
+  <img src="web/public/favicon.svg" alt="Linkord" width="120" />
 </p>
 
 <h1 align="center">Linkord</h1>

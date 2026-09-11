@@ -103,7 +103,7 @@ function flush(conversationId: string): void {
   try {
     const notif = new Notification(title, {
       body,
-      icon: '/icon-192.png',
+      icon: '/favicon.svg',
       tag: `chat-${conversationId}`,
     });
     notif.onclick = () => {
