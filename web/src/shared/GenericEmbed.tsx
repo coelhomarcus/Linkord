@@ -10,6 +10,10 @@ import { VideoPlayer } from './MediaPlayers';
 interface GenericEmbedProps {
   embed: DetectedEmbed;
   className?: string;
+  /** True when this is the message's only content — drops the outer
+   * border/rounding so the card fills the bubble instead of sitting in a
+   * second frame nested inside it. */
+  edgeToEdge?: boolean;
 }
 
 const KNOWN_SITE: Partial<Record<DetectedEmbed['kind'], { name: string; favicon: string }>> = {
@@ -54,7 +58,8 @@ function TwitchPlayer({ embed }: { embed: DetectedEmbed }) {
   );
 }
 
-export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
+export function GenericEmbed({ embed, className = '', edgeToEdge }: GenericEmbedProps) {
+  const cardBorderClass = edgeToEdge ? 'rounded-2xl border-0' : 'rounded-md border border-white/10';
   const { url } = embed;
   const [data, setData] = useState<LinkPreviewData | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
@@ -78,7 +83,7 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
 
   if (!data) {
     return (
-      <div className={`flex w-full max-w-sm animate-pulse flex-col gap-1.5 rounded-md border border-white/10 bg-bg-tertiary px-3 py-2.5 ${className}`}>
+      <div className={`flex w-full max-w-sm animate-pulse flex-col gap-1.5 ${cardBorderClass} bg-bg-tertiary px-3 py-2.5 ${className}`}>
         <div className="h-2.5 w-1/3 rounded-sm bg-bg-hover" />
         <div className="h-3.5 w-3/4 rounded-sm bg-bg-hover" />
       </div>
@@ -91,7 +96,7 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className={`flex w-full max-w-sm items-center gap-2 rounded-md border border-white/10 bg-bg-tertiary px-3 py-2.5 text-label text-text-muted transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${className}`}
+        className={`flex w-full max-w-sm items-center gap-2 ${cardBorderClass} bg-bg-tertiary px-3 py-2.5 text-label text-text-muted transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${className}`}
       >
         <ExternalLink size={14} className="flex-none" />
         <span className="truncate">{data.siteName}</span>
@@ -140,7 +145,7 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
   }
 
   return (
-    <div className={`flex w-full max-w-sm flex-col overflow-hidden rounded-md border border-white/10 bg-bg-tertiary ${className}`}>
+    <div className={`flex w-full max-w-sm flex-col overflow-hidden bg-bg-tertiary ${cardBorderClass} ${className}`}>
       <div className="flex flex-col gap-1 px-3 pt-2.5 pb-2">
         <div className="flex items-center gap-1.5 text-caption text-text-muted">
           {favicon && <img src={favicon} alt="" onError={() => setFaviconFailed(true)} className="h-3.5 w-3.5 flex-none rounded-[3px]" />}

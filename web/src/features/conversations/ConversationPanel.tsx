@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Avatar } from '@/shared/Avatar';
 import { ChatAttachment, isEdgeToEdgeMime } from '@/features/chat/ChatAttachment';
 import { ChatMessageText } from '@/features/chat/ChatMessageText';
+import { firstEmbed } from '@/shared/lib/chatEmbeds';
 import { UploadProgressBar } from '@/shared/UploadProgressBar';
 import { formatDateHeading, formatTime } from '@/shared/lib/formatChatTime';
 import { formatFileSize, formatSizeLimit } from '@/shared/lib/formatBytes';
@@ -83,10 +84,14 @@ function MessageRow({
   const replyAuthor = message.replyTo?.authorId ? allUsers.get(message.replyTo.authorId) : undefined;
   const mentionsMe = !isMine && mentionsUser(message.text, mentionLookup, state.me.userId);
   const isEditing = editingMsgId === message.msgId;
-  // A lone video/audio attachment (no caption, no reply) fills the bubble
+  // A lone attachment or link embed (no caption, no reply) fills the bubble
   // edge-to-edge instead of sitting in a second frame nested inside it.
   const soloAttachment = message.attachments?.length === 1 ? message.attachments[0] : null;
-  const edgeToEdge = !isEditing && !message.text.trim() && !message.replyTo && !!soloAttachment && isEdgeToEdgeMime(soloAttachment.mime);
+  const soloEmbed = !message.attachments?.length ? firstEmbed(message.text) : null;
+  const isSoloEmbedMessage = !!soloEmbed && message.text.trim() === soloEmbed.url;
+  const edgeToEdge = !isEditing && !message.replyTo && (
+    (!!soloAttachment && !message.text.trim() && isEdgeToEdgeMime(soloAttachment.mime)) || isSoloEmbedMessage
+  );
 
   function saveEdit() {
     const trimmed = editText.trim();
@@ -194,7 +199,7 @@ function MessageRow({
                 </div>
               ) : (
                 <>
-                  <ChatMessageText text={message.text} mentionLookup={mentionLookup} myUserId={state.me.userId} />
+                  <ChatMessageText text={message.text} mentionLookup={mentionLookup} myUserId={state.me.userId} edgeToEdge={edgeToEdge} />
                   {message.editedAt && <span className="ml-1 text-caption opacity-70">(editado)</span>}
                   {message.attachments?.map((attachment) => (
                     <ChatAttachment key={attachment.id} attachment={attachment} edgeToEdge={edgeToEdge} />

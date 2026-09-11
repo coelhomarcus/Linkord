@@ -22,24 +22,28 @@ function EmbedFailedFallback({ url, className }: { url: string; className: strin
 interface LinkPreviewProps {
   embed: DetectedEmbed;
   className?: string;
+  /** True when this is the message's only content — drops the outer
+   * border/rounding so the preview fills the bubble instead of sitting in
+   * a second frame nested inside it. */
+  edgeToEdge?: boolean;
 }
 
-export function LinkPreview({ embed, className = '' }: LinkPreviewProps) {
+export function LinkPreview({ embed, className = '', edgeToEdge }: LinkPreviewProps) {
   const [failed, setFailed] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
   if (embed.kind === 'youtube' || embed.kind === 'twitch-channel' || embed.kind === 'twitch-vod' || embed.kind === 'twitch-clip' || embed.kind === 'link') {
-    return <GenericEmbed key={embed.url} embed={embed} className={className} />;
+    return <GenericEmbed key={embed.url} embed={embed} className={className} edgeToEdge={edgeToEdge} />;
   }
 
   if (failed) return <EmbedFailedFallback url={embed.url} className={className} />;
 
   if (embed.kind === 'video') {
-    return <VideoPlayer src={embed.url} className={className} onError={() => setFailed(true)} />;
+    return <VideoPlayer src={embed.url} className={edgeToEdge ? 'rounded-2xl border-0' : className} onError={() => setFailed(true)} />;
   }
 
   if (embed.kind === 'audio') {
-    return <AudioPlayer src={embed.url} className={className} onError={() => setFailed(true)} />;
+    return <AudioPlayer src={embed.url} className={edgeToEdge ? 'w-80 max-w-full rounded-2xl border-0 bg-transparent shadow-none' : className} onError={() => setFailed(true)} />;
   }
 
   return (
@@ -50,7 +54,7 @@ export function LinkPreview({ embed, className = '' }: LinkPreviewProps) {
           alt=""
           loading="lazy"
           onError={() => setFailed(true)}
-          className="h-auto max-h-70 w-auto max-w-[min(24rem,100%)] rounded-md border border-white/10"
+          className={`h-auto max-h-70 w-auto max-w-[min(24rem,100%)] ${edgeToEdge ? 'rounded-2xl' : 'rounded-md border border-white/10'}`}
         />
       </button>
       <ImageLightbox src={embed.url} alt="" open={lightboxOpen} onOpenChange={setLightboxOpen} />

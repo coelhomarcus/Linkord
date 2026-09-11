@@ -36,15 +36,18 @@ interface ChatMessageTextProps {
   text: string;
   mentionLookup?: Map<string, PublicUser>;
   myUserId?: string | null;
+  /** True when this message is nothing but the embed's own URL — drops the
+   * embed's own top margin since there's no caption line above it. */
+  edgeToEdge?: boolean;
 }
 
-export function ChatMessageText({ text, mentionLookup, myUserId }: ChatMessageTextProps) {
+export function ChatMessageText({ text, mentionLookup, myUserId, edgeToEdge }: ChatMessageTextProps) {
   const embed = firstEmbed(text);
   const remaining = embed && text.trim() === embed.url ? '' : text;
   return (
     <>
       {remaining && <p className="whitespace-pre-wrap wrap-break-word">{renderRich(remaining, mentionLookup, myUserId)}</p>}
-      {embed && <ChatEmbed embed={embed} />}
+      {embed && <ChatEmbed embed={embed} edgeToEdge={!remaining && edgeToEdge} />}
     </>
   );
 }

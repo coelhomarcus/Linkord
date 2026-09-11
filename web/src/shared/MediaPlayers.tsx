@@ -188,7 +188,7 @@ function VideoChrome({
 }: VideoChromeProps) {
   return (
     <div
-      className={cn('group/player @container/player relative overflow-hidden rounded-md border border-white/10 bg-black shadow-panel', className)}
+      className={cn('group/player @container/player relative overflow-hidden rounded-md border border-white/10 bg-black', className)}
       style={style}
       data-video-variant={variant}
     >
@@ -428,7 +428,7 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
 
   return (
     <div
-      className={cn('@container/audio flex w-80 min-w-0 max-w-full flex-col gap-1.5 rounded-md border border-white/10 bg-bg-tertiary px-2.5 py-2 shadow-panel', className)}
+      className={cn('@container/audio flex w-80 min-w-0 max-w-full flex-col gap-1.5 rounded-md border border-white/10 bg-bg-tertiary px-2.5 py-2', className)}
       data-download-url={src}
       data-download-name={title || 'audio'}
     >

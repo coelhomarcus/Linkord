@@ -4,6 +4,7 @@ import type { ChatAttachment as ChatAttachmentData } from '../../types/protocol'
 import { ImageLightbox } from '../../shared/ImageLightbox';
 import { AudioPlayer, VideoPlayer } from '../../shared/MediaPlayers';
 import { formatFileSize } from '../../shared/lib/formatBytes';
+import { cn } from '../../shared/lib/utils';
 
 const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const VIDEO_MIME_TYPES = new Set(['video/mp4', 'video/webm', 'video/ogg']);
@@ -11,10 +12,10 @@ const AUDIO_MIME_TYPES = new Set(['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio
 
 /** Whether this attachment can render flush with the bubble's own edges
  * (see `edgeToEdge` on ChatAttachment) instead of sitting in its own
- * bordered card — only video/audio have chrome substantial enough to read
- * as the bubble itself rather than a floating box. */
+ * bordered card — image/video/audio all have chrome substantial enough to
+ * read as the bubble itself rather than a floating box nested inside it. */
 export function isEdgeToEdgeMime(mime: string): boolean {
-  return VIDEO_MIME_TYPES.has(mime) || AUDIO_MIME_TYPES.has(mime);
+  return IMAGE_MIME_TYPES.has(mime) || VIDEO_MIME_TYPES.has(mime) || AUDIO_MIME_TYPES.has(mime);
 }
 
 interface ChatAttachmentProps {
@@ -32,12 +33,12 @@ export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) 
   if (IMAGE_MIME_TYPES.has(attachment.mime)) {
     return (
       <>
-        <button type="button" onClick={() => setLightboxOpen(true)} className="mt-1.5 block w-fit cursor-zoom-in">
+        <button type="button" onClick={() => setLightboxOpen(true)} className={cn('block w-fit cursor-zoom-in', !edgeToEdge && 'mt-1.5')}>
           <img
             src={url}
             alt={attachment.name}
             loading="lazy"
-            className="max-h-80 max-w-[min(24rem,100%)] rounded-md border border-white/10 object-contain"
+            className={cn('max-h-80 max-w-[min(24rem,100%)] object-contain', edgeToEdge ? 'rounded-2xl' : 'rounded-md border border-white/10')}
           />
         </button>
         <ImageLightbox src={url} alt={attachment.name} open={lightboxOpen} onOpenChange={setLightboxOpen} />

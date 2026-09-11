@@ -109,10 +109,15 @@ export function PromptInput({
     const measurement = measurementRef.current;
     if (!textarea || !measurement || textarea.value !== currentValue) return;
 
+    // The textarea is border-box and carries its own pt-1.5 (the measurer
+    // mirrors it below so scrollHeight already includes it) — the row-based
+    // floor/ceiling need that same padding added, or they undershoot by it
+    // and clip/scroll a line that should fit.
     const lineHeight = 24;
+    const paddingY = 6;
     const nextHeight = Math.min(
-      Math.max(measurement.scrollHeight, minRows * lineHeight),
-      maxRows * lineHeight,
+      Math.max(measurement.scrollHeight, minRows * lineHeight + paddingY),
+      maxRows * lineHeight + paddingY,
     );
     const height = `${nextHeight}px`;
     if (textarea.style.height !== height) textarea.style.height = height;
@@ -176,7 +181,7 @@ export function PromptInput({
       <div
         ref={measurementRef}
         aria-hidden="true"
-        className="pointer-events-none invisible absolute inset-x-2 top-0 whitespace-pre-wrap px-2 text-sm leading-6 [overflow-wrap:break-word]"
+        className="pointer-events-none invisible absolute inset-x-2 top-0 whitespace-pre-wrap px-2 pt-1.5 text-sm leading-6 [overflow-wrap:break-word]"
       >
         {`${currentValue}\u200b`}
       </div>
