@@ -28,9 +28,11 @@ interface ProfileCardProps {
   onAvatarClick?: () => void;
   onBannerClick?: () => void;
   onAvatarUpload?: () => void;
+  onAvatarUploadUrl?: () => void;
   onAvatarRemove?: () => void;
   avatarUploading?: boolean;
   onBannerUpload?: () => void;
+  onBannerUploadUrl?: () => void;
   onBannerRemove?: () => void;
   bannerUploading?: boolean;
   className?: string;
@@ -76,8 +78,8 @@ function EditableBio({ value, onChange }: { value: string; onChange: (value: str
 
 export function ProfileCard({
   user, online, onAvatarClick, onBannerClick,
-  onAvatarUpload, onAvatarRemove, avatarUploading,
-  onBannerUpload, onBannerRemove, bannerUploading,
+  onAvatarUpload, onAvatarUploadUrl, onAvatarRemove, avatarUploading,
+  onBannerUpload, onBannerUploadUrl, onBannerRemove, bannerUploading,
   className,
   onDisplayNameChange, onBioChange, onAvatarColorChange,
   editableLinks, onLinkChange, onAddLink, onRemoveLink,
@@ -106,8 +108,14 @@ export function ProfileCard({
             <DropdownMenuContent align="center">
               <DropdownMenuItem onClick={onBannerUpload}>
                 <Upload size={14} />
-                <span>Enviar banner</span>
+                <span>Enviar do computador</span>
               </DropdownMenuItem>
+              {onBannerUploadUrl && (
+                <DropdownMenuItem onClick={onBannerUploadUrl}>
+                  <Link2 size={14} />
+                  <span>Usar URL</span>
+                </DropdownMenuItem>
+              )}
               {user.banner && onBannerRemove && (
                 <DropdownMenuItem variant="destructive" onClick={onBannerRemove}>
                   <Trash2 size={14} />
@@ -150,8 +158,14 @@ export function ProfileCard({
                   <DropdownMenuContent align="start">
                     <DropdownMenuItem onClick={onAvatarUpload}>
                       <Upload size={14} />
-                      <span>Enviar foto</span>
+                      <span>Enviar do computador</span>
                     </DropdownMenuItem>
+                    {onAvatarUploadUrl && (
+                      <DropdownMenuItem onClick={onAvatarUploadUrl}>
+                        <Link2 size={14} />
+                        <span>Usar URL</span>
+                      </DropdownMenuItem>
+                    )}
                     {user.avatar && onAvatarRemove && (
                       <DropdownMenuItem variant="destructive" onClick={onAvatarRemove}>
                         <Trash2 size={14} />
