@@ -160,13 +160,18 @@ function MessageRow({
         )}
 
         <div className={cn('relative flex items-center gap-1.5', isMine && 'flex-row-reverse')}>
-          <MessageBubble align={isMine ? 'end' : 'start'} variant={mentionsMe ? 'tint' : isMine ? 'tint' : 'outline'} animateIn>
+          <MessageBubble
+            align={isMine ? 'end' : 'start'}
+            variant={mentionsMe ? 'tint' : isMine ? 'tint' : 'outline'}
+            animateIn
+            className={cn(edgeToEdge && 'w-fit max-w-full')}
+          >
             <MessageBubbleContent
               className={cn(
                 'max-w-[min(620px,76vw)] whitespace-pre-wrap break-words border-white/10',
                 isMine && 'bg-primary text-primary-foreground',
                 mentionsMe && !isMine && 'border-yellow/30 bg-yellow/10',
-                edgeToEdge && 'overflow-hidden p-0'
+                edgeToEdge && 'w-fit max-w-full overflow-hidden p-0'
               )}
             >
               {message.replyTo && (
