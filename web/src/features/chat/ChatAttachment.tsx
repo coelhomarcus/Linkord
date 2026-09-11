@@ -33,12 +33,15 @@ export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) 
   if (IMAGE_MIME_TYPES.has(attachment.mime)) {
     return (
       <>
-        <button type="button" onClick={() => setLightboxOpen(true)} className={cn('block w-fit cursor-zoom-in', !edgeToEdge && 'mt-1.5')}>
+        <button type="button" onClick={() => setLightboxOpen(true)} className={cn('block max-w-full cursor-zoom-in', !edgeToEdge && 'mt-1.5')}>
           <img
             src={url}
             alt={attachment.name}
             loading="lazy"
-            className={cn('max-h-80 max-w-[min(24rem,100%)] object-contain', edgeToEdge ? 'rounded-2xl' : 'rounded-md border border-white/10')}
+            className={cn(
+              'block h-auto max-h-80 object-contain',
+              edgeToEdge ? 'max-w-full rounded-2xl' : 'max-w-[min(24rem,100%)] rounded-md border border-white/10'
+            )}
           />
         </button>
         <ImageLightbox src={url} alt={attachment.name} open={lightboxOpen} onOpenChange={setLightboxOpen} />

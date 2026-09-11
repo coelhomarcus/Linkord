@@ -92,6 +92,19 @@ function MessageRow({
   const edgeToEdge = !isEditing && !message.replyTo && (
     (!!soloAttachment && !message.text.trim() && isEdgeToEdgeMime(soloAttachment.mime)) || isSoloEmbedMessage
   );
+  const edgeToEdgeImage = edgeToEdge && (
+    (soloAttachment?.mime.startsWith('image/') ?? false) || soloEmbed?.kind === 'image'
+  );
+  const edgeToEdgeAudio = edgeToEdge && (
+    (soloAttachment?.mime.startsWith('audio/') ?? false) || soloEmbed?.kind === 'audio'
+  );
+  const edgeToEdgeBubbleClass = edgeToEdgeImage
+    ? 'w-fit max-w-[min(24rem,76vw)] overflow-hidden p-0'
+    : edgeToEdgeAudio
+      ? 'w-80 max-w-full overflow-hidden p-0'
+      : edgeToEdge
+        ? 'w-[min(24rem,76vw)] max-w-full overflow-hidden p-0'
+        : undefined;
 
   function saveEdit() {
     const trimmed = editText.trim();
@@ -160,18 +173,13 @@ function MessageRow({
         )}
 
         <div className={cn('relative flex items-center gap-1.5', isMine && 'flex-row-reverse')}>
-          <MessageBubble
-            align={isMine ? 'end' : 'start'}
-            variant={mentionsMe ? 'tint' : isMine ? 'tint' : 'outline'}
-            animateIn
-            className={cn(edgeToEdge && 'w-fit max-w-full')}
-          >
+          <MessageBubble align={isMine ? 'end' : 'start'} variant={mentionsMe ? 'tint' : isMine ? 'tint' : 'outline'} animateIn>
             <MessageBubbleContent
               className={cn(
                 'max-w-[min(620px,76vw)] whitespace-pre-wrap break-words border-white/10',
                 isMine && 'bg-primary text-primary-foreground',
                 mentionsMe && !isMine && 'border-yellow/30 bg-yellow/10',
-                edgeToEdge && 'w-fit max-w-full overflow-hidden p-0'
+                edgeToEdgeBubbleClass
               )}
             >
               {message.replyTo && (

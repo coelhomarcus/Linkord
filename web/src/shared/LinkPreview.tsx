@@ -48,13 +48,13 @@ export function LinkPreview({ embed, className = '', edgeToEdge }: LinkPreviewPr
 
   return (
     <>
-      <button type="button" onClick={() => setLightboxOpen(true)} className={`block w-fit cursor-zoom-in ${className}`}>
+      <button type="button" onClick={() => setLightboxOpen(true)} className={`block max-w-full cursor-zoom-in ${className}`}>
         <img
           src={embed.url}
           alt=""
           loading="lazy"
           onError={() => setFailed(true)}
-          className={`h-auto max-h-70 w-auto max-w-[min(24rem,100%)] ${edgeToEdge ? 'rounded-2xl' : 'rounded-md border border-white/10'}`}
+          className={`block h-auto max-h-70 object-contain ${edgeToEdge ? 'max-w-full rounded-2xl' : 'max-w-[min(24rem,100%)] rounded-md border border-white/10'}`}
         />
       </button>
       <ImageLightbox src={embed.url} alt="" open={lightboxOpen} onOpenChange={setLightboxOpen} />
