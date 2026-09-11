@@ -9,7 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar } from '@/shared/Avatar';
-import { ChatAttachment } from '@/features/chat/ChatAttachment';
+import { ChatAttachment, isEdgeToEdgeMime } from '@/features/chat/ChatAttachment';
 import { ChatMessageText } from '@/features/chat/ChatMessageText';
 import { UploadProgressBar } from '@/shared/UploadProgressBar';
 import { formatDateHeading, formatTime } from '@/shared/lib/formatChatTime';
@@ -84,6 +84,10 @@ function MessageRow({
   const replyAuthor = message.replyTo?.authorId ? allUsers.get(message.replyTo.authorId) : undefined;
   const mentionsMe = !isMine && mentionsUser(message.text, mentionLookup, state.me.userId);
   const isEditing = editingMsgId === message.msgId;
+  // A lone video/audio attachment (no caption, no reply) fills the bubble
+  // edge-to-edge instead of sitting in a second frame nested inside it.
+  const soloAttachment = message.attachments?.length === 1 ? message.attachments[0] : null;
+  const edgeToEdge = !isEditing && !message.text.trim() && !message.replyTo && !!soloAttachment && isEdgeToEdgeMime(soloAttachment.mime);
 
   function saveEdit() {
     const trimmed = editText.trim();
@@ -157,7 +161,8 @@ function MessageRow({
               className={cn(
                 'max-w-[min(620px,76vw)] whitespace-pre-wrap break-words border-white/10',
                 isMine && 'bg-primary text-primary-foreground',
-                mentionsMe && !isMine && 'border-yellow/30 bg-yellow/10'
+                mentionsMe && !isMine && 'border-yellow/30 bg-yellow/10',
+                edgeToEdge && 'overflow-hidden p-0'
               )}
             >
               {message.replyTo && (
@@ -192,7 +197,9 @@ function MessageRow({
                 <>
                   <ChatMessageText text={message.text} mentionLookup={mentionLookup} myUserId={state.me.userId} />
                   {message.editedAt && <span className="ml-1 text-caption opacity-70">(editado)</span>}
-                  {message.attachments?.map((attachment) => <ChatAttachment key={attachment.id} attachment={attachment} />)}
+                  {message.attachments?.map((attachment) => (
+                    <ChatAttachment key={attachment.id} attachment={attachment} edgeToEdge={edgeToEdge} />
+                  ))}
                 </>
               )}
             </MessageBubbleContent>

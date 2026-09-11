@@ -11,7 +11,7 @@ function EmbedFailedFallback({ url, className }: { url: string; className: strin
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className={`flex w-full max-w-sm items-center gap-2 rounded-md border border-strong bg-bg-tertiary px-3 py-2.5 text-label text-text-muted transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${className}`}
+      className={`flex w-full max-w-sm items-center gap-2 rounded-md border border-white/10 bg-bg-tertiary px-3 py-2.5 text-label text-text-muted transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${className}`}
     >
       <ImageOff size={14} className="flex-none" />
       <span className="truncate">Nao foi possivel carregar a previa. Abrir link</span>
@@ -50,7 +50,7 @@ export function LinkPreview({ embed, className = '' }: LinkPreviewProps) {
           alt=""
           loading="lazy"
           onError={() => setFailed(true)}
-          className="h-auto max-h-70 w-auto max-w-[min(24rem,100%)] rounded-md border border-strong"
+          className="h-auto max-h-70 w-auto max-w-[min(24rem,100%)] rounded-md border border-white/10"
         />
       </button>
       <ImageLightbox src={embed.url} alt="" open={lightboxOpen} onOpenChange={setLightboxOpen} />

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { CSSProperties, ReactNode, RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 import { Download, Maximize2, Pause, Play, Volume2, VolumeX, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -158,119 +159,40 @@ interface VideoPlayerProps {
   onError?: () => void;
 }
 
-export function VideoPlayer({ src, poster, title, className, onError }: VideoPlayerProps) {
-  const [lightboxOpen, setLightboxOpen] = useState(false);
-
-  return (
-    <>
-      <VideoPlayerInner key={src} src={src} poster={poster} title={title} className={className} onError={onError} onExpand={() => setLightboxOpen(true)} />
-      <VideoLightbox src={src} poster={poster} title={title} open={lightboxOpen} onOpenChange={setLightboxOpen} />
-    </>
-  );
+export function VideoPlayer(props: VideoPlayerProps) {
+  return <VideoPlayerImpl key={props.src} {...props} />;
 }
 
-function VideoLightbox({ src, poster, title, open, onOpenChange }: VideoPlayerProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
-  return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/85 duration-150 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
-        <DialogPrimitive.Popup
-          className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center p-4 outline-none duration-150 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 sm:p-8"
-          onClick={() => onOpenChange(false)}
-        >
-          <DialogPrimitive.Title className="sr-only">{title || 'Video'}</DialogPrimitive.Title>
-          <div
-            className="max-w-6xl cursor-default"
-            data-download-url={src}
-            data-download-name={title || 'video'}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <VideoPlayerInner src={src} poster={poster} title={title} className="border-white/20 shadow-popover" />
-          </div>
-          <DialogPrimitive.Close
-            aria-label="Fechar"
-            className="fixed right-4 top-4 z-50 flex size-10 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            <X size={18} />
-          </DialogPrimitive.Close>
-        </DialogPrimitive.Popup>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
-  );
+interface VideoChromeProps {
+  variant: 'mini' | 'fullscreen';
+  portalHostRef: RefObject<HTMLDivElement | null>;
+  mediaState: MediaControlsState;
+  waiting: boolean;
+  togglePlay: () => void;
+  seek: (value: number | readonly number[]) => void;
+  setVolume: (value: number | readonly number[]) => void;
+  toggleMute: () => void;
+  onExpand?: () => void;
+  src: string;
+  title?: string;
+  className?: string;
+  style: CSSProperties;
 }
 
-function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: VideoPlayerProps & { onExpand?: () => void }) {
-  const {
-    ref,
-    state: { currentTime, duration, playing, muted, volume },
-    waiting,
-    sync,
-    setWaiting,
-    togglePlay,
-    seek,
-    setVolume,
-    toggleMute,
-  } = useMediaControls<HTMLVideoElement>();
-  const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
-  const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
-
-  useEffect(() => {
-    if (onExpand) return;
-    function handleResize() {
-      setViewport({ width: window.innerWidth, height: window.innerHeight });
-    }
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [onExpand]);
-
-  function expand() {
-    ref.current?.pause();
-    onExpand?.();
-  }
-
-  function handleLoadedMetadata() {
-    sync();
-    const video = ref.current;
-    if (video) setNatural({ width: video.videoWidth, height: video.videoHeight });
-  }
-
-  const maxWidth = onExpand ? 384 : Math.min(viewport.width - 64, 1152);
-  const maxHeight = onExpand ? 320 : viewport.height * 0.8;
-  const boxStyle: CSSProperties = natural && natural.width > 0 && natural.height > 0
-    ? (() => {
-        const scale = Math.min(1, maxWidth / natural.width, maxHeight / natural.height);
-        return {
-          width: natural.width * scale,
-          maxWidth: '100%',
-          aspectRatio: `${natural.width} / ${natural.height}`,
-          maxHeight,
-        };
-      })()
-    : { width: maxWidth, maxWidth: '100%', aspectRatio: '16 / 9', maxHeight };
-
+// The <video> itself lives in a portal (see VideoPlayerImpl) that's moved
+// between the mini and fullscreen slots without unmounting, so this chrome
+// only renders the host div + overlay controls around wherever it lands.
+function VideoChrome({
+  variant, portalHostRef, mediaState: { currentTime, duration, playing, muted, volume },
+  waiting, togglePlay, seek, setVolume, toggleMute, onExpand, src, title, className, style,
+}: VideoChromeProps) {
   return (
     <div
-      className={cn('group/player @container/player relative overflow-hidden rounded-md border border-strong bg-black shadow-panel', className)}
-      style={boxStyle}
+      className={cn('group/player @container/player relative overflow-hidden rounded-md border border-white/10 bg-black shadow-panel', className)}
+      style={style}
+      data-video-variant={variant}
     >
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-      <video
-        ref={ref}
-        src={src}
-        poster={poster || undefined}
-        preload="metadata"
-        playsInline
-        title={title}
-        onLoadedMetadata={handleLoadedMetadata}
-        onTimeUpdate={sync}
-        onPlay={sync}
-        onPause={sync}
-        onVolumeChange={sync}
-        onWaiting={() => setWaiting(true)}
-        onCanPlay={() => setWaiting(false)}
-        onError={onError}
-        className="block h-full w-full"
-      />
+      <div ref={portalHostRef} className="absolute inset-0" />
 
       <button
         type="button"
@@ -328,7 +250,7 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
               <Download size={15} />
             </MediaButton>
             {onExpand && (
-              <MediaButton label="Tela cheia" onClick={expand}>
+              <MediaButton label="Tela cheia" onClick={onExpand}>
                 <Maximize2 size={15} />
               </MediaButton>
             )}
@@ -336,6 +258,148 @@ function VideoPlayerInner({ src, poster, title, className, onError, onExpand }: 
         </div>
       </div>
     </div>
+  );
+}
+
+// One <video> element for both the inline (mini) and fullscreen views. It's
+// portaled once into a standalone host div (created outside React and never
+// swapped), which is then physically reparented between the mini/fullscreen
+// anchor slots with a plain DOM appendChild whenever "tela cheia" toggles.
+// A portal whose *target* changes gets unmounted and remounted by React —
+// which reset playback to 0:00 — so the target has to stay the same object
+// forever and the actual move has to happen outside React's reconciliation.
+function VideoPlayerImpl({ src, poster, title, className, onError }: VideoPlayerProps) {
+  const {
+    ref: videoRef,
+    state,
+    waiting,
+    sync,
+    setWaiting,
+    togglePlay,
+    seek,
+    setVolume,
+    toggleMute,
+  } = useMediaControls<HTMLVideoElement>();
+  const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
+  const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const miniAnchorRef = useRef<HTMLDivElement | null>(null);
+  const fullscreenAnchorRef = useRef<HTMLDivElement | null>(null);
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  if (!hostRef.current) {
+    const host = document.createElement('div');
+    host.className = 'block h-full w-full';
+    hostRef.current = host;
+  }
+
+  useEffect(() => {
+    function handleResize() {
+      setViewport({ width: window.innerWidth, height: window.innerHeight });
+    }
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Runs synchronously right after lightboxOpen's DOM changes commit, so the
+  // host (and the <video> inside it) lands in its new slot in the same
+  // paint — no frame where it's in neither (or both) anchor.
+  useLayoutEffect(() => {
+    const anchor = lightboxOpen ? fullscreenAnchorRef.current : miniAnchorRef.current;
+    if (anchor && hostRef.current && hostRef.current.parentElement !== anchor) {
+      anchor.appendChild(hostRef.current);
+    }
+  }, [lightboxOpen]);
+
+  useEffect(() => () => { hostRef.current?.remove(); }, []);
+
+  function handleLoadedMetadata() {
+    sync();
+    const video = videoRef.current;
+    if (video) setNatural({ width: video.videoWidth, height: video.videoHeight });
+  }
+
+  function boxStyleFor(variant: 'mini' | 'fullscreen'): CSSProperties {
+    const maxWidth = variant === 'mini' ? 384 : Math.min(viewport.width - 64, 1152);
+    const maxHeight = variant === 'mini' ? 320 : viewport.height * 0.8;
+    if (natural && natural.width > 0 && natural.height > 0) {
+      const scale = Math.min(1, maxWidth / natural.width, maxHeight / natural.height);
+      return {
+        width: natural.width * scale,
+        maxWidth: '100%',
+        aspectRatio: `${natural.width} / ${natural.height}`,
+        maxHeight,
+      };
+    }
+    return { width: maxWidth, maxWidth: '100%', aspectRatio: '16 / 9', maxHeight };
+  }
+
+  const chromeProps = { mediaState: state, waiting, togglePlay, seek, setVolume, toggleMute, src, title };
+
+  return (
+    <>
+      <VideoChrome
+        {...chromeProps}
+        variant="mini"
+        portalHostRef={miniAnchorRef}
+        onExpand={() => setLightboxOpen(true)}
+        className={className}
+        style={boxStyleFor('mini')}
+      />
+
+      {createPortal(
+        // eslint-disable-next-line jsx-a11y/media-has-caption
+        <video
+          ref={videoRef}
+          src={src}
+          poster={poster || undefined}
+          preload="metadata"
+          playsInline
+          title={title}
+          onLoadedMetadata={handleLoadedMetadata}
+          onTimeUpdate={sync}
+          onPlay={sync}
+          onPause={sync}
+          onVolumeChange={sync}
+          onWaiting={() => setWaiting(true)}
+          onCanPlay={() => setWaiting(false)}
+          onError={onError}
+          className="block h-full w-full"
+        />,
+        hostRef.current,
+      )}
+
+      <DialogPrimitive.Root open={lightboxOpen} onOpenChange={setLightboxOpen}>
+        <DialogPrimitive.Portal keepMounted>
+          <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/85 duration-150 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
+          <DialogPrimitive.Popup
+            className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center p-4 outline-none duration-150 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 sm:p-8"
+            onClick={() => setLightboxOpen(false)}
+          >
+            <DialogPrimitive.Title className="sr-only">{title || 'Video'}</DialogPrimitive.Title>
+            <div
+              className="max-w-6xl cursor-default"
+              data-download-url={src}
+              data-download-name={title || 'video'}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <VideoChrome
+                {...chromeProps}
+                variant="fullscreen"
+                portalHostRef={fullscreenAnchorRef}
+                className="border-white/10 shadow-popover"
+                style={boxStyleFor('fullscreen')}
+              />
+            </div>
+            <DialogPrimitive.Close
+              aria-label="Fechar"
+              className="fixed right-4 top-4 z-50 flex size-10 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              <X size={18} />
+            </DialogPrimitive.Close>
+          </DialogPrimitive.Popup>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root>
+    </>
   );
 }
 
@@ -364,7 +428,7 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
 
   return (
     <div
-      className={cn('@container/audio flex w-full min-w-0 max-w-sm flex-col gap-1.5 rounded-md border border-strong bg-bg-tertiary px-2.5 py-2 shadow-panel', className)}
+      className={cn('@container/audio flex w-80 min-w-0 max-w-full flex-col gap-1.5 rounded-md border border-white/10 bg-bg-tertiary px-2.5 py-2 shadow-panel', className)}
       data-download-url={src}
       data-download-name={title || 'audio'}
     >

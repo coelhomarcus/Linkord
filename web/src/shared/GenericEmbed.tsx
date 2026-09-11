@@ -12,15 +12,11 @@ interface GenericEmbedProps {
   className?: string;
 }
 
-function isHexColor(color: string | null | undefined): color is string {
-  return !!color && /^#[0-9a-f]{3,8}$/i.test(color);
-}
-
-const KNOWN_SITE: Partial<Record<DetectedEmbed['kind'], { name: string; favicon: string; accent: string }>> = {
-  youtube: { name: 'YouTube', favicon: 'https://www.youtube.com/favicon.ico', accent: '#ff0000' },
-  'twitch-channel': { name: 'Twitch', favicon: 'https://www.twitch.tv/favicon.ico', accent: '#9146ff' },
-  'twitch-vod': { name: 'Twitch', favicon: 'https://www.twitch.tv/favicon.ico', accent: '#9146ff' },
-  'twitch-clip': { name: 'Twitch', favicon: 'https://www.twitch.tv/favicon.ico', accent: '#9146ff' },
+const KNOWN_SITE: Partial<Record<DetectedEmbed['kind'], { name: string; favicon: string }>> = {
+  youtube: { name: 'YouTube', favicon: 'https://www.youtube.com/favicon.ico' },
+  'twitch-channel': { name: 'Twitch', favicon: 'https://www.twitch.tv/favicon.ico' },
+  'twitch-vod': { name: 'Twitch', favicon: 'https://www.twitch.tv/favicon.ico' },
+  'twitch-clip': { name: 'Twitch', favicon: 'https://www.twitch.tv/favicon.ico' },
 };
 
 function TwitchPlayer({ embed }: { embed: DetectedEmbed }) {
@@ -82,7 +78,7 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
 
   if (!data) {
     return (
-      <div className={`flex w-full max-w-sm animate-pulse flex-col gap-1.5 rounded-md border border-strong bg-bg-tertiary px-3 py-2.5 ${className}`}>
+      <div className={`flex w-full max-w-sm animate-pulse flex-col gap-1.5 rounded-md border border-white/10 bg-bg-tertiary px-3 py-2.5 ${className}`}>
         <div className="h-2.5 w-1/3 rounded-sm bg-bg-hover" />
         <div className="h-3.5 w-3/4 rounded-sm bg-bg-hover" />
       </div>
@@ -95,7 +91,7 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className={`flex w-full max-w-sm items-center gap-2 rounded-md border border-strong bg-bg-tertiary px-3 py-2.5 text-label text-text-muted transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${className}`}
+        className={`flex w-full max-w-sm items-center gap-2 rounded-md border border-white/10 bg-bg-tertiary px-3 py-2.5 text-label text-text-muted transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${className}`}
       >
         <ExternalLink size={14} className="flex-none" />
         <span className="truncate">{data.siteName}</span>
@@ -105,7 +101,6 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
 
   const siteName = data.siteName || known?.name || url;
   const favicon = !faviconFailed ? (data.favicon || known?.favicon) : null;
-  const accent = isHexColor(data.themeColor) ? data.themeColor : (known?.accent ?? null);
   const playableVideo = !!data.video && !videoFailed;
 
   let media: ReactNode = null;
@@ -145,10 +140,7 @@ export function GenericEmbed({ embed, className = '' }: GenericEmbedProps) {
   }
 
   return (
-    <div
-      className={`flex w-full max-w-sm flex-col overflow-hidden rounded-md border border-strong bg-bg-tertiary ${className}`}
-      style={{ borderLeftWidth: 4, borderLeftColor: accent ?? 'var(--color-border-strong)' }}
-    >
+    <div className={`flex w-full max-w-sm flex-col overflow-hidden rounded-md border border-white/10 bg-bg-tertiary ${className}`}>
       <div className="flex flex-col gap-1 px-3 pt-2.5 pb-2">
         <div className="flex items-center gap-1.5 text-caption text-text-muted">
           {favicon && <img src={favicon} alt="" onError={() => setFaviconFailed(true)} className="h-3.5 w-3.5 flex-none rounded-[3px]" />}

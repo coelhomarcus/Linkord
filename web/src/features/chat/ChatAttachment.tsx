@@ -9,7 +9,23 @@ const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image
 const VIDEO_MIME_TYPES = new Set(['video/mp4', 'video/webm', 'video/ogg']);
 const AUDIO_MIME_TYPES = new Set(['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4']);
 
-export function ChatAttachment({ attachment }: { attachment: ChatAttachmentData }) {
+/** Whether this attachment can render flush with the bubble's own edges
+ * (see `edgeToEdge` on ChatAttachment) instead of sitting in its own
+ * bordered card — only video/audio have chrome substantial enough to read
+ * as the bubble itself rather than a floating box. */
+export function isEdgeToEdgeMime(mime: string): boolean {
+  return VIDEO_MIME_TYPES.has(mime) || AUDIO_MIME_TYPES.has(mime);
+}
+
+interface ChatAttachmentProps {
+  attachment: ChatAttachmentData;
+  /** True when this is the message's only content (no caption, no reply) —
+   * drops the outer border/rounding/padding so the player fills the bubble
+   * instead of sitting in a second frame nested inside it. */
+  edgeToEdge?: boolean;
+}
+
+export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) {
   const url = `/uploads/${attachment.id}`;
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
@@ -21,7 +37,7 @@ export function ChatAttachment({ attachment }: { attachment: ChatAttachmentData 
             src={url}
             alt={attachment.name}
             loading="lazy"
-            className="max-h-80 max-w-[min(24rem,100%)] rounded-md border border-strong object-contain"
+            className="max-h-80 max-w-[min(24rem,100%)] rounded-md border border-white/10 object-contain"
           />
         </button>
         <ImageLightbox src={url} alt={attachment.name} open={lightboxOpen} onOpenChange={setLightboxOpen} />
@@ -30,11 +46,23 @@ export function ChatAttachment({ attachment }: { attachment: ChatAttachmentData 
   }
 
   if (VIDEO_MIME_TYPES.has(attachment.mime)) {
-    return <VideoPlayer src={url} title={attachment.name} className="mt-1.5" />;
+    return (
+      <VideoPlayer
+        src={url}
+        title={attachment.name}
+        className={edgeToEdge ? 'rounded-2xl border-0' : 'mt-1.5'}
+      />
+    );
   }
 
   if (AUDIO_MIME_TYPES.has(attachment.mime)) {
-    return <AudioPlayer src={url} title={attachment.name} className="mt-1.5" />;
+    return (
+      <AudioPlayer
+        src={url}
+        title={attachment.name}
+        className={edgeToEdge ? 'w-80 max-w-full rounded-2xl border-0 bg-transparent shadow-none' : 'mt-1.5'}
+      />
+    );
   }
 
   return (
@@ -43,7 +71,7 @@ export function ChatAttachment({ attachment }: { attachment: ChatAttachmentData 
       target="_blank"
       rel="noopener noreferrer"
       download={attachment.name}
-      className="mt-1.5 flex w-fit max-w-sm items-center gap-2 rounded-md border border-strong bg-bg-tertiary px-3 py-2 text-label transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="mt-1.5 flex w-fit max-w-sm items-center gap-2 rounded-md border border-white/10 bg-bg-tertiary px-3 py-2 text-label transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
     >
       <FileIcon size={16} className="flex-none text-text-muted" />
       <span className="min-w-0 flex-1 truncate font-medium text-text-secondary">{attachment.name}</span>
