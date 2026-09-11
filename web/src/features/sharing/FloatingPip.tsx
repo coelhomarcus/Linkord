@@ -90,7 +90,12 @@ export function FloatingPip({ allIds, onExpand }: FloatingPipProps) {
       <button
         type="button"
         onClick={onExpand}
-        className="fixed bottom-4 left-4 z-30 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-full border border-strong bg-bg-floating/90 py-2.5 pl-3 pr-4 text-label font-medium text-text-primary shadow-popover backdrop-blur-xl transition-colors hover:bg-bg-hover"
+        className={cn(
+          'fixed left-4 z-30 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-full border border-strong bg-bg-floating/90 py-2.5 pl-3 pr-4 text-label font-medium text-text-primary shadow-popover backdrop-blur-xl transition-colors hover:bg-bg-hover',
+          // ReconnectBanner takes over this corner's usual bottom-4 slot
+          // while reconnecting — shift up instead of stacking on top of it.
+          state.reconnecting ? 'bottom-20' : 'bottom-4'
+        )}
       >
         <span className="relative flex size-2.5 flex-none">
           <span className="absolute inline-flex size-full animate-ping rounded-full bg-green opacity-75" />
@@ -108,7 +113,7 @@ export function FloatingPip({ allIds, onExpand }: FloatingPipProps) {
       ref={boxRef}
       className={cn(
         'fixed z-30 aspect-video w-36 overflow-hidden rounded-xl shadow-popover ring-1 ring-foreground/10 md:w-64',
-        !dragPos && 'bottom-4 left-4'
+        !dragPos && (state.reconnecting ? 'bottom-20 left-4' : 'bottom-4 left-4')
       )}
       style={dragPos ? { left: dragPos.x, top: dragPos.y } : undefined}
     >
