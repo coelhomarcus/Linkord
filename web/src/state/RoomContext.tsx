@@ -40,6 +40,7 @@ export interface RoomContextValue {
   livekitRoom: Room;
   notifyActiveView: (view: 'chat' | 'call') => void;
   registerRequestChatView: (fn: () => void) => void;
+  requestChatView: () => void;
   activeCallConversationId: string | null;
   joinGroupCall: (conversationId: string) => void;
   leaveGroupCall: () => Promise<void>;

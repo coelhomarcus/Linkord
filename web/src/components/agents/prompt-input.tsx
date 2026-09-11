@@ -64,6 +64,9 @@ export interface PromptInputProps extends Omit<
   maxRows?: number;
   leadingAction?: ReactNode;
   className?: string;
+  /** Lets submit fire with an empty textarea — for callers that can send
+   * without text (e.g. a caption-less file attachment). */
+  allowEmptySubmit?: boolean;
 }
 
 export function PromptInput({
@@ -84,6 +87,7 @@ export function PromptInput({
   leadingAction,
   className,
   disabled,
+  allowEmptySubmit = false,
   placeholder = "Ask the agent to do something…",
   "aria-label": ariaLabel = "Prompt",
   onKeyDown,
@@ -102,7 +106,7 @@ export function PromptInput({
   const currentModel = models.find(
     (option) => option.value === currentModelValue,
   );
-  const canSubmit = Boolean(currentValue.trim()) && !disabled && !loading;
+  const canSubmit = (Boolean(currentValue.trim()) || allowEmptySubmit) && !disabled && !loading;
 
   const resizeTextarea = useCallback(() => {
     const textarea = textareaRef.current;
@@ -148,7 +152,7 @@ export function PromptInput({
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
     const prompt = currentValue.trim();
-    if (!prompt || disabled || loading) return;
+    if ((!prompt && !allowEmptySubmit) || disabled || loading) return;
 
     onSubmit?.(prompt, currentModelValue);
     if (value === undefined) setInternalValue("");

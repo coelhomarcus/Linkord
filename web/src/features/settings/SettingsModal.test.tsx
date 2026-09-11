@@ -69,7 +69,7 @@ describe('SettingsModal — perfil', () => {
 
     renderWithRoom(<SettingsModal open onClose={vi.fn()} />, { state, updateProfile });
 
-    const input = screen.getByLabelText('Como voce aparece pra todo mundo');
+    const input = screen.getByLabelText('Nome de exibicao');
     await user.clear(input);
     await user.type(input, 'Apelido Legal');
     await user.click(screen.getByRole('button', { name: 'Salvar perfil' }));
@@ -133,7 +133,7 @@ describe('SettingsModal — perfil', () => {
 
     renderWithRoom(<SettingsModal open onClose={vi.fn()} />, { state, updateProfile });
 
-    await user.type(screen.getByLabelText('Um resumo curto sobre voce'), 'Oi, eu sou a Fulana.');
+    await user.type(screen.getByLabelText('Bio'), 'Oi, eu sou a Fulana.');
     await user.type(screen.getByLabelText('Link 1'), 'https://youtube.com/@fulana');
     await user.click(screen.getByRole('button', { name: 'Adicionar link' }));
     await user.click(screen.getByRole('button', { name: 'Salvar perfil' }));

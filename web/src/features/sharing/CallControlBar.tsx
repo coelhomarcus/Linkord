@@ -1,17 +1,20 @@
-import { useMemo, useState } from 'react';
-import { Headphones, HeadphoneOff, Mic, MicOff, Monitor, MonitorX, PhoneOff, Smile, Video, VideoOff, X } from 'lucide-react';
+import { useState } from 'react';
+import { Headphones, HeadphoneOff, MessageCircle, Mic, MicOff, Monitor, MonitorX, PhoneOff, Smile, Video, VideoOff, X } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { useParticipantMedia } from './useLiveKitTrack';
 import { ALLOWED_REACTIONS } from '../../types/protocol';
 import type { ReactionEmoji } from '../../types/protocol';
-import { ExpandableActionBar } from '@/components/motion/expandable-action-bar';
-import type { ExpandableActionBarItem } from '@/components/motion/expandable-action-bar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/shared/lib/utils';
 
-export function CallControlBar() {
+interface CallControlBarProps {
+  chatOpen: boolean;
+  onToggleChat: () => void;
+}
+
+export function CallControlBar({ chatOpen, onToggleChat }: CallControlBarProps) {
   const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, toggleMicMuted, deafened, toggleDeafened, leaveGroupCall, sendReaction } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
   const cameraOn = state.me.cameraOn;
@@ -23,32 +26,7 @@ export function CallControlBar() {
     setReactionsOpen(false);
   }
 
-  const items: ExpandableActionBarItem[] = useMemo(() => [
-    {
-      id: 'mic',
-      label: myMedia.micMuted ? 'Desmutar' : 'Mutar',
-      icon: myMedia.micMuted ? <MicOff size={16} className="text-red" /> : <Mic size={16} />,
-      onClick: () => { void toggleMicMuted(); },
-    },
-    {
-      id: 'deafen',
-      label: deafened ? 'Voltar a ouvir' : 'Parar de ouvir',
-      icon: deafened ? <HeadphoneOff size={16} className="text-red" /> : <Headphones size={16} />,
-      onClick: toggleDeafened,
-    },
-    {
-      id: 'camera',
-      label: cameraOn ? 'Parar camera' : 'Ligar camera',
-      icon: cameraOn ? <Video size={16} className="text-green" /> : <VideoOff size={16} />,
-      onClick: () => { void (cameraOn ? stopCamera() : startCamera()); },
-    },
-    {
-      id: 'share',
-      label: sharing ? 'Parar compartilhamento' : 'Compartilhar tela',
-      icon: sharing ? <MonitorX size={16} className="text-primary" /> : <Monitor size={16} />,
-      onClick: () => { void (sharing ? stopSharing() : startSharing()); },
-    },
-  ], [myMedia.micMuted, deafened, cameraOn, sharing, toggleMicMuted, toggleDeafened, stopCamera, startCamera, stopSharing, startSharing]);
+  const callButtonClass = 'h-11 w-11 rounded-full border border-strong bg-bg-floating/90 text-text-secondary shadow-popover backdrop-blur-xl hover:text-text-primary';
 
   return (
     <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
@@ -93,7 +71,64 @@ export function CallControlBar() {
           </PopoverContent>
         </Popover>
 
-        <ExpandableActionBar items={items} size="md" />
+        <Tooltip>
+          <TooltipTrigger
+            onClick={() => { void toggleMicMuted(); }}
+            aria-label={myMedia.micMuted ? 'Desmutar' : 'Mutar'}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), callButtonClass)}
+          >
+            {myMedia.micMuted ? <MicOff size={18} className="text-red" /> : <Mic size={18} />}
+          </TooltipTrigger>
+          <TooltipContent>{myMedia.micMuted ? 'Desmutar' : 'Mutar'}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger
+            onClick={toggleDeafened}
+            aria-label={deafened ? 'Voltar a ouvir' : 'Parar de ouvir'}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), callButtonClass)}
+          >
+            {deafened ? <HeadphoneOff size={18} className="text-red" /> : <Headphones size={18} />}
+          </TooltipTrigger>
+          <TooltipContent>{deafened ? 'Voltar a ouvir' : 'Parar de ouvir'}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger
+            onClick={() => { void (cameraOn ? stopCamera() : startCamera()); }}
+            aria-label={cameraOn ? 'Parar camera' : 'Ligar camera'}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), callButtonClass)}
+          >
+            {cameraOn ? <Video size={18} className="text-green" /> : <VideoOff size={18} />}
+          </TooltipTrigger>
+          <TooltipContent>{cameraOn ? 'Parar camera' : 'Ligar camera'}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger
+            onClick={() => { void (sharing ? stopSharing() : startSharing()); }}
+            aria-label={sharing ? 'Parar compartilhamento' : 'Compartilhar tela'}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), callButtonClass)}
+          >
+            {sharing ? <MonitorX size={18} className="text-primary" /> : <Monitor size={18} />}
+          </TooltipTrigger>
+          <TooltipContent>{sharing ? 'Parar compartilhamento' : 'Compartilhar tela'}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger
+            onClick={onToggleChat}
+            aria-label={chatOpen ? 'Fechar chat' : 'Abrir chat'}
+            className={cn(
+              buttonVariants({ variant: 'ghost', size: 'icon-lg' }),
+              'h-11 w-11 rounded-full border border-strong bg-bg-floating/90 shadow-popover backdrop-blur-xl',
+              chatOpen ? 'text-text-primary' : 'text-text-secondary hover:text-text-primary'
+            )}
+          >
+            <MessageCircle size={18} />
+          </TooltipTrigger>
+          <TooltipContent>{chatOpen ? 'Fechar chat' : 'Abrir chat'}</TooltipContent>
+        </Tooltip>
 
         <Tooltip>
           <TooltipTrigger

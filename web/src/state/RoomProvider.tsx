@@ -172,6 +172,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const notifyActiveView = useCallback((view: 'chat' | 'call') => { activeViewRef.current = view; }, []);
   const requestChatViewRef = useRef<(() => void) | null>(null);
   const registerRequestChatView = useCallback((fn: () => void) => { requestChatViewRef.current = fn; }, []);
+  const requestChatView = useCallback(() => { requestChatViewRef.current?.(); }, []);
   const [messagesByConversation, setMessagesByConversation] = useState<Map<string, ChatMessage[]>>(new Map());
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
@@ -812,7 +813,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     <RoomContext.Provider
       value={{
         state, dispatch, sendWs, tileDomRegistry, audioRegistry, audioUnlocked, deafened, toggleDeafened, livekitRoom, notifyActiveView,
-        registerRequestChatView,
+        registerRequestChatView, requestChatView,
         activeCallConversationId, joinGroupCall, leaveGroupCall,
         startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted,
         updateAvatar, updateProfile, uploadProfileImage, menuTarget, openTileMenu, closeTileMenu,

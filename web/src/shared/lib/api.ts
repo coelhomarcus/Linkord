@@ -79,8 +79,8 @@ export interface MediaPage {
   nextBefore: number | null;
 }
 
-export function fetchMedia(kind: MediaKind, before: number | null, limit = 24): Promise<MediaPage> {
-  const params = new URLSearchParams({ kind, limit: String(limit) });
+export function fetchMedia(kind: MediaKind, before: number | null, conversationId: string, limit = 24): Promise<MediaPage> {
+  const params = new URLSearchParams({ kind, limit: String(limit), conversationId });
   if (before != null) params.set('before', String(before));
   return apiFetch(`/api/media?${params.toString()}`);
 }

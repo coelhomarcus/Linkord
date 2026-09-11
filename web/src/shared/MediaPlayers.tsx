@@ -5,6 +5,8 @@ import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 import { Download, Maximize2, Pause, Play, Volume2, VolumeX, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import { availableAttachmentWidth, useChatSurfaceWidth } from '@/shared/lib/chatSurfaceWidth';
+import { getMediaVolumeState, setMediaVolumeState, subscribeMediaVolume } from '@/shared/lib/mediaVolume';
 import { cn } from '@/shared/lib/utils';
 import { downloadFile } from '@/shared/lib/download';
 
@@ -35,12 +37,15 @@ interface MediaControlsState {
 
 function useMediaControls<T extends HTMLMediaElement>() {
   const ref = useRef<T | null>(null);
-  const [state, setState] = useState<MediaControlsState>({
-    currentTime: 0,
-    duration: 0,
-    playing: false,
-    muted: false,
-    volume: 1,
+  const [state, setState] = useState<MediaControlsState>(() => {
+    const shared = getMediaVolumeState();
+    return {
+      currentTime: 0,
+      duration: 0,
+      playing: false,
+      muted: shared.muted,
+      volume: shared.volume,
+    };
   });
   const [waiting, setWaiting] = useState(false);
 
@@ -55,6 +60,24 @@ function useMediaControls<T extends HTMLMediaElement>() {
       volume: media.volume,
     });
   }
+
+  // Volume is shared across every player instead of each one defaulting to
+  // the browser's 100% — apply the current shared level as soon as this
+  // element exists, and again whenever any player (this one or another)
+  // changes it, so they all always agree.
+  useEffect(() => {
+    function applyShared() {
+      const media = ref.current;
+      if (!media) return;
+      const shared = getMediaVolumeState();
+      media.volume = shared.volume;
+      media.muted = shared.muted;
+      sync();
+    }
+    applyShared();
+    return subscribeMediaVolume(applyShared);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function togglePlay() {
     const media = ref.current;
@@ -79,16 +102,22 @@ function useMediaControls<T extends HTMLMediaElement>() {
     const media = ref.current;
     if (!media) return;
     const next = Math.min(100, Math.max(0, sliderValue(value))) / 100;
+    const nextMuted = next === 0;
     media.volume = next;
-    media.muted = next === 0 ? true : false;
+    media.muted = nextMuted;
+    setMediaVolumeState(next, nextMuted);
     sync();
   }
 
   function toggleMute() {
     const media = ref.current;
     if (!media) return;
-    if (media.muted && media.volume === 0) media.volume = 0.7;
-    media.muted = !media.muted;
+    let nextVolume = media.volume;
+    if (media.muted && media.volume === 0) nextVolume = 0.7;
+    const nextMuted = !media.muted;
+    media.volume = nextVolume;
+    media.muted = nextMuted;
+    setMediaVolumeState(nextVolume, nextMuted);
     sync();
   }
 
@@ -282,6 +311,7 @@ function VideoPlayerImpl({ src, poster, title, className, onError }: VideoPlayer
   } = useMediaControls<HTMLVideoElement>();
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
+  const surfaceWidth = useChatSurfaceWidth(384 + 120);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const miniAnchorRef = useRef<HTMLDivElement | null>(null);
   const fullscreenAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -319,7 +349,9 @@ function VideoPlayerImpl({ src, poster, title, className, onError }: VideoPlayer
   }
 
   function boxStyleFor(variant: 'mini' | 'fullscreen'): CSSProperties {
-    const maxWidth = variant === 'mini' ? 384 : Math.min(viewport.width - 64, 1152);
+    const maxWidth = variant === 'mini'
+      ? availableAttachmentWidth(surfaceWidth, 384)
+      : Math.min(viewport.width - 64, 1152);
     const maxHeight = variant === 'mini' ? 320 : viewport.height * 0.8;
     if (natural && natural.width > 0 && natural.height > 0) {
       const scale = Math.min(1, maxWidth / natural.width, maxHeight / natural.height);
@@ -425,10 +457,13 @@ function AudioPlayerInner({ src, title, className, onError }: AudioPlayerProps) 
     setVolume,
     toggleMute,
   } = useMediaControls<HTMLAudioElement>();
+  const surfaceWidth = useChatSurfaceWidth(320 + 120);
+  const width = availableAttachmentWidth(surfaceWidth, 320);
 
   return (
     <div
-      className={cn('@container/audio flex w-80 min-w-0 max-w-full flex-col gap-1.5 rounded-md border border-white/10 bg-bg-tertiary px-2.5 py-2', className)}
+      className={cn('@container/audio flex min-w-0 max-w-full flex-col gap-1.5 rounded-md border border-white/10 bg-bg-tertiary px-2.5 py-2', className)}
+      style={{ width }}
       data-download-url={src}
       data-download-name={title || 'audio'}
     >

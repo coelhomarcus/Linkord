@@ -51,11 +51,12 @@ interface AvatarProps {
   avatar: string;
   avatarColor?: string | null;
   size: number;
+  className?: string;
 }
 
-export function Avatar({ id, name, avatar, avatarColor, size }: AvatarProps) {
+export function Avatar({ id, name, avatar, avatarColor, size, className }: AvatarProps) {
   return (
-    <AvatarRoot style={{ width: size, height: size }}>
+    <AvatarRoot style={{ width: size, height: size }} className={className}>
       {avatar && <AvatarImage src={avatar} alt="" />}
       <AvatarFallback
         className="font-bold text-white"

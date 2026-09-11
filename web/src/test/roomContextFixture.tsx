@@ -21,6 +21,7 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     livekitRoom: new Room(),
     notifyActiveView: noop,
     registerRequestChatView: noop,
+    requestChatView: noop,
     activeCallConversationId: null,
     joinGroupCall: noop,
     leaveGroupCall: asyncNoop,

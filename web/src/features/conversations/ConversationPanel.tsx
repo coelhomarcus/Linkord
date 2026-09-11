@@ -1,16 +1,19 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent, ClipboardEvent } from 'react';
-import { ArrowLeft, File as FileIcon, Info, MoreHorizontal, Paperclip, Phone, Reply, Search, Trash2, X, Pencil } from 'lucide-react';
+import { ArrowLeft, ImageIcon, Info, MoreHorizontal, Paperclip, Phone, Reply, Search, Trash2, X, Pencil } from 'lucide-react';
 import { MessageBubble, MessageBubbleContent } from '@/components/agents/message-bubble';
 import { PromptInput } from '@/components/agents/prompt-input';
 import { useAnimatedSidebar } from '@/components/motion/animated-sidebar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar } from '@/shared/Avatar';
 import { ChatAttachment, isEdgeToEdgeMime } from '@/features/chat/ChatAttachment';
 import { ChatMessageText } from '@/features/chat/ChatMessageText';
+import { DocumentAttachmentCard } from '@/shared/DocumentAttachmentCard';
 import { firstEmbed } from '@/shared/lib/chatEmbeds';
+import { ChatSurfaceWidthProvider, useMeasuredWidth } from '@/shared/lib/chatSurfaceWidth';
 import { UploadProgressBar } from '@/shared/UploadProgressBar';
 import { formatDateHeading, formatTime } from '@/shared/lib/formatChatTime';
 import { formatFileSize, formatSizeLimit } from '@/shared/lib/formatBytes';
@@ -101,7 +104,7 @@ function MessageRow({
     : edgeToEdgeAudio
       ? 'w-80 max-w-full overflow-hidden p-0'
       : edgeToEdge
-        ? 'w-[min(24rem,76vw)] max-w-full overflow-hidden p-0'
+        ? 'w-fit max-w-[min(24rem,76vw)] overflow-hidden p-0'
         : undefined;
 
   function saveEdit() {
@@ -413,6 +416,7 @@ function Composer({ conversationId }: { conversationId: string }) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingFilesRef = useRef<PendingAttachment[]>([]);
+  const isSubmittingRef = useRef(false);
   const disabled = !state.joined || activeUploadId !== null;
 
   useEffect(() => { pendingFilesRef.current = pendingFiles; }, [pendingFiles]);
@@ -464,11 +468,21 @@ function Composer({ conversationId }: { conversationId: string }) {
   }
 
   async function submit(value: string) {
+    // Guard against a second submit firing before `disabled` (an async
+    // state update) has re-rendered — e.g. a fast double-click, or the
+    // Enter key and the send button both landing in the same tick.
+    if (isSubmittingRef.current) return;
     const trimmed = value.trim();
+    if (!pendingFiles.length && !trimmed) return;
+    isSubmittingRef.current = true;
     try {
       if (pendingFiles.length) {
         setAttachError(null);
         setUploadProgress(0);
+        // Mark the first file as "uploading" immediately, before the
+        // network round-trip, so the UI reacts the instant the user submits
+        // instead of waiting on the first progress event to arrive.
+        setActiveUploadId(pendingFiles[0]?.id ?? null);
         await sendAttachments(conversationId, pendingFiles.map((item) => item.file), trimmed, (fileIndex, fraction) => {
           setActiveUploadId(pendingFiles[fileIndex]?.id ?? null);
           setUploadProgress(fraction);
@@ -478,13 +492,13 @@ function Composer({ conversationId }: { conversationId: string }) {
         setReplyingTo(null);
         return;
       }
-      if (!trimmed) return;
       sendChatMessage(conversationId, trimmed, replyingTo?.msgId);
       setText('');
       setReplyingTo(null);
     } catch (err) {
       setAttachError(err instanceof Error ? err.message : 'Falha ao enviar.');
     } finally {
+      isSubmittingRef.current = false;
       setActiveUploadId(null);
     }
   }
@@ -524,36 +538,36 @@ function Composer({ conversationId }: { conversationId: string }) {
       )}
 
       {pendingFiles.length > 0 && (
-        <div className="mb-2 flex items-end justify-between gap-3">
-          <div className="flex flex-wrap gap-2">
-            {pendingFiles.map((item) => {
-              const uploading = activeUploadId === item.id;
-              return (
-                <div key={item.id} title={`${item.file.name} - ${formatFileSize(item.file.size)}`} className="relative size-18 overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]">
-                  {item.previewUrl ? (
-                    <img src={item.previewUrl} alt="" className="size-full object-cover" />
-                  ) : (
-                    <div className="grid size-full place-items-center bg-black/30">
-                      <FileIcon size={22} className="text-text-muted" />
-                    </div>
-                  )}
-                  {uploading ? (
-                    <>
-                      <div className="absolute inset-0 bg-black/55" />
-                      <div className="absolute inset-x-1.5 bottom-1.5"><UploadProgressBar progress={uploadProgress} /></div>
-                    </>
-                  ) : (
-                    <Button type="button" variant="ghost" size="icon-xs" aria-label="Remover anexo" onClick={() => removeFile(item.id)} className="absolute right-1 top-1 size-5 rounded-full bg-black/60 text-white hover:bg-black/80 hover:text-white">
-                      <X size={12} />
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <Button type="button" size="sm" disabled={disabled} onClick={() => { void submit(text); }}>
-            Enviar anexos
-          </Button>
+        <div className="mb-2 flex flex-wrap gap-2">
+          {pendingFiles.map((item) => {
+            const uploading = activeUploadId === item.id;
+            return (
+              <div
+                key={item.id}
+                title={`${item.file.name} - ${formatFileSize(item.file.size)}`}
+                className={cn(
+                  'relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]',
+                  item.previewUrl ? 'size-18' : 'flex w-56 max-w-full items-center py-2.5 pl-2.5 pr-8'
+                )}
+              >
+                {item.previewUrl ? (
+                  <img src={item.previewUrl} alt="" className="size-full object-cover" />
+                ) : (
+                  <DocumentAttachmentCard name={item.file.name} size={item.file.size} mime={item.file.type} className="min-w-0" />
+                )}
+                {uploading ? (
+                  <>
+                    <div className="absolute inset-0 bg-black/55" />
+                    <div className="absolute inset-x-1.5 bottom-1.5"><UploadProgressBar progress={uploadProgress} /></div>
+                  </>
+                ) : (
+                  <Button type="button" variant="ghost" size="icon-xs" aria-label="Remover anexo" onClick={() => removeFile(item.id)} className="absolute right-1 top-1 size-5 rounded-full bg-black/60 text-white hover:bg-black/80 hover:text-white">
+                    <X size={12} />
+                  </Button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -565,6 +579,7 @@ function Composer({ conversationId }: { conversationId: string }) {
         onValueChange={setText}
         onSubmit={(value) => { void submit(value); }}
         disabled={disabled}
+        allowEmptySubmit={pendingFiles.length > 0}
         minRows={1}
         maxRows={6}
         maxLength={2000}
@@ -592,10 +607,11 @@ interface ConversationPanelProps {
   onOpenCall: (conversationId: string) => void;
   onOpenSearch: () => void;
   onOpenDetails: () => void;
+  onOpenMedia: () => void;
 }
 
-export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onOpenDetails }: ConversationPanelProps) {
-  const { state, conversations, activeConversationId, allUsers, onlineUserIds } = useRoom();
+export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onOpenDetails, onOpenMedia }: ConversationPanelProps) {
+  const { state, conversations, activeConversationId, allUsers, onlineUserIds, activeCallConversationId } = useRoom();
   const { setOpenMobile } = useAnimatedSidebar();
   const conversation = conversations.find((item) => item.id === activeConversationId) ?? null;
   const title = conversationTitle(conversation, state.me.userId, allUsers);
@@ -605,9 +621,18 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
   const subtitle = conversation?.type === 'group'
     ? `${members.length} membros`
     : other ? (online ? 'Online' : 'Offline') : '';
+  // `state.participants` only ever holds OTHER people (the server excludes
+  // yourself from it) — my own row in this list has to come from `state.me`
+  // instead, gated on whether I'm actually the one in this call.
+  const otherCallParticipants = [...state.participants.values()].filter((p) => p.callConversationId === conversation?.id);
+  const callParticipants = conversation && activeCallConversationId === conversation.id
+    ? [{ id: state.me.userId ?? 'me', displayName: state.me.displayName, avatar: state.me.avatar, avatarColor: state.me.avatarColor }, ...otherCallParticipants]
+    : otherCallParticipants;
+  const mainRef = useRef<HTMLElement | null>(null);
+  const surfaceWidth = useMeasuredWidth(mainRef);
 
   return (
-    <main className="flex h-full min-w-0 flex-1 flex-col text-text-primary">
+    <main ref={mainRef} className="flex h-full min-w-0 flex-1 flex-col text-text-primary">
       {conversation ? (
         <>
           <header className="flex h-16 flex-none items-center gap-3 border-b border-white/10 bg-[rgb(12_12_14)]/90 px-4 backdrop-blur">
@@ -634,6 +659,24 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
               <h2 className="truncate text-title font-semibold">{title}</h2>
               {subtitle && <p className="truncate text-caption text-text-muted">{subtitle}</p>}
             </button>
+            {conversation.type === 'group' && callParticipants.length > 0 && (
+              <Tooltip>
+                <TooltipTrigger render={<div className="flex flex-none items-center -space-x-2" />}>
+                  {callParticipants.slice(0, 4).map((p) => (
+                    <Avatar key={p.id} id={p.id} name={p.displayName} avatar={p.avatar} avatarColor={p.avatarColor} size={28} className="ring-2 ring-[rgb(12_12_14)]" />
+                  ))}
+                  {callParticipants.length > 4 && (
+                    <span className="grid size-7 place-items-center rounded-full bg-bg-tertiary text-[11px] font-semibold text-text-secondary ring-2 ring-[rgb(12_12_14)]">
+                      +{callParticipants.length - 4}
+                    </span>
+                  )}
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Na chamada</TooltipContent>
+              </Tooltip>
+            )}
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="Midias e links" onClick={onOpenMedia} className="text-text-muted hover:text-text-primary">
+              <ImageIcon size={16} />
+            </Button>
             <Button type="button" variant="ghost" size="icon-sm" aria-label="Buscar mensagens" onClick={onOpenSearch} className="text-text-muted hover:text-text-primary">
               <Search size={16} />
             </Button>
@@ -642,13 +685,15 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
                 <Button type="button" variant="ghost" size="icon-sm" aria-label="Detalhes do grupo" onClick={onOpenDetails} className="text-text-muted hover:text-text-primary">
                   <Info size={16} />
                 </Button>
-                <Button type="button" size="icon-sm" aria-label="Entrar na chamada" onClick={() => onOpenCall(conversation.id)}>
+                <Button type="button" size="icon-sm" aria-label="Entrar na chamada" onClick={() => onOpenCall(conversation.id)} className="bg-green text-bg-primary hover:bg-green/90">
                   <Phone size={16} />
                 </Button>
               </>
             )}
           </header>
-          <MessageBubbleListBridge conversationId={conversation.id} onOpenProfile={onOpenProfile} />
+          <ChatSurfaceWidthProvider width={surfaceWidth}>
+            <MessageBubbleListBridge conversationId={conversation.id} onOpenProfile={onOpenProfile} />
+          </ChatSurfaceWidthProvider>
         </>
       ) : (
         <div className="grid flex-1 place-items-center px-6 text-center">
@@ -662,7 +707,7 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
   );
 }
 
-function MessageBubbleListBridge({ conversationId, onOpenProfile }: { conversationId: string; onOpenProfile: (userId: string) => void }) {
+export function MessageBubbleListBridge({ conversationId, onOpenProfile }: { conversationId: string; onOpenProfile: (userId: string) => void }) {
   const { setReplyingTo } = useRoom();
   return (
     <>

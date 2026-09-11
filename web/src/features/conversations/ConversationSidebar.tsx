@@ -65,7 +65,7 @@ function ConversationRow({ conversation, active, onClick }: {
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className="truncate text-label font-semibold">{title}</span>
-          {hasActiveCall && <PhoneCall size={13} className="flex-none text-primary" />}
+          {hasActiveCall && <PhoneCall size={13} className="flex-none text-green" />}
         </span>
         <span className="mt-0.5 block truncate text-caption text-text-muted">{subtitle}</span>
       </span>
@@ -140,7 +140,7 @@ function CollapsedConversationButton({ conversation, active, onClick }: {
 }
 
 export function ConversationSidebar({ onOpenSettings, onOpenProfile }: ConversationSidebarProps) {
-  const { state, conversations, activeConversationId, openConversation, openDirect, allUsers } = useRoom();
+  const { state, conversations, activeConversationId, openConversation, openDirect, allUsers, requestChatView } = useRoom();
   const { isMobile, open: sidebarOpen, setOpenMobile, toggleSidebar } = useAnimatedSidebar();
   const collapsed = !isMobile && !sidebarOpen;
   const [tab, setTab] = useState('conversations');
@@ -162,11 +162,13 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile }: Conversat
 
   function selectConversation(conversationId: string) {
     openConversation(conversationId);
+    requestChatView();
     if (isMobile) setOpenMobile(false);
   }
 
   function selectUser(userId: string) {
     openDirect(userId);
+    requestChatView();
     if (isMobile) setOpenMobile(false);
   }
 

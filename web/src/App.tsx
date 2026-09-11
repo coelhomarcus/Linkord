@@ -9,9 +9,11 @@ import { ReconnectBanner } from './shared/ReconnectBanner';
 import { ConversationSidebar } from './features/conversations/ConversationSidebar';
 import { ConversationPanel } from './features/conversations/ConversationPanel';
 import { GroupDetailsPanel } from './features/conversations/GroupDetailsPanel';
+import { ConversationMediaPanel } from './features/conversations/ConversationMediaPanel';
 import { ChatSearchDialog } from './features/chat/ChatSearchDialog';
 import { Stage } from './features/sharing/Stage';
 import { CallControlBar } from './features/sharing/CallControlBar';
+import { CallChatPanel } from './features/sharing/CallChatPanel';
 import { ParticipantAudioLayer } from './features/sharing/ParticipantAudioLayer';
 import { FloatingPip } from './features/sharing/FloatingPip';
 import { useParticipantMedia } from './features/sharing/useLiveKitTrack';
@@ -38,6 +40,8 @@ function Shell() {
   const [mobileShowSidebar, setMobileShowSidebar] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [mediaOpen, setMediaOpen] = useState(false);
+  const [callChatOpen, setCallChatOpen] = useState(false);
 
   const [sidebarOpen, setSidebarOpenState] = useState(() => !loadSidebarCollapsed());
   const setSidebarOpen = useCallback((next: boolean) => {
@@ -135,18 +139,32 @@ function Shell() {
               onOpenProfile={setProfileUserId}
               onOpenCall={handleOpenCall}
               onOpenSearch={() => setSearchOpen(true)}
-              onOpenDetails={() => setDetailsOpen(true)}
+              onOpenDetails={() => { setMediaOpen(false); setDetailsOpen(true); }}
+              onOpenMedia={() => { setDetailsOpen(false); setMediaOpen(true); }}
             />
           )}
-          {activeView === 'call' && inCall && <CallControlBar />}
+          {activeView === 'call' && inCall && (
+            <CallControlBar chatOpen={callChatOpen} onToggleChat={() => setCallChatOpen((v) => !v)} />
+          )}
           {inCall && <ParticipantAudioLayer participantIds={callIds} />}
-          {inCall && activeView !== 'call' && <FloatingPip allIds={callIds} />}
+          {inCall && activeView !== 'call' && <FloatingPip allIds={callIds} onExpand={() => setActiveView('call')} />}
           <ReactionsOverlay />
         </AnimatedSidebarInset>
         <GroupDetailsPanel
           conversationId={activeConversation?.type === 'group' ? activeConversation.id : null}
-          open={detailsOpen && activeConversation?.type === 'group'}
+          open={detailsOpen && activeConversation?.type === 'group' && activeView !== 'call'}
           onOpenChange={setDetailsOpen}
+          onOpenProfile={setProfileUserId}
+        />
+        <ConversationMediaPanel
+          conversationId={activeConversation?.id ?? null}
+          open={mediaOpen && !!activeConversation && activeView !== 'call'}
+          onOpenChange={setMediaOpen}
+        />
+        <CallChatPanel
+          conversationId={activeCallConversationId}
+          open={callChatOpen && activeView === 'call' && inCall}
+          onOpenChange={setCallChatOpen}
           onOpenProfile={setProfileUserId}
         />
         <TileMenu />

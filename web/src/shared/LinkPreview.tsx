@@ -4,6 +4,7 @@ import type { DetectedEmbed } from './lib/chatEmbeds';
 import { ImageLightbox } from './ImageLightbox';
 import { GenericEmbed } from './GenericEmbed';
 import { AudioPlayer, VideoPlayer } from './MediaPlayers';
+import { availableAttachmentWidth, useChatSurfaceWidth } from './lib/chatSurfaceWidth';
 
 function EmbedFailedFallback({ url, className }: { url: string; className: string }) {
   return (
@@ -31,6 +32,8 @@ interface LinkPreviewProps {
 export function LinkPreview({ embed, className = '', edgeToEdge }: LinkPreviewProps) {
   const [failed, setFailed] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const surfaceWidth = useChatSurfaceWidth(384 + 120);
+  const maxWidth = availableAttachmentWidth(surfaceWidth, 384);
 
   if (embed.kind === 'youtube' || embed.kind === 'twitch-channel' || embed.kind === 'twitch-vod' || embed.kind === 'twitch-clip' || embed.kind === 'link') {
     return <GenericEmbed key={embed.url} embed={embed} className={className} edgeToEdge={edgeToEdge} />;
@@ -43,7 +46,7 @@ export function LinkPreview({ embed, className = '', edgeToEdge }: LinkPreviewPr
   }
 
   if (embed.kind === 'audio') {
-    return <AudioPlayer src={embed.url} className={edgeToEdge ? 'w-80 max-w-full rounded-2xl border-0 bg-transparent shadow-none' : className} onError={() => setFailed(true)} />;
+    return <AudioPlayer src={embed.url} className={edgeToEdge ? 'max-w-full rounded-2xl border-0 bg-transparent shadow-none' : className} onError={() => setFailed(true)} />;
   }
 
   return (
@@ -54,7 +57,8 @@ export function LinkPreview({ embed, className = '', edgeToEdge }: LinkPreviewPr
           alt=""
           loading="lazy"
           onError={() => setFailed(true)}
-          className={`block h-auto max-h-70 object-contain ${edgeToEdge ? 'max-w-full rounded-2xl' : 'max-w-[min(24rem,100%)] rounded-md border border-white/10'}`}
+          style={{ maxWidth }}
+          className={`block h-auto max-h-70 max-w-full object-contain ${edgeToEdge ? 'rounded-2xl' : 'rounded-md border border-white/10'}`}
         />
       </button>
       <ImageLightbox src={embed.url} alt="" open={lightboxOpen} onOpenChange={setLightboxOpen} />

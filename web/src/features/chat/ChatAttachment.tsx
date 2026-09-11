@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { File as FileIcon } from 'lucide-react';
+import { Download } from 'lucide-react';
 import type { ChatAttachment as ChatAttachmentData } from '../../types/protocol';
+import { DocumentAttachmentCard } from '../../shared/DocumentAttachmentCard';
 import { ImageLightbox } from '../../shared/ImageLightbox';
 import { AudioPlayer, VideoPlayer } from '../../shared/MediaPlayers';
-import { formatFileSize } from '../../shared/lib/formatBytes';
+import { availableAttachmentWidth, useChatSurfaceWidth } from '../../shared/lib/chatSurfaceWidth';
 import { cn } from '../../shared/lib/utils';
 
-const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
-const VIDEO_MIME_TYPES = new Set(['video/mp4', 'video/webm', 'video/ogg']);
-const AUDIO_MIME_TYPES = new Set(['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4']);
+export const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+export const VIDEO_MIME_TYPES = new Set(['video/mp4', 'video/webm', 'video/ogg']);
+export const AUDIO_MIME_TYPES = new Set(['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4']);
 
 /** Whether this attachment can render flush with the bubble's own edges
  * (see `edgeToEdge` on ChatAttachment) instead of sitting in its own
@@ -29,6 +30,8 @@ interface ChatAttachmentProps {
 export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) {
   const url = `/uploads/${attachment.id}`;
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const surfaceWidth = useChatSurfaceWidth(384 + 120);
+  const maxWidth = availableAttachmentWidth(surfaceWidth, 384);
 
   if (IMAGE_MIME_TYPES.has(attachment.mime)) {
     return (
@@ -38,9 +41,10 @@ export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) 
             src={url}
             alt={attachment.name}
             loading="lazy"
+            style={{ maxWidth }}
             className={cn(
-              'block h-auto max-h-80 object-contain',
-              edgeToEdge ? 'max-w-full rounded-2xl' : 'max-w-[min(24rem,100%)] rounded-md border border-white/10'
+              'block h-auto max-h-80 max-w-full object-contain',
+              edgeToEdge ? 'rounded-2xl' : 'rounded-md border border-white/10'
             )}
           />
         </button>
@@ -64,7 +68,7 @@ export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) 
       <AudioPlayer
         src={url}
         title={attachment.name}
-        className={edgeToEdge ? 'w-80 max-w-full rounded-2xl border-0 bg-transparent shadow-none' : 'mt-1.5'}
+        className={edgeToEdge ? 'max-w-full rounded-2xl border-0 bg-transparent shadow-none' : 'mt-1.5'}
       />
     );
   }
@@ -75,11 +79,10 @@ export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) 
       target="_blank"
       rel="noopener noreferrer"
       download={attachment.name}
-      className="mt-1.5 flex w-fit max-w-sm items-center gap-2 rounded-md border border-white/10 bg-bg-tertiary px-3 py-2 text-label transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="mt-1.5 flex w-full max-w-sm items-center gap-3 rounded-xl border border-white/10 bg-bg-tertiary px-3 py-2.5 transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
     >
-      <FileIcon size={16} className="flex-none text-text-muted" />
-      <span className="min-w-0 flex-1 truncate font-medium text-text-secondary">{attachment.name}</span>
-      <span className="flex-none text-text-muted">{formatFileSize(attachment.size)}</span>
+      <DocumentAttachmentCard name={attachment.name} size={attachment.size} mime={attachment.mime} className="flex-1" />
+      <Download size={16} className="flex-none text-text-muted" />
     </a>
   );
 }
