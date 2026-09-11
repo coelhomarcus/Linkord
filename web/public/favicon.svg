@@ -1,17 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Self-adapting favicon: browsers evaluate this SVG's own embedded
      prefers-color-scheme media query against the OS/browser theme, so the
-     black fill flips to white automatically on a dark tab bar. The
+     black stroke flips to white automatically on a dark tab bar. The
      `media` attribute on <link rel="icon"> isn't reliably honored across
      browsers, so the switch lives INSIDE the SVG instead (Chrome/Firefox
-     both respect this; Safari falls back to picking one, never breaks). -->
-<svg viewBox="-16 -16 96 96" xmlns="http://www.w3.org/2000/svg">
+     both respect this; Safari falls back to picking one, never breaks).
+     Cropped to the head/ears (viewBox) and thicker strokes vs. logo.svg —
+     at 16-32px a favicon has almost no pixel budget, so it keeps just the
+     silhouette that stays readable instead of the full mark with legs. -->
+<svg viewBox="45 45 320 280" xmlns="http://www.w3.org/2000/svg">
 <style>
-  circle, path { fill: #000000; }
+  path { stroke: #000000; }
   @media (prefers-color-scheme: dark) {
-    circle, path { fill: #ffffff; }
+    path { stroke: #ffffff; }
   }
 </style>
-<circle cx="32" cy="32" r="8"/>
-<path d="M61.395,19.383C63,17.34,64,14.797,64,12c0-6.629-5.375-12-12-12c-2.805,0-5.348,1-7.391,2.613c-3.871-1.66-8.133-2.59-12.609-2.59s-8.738,0.93-12.609,2.59C17.348,1,14.805,0,12,0C5.375,0,0,5.371,0,12c0,2.797,1,5.34,2.605,7.383C0.938,23.254,0.004,27.516,0,32c0.004,4.484,0.938,8.746,2.605,12.617C1,46.664,0,49.203,0,52c0,6.629,5.375,12,12,12c2.805,0,5.348-1,7.391-2.613c3.871,1.66,8.133,2.59,12.609,2.59s8.738-0.93,12.609-2.59C46.652,63,49.195,64,52,64c6.625,0,12-5.371,12-12c0-2.797-1-5.336-2.605-7.383C63.062,40.746,63.996,36.484,64,32C63.996,27.516,63.062,23.254,61.395,19.383z M32,48c-8.836,0-16-7.164-16-16s7.164-16,16-16s16,7.164,16,16S40.836,48,32,48z"/>
+<path d="M159.603 212.454C127.707 213.088 61.7448 146.196 75.985 110.592C77.8828 105.853 150.047 158.913 178.728 204.444C182.975 211.186 190.293 196.7 206.71 196.7C223.128 196.7 232.602 209.338 236.99 209.338C241.378 209.338 272.094 143.268 288.727 125.126C295.758 117.457 319.332 86.2799 321.496 87.9069C330.439 94.6106 323.582 129.956 321.943 138.17C308.011 207.819 254.78 208.73 254.78 220.013C254.78 223.54 266.35 232.924 269.015 240.921C280.624 275.758 237.511 293.02 211.196 296.966C168.4 303.386 138.81 282.232 156.045 239.144" fill="none" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M191.222 110.215C185.539 138.03 190.016 170.292 203.729 195.209" fill="none" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M239.166 108.722C240.958 138.596 236.133 171.691 218.641 196.698" fill="none" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M276.714 71.4447C278.054 93.1679 262.09 131.355 241.006 140.036" fill="none" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M136.639 65.4801C136.104 103.092 157.549 136.588 188.818 154.948" fill="none" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M153.166 75.9182C144.595 89.2515 147.503 110.589 153.166 120.373" fill="none" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M267.158 84.8652C270.388 92.5635 270.911 99.76 268.59 107.232" fill="none" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M217.656 233.977C218.448 231.01 217.974 228.018 218.13 225.03" fill="none" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M197.018 232.486C197.018 229.504 197.018 226.521 197.018 223.539" fill="none" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M209.398 252.39C196.201 248.582 203.93 267.381 211.182 255.11" fill="none" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M206.709 268.274C203.378 274.884 198.928 276.252 193.289 277.221" fill="none" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M208.2 266.781C208.694 274.65 213.458 274.276 218.638 277.219" fill="none" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

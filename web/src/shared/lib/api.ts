@@ -28,7 +28,12 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
     credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+    // Only when there IS a body — Fastify's default JSON parser 400s a
+    // request that declares Content-Type: application/json but sends an
+    // empty body (e.g. POST /api/auth/logout), which used to fail silently
+    // (swallowed by AuthContext's logout() try/catch) and leave the real
+    // session cookie alive on the server after a client-side "logout".
+    headers: { ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(init?.headers || {}) },
   });
 
   if (res.status === 204) return undefined as T;
