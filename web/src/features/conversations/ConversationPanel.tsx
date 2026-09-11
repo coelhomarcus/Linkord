@@ -1,12 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent, ClipboardEvent } from 'react';
-import { ArrowLeft, File as FileIcon, Info, MoreHorizontal, Paperclip, Phone, Reply, Search, Trash2, X, Pencil, SmilePlus } from 'lucide-react';
+import { ArrowLeft, File as FileIcon, Info, MoreHorizontal, Paperclip, Phone, Reply, Search, Trash2, X, Pencil } from 'lucide-react';
 import { MessageBubble, MessageBubbleContent } from '@/components/agents/message-bubble';
 import { PromptInput } from '@/components/agents/prompt-input';
 import { useAnimatedSidebar } from '@/components/motion/animated-sidebar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar } from '@/shared/Avatar';
 import { ChatAttachment, isEdgeToEdgeMime } from '@/features/chat/ChatAttachment';
@@ -73,7 +72,6 @@ function MessageRow({
   onJumpTo: (msgId: number) => void;
 }) {
   const { state, deleteChatMessage, editChatMessage, reactToChatMessage, editingMsgId, setEditingMsgId } = useRoom();
-  const [reactOpen, setReactOpen] = useState(false);
   const [editText, setEditText] = useState(message.text);
   const isMine = message.id === state.me.userId;
   const isMod = state.me.role === 'admin';
@@ -124,17 +122,12 @@ function MessageRow({
     }
   }
 
-  function pickReaction(emoji: ReactionEmoji) {
-    reactToChatMessage(message.msgId, emoji);
-    setReactOpen(false);
-  }
-
   return (
     <div
       id={`chat-msg-${message.msgId}`}
       data-message-id={message.msgId}
       className={cn(
-        'group/message flex w-full gap-2 px-4 py-1',
+        'flex w-full gap-2 px-4 py-1',
         isMine ? 'justify-end' : 'justify-start',
         showHeader ? 'mt-4' : 'mt-1'
       )}
@@ -221,36 +214,6 @@ function MessageRow({
               )}
             </MessageBubbleContent>
           </MessageBubble>
-
-          <div className="hidden items-center gap-0.5 rounded-full border border-white/10 bg-[rgb(20_20_23)] p-0.5 opacity-0 shadow-popover transition-opacity group-hover/message:flex group-hover/message:opacity-100">
-            <Popover open={reactOpen} onOpenChange={setReactOpen}>
-              <PopoverTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Reagir" />}>
-                <SmilePlus size={13} />
-              </PopoverTrigger>
-              <PopoverContent className="w-auto border-white/10 bg-[rgb(20_20_23)] p-1.5" side="top" align="center">
-                <div className="flex gap-1">
-                  {ALLOWED_REACTIONS.map((emoji) => (
-                    <button key={emoji} type="button" onClick={() => pickReaction(emoji)} className="rounded-md p-1.5 text-[18px] leading-none hover:bg-white/10">
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
-            <Button type="button" variant="ghost" size="icon-xs" aria-label="Responder" onClick={onReply}>
-              <Reply size={13} />
-            </Button>
-            {isMine && (
-              <Button type="button" variant="ghost" size="icon-xs" aria-label="Editar" onClick={() => { setEditText(message.text); setEditingMsgId(message.msgId); }}>
-                <Pencil size={13} />
-              </Button>
-            )}
-            {canDelete && (
-              <Button type="button" variant="ghost" size="icon-xs" aria-label="Apagar" onClick={() => deleteChatMessage(message.msgId)} className="hover:bg-red/10 hover:text-red">
-                <Trash2 size={13} />
-              </Button>
-            )}
-          </div>
 
           <div className="md:hidden">
             <DropdownMenu>
