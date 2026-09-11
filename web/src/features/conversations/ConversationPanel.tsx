@@ -258,7 +258,7 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
                 <TooltipContent side="bottom">Na chamada</TooltipContent>
               </Tooltip>
             )}
-            <Button type="button" variant="ghost" size="icon-sm" aria-label="Midias e links" onClick={onOpenMedia} className="text-text-muted hover:text-text-primary">
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="Mídias e links" onClick={onOpenMedia} className="text-text-muted hover:text-text-primary">
               <ImageIcon size={16} />
             </Button>
             <Button type="button" variant="ghost" size="icon-sm" aria-label="Buscar mensagens" onClick={onOpenSearch} className="text-text-muted hover:text-text-primary">

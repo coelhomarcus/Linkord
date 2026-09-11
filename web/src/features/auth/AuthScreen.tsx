@@ -38,7 +38,7 @@ function LoginForm() {
     try {
       await login(username, password);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Nao foi possivel entrar.');
+      setError(err instanceof ApiError ? err.message : 'Não foi possível entrar.');
     } finally {
       setPending(false);
     }
@@ -48,7 +48,7 @@ function LoginForm() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
       <Input
         id="loginUsername"
-        label="Usuario"
+        label="Usuário"
         autoFocus
         autoComplete="username"
         leftIcon={<User />}
@@ -113,7 +113,7 @@ function RegisterForm() {
           setFormError(err.message);
         }
       } else {
-        setFormError('Nao foi possivel criar a conta.');
+        setFormError('Não foi possível criar a conta.');
       }
     } finally {
       setPending(false);
@@ -124,7 +124,7 @@ function RegisterForm() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
       <Input
         id="registerUsername"
-        label="Usuario"
+        label="Usuário"
         autoFocus
         autoComplete="username"
         maxLength={20}
@@ -150,7 +150,7 @@ function RegisterForm() {
       />
       <Input
         id="registerCode"
-        label="Codigo de convite"
+        label="Código de convite"
         leftIcon={<KeyRound />}
         value={code}
         onChange={setCode}
@@ -191,7 +191,7 @@ export function AuthScreen() {
           <img src="/logo.svg" alt="" className="h-12 w-12 drop-shadow-[0_4px_16px_rgba(0,0,0,0.45)]" />
           <div>
             <h1 className="text-display font-bold tracking-tight text-white drop-shadow-sm">Linkord</h1>
-            <p className="text-label text-white/70">Converse e faca chamadas com seu grupo</p>
+            <p className="text-label text-white/70">Converse e faça chamadas com seu grupo</p>
           </div>
         </div>
 

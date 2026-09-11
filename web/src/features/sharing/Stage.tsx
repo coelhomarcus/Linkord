@@ -14,7 +14,7 @@ export function Stage({ allIds }: StageProps) {
   const { setOpenMobile } = useAnimatedSidebar();
   const allDescriptors = useCallTiles(allIds);
   const descriptors = hideAudioOnlyTiles ? allDescriptors.filter((d) => d.kind !== 'avatar') : allDescriptors;
-  // "Ocultar sem video" filtering everyone out reads as a black-screen bug
+  // "Ocultar sem vídeo" filtering everyone out reads as a black-screen bug
   // otherwise — nothing on stage explains why, since the option lives in a
   // right-click menu, not a visible toggle.
   const allHiddenByFilter = allDescriptors.length > 0 && descriptors.length === 0;
@@ -35,8 +35,8 @@ export function Stage({ allIds }: StageProps) {
         <div className="flex flex-col items-center gap-3 px-6 text-center text-text-muted">
           <VideoOff size={28} />
           <p className="text-body">
-            Ninguem esta com a camera ligada agora.<br />
-            A opcao <span className="font-medium text-text-secondary">"Ocultar sem video"</span> esta ativada.
+            Ninguém está com a câmera ligada agora.<br />
+            A opção <span className="font-medium text-text-secondary">"Ocultar sem vídeo"</span> está ativada.
           </p>
           <Button type="button" variant="secondary" size="sm" onClick={() => setHideAudioOnlyTiles(false)}>
             Mostrar todos

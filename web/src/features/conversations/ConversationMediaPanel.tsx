@@ -101,7 +101,7 @@ export function ConversationMediaPanel({ conversationId, open, onOpenChange }: C
       setItems((prev) => (replace ? page.items : [...prev, ...page.items]));
       setNextBefore(page.nextBefore);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Nao foi possivel carregar.');
+      setError(err instanceof ApiError ? err.message : 'Não foi possível carregar.');
     } finally {
       setLoading(false);
     }
@@ -122,7 +122,7 @@ export function ConversationMediaPanel({ conversationId, open, onOpenChange }: C
   const content = conversationId && (
     <>
       <div className="flex flex-none items-center gap-2 border-b border-white/10 px-5 py-4">
-        <h2 className="flex-1 text-title font-semibold">Midias e links</h2>
+        <h2 className="flex-1 text-title font-semibold">Mídias e links</h2>
         <Button type="button" variant="ghost" size="icon-sm" aria-label="Fechar" onClick={() => onOpenChange(false)}>
           <X size={16} />
         </Button>
@@ -167,7 +167,7 @@ export function ConversationMediaPanel({ conversationId, open, onOpenChange }: C
           emptyState={
             <div className="flex h-full min-h-48 flex-col items-center justify-center px-6 text-center">
               <p className="select-none text-label text-text-muted">
-                {kind === 'uploads' ? 'Nenhum arquivo enviado ainda.' : 'Nenhum link embutivel compartilhado ainda.'}
+                {kind === 'uploads' ? 'Nenhum arquivo enviado ainda.' : 'Nenhum link incorporável compartilhado ainda.'}
               </p>
             </div>
           }
@@ -183,14 +183,14 @@ export function ConversationMediaPanel({ conversationId, open, onOpenChange }: C
         <Drawer
           open={open && !!conversationId}
           onOpenChange={onOpenChange}
-          ariaLabel="Midias e links"
+          ariaLabel="Mídias e links"
           className="flex w-96 flex-col border-white/10 bg-[rgb(14_14_16)] text-text-primary"
         >
           {content}
         </Drawer>
       ) : (
         <motion.aside
-          aria-label="Midias e links"
+          aria-label="Mídias e links"
           aria-hidden={!open || !conversationId}
           initial={false}
           animate={{ width: open && conversationId ? PANEL_WIDTH : 0, opacity: open && conversationId ? 1 : 0 }}

@@ -67,7 +67,7 @@ function EditableBio({ value, onChange }: { value: string; onChange: (value: str
         aria-label="Bio"
         value={value}
         onChange={(e) => onChange(e.target.value.slice(0, MAX_PROFILE_BIO_LEN))}
-        placeholder="Fale um pouco sobre voce..."
+        placeholder="Fale um pouco sobre você..."
         rows={1}
         className="w-full resize-none overflow-hidden whitespace-pre-wrap bg-transparent text-body leading-relaxed text-text-secondary outline-none placeholder:text-text-muted/70"
       />
@@ -105,7 +105,7 @@ export function ProfileCard({
             >
               {bannerUploading ? <Loader2 size={24} className="animate-spin" /> : <Camera size={24} />}
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="center">
+            <DropdownMenuContent align="center" className="w-max min-w-0">
               <DropdownMenuItem onClick={onBannerUpload}>
                 <Upload size={14} />
                 <span>Enviar do computador</span>
@@ -155,7 +155,7 @@ export function ProfileCard({
                   >
                     {avatarUploading ? <Loader2 size={20} className="animate-spin" /> : <Camera size={20} />}
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
+                  <DropdownMenuContent align="start" className="w-max min-w-0">
                     <DropdownMenuItem onClick={onAvatarUpload}>
                       <Upload size={14} />
                       <span>Enviar do computador</span>
@@ -243,7 +243,7 @@ export function ProfileCard({
         <div className="mt-3 flex min-w-0 flex-col gap-1">
           {onDisplayNameChange ? (
             <input
-              aria-label="Nome de exibicao"
+              aria-label="Nome de exibição"
               maxLength={MAX_DISPLAY_NAME_LEN}
               placeholder={user.username}
               value={user.displayName === user.username ? '' : user.displayName}

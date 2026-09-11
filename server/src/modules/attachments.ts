@@ -309,12 +309,12 @@ function withInitLock<T>(fn: () => Promise<T>): Promise<T> {
 async function handleAttachmentInit(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
 
   const body = jsonBody(request.body);
   const conversationId = String(body.conversationId || '');
   if (!conversationId || !(await conversationExistsForUser(conversationId, sess.userId))) {
-    return sendError(reply, 404, 'conversation_not_found', 'Conversa nao encontrada.');
+    return sendError(reply, 404, 'conversation_not_found', 'Conversa não encontrada.');
   }
 
   const fileName = sanitizeFileName(body.fileName);
@@ -323,7 +323,7 @@ async function handleAttachmentInit(request: FastifyRequest, reply: FastifyReply
 
   const totalSize = Number(body.totalSize);
   if (!Number.isInteger(totalSize) || totalSize <= 0 || totalSize > config.MAX_ATTACHMENT_BYTES) {
-    return sendError(reply, 400, 'invalid_size', 'Tamanho de arquivo invalido.');
+    return sendError(reply, 400, 'invalid_size', 'Tamanho de arquivo inválido.');
   }
 
   const uploadId = newId();
@@ -364,12 +364,12 @@ export async function handleAttachmentChunk(request: FastifyRequest<{ Params: { 
   const index = Number(request.params.index);
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
 
   const manifest = await readManifest(uploadId);
-  if (!manifest || manifest.userId !== sess.userId) return sendError(reply, 404, 'upload_not_found', 'Upload nao encontrado.');
+  if (!manifest || manifest.userId !== sess.userId) return sendError(reply, 404, 'upload_not_found', 'Upload não encontrado.');
   if (!Number.isInteger(index) || index < 0 || index >= manifest.totalChunks) {
-    return sendError(reply, 400, 'invalid_index', 'Indice de pedaco invalido.');
+    return sendError(reply, 400, 'invalid_index', 'Índice de pedaço inválido.');
   }
 
   // raw Buffer body — content-type parser for this route is swapped in
@@ -377,7 +377,7 @@ export async function handleAttachmentChunk(request: FastifyRequest<{ Params: { 
   // still needs checking here (the last chunk is always smaller).
   const expected = expectedChunkLength(manifest, index);
   const buffer = request.body as Buffer;
-  if (buffer.length !== expected) return sendError(reply, 400, 'chunk_size_mismatch', 'Tamanho do pedaco nao bate com o esperado.');
+  if (buffer.length !== expected) return sendError(reply, 400, 'chunk_size_mismatch', 'Tamanho do pedaço não bate com o esperado.');
 
   await fs.writeFile(chunkPathFor(uploadId, index), buffer);
   sendJson(reply, 200, { received: index });
@@ -390,10 +390,10 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
   const uploadId = request.params.id;
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
 
   const manifest = await readManifest(uploadId);
-  if (!manifest || manifest.userId !== sess.userId) return sendError(reply, 404, 'upload_not_found', 'Upload nao encontrado.');
+  if (!manifest || manifest.userId !== sess.userId) return sendError(reply, 404, 'upload_not_found', 'Upload não encontrado.');
 
   // optional — present only when this file is the 2nd-4th attachment of a
   // message whose FIRST attachment already created it (see
@@ -404,17 +404,17 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
   let targetMsgId: number | null = null;
   if (body.targetMsgId != null) {
     targetMsgId = Number(body.targetMsgId);
-    if (!Number.isFinite(targetMsgId)) return sendError(reply, 400, 'invalid_target', 'targetMsgId invalido.');
+    if (!Number.isFinite(targetMsgId)) return sendError(reply, 400, 'invalid_target', 'targetMsgId inválido.');
     const [existing] = await db.select().from(messages).where(eq(messages.id, targetMsgId)).limit(1);
-    if (!existing) return sendError(reply, 404, 'target_message_not_found', 'Mensagem de destino nao encontrada.');
-    if (existing.authorId !== sess.userId) return sendError(reply, 403, 'not_your_message', 'Voce so pode anexar arquivos as suas proprias mensagens.');
-    if (existing.conversationId !== manifest.conversationId) return sendError(reply, 400, 'conversation_mismatch', 'Conversa nao bate com o upload.');
+    if (!existing) return sendError(reply, 404, 'target_message_not_found', 'Mensagem de destino não encontrada.');
+    if (existing.authorId !== sess.userId) return sendError(reply, 403, 'not_your_message', 'Você só pode anexar arquivos às suas próprias mensagens.');
+    if (existing.conversationId !== manifest.conversationId) return sendError(reply, 400, 'conversation_mismatch', 'A conversa não corresponde ao upload.');
     if (Date.now() - existing.createdAt.getTime() > config.ATTACH_TO_MESSAGE_WINDOW_MS) {
-      return sendError(reply, 400, 'target_message_too_old', 'Mensagem de destino e antiga demais pra receber mais anexos.');
+      return sendError(reply, 400, 'target_message_too_old', 'A mensagem de destino é antiga demais para receber mais anexos.');
     }
   }
 
-  if (completingUploads.has(uploadId)) return sendError(reply, 409, 'already_completing', 'Upload ja esta sendo finalizado.');
+  if (completingUploads.has(uploadId)) return sendError(reply, 409, 'already_completing', 'O upload já está sendo finalizado.');
   completingUploads.add(uploadId);
 
   try {
@@ -422,14 +422,14 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
       try {
         await fs.access(chunkPathFor(uploadId, i));
       } catch {
-        return sendError(reply, 400, 'incomplete_upload', 'Faltam pedacos do arquivo.');
+        return sendError(reply, 400, 'incomplete_upload', 'Faltam pedaços do arquivo.');
       }
     }
     let receivedTotal = 0;
     for (let i = 0; i < manifest.totalChunks; i++) {
       receivedTotal += (await fs.stat(chunkPathFor(uploadId, i))).size;
     }
-    if (receivedTotal !== manifest.totalSize) return sendError(reply, 400, 'size_mismatch', 'Tamanho recebido nao bate com o declarado.');
+    if (receivedTotal !== manifest.totalSize) return sendError(reply, 400, 'size_mismatch', 'O tamanho recebido não corresponde ao declarado.');
 
     const usage = await getUsage();
     if (usage.totalBytes + manifest.totalSize > config.MAX_STORAGE_BYTES) {
@@ -476,7 +476,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
       // discarded.
       await fs.unlink(destPath).catch(() => {});
       if (err instanceof Error && (err as { code?: string }).code === 'too_many_attachments') {
-        return sendError(reply, 400, 'too_many_attachments', 'Essa mensagem ja tem o maximo de anexos.');
+        return sendError(reply, 400, 'too_many_attachments', 'Essa mensagem já tem o máximo de anexos.');
       }
       throw err;
     }
@@ -525,7 +525,7 @@ export async function handleAttachmentCancel(request: FastifyRequest<{ Params: {
   const uploadId = request.params.id;
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
 
   const manifest = await readManifest(uploadId);
   if (manifest && manifest.userId === sess.userId) {
@@ -596,14 +596,14 @@ async function fetchImageFromUrl(rawUrl: string, maxBytes: number, redirectsLeft
   try {
     parsed = new URL(rawUrl);
   } catch {
-    return { error: 'invalid_url', message: 'URL invalida.' };
+    return { error: 'invalid_url', message: 'URL inválida.' };
   }
   if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || !parsed.hostname) {
-    return { error: 'invalid_url', message: 'URL invalida.' };
+    return { error: 'invalid_url', message: 'URL inválida.' };
   }
 
   const ip = await resolveSafePublicIp(parsed.hostname);
-  if (!ip) return { error: 'invalid_url', message: 'Essa URL nao pode ser usada.' };
+  if (!ip) return { error: 'invalid_url', message: 'Essa URL não pode ser usada.' };
 
   const client = parsed.protocol === 'https:' ? https : http;
   const pinnedLookup: typeof dns.lookup = ((_hostname: string, options: unknown, callback: unknown) => {
@@ -633,19 +633,19 @@ async function fetchImageFromUrl(rawUrl: string, maxBytes: number, redirectsLeft
         try {
           nextUrl = new URL(res.headers.location, parsed).toString();
         } catch {
-          return settle({ error: 'invalid_url', message: 'URL invalida.' });
+          return settle({ error: 'invalid_url', message: 'URL inválida.' });
         }
         settle({ error: '__redirect__', message: nextUrl });
         return;
       }
       if (status !== 200) {
         res.resume();
-        return settle({ error: 'fetch_failed', message: 'Nao foi possivel baixar a imagem.' });
+        return settle({ error: 'fetch_failed', message: 'Não foi possível baixar a imagem.' });
       }
       const contentType = String(res.headers['content-type'] || '').split(';')[0]!.trim();
       if (!AVATAR_MIME_TYPES.has(contentType)) {
         res.resume();
-        return settle({ error: 'invalid_type', message: 'Formato invalido. Use PNG, JPEG, GIF ou WEBP.' });
+        return settle({ error: 'invalid_type', message: 'Formato inválido. Use PNG, JPEG, GIF ou WEBP.' });
       }
       const chunks: Buffer[] = [];
       let total = 0;
@@ -659,10 +659,10 @@ async function fetchImageFromUrl(rawUrl: string, maxBytes: number, redirectsLeft
         chunks.push(chunk);
       });
       res.on('end', () => settle({ buffer: Buffer.concat(chunks) }));
-      res.on('error', () => settle({ error: 'fetch_failed', message: 'Nao foi possivel baixar a imagem.' }));
+      res.on('error', () => settle({ error: 'fetch_failed', message: 'Não foi possível baixar a imagem.' }));
     });
     req.on('timeout', () => req.destroy(new Error('timeout')));
-    req.on('error', () => settle({ error: 'fetch_failed', message: 'Nao foi possivel baixar a imagem.' }));
+    req.on('error', () => settle({ error: 'fetch_failed', message: 'Não foi possível baixar a imagem.' }));
     req.end();
   }).then((result) => {
     if ('error' in result && result.error === '__redirect__') {
@@ -694,7 +694,7 @@ async function fetchImageFromUrl(rawUrl: string, maxBytes: number, redirectsLeft
 async function handleAvatarUpload(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
 
   const mimeType = String(request.headers['content-type'] || '').split(';')[0]!.trim();
 
@@ -704,25 +704,25 @@ async function handleAvatarUpload(request: FastifyRequest, reply: FastifyReply):
     try {
       payload = JSON.parse((request.body as Buffer).toString('utf8'));
     } catch {
-      return sendError(reply, 400, 'invalid_body', 'Corpo invalido.');
+      return sendError(reply, 400, 'invalid_body', 'Corpo inválido.');
     }
     const sourceUrl = payload && typeof payload === 'object' ? (payload as Record<string, unknown>).url : undefined;
     if (typeof sourceUrl !== 'string' || !sourceUrl.trim()) {
-      return sendError(reply, 400, 'invalid_url', 'URL invalida.');
+      return sendError(reply, 400, 'invalid_url', 'URL inválida.');
     }
     const fetched = await fetchImageFromUrl(sourceUrl.trim(), config.MAX_AVATAR_BYTES);
     if ('error' in fetched) return sendError(reply, 400, fetched.error, fetched.message);
     buffer = fetched.buffer;
   } else {
     if (!AVATAR_MIME_TYPES.has(mimeType)) {
-      return sendError(reply, 400, 'invalid_type', 'Formato invalido. Use PNG, JPEG, GIF ou WEBP.');
+      return sendError(reply, 400, 'invalid_type', 'Formato inválido. Use PNG, JPEG, GIF ou WEBP.');
     }
     buffer = request.body as Buffer;
     if (buffer.length === 0) return sendError(reply, 400, 'empty_file', 'Arquivo vazio.');
   }
 
   const cropRect = parseCropRect((request.query as Record<string, string | undefined>).crop);
-  if (!cropRect) return sendError(reply, 400, 'invalid_crop', 'Recorte invalido.');
+  if (!cropRect) return sendError(reply, 400, 'invalid_crop', 'Recorte inválido.');
 
   let outBuffer: Buffer;
   let outMime: string;
@@ -752,7 +752,7 @@ async function handleAvatarUpload(request: FastifyRequest, reply: FastifyReply):
     }
   } catch (err) {
     console.warn(`[attachments] falha ao recortar avatar: ${err instanceof Error ? err.message : err}`);
-    return sendError(reply, 400, 'crop_failed', 'Nao foi possivel processar a imagem.');
+    return sendError(reply, 400, 'crop_failed', 'Não foi possível processar a imagem.');
   }
 
   const id = newId();
@@ -795,24 +795,24 @@ async function tryCacheFromRemote(id: string, cookieHeader: string): Promise<boo
 export async function serveUpload(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<FastifyReply> {
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return reply.code(401).send('nao autenticado');
+  if (!sess) return reply.code(401).send('não autenticado');
 
   const id = request.params.id;
-  if (!ID_RE.test(id)) return reply.code(400).send('id invalido');
+  if (!ID_RE.test(id)) return reply.code(400).send('id inválido');
 
   const [row] = await db.select().from(attachmentsTable).where(eq(attachmentsTable.id, id)).limit(1);
-  if (!row) return reply.code(404).send('nao encontrado');
+  if (!row) return reply.code(404).send('não encontrado');
 
   const path = filePathFor(id);
   let size: number;
   try {
     size = (await fs.stat(path)).size;
   } catch {
-    if (!(await tryCacheFromRemote(id, request.headers.cookie || ''))) return reply.code(404).send('nao encontrado');
+    if (!(await tryCacheFromRemote(id, request.headers.cookie || ''))) return reply.code(404).send('não encontrado');
     try {
       size = (await fs.stat(path)).size;
     } catch {
-      return reply.code(404).send('nao encontrado');
+      return reply.code(404).send('não encontrado');
     }
   }
 

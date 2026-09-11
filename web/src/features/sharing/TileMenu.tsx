@@ -160,7 +160,7 @@ export function TileMenu() {
       >
         <DropdownMenuItem onClick={toggleFocus}>
           <Crosshair size={16} />
-          <span>{isFocused ? 'Sair do foco' : 'Focar'}</span>
+              <span>{isFocused ? 'Sair do foco' : 'Focar'}</span>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={goFullscreen}>
           <Maximize2 size={16} />
@@ -169,7 +169,7 @@ export function TileMenu() {
         {pipSupported && (
           <DropdownMenuItem onClick={togglePip}>
             <PictureInPicture2 size={16} />
-            <span>{inPip ? 'Sair do picture-in-picture' : 'Picture-in-picture'}</span>
+              <span>{inPip ? 'Sair do picture-in-picture' : 'Picture-in-picture'}</span>
           </DropdownMenuItem>
         )}
         {hasAudio && (
@@ -179,7 +179,7 @@ export function TileMenu() {
               <button
                 type="button"
                 onClick={toggleMute}
-                aria-label={sliderValue === 0 ? 'Reativar audio' : 'Silenciar audio'}
+                aria-label={sliderValue === 0 ? 'Reativar áudio' : 'Silenciar áudio'}
                 className="flex-none text-text-secondary transition-colors hover:text-text-primary"
               >
                 {sliderValue === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}

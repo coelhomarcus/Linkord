@@ -111,6 +111,6 @@ describe('notifyIncomingChatMessage', () => {
   it('mensagem com mencao usa titulo diferenciado', () => {
     notifyIncomingChatMessage(baseEvent({ mentioned: true }));
     vi.runAllTimers();
-    expect(created[0]!.title).toBe('Voce foi mencionado em geral');
+    expect(created[0]!.title).toBe('Você foi mencionado em geral');
   });
 });

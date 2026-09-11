@@ -154,7 +154,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Configuracoes da transmissao"
+        aria-label="Configurações da transmissão"
         onClick={handleGearClick}
         className="absolute right-2 top-2 bg-bg-tertiary/75 text-text-primary hover:bg-primary"
       >

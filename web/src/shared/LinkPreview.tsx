@@ -15,7 +15,7 @@ function EmbedFailedFallback({ url, className }: { url: string; className: strin
       className={`flex w-full max-w-sm items-center gap-2 rounded-md border border-white/10 bg-bg-tertiary px-3 py-2.5 text-label text-text-muted transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${className}`}
     >
       <ImageOff size={14} className="flex-none" />
-      <span className="truncate">Nao foi possivel carregar a previa. Abrir link</span>
+      <span className="truncate">Não foi possível carregar a prévia. Abrir link</span>
     </a>
   );
 }

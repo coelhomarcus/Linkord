@@ -128,7 +128,7 @@ export function FloatingPip({ allIds, onExpand }: FloatingPipProps) {
             type="button"
             variant="ghost"
             size="icon-xs"
-            aria-label="Transmissao anterior"
+            aria-label="Transmissão anterior"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => setIndex((safeIndex - 1 + descriptors.length) % descriptors.length)}
             className="absolute left-1 top-1/2 -translate-y-1/2 bg-bg-tertiary/75 text-text-primary hover:bg-primary"
@@ -139,7 +139,7 @@ export function FloatingPip({ allIds, onExpand }: FloatingPipProps) {
             type="button"
             variant="ghost"
             size="icon-xs"
-            aria-label="Proxima transmissao"
+            aria-label="Próxima transmissão"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => setIndex((safeIndex + 1) % descriptors.length)}
             className="absolute right-1 top-1/2 -translate-y-1/2 bg-bg-tertiary/75 text-text-primary hover:bg-primary"

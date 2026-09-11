@@ -38,7 +38,7 @@ function ConversationRow({ conversation, active, onClick }: {
     : otherCallParticipants;
   const hasActiveCall = callParticipants.length > 0;
   const subtitle = lastMessage
-    ? `${lastMessage.id === state.me.userId ? 'Voce' : lastMessage.name}: ${lastMessage.text || 'Anexo'}`
+    ? `${lastMessage.id === state.me.userId ? 'Você' : lastMessage.name}: ${lastMessage.text || 'Anexo'}`
     : conversation.type === 'group'
       ? `${members.length} membros`
       : other?.username ? `@${other.username}` : 'Conversa direta';

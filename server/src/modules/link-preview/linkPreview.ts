@@ -134,9 +134,9 @@ function safeLookup(
 function fetchSafe(targetUrl: string, redirectsLeft: number): Promise<{ html: string; finalUrl: string }> {
   return new Promise((resolve, reject) => {
     let parsed: URL;
-    try { parsed = new URL(targetUrl); } catch { return reject(new Error('URL invalida')); }
+    try { parsed = new URL(targetUrl); } catch { return reject(new Error('URL inválida')); }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return reject(new Error('protocolo nao suportado'));
+      return reject(new Error('protocolo não suportado'));
     }
 
     const client = parsed.protocol === 'https:' ? https : http;
@@ -152,7 +152,7 @@ function fetchSafe(targetUrl: string, redirectsLeft: number): Promise<{ html: st
         res.resume();
         if (redirectsLeft <= 0) return reject(new Error('redirecionamentos demais'));
         let nextUrl: string;
-        try { nextUrl = new URL(res.headers.location, parsed).toString(); } catch { return reject(new Error('redirect invalido')); }
+        try { nextUrl = new URL(res.headers.location, parsed).toString(); } catch { return reject(new Error('redirecionamento inválido')); }
         return resolve(fetchSafe(nextUrl, redirectsLeft - 1));
       }
       if (status < 200 || status >= 300) {
@@ -285,13 +285,13 @@ async function fetchLinkPreviewData(rawUrl: string, userId: string): Promise<Lin
 async function handleLinkPreview(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Nao autenticado.');
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
 
   const target = (request.query as Record<string, string | undefined>).url;
   if (!target) return sendError(reply, 400, 'missing_url', 'Parametro url obrigatorio.');
 
   let parsed: URL;
-  try { parsed = new URL(target); } catch { return sendError(reply, 400, 'invalid_url', 'URL invalida.'); }
+  try { parsed = new URL(target); } catch { return sendError(reply, 400, 'invalid_url', 'URL inválida.'); }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return sendError(reply, 400, 'invalid_url', 'So http/https e suportado.');
   }

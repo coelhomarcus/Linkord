@@ -78,13 +78,13 @@ export function GroupCreateDialog({ open, onOpenChange, onCreated }: GroupCreate
                 id="group-users"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Buscar usuarios"
+                placeholder="Buscar usuários"
                 className="h-9 min-w-0 flex-1 bg-transparent text-label outline-none placeholder:text-text-muted"
               />
             </div>
             <div className="max-h-72 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-1">
               {users.length === 0 ? (
-                <p className="px-3 py-8 text-center text-label text-text-muted">Nenhum usuario encontrado.</p>
+                <p className="px-3 py-8 text-center text-label text-text-muted">Nenhum usuário encontrado.</p>
               ) : users.map((user) => {
                 const checked = selected.has(user.id);
                 return (

@@ -34,7 +34,6 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     updateAvatar: noop,
     updateProfile: noop,
     uploadProfileImage: async () => '',
-    uploadProfileImageFromUrl: async () => '',
     menuTarget: null,
     openTileMenu: noop,
     closeTileMenu: () => false,

@@ -95,12 +95,12 @@ export function CallControlBar() {
         <Tooltip>
           <TooltipTrigger
             onClick={() => { void (cameraOn ? stopCamera() : startCamera()); }}
-            aria-label={cameraOn ? 'Parar camera' : 'Ligar camera'}
+            aria-label={cameraOn ? 'Parar câmera' : 'Ligar câmera'}
             className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), callButtonClass)}
           >
             {cameraOn ? <Video size={18} className="text-green" /> : <VideoOff size={18} />}
           </TooltipTrigger>
-          <TooltipContent>{cameraOn ? 'Parar camera' : 'Ligar camera'}</TooltipContent>
+          <TooltipContent>{cameraOn ? 'Parar câmera' : 'Ligar câmera'}</TooltipContent>
         </Tooltip>
 
         <Tooltip>

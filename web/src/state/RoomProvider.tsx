@@ -822,22 +822,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   ) => uploadProfileImageBody(field, file, { 'Content-Type': file.type || 'application/octet-stream' }, crop, onProgress, profile),
   [uploadProfileImageBody]);
 
-  // "usar URL" flow — the image itself is downloaded server-side (see
-  // handleAvatarUpload's application/json branch), the client just hands
-  // over the URL plus the crop rect picked against a plain <img> preview.
-  const uploadProfileImageFromUrl = useCallback((
-    field: 'avatar' | 'banner',
-    sourceUrl: string,
-    crop: CropRect,
-    onProgress?: (fraction: number) => void,
-    profile?: { avatarColor?: string; displayName?: string; avatar?: string; banner?: string; bio?: string; profileLinks?: string[] }
-  ) => uploadProfileImageBody(
-    field,
-    new Blob([JSON.stringify({ url: sourceUrl })], { type: 'application/json' }),
-    { 'Content-Type': 'application/json' },
-    crop, onProgress, profile
-  ), [uploadProfileImageBody]);
-
   const [menuTarget, setMenuTarget] = useState<{ key: string; participantId: string; kind: TileKind; rect: AnchorRect } | null>(null);
   const menuOpenRef = useRef(false);
 
@@ -888,7 +872,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         registerRequestChatView, requestChatView,
         activeCallConversationId, joinCall, leaveCall,
         startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted,
-        updateAvatar, updateProfile, uploadProfileImage, uploadProfileImageFromUrl, menuTarget, openTileMenu, closeTileMenu,
+        updateAvatar, updateProfile, uploadProfileImage, menuTarget, openTileMenu, closeTileMenu,
         reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
         hideAudioOnlyTiles, setHideAudioOnlyTiles,
         conversations, activeConversationId, openConversation, openDirect, closeConversation, pinConversation, createGroup, deleteGroup,

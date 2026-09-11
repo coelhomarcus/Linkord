@@ -90,7 +90,7 @@ function flush(conversationId: string): void {
   if (!buf) return;
   buffers.delete(conversationId);
 
-  const title = buf.mentioned ? `Voce foi mencionado em ${buf.conversationName}` : buf.conversationName;
+  const title = buf.mentioned ? `Você foi mencionado em ${buf.conversationName}` : buf.conversationName;
   let body: string;
   if (buf.count === 1) {
     body = `${buf.lastSenderName}: ${buf.lastText.slice(0, BODY_TEXT_LIMIT)}`;

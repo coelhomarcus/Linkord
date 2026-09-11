@@ -52,7 +52,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<PublicUser | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [cropTarget, setCropTarget] = useState<{ kind: 'file'; file: File; src: string } | { kind: 'url'; url: string; src: string } | null>(null);
+  const [cropTarget, setCropTarget] = useState<{ kind: 'file'; file: File; src: string } | null>(null);
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
@@ -151,9 +151,10 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
   }
 
   function handleAvatarUrlPicked(url: string) {
+    if (!conversation) return;
     setAvatarError(null);
+    updateGroupAvatar(conversation.id, url);
     setUrlDialogOpen(false);
-    setCropTarget({ kind: 'url', url, src: url });
   }
 
   function closeCropDialog() {
@@ -172,19 +173,12 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
     setUploadingAvatar(true);
     closeCropDialog();
     try {
-      const body = target.kind === 'file'
-        ? await uploadWithProgress<{ avatar: string }>({
-          url: `/api/avatar?crop=${encodeURIComponent(JSON.stringify(crop))}`,
-          file: target.file,
-          headers: { 'Content-Type': target.file.type || 'application/octet-stream' },
-          onProgress: setAvatarUploadProgress,
-        })
-        : await uploadWithProgress<{ avatar: string }>({
-          url: `/api/avatar?crop=${encodeURIComponent(JSON.stringify(crop))}`,
-          file: new Blob([JSON.stringify({ url: target.url })], { type: 'application/json' }),
-          headers: { 'Content-Type': 'application/json' },
-          onProgress: setAvatarUploadProgress,
-        });
+      const body = await uploadWithProgress<{ avatar: string }>({
+        url: `/api/avatar?crop=${encodeURIComponent(JSON.stringify(crop))}`,
+        file: target.file,
+        headers: { 'Content-Type': target.file.type || 'application/octet-stream' },
+        onProgress: setAvatarUploadProgress,
+      });
       updateGroupAvatar(conversationId, body.avatar);
     } catch (err) {
       setAvatarError(err instanceof Error ? err.message : 'Falha ao enviar a foto.');
@@ -305,7 +299,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
               </div>
               <div className="max-h-48 overflow-y-auto">
                 {addCandidates.length === 0 ? (
-                  <p className="px-2 py-4 text-center text-caption text-text-muted">Ninguem encontrado.</p>
+          <p className="px-2 py-4 text-center text-caption text-text-muted">Ninguém encontrado.</p>
                 ) : addCandidates.map((user) => {
                   const checked = addSelected.has(user.id);
                   return (
@@ -348,7 +342,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
                       <span className={cn('absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-[rgb(14_14_16)]', online ? 'bg-green' : 'bg-text-muted')} />
                     </div>
                     <span className="min-w-0">
-                      <span className="block truncate text-label font-medium">{member.displayName}{isMe ? ' (voce)' : ''}</span>
+                      <span className="block truncate text-label font-medium">{member.displayName}{isMe ? ' (você)' : ''}</span>
                       <span className="block truncate text-caption text-text-muted">@{member.username}</span>
                     </span>
                   </button>
@@ -433,7 +427,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
         open={confirmLeave}
         onOpenChange={setConfirmLeave}
         title="Sair do grupo"
-        description={`Voce vai sair de "${conversation?.title || 'grupo'}" e parar de receber as mensagens dele.`}
+        description={`Você vai sair de "${conversation?.title || 'grupo'}" e parar de receber as mensagens dele.`}
         confirmLabel="Sair"
         destructive
         onConfirm={handleLeave}
@@ -442,7 +436,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
         title="Excluir grupo"
-        description={`Isso apaga "${conversation?.title || 'grupo'}" e TODAS as mensagens dele para todo mundo, para sempre. Essa acao nao pode ser desfeita.`}
+        description={`Isso apaga "${conversation?.title || 'grupo'}" e TODAS as mensagens dele para todo mundo, para sempre. Essa ação não pode ser desfeita.`}
         confirmLabel="Excluir"
         destructive
         onConfirm={handleDelete}

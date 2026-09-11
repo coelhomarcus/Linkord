@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import type { Area } from 'react-easy-crop';
-import { Bell, HardDrive, IdCard, LogOut, Settings2, ShieldCheck, SlidersHorizontal, User, Volume2, VolumeX } from 'lucide-react';
+import { Bell, Check, HardDrive, IdCard, LogOut, Settings2, ShieldCheck, SlidersHorizontal, User, Volume2, VolumeX } from 'lucide-react';
 import { ModerationTab } from './ModerationTab';
 import { ImageCropDialog } from './ImageCropDialog';
 import { ImageUrlDialog } from '../../shared/ImageUrlDialog';
@@ -49,7 +49,7 @@ function DevicePicker({ label, room, kind }: { label: string; room: import('live
       ) : (
         <Select value={activeDeviceId} onValueChange={(v) => v && selectDevice(v)} disabled={devices.length === 0}>
           <SelectTrigger className="w-full text-text-muted">
-            <SelectValue>{() => devices.find((d) => d.deviceId === activeDeviceId)?.label || 'Padrao do sistema'}</SelectValue>
+            <SelectValue>{() => devices.find((d) => d.deviceId === activeDeviceId)?.label || 'Padrão do sistema'}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {devices.map((d) => (
@@ -64,12 +64,11 @@ function DevicePicker({ label, room, kind }: { label: string; room: import('live
 }
 
 type ProfileCropTarget =
-  | { field: 'avatar' | 'banner'; kind: 'file'; file: File; src: string }
-  | { field: 'avatar' | 'banner'; kind: 'url'; url: string; src: string };
+  { field: 'avatar' | 'banner'; kind: 'file'; file: File; src: string };
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const {
-    state, updateProfile, uploadProfileImage, uploadProfileImageFromUrl, showStats, setShowStats,
+    state, updateProfile, uploadProfileImage, showStats, setShowStats,
     notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled, livekitRoom, storageUsage,
   } = useRoom();
   const { logout } = useAuth();
@@ -86,6 +85,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [bannerUploadProgress, setBannerUploadProgress] = useState(0);
   const [bannerError, setBannerError] = useState<string | null>(null);
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
+  const [profileSaved, setProfileSaved] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
   const [cropTarget, setCropTarget] = useState<ProfileCropTarget | null>(null);
@@ -93,6 +93,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   useEffect(() => {
     if (open) {
+      setProfileSaved(false);
       setAvatar(state.me.avatar);
       setAvatarColor(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
       setDisplayName(state.me.displayName);
@@ -101,6 +102,12 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       setProfileLinks(state.me.profileLinks.length ? state.me.profileLinks : ['']);
     }
   }, [open, state.me.avatar, state.me.avatarColor, state.me.banner, state.me.bio, state.me.displayName, state.me.profileLinks]);
+
+  useEffect(() => {
+    if (!profileSaved) return;
+    const timeout = window.setTimeout(() => setProfileSaved(false), 2200);
+    return () => window.clearTimeout(timeout);
+  }, [profileSaved]);
 
   function handleVolumeChange(value: number | readonly number[]) {
     const v = Array.isArray(value) ? (value[0] ?? 0) : (value as number);
@@ -114,7 +121,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       return;
     }
     if (typeof Notification === 'undefined') {
-      setNotificationsError('Seu navegador nao suporta notificacoes.');
+      setNotificationsError('Seu navegador não suporta notificações.');
       return;
     }
     const permission = Notification.permission === 'default' ? await requestNotificationPermission() : Notification.permission;
@@ -122,7 +129,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       setNotificationsError(null);
       setNotificationsEnabled(true);
     } else {
-      setNotificationsError('Notificacoes bloqueadas. Permita o acesso nas configuracoes do navegador pra habilitar.');
+      setNotificationsError('Notificações bloqueadas. Permita o acesso nas configurações do navegador para habilitar.');
     }
   }
 
@@ -133,6 +140,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   function handleProfileSubmit(e: FormEvent) {
     e.preventDefault();
     updateProfile({ avatar, avatarColor, displayName, banner, bio, profileLinks: profileLinksForSubmit() });
+    setProfileSaved(true);
   }
 
   function updateProfileLink(index: number, value: string) {
@@ -166,8 +174,17 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   function handleUrlPicked(field: 'avatar' | 'banner', url: string) {
     const setError = field === 'avatar' ? setAvatarError : setBannerError;
     setError(null);
+    const nextProfile = {
+      avatar: field === 'avatar' ? url : avatar,
+      avatarColor,
+      displayName,
+      banner: field === 'banner' ? url : banner,
+      bio,
+      profileLinks: profileLinksForSubmit(),
+    };
+    if (field === 'avatar') setAvatar(url); else setBanner(url);
+    updateProfile(nextProfile);
     setUrlDialogField(null);
-    setCropTarget({ field, kind: 'url', url, src: url });
   }
 
   function closeCropDialog() {
@@ -188,9 +205,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setUploading(true);
     closeCropDialog();
     try {
-      const url = target.kind === 'file'
-        ? await uploadProfileImage(field, target.file, crop, setProgress, profile)
-        : await uploadProfileImageFromUrl(field, target.url, crop, setProgress, profile);
+      const url = await uploadProfileImage(field, target.file, crop, setProgress, profile);
       if (field === 'avatar') setAvatar(url); else setBanner(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Falha ao enviar ${field === 'avatar' ? 'a foto' : 'o banner'}.`);
@@ -220,18 +235,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             <TabsIndicator className="rounded-lg bg-primary/12" />
             <TabsTrigger value="profile" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><User size={16} /><span>Perfil</span></TabsTrigger>
             <TabsTrigger value="account" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><IdCard size={16} /><span>Conta</span></TabsTrigger>
-            <TabsTrigger value="av" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><SlidersHorizontal size={16} /><span>Audio e video</span></TabsTrigger>
-            <TabsTrigger value="notifications" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Bell size={16} /><span>Notificacoes</span></TabsTrigger>
-            <TabsTrigger value="prefs" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Settings2 size={16} /><span>Preferencias</span></TabsTrigger>
+            <TabsTrigger value="av" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><SlidersHorizontal size={16} /><span>Áudio e vídeo</span></TabsTrigger>
+            <TabsTrigger value="notifications" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Bell size={16} /><span>Notificações</span></TabsTrigger>
+            <TabsTrigger value="prefs" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Settings2 size={16} /><span>Preferências</span></TabsTrigger>
             {state.me.role === 'admin' && (
-              <TabsTrigger value="moderation" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><ShieldCheck size={16} /><span>Moderacao</span></TabsTrigger>
+              <TabsTrigger value="moderation" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><ShieldCheck size={16} /><span>Moderação</span></TabsTrigger>
             )}
           </TabsList>
 
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
             <TabsPanel value="profile" className="flex flex-col gap-3">
               <p className="select-none text-label text-text-muted">
-                Edite direto no seu perfil — o que voce ve aqui e exatamente o que os outros vao ver.
+                Edite direto no seu perfil — o que você vê aqui é exatamente o que os outros vão ver.
               </p>
 
               <form onSubmit={handleProfileSubmit} className="flex flex-col gap-3">
@@ -295,7 +310,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 <div className="flex items-center justify-between gap-2">
                   <p className="select-none text-caption text-text-muted">PNG, JPEG, GIF ou WEBP, até {formatMB(MAX_AVATAR_BYTES)}.</p>
                   <Button type="submit" size="sm" className="flex-none">
-                    <span>Salvar perfil</span>
+                    {profileSaved && <Check size={15} />}
+                    <span>{profileSaved ? 'Perfil salvo' : 'Salvar perfil'}</span>
                   </Button>
                 </div>
               </form>
@@ -320,11 +336,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
             <TabsPanel value="account" className="flex flex-col gap-4">
               <div className={settingsCardClass}>
-                <SectionLabel>Identificacao</SectionLabel>
+                <SectionLabel>Identificação</SectionLabel>
                 <div className="flex flex-col gap-1">
-                  <Label className="text-label text-text-muted">Nome de usuario</Label>
+                  <Label className="text-label text-text-muted">Nome de usuário</Label>
                   <p className="select-none text-body text-text-primary">@{state.me.name}</p>
-                  <p className="select-none text-caption text-text-muted">Fixo, nao pode ser trocado. O nome de exibicao (aba Perfil) e o que aparece pra todo mundo.</p>
+                  <p className="select-none text-caption text-text-muted">Fixo, não pode ser trocado. O nome de exibição (aba Perfil) é o que aparece para todo mundo.</p>
                 </div>
                 {state.me.role === 'admin' && (
                   <span className="flex w-fit items-center gap-1 rounded-sm bg-primary/15 px-1.5 py-0.5 text-caption font-medium text-primary">
@@ -363,7 +379,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               </div>
 
               <div className={settingsCardClass}>
-                <DevicePicker label="Camera" room={livekitRoom} kind="videoinput" />
+                <DevicePicker label="Câmera" room={livekitRoom} kind="videoinput" />
               </div>
 
               <div className={settingsCardClass}>
@@ -375,26 +391,26 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               <div className={settingsCardClass}>
                 <div className="flex items-center justify-between gap-3">
                   <span className={cn(sectionLabelClass, 'flex items-center gap-1.5')}>
-                    {notifyVolume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />} Volume das notificacoes
+                    {notifyVolume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />} Volume das notificações
                   </span>
                   <span className="flex-none text-label tabular-nums text-text-muted">{Math.round(notifyVolume * 100)}%</span>
                 </div>
                 <Slider value={[Math.round(notifyVolume * 100)]} onValueChange={handleVolumeChange} min={0} max={100} />
                 <p className="select-none text-label text-text-muted">
-                  Mutar/desmutar, ensurdecer, entrar/sair da chamada, camera, tela e mensagem nova.
+                  Mutar/desmutar, ensurdecer, entrar/sair da chamada, câmera, tela e mensagem nova.
                 </p>
               </div>
 
               <div className={settingsCardClass}>
                 <div className="flex flex-row items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="select-none text-body font-medium text-text-primary">Notificacoes de mensagens</p>
-                    <p className="select-none text-label text-text-muted">Avisa no sistema quando chegar mensagem numa conversa que voce nao esta vendo.</p>
+                    <p className="select-none text-body font-medium text-text-primary">Notificações de mensagens</p>
+                    <p className="select-none text-label text-text-muted">Avisa no sistema quando chegar mensagem em uma conversa que você não está vendo.</p>
                   </div>
                   <Switch
                     checked={notificationsEnabled}
                     onCheckedChange={handleToggleNotifications}
-                    aria-label="Notificacoes de mensagens"
+                    aria-label="Notificações de mensagens"
                     className="mt-0.5 flex-none"
                   />
                 </div>
@@ -405,13 +421,13 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             <TabsPanel value="prefs" className="flex flex-col gap-4">
               <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
                 <div className="min-w-0">
-                  <p className="select-none text-body font-medium text-text-primary">Mostrar estatisticas</p>
-                  <p className="select-none text-label text-text-muted">Bitrate e tempo no ar no menu de cada transmissao.</p>
+                  <p className="select-none text-body font-medium text-text-primary">Mostrar estatísticas</p>
+                  <p className="select-none text-label text-text-muted">Bitrate e tempo no ar no menu de cada transmissão.</p>
                 </div>
                 <Switch
                   checked={showStats}
                   onCheckedChange={setShowStats}
-                  aria-label="Mostrar estatisticas"
+                  aria-label="Mostrar estatísticas"
                   className="mt-0.5 flex-none"
                 />
               </div>

@@ -183,7 +183,7 @@ export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenu
             checked={hideAudioOnlyTiles}
             onCheckedChange={setHideAudioOnlyTiles}
           >
-            <span>Ocultar sem video</span>
+            <span>Ocultar sem vídeo</span>
           </ContextMenuCheckboxItem>
         )}
         {showUserBlock && userTarget && (

@@ -33,7 +33,7 @@ describe('GlobalContextMenu', () => {
 
     fireEvent.contextMenu(screen.getByTestId('stage'));
 
-    expect(await screen.findByText('Ocultar sem video')).toBeInTheDocument();
+    expect(await screen.findByText('Ocultar sem vídeo')).toBeInTheDocument();
   });
 
   it('fecha o menu aberto quando o proximo alvo nao tem acoes', async () => {
@@ -48,12 +48,12 @@ describe('GlobalContextMenu', () => {
     );
 
     fireEvent.contextMenu(screen.getByTestId('stage'));
-    expect(await screen.findByText('Ocultar sem video')).toBeInTheDocument();
+    expect(await screen.findByText('Ocultar sem vídeo')).toBeInTheDocument();
 
     fireEvent.contextMenu(screen.getByTestId('empty-area'));
 
     await waitFor(() => {
-      expect(screen.queryByText('Ocultar sem video')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ocultar sem vídeo')).not.toBeInTheDocument();
     });
   });
 

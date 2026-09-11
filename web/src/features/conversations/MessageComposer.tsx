@@ -47,11 +47,11 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
     let error: string | null = null;
     for (const file of files) {
       if (accepted.length >= remainingSlots) {
-        error = `Maximo de ${MAX_ATTACHMENTS_PER_MESSAGE} anexos por mensagem.`;
+        error = `Máximo de ${MAX_ATTACHMENTS_PER_MESSAGE} anexos por mensagem.`;
         break;
       }
       if (file.size > MAX_ATTACHMENT_BYTES) {
-        error = `"${file.name}" e grande demais (maximo ${formatSizeLimit(MAX_ATTACHMENT_BYTES)}).`;
+        error = `"${file.name}" é grande demais (máximo ${formatSizeLimit(MAX_ATTACHMENT_BYTES)}).`;
         continue;
       }
       accepted.push({

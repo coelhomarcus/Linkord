@@ -66,7 +66,7 @@ export function createApp(): FastifyInstance {
   // route (client-side routing) would 404 instead of loading the page.
   fastify.setNotFoundHandler((request, reply) => {
     if (request.method !== 'GET' || request.url.startsWith('/api/') || request.url.startsWith('/uploads/')) {
-      return sendError(reply, 404, 'not_found', 'Rota nao encontrada.');
+      return sendError(reply, 404, 'not_found', 'Rota não encontrada.');
     }
     return reply.sendFile('index.html');
   });

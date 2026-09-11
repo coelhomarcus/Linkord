@@ -31,7 +31,7 @@ async function handleUserDelete(socket: AppSocket, msg: { userId?: string }): Pr
   // be re-registering with ADMIN_USERNAME, so it's safer to just never
   // allow deleting your OWN account here.
   if (targetId === p.userId) {
-    send(socket, { t: 'error', code: 'cannot-delete-self', message: 'Voce nao pode apagar a propria conta por aqui.' });
+    send(socket, { t: 'error', code: 'cannot-delete-self', message: 'Você não pode apagar a própria conta por aqui.' });
     return;
   }
 
@@ -109,7 +109,7 @@ async function handleCallKick(socket: AppSocket, msg: { participantId?: string }
     await livekit.kickParticipant(roomName, target.id);
   } catch (err) {
     console.warn(`[moderation] falha ao kickar ${target.id} da call: ${err instanceof Error ? err.message : err}`);
-    send(socket, { t: 'error', code: 'livekit-unavailable', message: 'Nao foi possivel remover da chamada agora.' });
+    send(socket, { t: 'error', code: 'livekit-unavailable', message: 'Não foi possível remover da chamada agora.' });
     return;
   }
   // resets callConversationId + all self-reported media flags and broadcasts

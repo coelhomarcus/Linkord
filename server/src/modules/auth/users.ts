@@ -74,7 +74,7 @@ export async function createUser({ username, passwordHash, role }: { username: s
     // (23505 = unique_violation) is in err.cause.code, not err.code.
     const cause = (err as { cause?: { code?: string } } | undefined)?.cause;
     if (cause?.code === '23505') {
-      const dup = Object.assign(new Error('Esse nome de usuario ja esta em uso.'), { code: 'username_taken' as const });
+      const dup = Object.assign(new Error('Esse nome de usuário já está em uso.'), { code: 'username_taken' as const });
       throw dup;
     }
     throw err;

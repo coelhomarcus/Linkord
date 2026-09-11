@@ -9,7 +9,7 @@ interface ImageUrlDialogProps {
   open: boolean;
   title: string;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (url: string) => void;
+  onConfirm: (url: string) => void | Promise<void>;
 }
 
 function normalizeImageUrl(raw: string): string | null {
@@ -25,25 +25,57 @@ function normalizeImageUrl(raw: string): string | null {
   return parsed.toString();
 }
 
+function validateImageUrl(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const timeout = window.setTimeout(() => {
+      image.src = '';
+      reject(new Error('Não foi possível carregar essa imagem.'));
+    }, 10_000);
+
+    image.onload = () => {
+      window.clearTimeout(timeout);
+      if (image.naturalWidth > 0 && image.naturalHeight > 0) resolve();
+      else reject(new Error('Essa URL não parece ser uma imagem.'));
+    };
+    image.onerror = () => {
+      window.clearTimeout(timeout);
+      reject(new Error('Não foi possível carregar essa imagem.'));
+    };
+    image.src = url;
+  });
+}
+
 export function ImageUrlDialog({ open, title, onOpenChange, onConfirm }: ImageUrlDialogProps) {
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
     if (open) {
       setValue('');
       setError(null);
+      setChecking(false);
     }
   }, [open]);
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const url = normalizeImageUrl(value);
     if (!url) {
-      setError('Cole uma URL valida (http ou https).');
+      setError('Cole uma URL válida (http ou https).');
       return;
     }
-    onConfirm(url);
+    setChecking(true);
+    setError(null);
+    try {
+      await validateImageUrl(url);
+      await onConfirm(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível carregar essa imagem.');
+    } finally {
+      setChecking(false);
+    }
   }
 
   return (
@@ -65,11 +97,11 @@ export function ImageUrlDialog({ open, title, onOpenChange, onConfirm }: ImageUr
             {error && <p className="text-label text-red">{error}</p>}
           </div>
           <DialogFooter className="border-subtle bg-bg-tertiary/60 px-6 py-4">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={checking}>
               <span>Cancelar</span>
             </Button>
-            <Button type="submit">
-              <span>Usar imagem</span>
+            <Button type="submit" disabled={checking}>
+              <span>{checking ? 'Verificando...' : 'Usar imagem'}</span>
             </Button>
           </DialogFooter>
         </form>
