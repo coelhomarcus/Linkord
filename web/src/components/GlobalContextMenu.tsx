@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ContextMenuRootActions } from '@base-ui/react/context-menu';
-import { Copy, Download, Pencil, Pin, PinOff, Reply, Trash2, X } from 'lucide-react';
+import { Copy, Download, Pencil, Pin, PinOff, Reply, Trash2, UsersRound, X } from 'lucide-react';
 import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/components/ui/emoji-picker';
 import { useRoom } from '../state/RoomContext';
@@ -9,6 +9,7 @@ import { downloadFile } from '../shared/lib/download';
 
 interface GlobalContextMenuProps {
   children: ReactNode;
+  onOpenProfile: (userId: string) => void;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -19,7 +20,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
   );
 }
 
-export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
+export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenuProps) {
   const {
     state, hideAudioOnlyTiles, setHideAudioOnlyTiles,
     activeConversationId, messagesByConversation, reactToChatMessage, deleteChatMessage, setReplyingTo, setEditingMsgId,
@@ -30,6 +31,7 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
   const [downloadTarget, setDownloadTarget] = useState<{ url: string; name: string } | null>(null);
   const [messageTarget, setMessageTarget] = useState<number | null>(null);
   const [conversationTarget, setConversationTarget] = useState<string | null>(null);
+  const [userTarget, setUserTarget] = useState<string | null>(null);
   const contextMenuActionsRef = useRef<ContextMenuRootActions | null>(null);
   const isAdmin = state.me.role === 'admin';
   const targetMessage = messageTarget != null
@@ -44,6 +46,7 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
   const showSelectionBlock = hasSelection;
   const showStageBlock = stageTarget;
   const showConversationBlock = !!targetConversation;
+  const showUserBlock = !!userTarget;
 
   useEffect(() => {
     function captureTarget(e: MouseEvent) {
@@ -55,12 +58,15 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
       const nextMessageTarget = messageEl ? Number(messageEl.dataset.messageId) : null;
       const conversationEl = element?.closest<HTMLElement>('[data-conversation-id]') ?? null;
       const nextConversationTarget = conversationEl?.dataset.conversationId ?? null;
+      const userEl = element?.closest<HTMLElement>('[data-user-id]') ?? null;
+      const nextUserTarget = userEl?.dataset.userId ?? null;
       const nextHasSelection = !wantsNativeMenu && !!window.getSelection()?.toString();
 
       setStageTarget(nextStageTarget);
       setDownloadTarget(downloadEl ? { url: downloadEl.dataset.downloadUrl!, name: downloadEl.dataset.downloadName || '' } : null);
       setMessageTarget(nextMessageTarget);
       setConversationTarget(nextConversationTarget);
+      setUserTarget(nextUserTarget);
       setHasSelection(nextHasSelection);
 
       if (wantsNativeMenu) return;
@@ -71,7 +77,8 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
         || !!downloadEl
         || nextHasSelection
         || nextStageTarget
-        || !!nextConversationTarget;
+        || !!nextConversationTarget
+        || !!nextUserTarget;
 
       if (!hasVisibleItems) {
         contextMenuActionsRef.current?.close();
@@ -178,6 +185,15 @@ export function GlobalContextMenu({ children }: GlobalContextMenuProps) {
           >
             <span>Ocultar sem video</span>
           </ContextMenuCheckboxItem>
+        )}
+        {showUserBlock && userTarget && (
+          <>
+            <ContextMenuItem onClick={() => onOpenProfile(userTarget)}>
+              <UsersRound size={14} />
+              <span>Ver perfil</span>
+            </ContextMenuItem>
+            {showConversationBlock && <ContextMenuSeparator />}
+          </>
         )}
         {showConversationBlock && targetConversation && (
           <>

@@ -118,7 +118,7 @@ function Shell() {
   if (!state.joined) return <LoadingScreen />;
 
   return (
-    <GlobalContextMenu>
+    <GlobalContextMenu onOpenProfile={setProfileUserId}>
       <AnimatedSidebarProvider
         open={sidebarOpen}
         onOpenChange={setSidebarOpen}

@@ -217,7 +217,14 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
               <ArrowLeft size={18} />
             </Button>
             {conversation.type === 'direct' && other ? (
-              <Avatar id={other.id} name={other.displayName} avatar={other.avatar} avatarColor={other.avatarColor} size={40} />
+              <button
+                type="button"
+                onClick={() => onOpenProfile(other.id)}
+                className="transition-opacity hover:opacity-80"
+                aria-label="Ver perfil"
+              >
+                <Avatar id={other.id} name={other.displayName} avatar={other.avatar} avatarColor={other.avatarColor} size={40} />
+              </button>
             ) : (
               <button
                 type="button"
@@ -230,7 +237,7 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
             )}
             <button
               type="button"
-              onClick={conversation.type === 'group' ? onOpenDetails : undefined}
+              onClick={conversation.type === 'group' ? onOpenDetails : (other ? () => onOpenProfile(other.id) : undefined)}
               className="min-w-0 flex-1 text-left"
             >
               <h2 className="truncate text-title font-semibold">{title}</h2>

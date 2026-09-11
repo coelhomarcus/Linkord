@@ -12,7 +12,7 @@ const userState = {
 describe('GlobalContextMenu', () => {
   it('nao abre popup vazio quando o alvo nao tem nenhuma acao', () => {
     renderWithRoom(
-      <GlobalContextMenu>
+      <GlobalContextMenu onOpenProfile={vi.fn()}>
         <div data-testid="empty-area">sem acoes</div>
       </GlobalContextMenu>,
       { state: userState }
@@ -25,7 +25,7 @@ describe('GlobalContextMenu', () => {
 
   it('continua abrindo quando o alvo tem acoes visiveis', async () => {
     renderWithRoom(
-      <GlobalContextMenu>
+      <GlobalContextMenu onOpenProfile={vi.fn()}>
         <main data-stage data-testid="stage" />
       </GlobalContextMenu>,
       { state: userState, setHideAudioOnlyTiles: vi.fn() }
@@ -38,7 +38,7 @@ describe('GlobalContextMenu', () => {
 
   it('fecha o menu aberto quando o proximo alvo nao tem acoes', async () => {
     renderWithRoom(
-      <GlobalContextMenu>
+      <GlobalContextMenu onOpenProfile={vi.fn()}>
         <div>
           <main data-stage data-testid="stage" />
           <div data-testid="empty-area">sem acoes</div>
@@ -55,5 +55,21 @@ describe('GlobalContextMenu', () => {
     await waitFor(() => {
       expect(screen.queryByText('Ocultar sem video')).not.toBeInTheDocument();
     });
+  });
+
+  it('mostra "Ver perfil" para um alvo data-user-id e aciona onOpenProfile com o id certo', async () => {
+    const onOpenProfile = vi.fn();
+    renderWithRoom(
+      <GlobalContextMenu onOpenProfile={onOpenProfile}>
+        <div data-user-id="u-42" data-testid="user-row">Fulana</div>
+      </GlobalContextMenu>,
+      { state: userState }
+    );
+
+    fireEvent.contextMenu(screen.getByTestId('user-row'));
+    const item = await screen.findByText('Ver perfil');
+    fireEvent.click(item);
+
+    expect(onOpenProfile).toHaveBeenCalledWith('u-42');
   });
 });

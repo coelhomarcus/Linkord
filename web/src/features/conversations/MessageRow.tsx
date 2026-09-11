@@ -101,7 +101,7 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
       )}
     >
       <div className="w-10 flex-none">
-        {showHeader ? (
+        {showHeader && (
           message.id ? (
             <button type="button" onClick={() => onOpenProfile(message.id!)} className="mt-0.5 block rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <Avatar id={message.id} name={displayedName} avatar={displayedAvatar} avatarColor={author?.avatarColor} size={40} />
@@ -109,10 +109,6 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
           ) : (
             <Avatar id={message.name} name={displayedName} avatar={displayedAvatar} avatarColor={null} size={40} />
           )
-        ) : (
-          <span className="hidden select-none pt-1 text-center text-[11px] text-text-muted group-hover/row:block">
-            {formatTime(message.ts)}
-          </span>
         )}
       </div>
 

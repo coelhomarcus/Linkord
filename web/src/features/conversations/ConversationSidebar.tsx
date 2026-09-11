@@ -46,7 +46,7 @@ function ConversationRow({ conversation, active, onClick }: {
   const online = other ? onlineUserIds.has(other.id) : false;
 
   return (
-    <div data-conversation-id={conversation.id}>
+    <div data-conversation-id={conversation.id} data-user-id={other?.id}>
       <button
         type="button"
         onClick={onClick}
@@ -111,7 +111,7 @@ function UserRow({ user, onClick, onOpenProfile }: { user: PublicUser; onClick: 
   const { onlineUserIds } = useRoom();
   const online = onlineUserIds.has(user.id);
   return (
-    <div className="group flex items-center gap-2 rounded-xl border border-transparent px-2 py-2 hover:border-white/10 hover:bg-white/[0.045]">
+    <div data-user-id={user.id} className="group flex items-center gap-2 rounded-xl border border-transparent px-2 py-2 hover:border-white/10 hover:bg-white/[0.045]">
       <button type="button" onClick={onClick} className="flex min-w-0 flex-1 items-center gap-3 text-left">
         <div className="relative flex-none">
           <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={40} />

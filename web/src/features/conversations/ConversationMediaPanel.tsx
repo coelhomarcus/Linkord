@@ -141,7 +141,12 @@ export function ConversationMediaPanel({ conversationId, open, onOpenChange }: C
       <div className="min-h-0 flex-1 px-4 pb-4 pt-3">
         <InfiniteMasonry
           items={items}
-          getItemKey={(item) => item.msgId}
+          // attachment.id, not msgId — a message can carry more than one
+          // attachment (e.g. the 4-image grid), and the uploads query
+          // returns one row per attachment, so msgId alone collides. A
+          // duplicate key breaks the virtualizer's lane bookkeeping, which
+          // is exactly what showed up as every image stacking at (0,0).
+          getItemKey={(item) => `${item.msgId}:${item.attachment?.id ?? 'embed'}`}
           renderItem={(item) => (
             kind === 'uploads' ? (
               <UploadItemCard item={item} onOpenImage={(src, alt) => setLightbox({ src, alt })} />
