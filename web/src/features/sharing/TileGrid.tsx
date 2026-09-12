@@ -67,7 +67,15 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
     : `repeat(${actualRows}, ${tileH}px)`;
 
   const renderTile = (d: TileDescriptor, isFocused: boolean, width: number | string, height: number | string) => (
-    <div key={d.key} style={{ width, height }} className="min-h-0 min-w-0">
+    <div
+      key={d.key}
+      style={{ width, height }}
+      className={
+        isFocused
+          ? 'flex min-h-0 min-w-0 items-center justify-center'
+          : 'min-h-0 min-w-0'
+      }
+    >
       <Tile
         participantId={d.participantId}
         kind={d.kind}
