@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { ApiError, fetchMe, login as apiLogin, logout as apiLogout, register as apiRegister } from '../shared/lib/api';
+import { ApiError, fetchMe, linkEmail as apiLinkEmail, login as apiLogin, logout as apiLogout, register as apiRegister } from '../shared/lib/api';
 import type { ApiUser } from '../shared/lib/api';
 
 
@@ -10,7 +10,8 @@ interface AuthContextValue {
   status: AuthStatus;
   user: ApiUser | null;
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string, confirmPassword: string, code: string) => Promise<void>;
+  register: (username: string, email: string, password: string, confirmPassword: string, code: string) => Promise<void>;
+  linkEmail: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -48,10 +49,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus('authed');
   }, []);
 
-  const register = useCallback(async (username: string, password: string, confirmPassword: string, code: string) => {
-    const { user: u } = await apiRegister(username, password, confirmPassword, code);
+  const register = useCallback(async (username: string, email: string, password: string, confirmPassword: string, code: string) => {
+    const { user: u } = await apiRegister(username, email, password, confirmPassword, code);
     setUser(u);
     setStatus('authed');
+  }, []);
+
+  const linkEmail = useCallback(async (email: string) => {
+    const { user: u } = await apiLinkEmail(email);
+    setUser(u);
   }, []);
 
   const logout = useCallback(async () => {
@@ -61,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ status, user, login, register, logout, refresh }}>
+    <AuthContext.Provider value={{ status, user, login, register, linkEmail, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   );

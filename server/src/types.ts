@@ -9,6 +9,7 @@ export interface SessionUser {
   tokenHash: string;
   userId: string;
   username: string;
+  email: string | null;
   // free-form, non-unique — always resolved to a non-empty value here (see
   // auth/session.ts), falling back to `username` when the account never set one.
   displayName: string;

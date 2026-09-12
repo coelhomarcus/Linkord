@@ -3,6 +3,7 @@ import { RoomProvider } from './state/RoomProvider';
 import { useRoom } from './state/RoomContext';
 import { AuthProvider, useAuth } from './state/AuthContext';
 import { AuthScreen } from './features/auth/AuthScreen';
+import { EmailRequiredModal } from './features/auth/EmailRequiredModal';
 import { RoomErrorScreen } from './features/room/RoomErrorScreen';
 import { LoadingScreen } from './features/room/LoadingScreen';
 import { ReconnectBanner } from './shared/ReconnectBanner';
@@ -191,6 +192,7 @@ function AuthGate() {
   const { status, user } = useAuth();
   if (status === 'loading') return <LoadingScreen />;
   if (status === 'anon' || !user) return <AuthScreen />;
+  if (!user.email) return <EmailRequiredModal />;
   return (
     <RoomProvider key={user.id}>
       <Shell />

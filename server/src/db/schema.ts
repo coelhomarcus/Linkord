@@ -16,6 +16,8 @@ export const users = pgTable('users', {
   // avoid depending on the pgcrypto extension being installed.
   id: text('id').primaryKey(),
   username: varchar('username', { length: 20 }).notNull(),
+  // Nullable for accounts created before email recovery was introduced.
+  email: varchar('email', { length: 320 }),
   displayName: varchar('display_name', { length: 32 }).notNull().default(''),
   passwordHash: text('password_hash').notNull(),
   avatar: text('avatar').notNull().default(''),
@@ -32,6 +34,7 @@ export const users = pgTable('users', {
   // on lower(username) — every username lookup must use that SAME
   // expression (see auth/users.ts), or Postgres won't use this index.
   uniqueIndex('users_username_lower_key').on(sql`lower(${t.username})`),
+  uniqueIndex('users_email_lower_key').on(sql`lower(${t.email})`),
 ]);
 
 /** Login session. The key is the sha256 of the cookie value, never the raw
@@ -44,6 +47,23 @@ export const sessions = pgTable('sessions', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 }, (t) => [
   index('sessions_user_id_idx').on(t.userId),
+]);
+
+/** Short-lived one-time codes for account recovery and email changes. Only
+ * the hash is stored, so a database read cannot be used to recover a code. */
+export const authCodes = pgTable('auth_codes', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  purpose: varchar('purpose', { length: 32 }).notNull(), // 'password_reset' | 'email_change'
+  email: varchar('email', { length: 320 }).notNull(),
+  codeHash: text('code_hash').notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('auth_codes_user_purpose_idx').on(t.userId, t.purpose),
+  index('auth_codes_email_purpose_idx').on(t.email, t.purpose),
 ]);
 
 /** A messaging conversation. `direct` rows represent a one-to-one DM and
@@ -140,6 +160,7 @@ export const attachments = pgTable('attachments', {
 
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
+export type AuthCode = typeof authCodes.$inferSelect;
 export type Conversation = typeof conversations.$inferSelect;
 export type ConversationMember = typeof conversationMembers.$inferSelect;
 export type Message = typeof messages.$inferSelect;

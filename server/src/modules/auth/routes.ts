@@ -5,8 +5,10 @@ import { config } from '../../config/env.js';
 import { sendJson, sendError, jsonBody } from '../../http/respond.js';
 import { parseCookies, serializeCookie, clearCookie, isSecureRequest } from '../../http/cookies.js';
 import { hashPassword, verifyPassword, needsRehash, DUMMY_HASH } from './password.js';
-import { createSession, resolveSession, destroySession } from './session.js';
-import { findByUsernameLower, createUser, isAdminUsername, publicUser } from './users.js';
+import { createSession, resolveSession, destroyAllSessionsForUser, destroySession } from './session.js';
+import { findByEmailLower, findByUsernameLower, createUser, isAdminUsername, isValidEmail, normalizeEmail, privateUser, publicUser, updateEmail, updatePassword } from './users.js';
+import { issueAuthCode, verifyAuthCode, type AuthCodePurpose } from './codes.js';
+import { sendAuthCodeEmail } from './email.js';
 import { broadcast } from '../../realtime/participants.js';
 import * as ratelimit from './ratelimit.js';
 import { db } from '../../db/client.js';
@@ -62,6 +64,7 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
 
   const body = jsonBody(request.body);
   const username = String(body.username == null ? '' : body.username).trim();
+  const email = normalizeEmail(String(body.email == null ? '' : body.email));
   const password = String(body.password == null ? '' : body.password);
   const confirmPassword = String(body.confirmPassword == null ? '' : body.confirmPassword);
   const code = String(body.code == null ? '' : body.code);
@@ -78,6 +81,7 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
   if (!USERNAME_RE.test(username)) {
     return sendError(reply, 400, 'invalid_username', `Nome de usuário deve ter entre ${config.MIN_USERNAME_LEN} e ${config.MAX_USERNAME_LEN} caracteres (letras, números, . _ -).`);
   }
+  if (!isValidEmail(email)) return sendError(reply, 400, 'invalid_email', 'Informe um e-mail válido.');
   if (password.length < config.MIN_PASSWORD_LEN || password.length > config.MAX_PASSWORD_LEN) {
     return sendError(reply, 400, 'weak_password', `Senha deve ter pelo menos ${config.MIN_PASSWORD_LEN} caracteres.`);
   }
@@ -88,11 +92,13 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
   const passwordHash = await hashPassword(password);
   const role = isAdminUsername(username) ? 'admin' : 'user';
 
+  if (await findByEmailLower(email)) return sendError(reply, 409, 'email_taken', 'Esse e-mail já está em uso.');
+
   let user;
   try {
-    user = await createUser({ username, passwordHash, role });
+    user = await createUser({ username, email, passwordHash, role });
   } catch (err: unknown) {
-    if (err && (err as { code?: string }).code === 'username_taken') return sendError(reply, 409, 'username_taken', 'Esse nome de usuário já está em uso.');
+    if (err && (err as { code?: string }).code === 'account_identity_taken') return sendError(reply, 409, 'username_taken', 'Esse nome de usuário ou e-mail já está em uso.');
     throw err;
   }
 
@@ -102,7 +108,7 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
   // the new account without reloading — plain broadcast over already-open
   // sockets, no coupling of this HTTP route to socket.io itself.
   broadcast({ t: 'user-registered', user: publicUser(user) });
-  sendJson(reply, 201, { user: publicUser(user) });
+  sendJson(reply, 201, { user: privateUser(user) });
 }
 
 async function handleLogin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
@@ -147,7 +153,7 @@ async function handleLogin(request: FastifyRequest, reply: FastifyReply): Promis
 
   const { rawToken } = await createSession(user.id);
   setSessionCookie(request, reply, rawToken);
-  sendJson(reply, 200, { user: publicUser(user) });
+  sendJson(reply, 200, { user: privateUser(user) });
 }
 
 async function handleLogout(request: FastifyRequest, reply: FastifyReply): Promise<void> {
@@ -165,6 +171,7 @@ async function handleMe(request: FastifyRequest, reply: FastifyReply): Promise<v
     user: {
       id: sess.userId,
       username: sess.username,
+      email: sess.email,
       displayName: sess.displayName,
       avatar: sess.avatar,
       avatarColor: sess.avatarColor,
@@ -176,11 +183,139 @@ async function handleMe(request: FastifyRequest, reply: FastifyReply): Promise<v
   });
 }
 
+function purposeError(reply: FastifyReply, reason: 'invalid_code' | 'code_expired' | 'too_many_attempts'): void {
+  const messages = {
+    invalid_code: 'Código inválido.',
+    code_expired: 'Código expirado. Solicite um novo código.',
+    too_many_attempts: 'Limite de tentativas atingido. Solicite um novo código.',
+  } as const;
+  sendError(reply, 400, reason, messages[reason]);
+}
+
+function sessionForRequest(request: FastifyRequest) {
+  const cookies = parseCookies(request.headers.cookie || '');
+  return resolveSession(cookies[config.SESSION_COOKIE]);
+}
+
+async function issueAndSendCode(userId: string, email: string, purpose: AuthCodePurpose): Promise<void> {
+  const code = await issueAuthCode(userId, purpose, email);
+  try {
+    await sendAuthCodeEmail({ to: email, code, purpose });
+  } catch (err) {
+    console.error('[auth] falha ao enviar código:', err instanceof Error ? err.message : err);
+    throw err;
+  }
+}
+
+async function handleRecoveryRequest(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const body = jsonBody(request.body);
+  const email = normalizeEmail(String(body.email == null ? '' : body.email));
+  if (!isValidEmail(email)) return sendError(reply, 400, 'invalid_email', 'Informe um e-mail válido.');
+
+  const ipKey = `recovery-ip:${ipOfRequest(request)}`;
+  const emailKey = `recovery-email:${email}`;
+  const blocked = ratelimit.checkBlocked(ipKey) || ratelimit.checkBlocked(emailKey);
+  if (blocked) {
+    reply.header('Retry-After', String(blocked));
+    return sendError(reply, 429, 'rate_limited', 'Muitas solicitações. Tente novamente mais tarde.');
+  }
+  ratelimit.recordFailure(ipKey);
+  ratelimit.recordFailure(emailKey);
+
+  const user = await findByEmailLower(email);
+  if (user) {
+    try {
+      await issueAndSendCode(user.id, email, 'password_reset');
+    } catch { /* Keep the response identical so recovery never enumerates accounts. */ }
+  }
+  sendJson(reply, 200, { ok: true });
+}
+
+async function handleRecoveryReset(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const body = jsonBody(request.body);
+  const email = normalizeEmail(String(body.email == null ? '' : body.email));
+  const code = String(body.code == null ? '' : body.code).trim();
+  const password = String(body.password == null ? '' : body.password);
+  if (!isValidEmail(email)) return sendError(reply, 400, 'invalid_email', 'Informe um e-mail válido.');
+  if (!/^\d{6}$/.test(code)) return sendError(reply, 400, 'invalid_code', 'Informe o código de 6 dígitos.');
+  if (password.length < config.MIN_PASSWORD_LEN || password.length > config.MAX_PASSWORD_LEN) {
+    return sendError(reply, 400, 'weak_password', `Senha deve ter pelo menos ${config.MIN_PASSWORD_LEN} caracteres.`);
+  }
+
+  const user = await findByEmailLower(email);
+  if (!user) return sendError(reply, 400, 'invalid_code', 'Código inválido.');
+  const result = await verifyAuthCode(user.id, 'password_reset', email, code);
+  if (!result.ok) return purposeError(reply, result.reason);
+
+  await updatePassword(user.id, await hashPassword(password));
+  await destroyAllSessionsForUser(user.id);
+  sendJson(reply, 200, { ok: true });
+}
+
+async function handleLinkEmail(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const sess = await sessionForRequest(request);
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
+  const body = jsonBody(request.body);
+  const email = normalizeEmail(String(body.email == null ? '' : body.email));
+  if (!isValidEmail(email)) return sendError(reply, 400, 'invalid_email', 'Informe um e-mail válido.');
+  if (sess.email) return sendError(reply, 409, 'email_already_set', 'Esta conta já possui um e-mail.');
+  if (await findByEmailLower(email)) return sendError(reply, 409, 'email_taken', 'Esse e-mail já está em uso.');
+  const user = await updateEmail(sess.userId, email);
+  if (!user) return sendError(reply, 404, 'user_not_found', 'Conta não encontrada.');
+  sendJson(reply, 200, { user: privateUser(user) });
+}
+
+async function handleEmailChangeRequest(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const sess = await sessionForRequest(request);
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
+  const body = jsonBody(request.body);
+  const email = normalizeEmail(String(body.email == null ? '' : body.email));
+  if (!isValidEmail(email)) return sendError(reply, 400, 'invalid_email', 'Informe um e-mail válido.');
+  if (sess.email && normalizeEmail(sess.email) === email) return sendError(reply, 400, 'same_email', 'Informe um e-mail diferente do atual.');
+  const existing = await findByEmailLower(email);
+  if (existing && existing.id !== sess.userId) return sendError(reply, 409, 'email_taken', 'Esse e-mail já está em uso.');
+  const changeKey = `email-change:${sess.userId}`;
+  const blocked = ratelimit.checkBlocked(changeKey);
+  if (blocked) {
+    reply.header('Retry-After', String(blocked));
+    return sendError(reply, 429, 'rate_limited', 'Muitas solicitações. Tente novamente mais tarde.');
+  }
+  ratelimit.recordFailure(changeKey);
+  try {
+    await issueAndSendCode(sess.userId, email, 'email_change');
+  } catch {
+    return sendError(reply, 503, 'email_unavailable', 'Não foi possível enviar o código agora. Tente novamente mais tarde.');
+  }
+  sendJson(reply, 200, { ok: true });
+}
+
+async function handleEmailChangeConfirm(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const sess = await sessionForRequest(request);
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
+  const body = jsonBody(request.body);
+  const email = normalizeEmail(String(body.email == null ? '' : body.email));
+  const code = String(body.code == null ? '' : body.code).trim();
+  if (!isValidEmail(email)) return sendError(reply, 400, 'invalid_email', 'Informe um e-mail válido.');
+  if (!/^\d{6}$/.test(code)) return sendError(reply, 400, 'invalid_code', 'Informe o código de 6 dígitos.');
+  const result = await verifyAuthCode(sess.userId, 'email_change', email, code);
+  if (!result.ok) return purposeError(reply, result.reason);
+  const existing = await findByEmailLower(email);
+  if (existing && existing.id !== sess.userId) return sendError(reply, 409, 'email_taken', 'Esse e-mail já está em uso.');
+  const user = await updateEmail(sess.userId, email);
+  if (!user) return sendError(reply, 404, 'user_not_found', 'Conta não encontrada.');
+  sendJson(reply, 200, { user: privateUser(user) });
+}
+
 export function registerAuthRoutes(fastify: FastifyInstance): void {
   fastify.post('/api/auth/register', handleRegister);
   fastify.post('/api/auth/login', handleLogin);
   fastify.post('/api/auth/logout', handleLogout);
   fastify.get('/api/auth/me', handleMe);
+  fastify.post('/api/auth/recovery/request', handleRecoveryRequest);
+  fastify.post('/api/auth/recovery/reset', handleRecoveryReset);
+  fastify.post('/api/auth/email/link', handleLinkEmail);
+  fastify.post('/api/auth/email/change/request', handleEmailChangeRequest);
+  fastify.post('/api/auth/email/change/confirm', handleEmailChangeConfirm);
 }
 
 export { ipOfRequest };
