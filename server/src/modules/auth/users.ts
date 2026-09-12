@@ -22,8 +22,12 @@ export interface PublicUser {
   role: Role;
 }
 
-export interface UsernameTakenError extends Error {
-  code: 'username_taken';
+export interface PrivateUser extends PublicUser {
+  email: string | null;
+}
+
+export interface AccountIdentityTakenError extends Error {
+  code: 'account_identity_taken';
 }
 
 /** '' (never set, or explicitly cleared) falls back to the immutable
@@ -42,9 +46,27 @@ export function publicUser(u: User): PublicUser {
   };
 }
 
+export function privateUser(u: User): PrivateUser {
+  return { ...publicUser(u), email: u.email };
+}
+
 export async function findByUsernameLower(username: string): Promise<User | null> {
   const lower = username.trim().toLowerCase();
   const [row] = await db.select().from(users).where(sql`lower(${users.username}) = ${lower}`).limit(1);
+  return row || null;
+}
+
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+export function isValidEmail(email: string): boolean {
+  return email.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+export async function findByEmailLower(email: string): Promise<User | null> {
+  const lower = normalizeEmail(email);
+  const [row] = await db.select().from(users).where(sql`lower(${users.email}) = ${lower}`).limit(1);
   return row || null;
 }
 
@@ -61,24 +83,48 @@ export async function listAllUsers(): Promise<PublicUser[]> {
   return rows.map(publicUser);
 }
 
-/** Throws with `.code = 'username_taken'` if a race loses to the DB's
- * unique index despite the earlier check (e.g. two simultaneous signups
- * with the same name). */
-export async function createUser({ username, passwordHash, role }: { username: string; passwordHash: string; role: Role }): Promise<User> {
+/** Throws with `.code = 'account_identity_taken'` if a race loses to either
+ * identity unique index despite the earlier checks. */
+export async function createUser({ username, email, passwordHash, role }: { username: string; email: string; passwordHash: string; role: Role }): Promise<User> {
   const id = crypto.randomUUID();
   try {
-    const [row] = await db.insert(users).values({ id, username, passwordHash, role }).returning();
+    const [row] = await db.insert(users).values({ id, username, email: normalizeEmail(email), passwordHash, role }).returning();
     return row!;
   } catch (err: unknown) {
     // drizzle wraps the driver error in DrizzleQueryError — Postgres's code
     // (23505 = unique_violation) is in err.cause.code, not err.code.
     const cause = (err as { cause?: { code?: string } } | undefined)?.cause;
     if (cause?.code === '23505') {
-      const dup = Object.assign(new Error('Esse nome de usuário já está em uso.'), { code: 'username_taken' as const });
+      const dup = Object.assign(new Error('Esse nome de usuário ou e-mail já está em uso.'), { code: 'account_identity_taken' as const });
       throw dup;
     }
     throw err;
   }
+}
+
+export async function updateEmail(id: string, email: string): Promise<User | null> {
+  try {
+    const [row] = await db.update(users)
+      .set({ email: normalizeEmail(email), updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    invalidateSessionsForUser(id);
+    return row || null;
+  } catch (err: unknown) {
+    const cause = (err as { cause?: { code?: string } } | undefined)?.cause;
+    if (cause?.code === '23505') {
+      throw Object.assign(new Error('Esse e-mail já está em uso.'), { code: 'email_taken' as const });
+    }
+    throw err;
+  }
+}
+
+export async function updatePassword(id: string, passwordHash: string): Promise<User | null> {
+  const [row] = await db.update(users)
+    .set({ passwordHash, updatedAt: new Date() })
+    .where(eq(users.id, id))
+    .returning();
+  return row || null;
 }
 
 export async function updateProfile(id: string, profile: { avatar: string; avatarColor: string; displayName: string; banner: string; bio: string; profileLinks: string[] }): Promise<User | null> {

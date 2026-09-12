@@ -69,12 +69,15 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
   return (
     <div
       ref={containerRef}
-      className={`grid h-full w-full gap-3 ${focus ? 'items-center justify-items-center' : 'place-content-center'}`}
+      className={`grid h-full w-full gap-3 ${focus ? 'items-center justify-items-center' : 'place-content-center justify-items-center'}`}
       style={{ gridTemplateColumns, gridTemplateRows }}
     >
-      {descriptors.map((d) => {
+      {descriptors.map((d, descriptorIndex) => {
         const isFocused = d.key === focus;
         const currentThumbnailIndex = isFocused ? -1 : thumbnailIndex++;
+        const rowIndex = Math.floor(descriptorIndex / cols);
+        const itemsInRow = Math.min(cols, n - rowIndex * cols);
+        const isIncompleteRow = !focus && itemsInRow < cols;
         const style = focus
           ? isFocused
             ? { gridColumn: '1 / -1', gridRow: '1', width: '100%', height: '100%' }
@@ -84,18 +87,25 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
                 width: THUMB_W,
                 height: THUMB_H,
               }
+          : isIncompleteRow
+            ? { gridColumn: '1 / -1', width: '100%', height: tileH }
+            : { width: tileW, height: tileH };
+        const innerStyle = focus || !isIncompleteRow
+          ? { width: '100%', height: '100%' }
           : { width: tileW, height: tileH };
 
         return (
-          <div key={d.key} style={style} className="min-h-0 min-w-0">
-            <Tile
-              participantId={d.participantId}
-              kind={d.kind}
-              isMine={isMine(d.participantId)}
-              fit={isFocused ? 'contain' : 'cover'}
-              avatarSize={isFocused ? 104 : focus ? 32 : 96}
-              nameSize={isFocused ? 'label' : 'body'}
-            />
+          <div key={d.key} style={style} className={`min-h-0 min-w-0 ${isIncompleteRow ? 'flex justify-center' : ''}`}>
+            <div style={innerStyle} className="min-h-0 min-w-0">
+              <Tile
+                participantId={d.participantId}
+                kind={d.kind}
+                isMine={isMine(d.participantId)}
+                fit={isFocused ? 'contain' : 'cover'}
+                avatarSize={isFocused ? 104 : focus ? 32 : 96}
+                nameSize={isFocused ? 'label' : 'body'}
+              />
+            </div>
           </div>
         );
       })}

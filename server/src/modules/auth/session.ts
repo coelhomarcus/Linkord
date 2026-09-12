@@ -67,6 +67,7 @@ export async function resolveSession(rawToken: string | undefined | null): Promi
       lastSeenAt: sessions.lastSeenAt,
       userId: users.id,
       username: users.username,
+      email: users.email,
       displayName: users.displayName,
       avatar: users.avatar,
       avatarColor: users.avatarColor,
@@ -94,6 +95,7 @@ export async function resolveSession(rawToken: string | undefined | null): Promi
     tokenHash,
     userId: row.userId,
     username: row.username,
+    email: row.email,
     // '' (never set) falls back to username — mirrors publicUser() in
     // auth/users.ts, duplicated here (not imported) to avoid a session.ts
     // <-> users.ts import cycle (users.ts already imports from this file).
@@ -114,6 +116,11 @@ export async function destroySession(rawToken: string | undefined | null): Promi
   const tokenHash = hashToken(rawToken);
   cacheInvalidate(tokenHash);
   await db.delete(sessions).where(eq(sessions.tokenHash, tokenHash));
+}
+
+export async function destroyAllSessionsForUser(userId: string): Promise<void> {
+  await db.delete(sessions).where(eq(sessions.userId, userId));
+  invalidateSessionsForUser(userId);
 }
 
 /** Clears expired sessions from the DB — called periodically at boot

@@ -5,6 +5,7 @@ import type { DetectedEmbed } from './chatEmbeds';
 export interface ApiUser {
   id: string;
   username: string;
+  email: string | null;
   displayName: string;
   avatar: string;
   avatarColor: string;
@@ -56,8 +57,28 @@ export function login(username: string, password: string): Promise<{ user: ApiUs
   return apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });
 }
 
-export function register(username: string, password: string, confirmPassword: string, code: string): Promise<{ user: ApiUser }> {
-  return apiFetch('/api/auth/register', { method: 'POST', body: JSON.stringify({ username, password, confirmPassword, code }) });
+export function register(username: string, email: string, password: string, confirmPassword: string, code: string): Promise<{ user: ApiUser }> {
+  return apiFetch('/api/auth/register', { method: 'POST', body: JSON.stringify({ username, email, password, confirmPassword, code }) });
+}
+
+export function requestPasswordRecovery(email: string): Promise<{ ok: true }> {
+  return apiFetch('/api/auth/recovery/request', { method: 'POST', body: JSON.stringify({ email }) });
+}
+
+export function resetPassword(email: string, code: string, password: string): Promise<{ ok: true }> {
+  return apiFetch('/api/auth/recovery/reset', { method: 'POST', body: JSON.stringify({ email, code, password }) });
+}
+
+export function linkEmail(email: string): Promise<{ user: ApiUser }> {
+  return apiFetch('/api/auth/email/link', { method: 'POST', body: JSON.stringify({ email }) });
+}
+
+export function requestEmailChange(email: string): Promise<{ ok: true }> {
+  return apiFetch('/api/auth/email/change/request', { method: 'POST', body: JSON.stringify({ email }) });
+}
+
+export function confirmEmailChange(email: string, code: string): Promise<{ user: ApiUser }> {
+  return apiFetch('/api/auth/email/change/confirm', { method: 'POST', body: JSON.stringify({ email, code }) });
 }
 
 export function logout(): Promise<void> {

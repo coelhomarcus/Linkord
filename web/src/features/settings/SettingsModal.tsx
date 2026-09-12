@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import type { Area } from 'react-easy-crop';
-import { Bell, Check, HardDrive, IdCard, LogOut, Settings2, ShieldCheck, SlidersHorizontal, User, Volume2, VolumeX } from 'lucide-react';
+import { Bell, Check, CheckCircle2, HardDrive, IdCard, Loader2, LogOut, Mail, Settings2, ShieldCheck, SlidersHorizontal, User, Volume2, VolumeX } from 'lucide-react';
 import { ModerationTab } from './ModerationTab';
 import { ImageCropDialog } from './ImageCropDialog';
 import { ImageUrlDialog } from '../../shared/ImageUrlDialog';
@@ -20,10 +20,14 @@ import { AVATAR_MIME_TYPES, MAX_AVATAR_BYTES, MAX_PROFILE_LINK_LEN, MAX_PROFILE_
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsIndicator, TabsPanel, TabsTrigger } from '@/components/ui/tabs';
+import { confirmEmailChange, requestEmailChange } from '@/shared/lib/api';
+import { ApiError } from '../../shared/lib/api';
+import { OTPInput, type OTPStatus } from '@/components/motion/otp-input';
 
 const settingsCardClass = 'flex flex-col gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-4';
 
@@ -63,6 +67,99 @@ function DevicePicker({ label, room, kind }: { label: string; room: import('live
   );
 }
 
+function EmailSettings({ currentEmail }: { currentEmail: string | null }) {
+  const { refresh } = useAuth();
+  const [email, setEmail] = useState(currentEmail ?? '');
+  const [code, setCode] = useState('');
+  const [requested, setRequested] = useState(false);
+  const [status, setStatus] = useState<OTPStatus>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    setEmail(currentEmail ?? '');
+    setCode('');
+    setRequested(false);
+    setStatus('idle');
+    setError(null);
+  }, [currentEmail]);
+
+  async function handleRequest() {
+    setError(null);
+    setPending(true);
+    try {
+      await requestEmailChange(email);
+      setRequested(true);
+      setStatus('idle');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Não foi possível enviar o código.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function handleConfirm(nextCode = code) {
+    if (nextCode.length !== 6 || pending) return;
+    setError(null);
+    setStatus('idle');
+    setPending(true);
+    try {
+      await confirmEmailChange(email, nextCode);
+      setStatus('success');
+      await refresh();
+    } catch (err) {
+      setStatus('error');
+      setError(err instanceof ApiError ? err.message : 'Não foi possível confirmar o e-mail.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className={settingsCardClass}>
+      <span className={cn(sectionLabelClass, 'flex items-center gap-1.5')}><Mail size={14} /> E-mail da conta</span>
+      {!requested ? (
+        <>
+          <p className="select-none text-label text-text-muted">Usado para recuperar sua conta. A alteração será confirmada por código.</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="min-w-0 flex-1">
+              <Label htmlFor="accountEmail" className="text-label text-text-muted">Novo e-mail</Label>
+              <Input id="accountEmail" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+            </div>
+            <Button type="button" size="sm" disabled={pending || !email} onClick={() => void handleRequest()}>
+              {pending ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
+              {pending ? 'Enviando…' : 'Enviar código'}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="select-none text-label text-text-muted">Digite o código enviado para {email}. Ele expira em 30 minutos.</p>
+          <OTPInput
+            label="Código de confirmação"
+            hint="Digite os 6 dígitos enviados para seu e-mail."
+            errorMessage={error ?? 'Confira o código e tente novamente.'}
+            successMessage="E-mail alterado com sucesso."
+            value={code}
+            status={status}
+            onChange={(value) => { setCode(value); setStatus('idle'); setError(null); }}
+            onComplete={(value) => { void handleConfirm(value); }}
+            aria-label="Código de confirmação de e-mail"
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" disabled={pending || code.length !== 6} onClick={() => void handleConfirm()}>
+              {pending ? <Loader2 size={15} className="animate-spin" /> : status === 'success' ? <CheckCircle2 size={15} /> : <Check size={15} />}
+              {pending ? 'Confirmando…' : status === 'success' ? 'Confirmado' : 'Confirmar e-mail'}
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => { setRequested(false); setStatus('idle'); setError(null); }}>Usar outro e-mail</Button>
+          </div>
+        </>
+      )}
+      {error && !requested && <p className="text-label text-red">{error}</p>}
+    </div>
+  );
+}
+
 type ProfileCropTarget =
   { field: 'avatar' | 'banner'; kind: 'file'; file: File; src: string };
 
@@ -71,7 +168,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     state, updateProfile, uploadProfileImage, showStats, setShowStats,
     notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled, showTileBanners, setShowTileBanners, livekitRoom, storageUsage,
   } = useRoom();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const [avatar, setAvatar] = useState(state.me.avatar);
   const [avatarColor, setAvatarColor] = useState(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
   const [displayName, setDisplayName] = useState(state.me.displayName);
@@ -335,6 +432,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             </TabsPanel>
 
             <TabsPanel value="account" className="flex flex-col gap-4">
+              <EmailSettings currentEmail={user?.email ?? null} />
               <div className={settingsCardClass}>
                 <SectionLabel>Identificação</SectionLabel>
                 <div className="flex flex-col gap-1">
