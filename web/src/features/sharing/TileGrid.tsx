@@ -54,6 +54,7 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
   const refN = referenceCount(n);
   const cols = Math.max(1, Math.ceil(Math.sqrt(refN || 1)));
   const refRows = Math.max(1, Math.ceil(refN / cols));
+  const actualRows = Math.max(1, Math.ceil(n / cols));
   const { tileW, tileH } = fitTileSize(cols, refRows, containerSize.w, containerSize.h);
   const thumbs = focus ? descriptors.filter((d) => d.key !== focus) : [];
   const thumbCols = focus ? Math.max(1, Math.floor((containerSize.w + GRID_GAP) / (THUMB_W + GRID_GAP))) : 1;
@@ -63,52 +64,76 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
     : `repeat(${cols}, ${tileW}px)`;
   const gridTemplateRows = focus
     ? (thumbs.length ? `minmax(0, 1fr) repeat(${thumbRows}, ${THUMB_H}px)` : 'minmax(0, 1fr)')
-    : `repeat(${refRows}, ${tileH}px)`;
-  let thumbnailIndex = 0;
+    : `repeat(${actualRows}, ${tileH}px)`;
+
+  const renderTile = (d: TileDescriptor, isFocused: boolean, width: number | string, height: number | string) => (
+    <div key={d.key} style={{ width, height }} className="min-h-0 min-w-0">
+      <Tile
+        participantId={d.participantId}
+        kind={d.kind}
+        isMine={isMine(d.participantId)}
+        fit={isFocused ? 'contain' : 'cover'}
+        avatarSize={isFocused ? 104 : focus ? 32 : 96}
+        nameSize={isFocused ? 'label' : 'body'}
+      />
+    </div>
+  );
+
+  if (!focus) {
+    const rows: TileDescriptor[][] = [];
+    for (let index = 0; index < descriptors.length; index += cols) {
+      rows.push(descriptors.slice(index, index + cols));
+    }
+
+    return (
+      <div
+        ref={containerRef}
+        data-tile-grid
+        className="grid h-full w-full place-content-center gap-3"
+        style={{ gridTemplateColumns, gridTemplateRows }}
+      >
+        {rows.map((row, rowIndex) => (
+          <div
+            key={`row-${rowIndex}`}
+            data-tile-row
+            style={{ gridColumn: '1 / -1', gridRow: String(rowIndex + 1) }}
+            className="flex min-h-0 min-w-0 justify-center gap-3"
+          >
+            {row.map((d) => renderTile(d, false, tileW, tileH))}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const focusedDescriptor = descriptors.find((d) => d.key === focus);
+  const thumbnailRows: TileDescriptor[][] = [];
+  for (let index = 0; index < thumbs.length; index += thumbCols) {
+    thumbnailRows.push(thumbs.slice(index, index + thumbCols));
+  }
 
   return (
     <div
       ref={containerRef}
-      className={`grid h-full w-full gap-3 ${focus ? 'items-center justify-items-center' : 'place-content-center justify-items-center'}`}
+      data-tile-grid
+      className="grid h-full w-full items-center justify-items-center gap-3"
       style={{ gridTemplateColumns, gridTemplateRows }}
     >
-      {descriptors.map((d, descriptorIndex) => {
-        const isFocused = d.key === focus;
-        const currentThumbnailIndex = isFocused ? -1 : thumbnailIndex++;
-        const rowIndex = Math.floor(descriptorIndex / cols);
-        const itemsInRow = Math.min(cols, n - rowIndex * cols);
-        const isIncompleteRow = !focus && itemsInRow < cols;
-        const style = focus
-          ? isFocused
-            ? { gridColumn: '1 / -1', gridRow: '1', width: '100%', height: '100%' }
-            : {
-                gridColumn: String((currentThumbnailIndex % thumbCols) + 1),
-                gridRow: String(Math.floor(currentThumbnailIndex / thumbCols) + 2),
-                width: THUMB_W,
-                height: THUMB_H,
-              }
-          : isIncompleteRow
-            ? { gridColumn: '1 / -1', width: '100%', height: tileH }
-            : { width: tileW, height: tileH };
-        const innerStyle = focus || !isIncompleteRow
-          ? { width: '100%', height: '100%' }
-          : { width: tileW, height: tileH };
-
-        return (
-          <div key={d.key} style={style} className={`min-h-0 min-w-0 ${isIncompleteRow ? 'flex justify-center' : ''}`}>
-            <div style={innerStyle} className="min-h-0 min-w-0">
-              <Tile
-                participantId={d.participantId}
-                kind={d.kind}
-                isMine={isMine(d.participantId)}
-                fit={isFocused ? 'contain' : 'cover'}
-                avatarSize={isFocused ? 104 : focus ? 32 : 96}
-                nameSize={isFocused ? 'label' : 'body'}
-              />
-            </div>
-          </div>
-        );
-      })}
+      {focusedDescriptor && (
+        <div style={{ gridColumn: '1 / -1', gridRow: '1', width: '100%', height: '100%' }} className="min-h-0 min-w-0">
+          {renderTile(focusedDescriptor, true, '100%', '100%')}
+        </div>
+      )}
+      {thumbnailRows.map((row, rowIndex) => (
+        <div
+          key={`thumbnail-row-${rowIndex}`}
+          data-tile-row
+          style={{ gridColumn: '1 / -1', gridRow: String(rowIndex + 2) }}
+          className="flex min-h-0 min-w-0 justify-center gap-3"
+        >
+          {row.map((d) => renderTile(d, false, THUMB_W, THUMB_H))}
+        </div>
+      ))}
     </div>
   );
 }
