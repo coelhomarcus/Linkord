@@ -120,7 +120,7 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
       style={{ gridTemplateColumns, gridTemplateRows }}
     >
       {focusedDescriptor && (
-        <div style={{ gridColumn: '1 / -1', gridRow: '1', width: '100%', height: '100%' }} className="min-h-0 min-w-0">
+        <div style={{ gridColumn: '1 / -1', gridRow: '1', width: '100%', height: '100%' }} className="flex min-h-0 min-w-0 items-center justify-center">
           {renderTile(focusedDescriptor, true, '100%', '100%')}
         </div>
       )}

@@ -63,6 +63,7 @@ describe('TileGrid', () => {
     const expectedRowSizes = thumbnailCount === 5 ? [3, 2] : [thumbnailCount];
 
     expect(grid?.children[0]).toHaveStyle({ gridRow: '1', gridColumn: '1 / -1' });
+    expect(grid?.children[0]).toHaveClass('items-center', 'justify-center');
     expect(rows).toHaveLength(expectedRowSizes.length);
     expect(rows.map((row) => row.children.length)).toEqual(expectedRowSizes);
     expect(rows.every((row) => row.getAttribute('style')?.includes('grid-column: 1 / -1'))).toBe(true);
