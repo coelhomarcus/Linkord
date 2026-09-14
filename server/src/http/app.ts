@@ -1,6 +1,7 @@
 import path from 'node:path';
 import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
+import fastifyCompress from '@fastify/compress';
 import { config } from '../config/env.js';
 import { participants } from '../realtime/participants.js';
 import { sendError } from './respond.js';
@@ -34,6 +35,15 @@ export function createApp(): FastifyInstance {
     if (status >= 500) console.error('[http] erro numa rota:', err.stack ?? err);
     sendError(reply, status, code, err.message || 'Erro interno.');
   });
+
+  // Registered once, applies fastify-wide (it self-wraps with fastify-plugin,
+  // same as @fastify/static below — nesting it wouldn't actually scope it).
+  // Safe for the attachment range-request streaming in serveUpload: it
+  // skips 206/Content-Range responses and non-compressible mimes
+  // (video/audio/image) on its own — this is really here for the self-
+  // hosted emoji dataset (public/emoji-data, ~770KB of JSON) and other
+  // static/JSON responses, which previously relied on a CDN's own gzip.
+  fastify.register(fastifyCompress);
 
   fastify.get('/healthz', async () => ({ ok: true, participants: participants.size, uptime: process.uptime() }));
 

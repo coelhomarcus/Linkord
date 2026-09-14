@@ -1,70 +1,191 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import {
+  type EmojiPickerListCategoryHeaderProps,
+  type EmojiPickerListEmojiProps,
+  type EmojiPickerListRowProps,
+  EmojiPicker as EmojiPickerPrimitive,
+} from "frimousse";
+import { LoaderIcon, SearchIcon } from "lucide-react";
+import type * as React from "react";
 
 import { cn } from "@/shared/lib/utils";
 
-export interface EmojiSelection {
-  emoji: string;
-}
-
-interface EmojiPickerProps {
-  className?: string;
-  onEmojiSelect: (selection: EmojiSelection) => void;
-}
-
-// emoji-mart's <em-emoji-picker> is a plain custom element (registered by
-// importing `emoji-mart`, not a React component) — mounted imperatively here
-// instead of via @emoji-mart/react, whose declared peer range (React 16-18)
-// doesn't cover React 19 yet even though the element itself doesn't touch
-// React internals and works fine regardless. Both the library itself
-// (~160KB, it bundles its own UI + styles) and the emoji dataset
-// (@emoji-mart/data, ~400KB uncompressed) are dynamically imported so they
-// load as their own chunks the first time a picker actually opens, never
-// bundled into the main app.
-export function EmojiPicker({ className, onEmojiSelect }: EmojiPickerProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const onEmojiSelectRef = useRef(onEmojiSelect);
-  onEmojiSelectRef.current = onEmojiSelect;
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    let picker: HTMLElement | null = null;
-    let cancelled = false;
-
-    Promise.all([import("emoji-mart"), import("@emoji-mart/data")]).then(([{ Picker }, { default: data }]) => {
-      if (cancelled) return;
-      picker = new Picker({
-        data,
-        onEmojiSelect: (emoji: { native: string }) => onEmojiSelectRef.current({ emoji: emoji.native }),
-        theme: "dark",
-        locale: "pt",
-        previewPosition: "none",
-        skinTonePosition: "search",
-        dynamicWidth: true,
-      }) as unknown as HTMLElement;
-      // emoji-mart's own shadow DOM sets a fixed `:host { height: 435px }` —
-      // an external stylesheet rule (even with a matching selector) isn't
-      // guaranteed to win that cascade, so this has to be an inline style
-      // (highest specificity short of !important) to reliably force it to
-      // fill whatever box the caller gives this component (className below).
-      picker.style.height = "100%";
-      picker.style.width = "100%";
-      container.appendChild(picker);
-    });
-
-    return () => {
-      cancelled = true;
-      picker?.remove();
-    };
-  }, []);
-
+// frimousse renders/scrolls a virtualized window of rows (only what's
+// actually visible), so opening it never blocks the main thread the way an
+// eagerly-rendered ~1870-emoji grid would — that's the whole reason it's
+// back after a brief detour through emoji-mart. Its own JS is tiny; the only
+// real cost is its emoji dataset, which by default it fetches from
+// cdn.jsdelivr.net on first open. `emojibaseUrl` here points that fetch at
+// our OWN server instead (public/emoji-data/<locale>/{data,messages}.json,
+// copied once from the emojibase-data npm package — see that directory) —
+// no external CDN dependency, still cached/revalidated by frimousse itself
+// via localStorage + ETag, same as it would with jsdelivr.
+function EmojiPicker({
+  className,
+  locale = "pt",
+  emojibaseUrl = "/emoji-data",
+  ...props
+}: React.ComponentProps<typeof EmojiPickerPrimitive.Root>) {
   return (
-    // overflow-hidden is a safety net, not the fix itself — if the inline
-    // style above ever fails to apply (e.g. a future emoji-mart version
-    // renames the custom element), this keeps its fixed intrinsic size from
-    // blowing out whatever it's dropped into instead of just clipping it.
-    <div ref={containerRef} data-slot="emoji-picker" className={cn("overflow-hidden", className)} />
+    <EmojiPickerPrimitive.Root
+      className={cn(
+        "bg-popover text-popover-foreground isolate flex h-full w-fit flex-col overflow-hidden rounded-md",
+        className
+      )}
+      data-slot="emoji-picker"
+      locale={locale}
+      emojibaseUrl={emojibaseUrl}
+      {...props}
+    />
   );
 }
+
+function EmojiPickerSearch({
+  className,
+  placeholder = "Buscar emoji…",
+  ...props
+}: React.ComponentProps<typeof EmojiPickerPrimitive.Search>) {
+  return (
+    <div
+      className={cn("flex h-9 items-center gap-2 border-b px-3", className)}
+      data-slot="emoji-picker-search-wrapper"
+    >
+      <SearchIcon className="size-4 shrink-0 opacity-50" />
+      <EmojiPickerPrimitive.Search
+        className="outline-hidden placeholder:text-muted-foreground flex h-10 w-full rounded-md bg-transparent py-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+        data-slot="emoji-picker-search"
+        placeholder={placeholder}
+        {...props}
+      />
+    </div>
+  );
+}
+
+function EmojiPickerRow({ children, style, ...props }: EmojiPickerListRowProps) {
+  return (
+    <div
+      {...props}
+      style={{
+        ...style,
+        display: "grid",
+        gridTemplateColumns: "repeat(var(--frimousse-list-columns), minmax(0, 1fr))",
+      }}
+      className="scroll-my-1 px-1.5"
+      data-slot="emoji-picker-row"
+    >
+      {children}
+    </div>
+  );
+}
+
+function EmojiPickerEmoji({
+  emoji,
+  className,
+  ...props
+}: EmojiPickerListEmojiProps) {
+  return (
+    <button
+      {...props}
+      className={cn(
+        "data-[active]:bg-accent flex aspect-square w-full items-center justify-center rounded-sm text-2xl",
+        className
+      )}
+      data-slot="emoji-picker-emoji"
+    >
+      {emoji.emoji}
+    </button>
+  );
+}
+
+function EmojiPickerCategoryHeader({
+  category,
+  ...props
+}: EmojiPickerListCategoryHeaderProps) {
+  return (
+    <div
+      {...props}
+      className="bg-popover text-muted-foreground px-3 pb-2 pt-3.5 text-xs leading-none"
+      data-slot="emoji-picker-category-header"
+    >
+      {category.label}
+    </div>
+  );
+}
+
+function EmojiPickerContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof EmojiPickerPrimitive.Viewport>) {
+  return (
+    <EmojiPickerPrimitive.Viewport
+      className={cn("outline-hidden relative flex-1", className)}
+      data-slot="emoji-picker-viewport"
+      {...props}
+    >
+      <EmojiPickerPrimitive.Loading
+        className="absolute inset-0 flex items-center justify-center text-muted-foreground"
+        data-slot="emoji-picker-loading"
+      >
+        <LoaderIcon className="size-4 animate-spin" />
+      </EmojiPickerPrimitive.Loading>
+      <EmojiPickerPrimitive.Empty
+        className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm"
+        data-slot="emoji-picker-empty"
+      >
+        Nenhum emoji encontrado.
+      </EmojiPickerPrimitive.Empty>
+      <EmojiPickerPrimitive.List
+        className="select-none pb-1"
+        components={{
+          Row: EmojiPickerRow,
+          Emoji: EmojiPickerEmoji,
+          CategoryHeader: EmojiPickerCategoryHeader,
+        }}
+        data-slot="emoji-picker-list"
+      />
+    </EmojiPickerPrimitive.Viewport>
+  );
+}
+
+function EmojiPickerFooter({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn(
+        "max-w-(--frimousse-viewport-width) flex w-full min-w-0 items-center gap-1 border-t p-2",
+        className
+      )}
+      data-slot="emoji-picker-footer"
+      {...props}
+    >
+      <EmojiPickerPrimitive.ActiveEmoji>
+        {({ emoji }) =>
+          emoji ? (
+            <>
+              <div className="flex size-7 flex-none items-center justify-center text-lg">
+                {emoji.emoji}
+              </div>
+              <span className="text-secondary-foreground truncate text-xs">
+                {emoji.label}
+              </span>
+            </>
+          ) : (
+            <span className="text-muted-foreground ml-1.5 flex h-7 items-center truncate text-xs">
+              Select an emoji…
+            </span>
+          )
+        }
+      </EmojiPickerPrimitive.ActiveEmoji>
+    </div>
+  );
+}
+
+export {
+  EmojiPicker,
+  EmojiPickerSearch,
+  EmojiPickerContent,
+  EmojiPickerFooter,
+};
