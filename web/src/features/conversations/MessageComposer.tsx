@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import type { ChangeEvent, ClipboardEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { ArrowUp, Paperclip, Reply, Smile, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,11 @@ export interface PendingAttachment {
   previewUrl: string | null;
 }
 
-export function MessageComposer({ conversationId }: { conversationId: string }) {
+export interface MessageComposerHandle {
+  addFiles: (files: File[]) => void;
+}
+
+export const MessageComposer = forwardRef<MessageComposerHandle, { conversationId: string }>(function MessageComposer({ conversationId }, ref) {
   const { state, allUsers, sendChatMessage, sendAttachments, replyingTo, setReplyingTo, compressImagesDefault, setCompressImagesDefault } = useRoom();
   const [text, setText] = useState('');
   const [compressImages, setCompressImages] = useState(compressImagesDefault);
@@ -66,6 +70,8 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
     if (accepted.length) setPendingFiles((prev) => [...prev, ...accepted]);
     setAttachError(error);
   }
+
+  useImperativeHandle(ref, () => ({ addFiles }));
 
   function removeFile(id: string) {
     setPendingFiles((prev) => {
@@ -289,4 +295,4 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
       </div>
     </div>
   );
-}
+});

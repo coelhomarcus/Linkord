@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ImageIcon, Info, Phone, Search } from 'lucide-react';
+import type { DragEvent } from 'react';
+import { ArrowLeft, ImageIcon, Info, Phone, Search, Upload } from 'lucide-react';
 import { useAnimatedSidebar } from '@/components/motion/animated-sidebar';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -13,6 +14,7 @@ import { conversationTitle, directUser, groupMembers } from './conversationUtils
 import { GroupAvatar } from './GroupAvatar';
 import { MessageRow } from './MessageRow';
 import { MessageComposer } from './MessageComposer';
+import type { MessageComposerHandle } from './MessageComposer';
 
 const GROUP_GAP_MS = 5 * 60 * 1000;
 const EMPTY_MESSAGES: ChatMessage[] = [];
@@ -289,12 +291,57 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
   );
 }
 
+function hasFiles(e: DragEvent<HTMLDivElement>): boolean {
+  return Array.from(e.dataTransfer.types).includes('Files');
+}
+
 export function MessageListBridge({ conversationId, onOpenProfile }: { conversationId: string; onOpenProfile: (userId: string) => void }) {
-  const { setReplyingTo } = useRoom();
+  const { state, setReplyingTo } = useRoom();
+  const composerRef = useRef<MessageComposerHandle>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepthRef = useRef(0);
+
+  function handleDragEnter(e: DragEvent<HTMLDivElement>) {
+    if (!state.joined || !hasFiles(e)) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setDragActive(true);
+  }
+  function handleDragOver(e: DragEvent<HTMLDivElement>) {
+    if (!state.joined || !hasFiles(e)) return;
+    e.preventDefault();
+  }
+  function handleDragLeave(e: DragEvent<HTMLDivElement>) {
+    if (!state.joined || !hasFiles(e)) return;
+    e.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragActive(false);
+  }
+  function handleDrop(e: DragEvent<HTMLDivElement>) {
+    if (!state.joined || !hasFiles(e)) return;
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setDragActive(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length) composerRef.current?.addFiles(files);
+  }
+
   return (
-    <>
+    <div
+      className="relative flex min-h-0 flex-1 flex-col"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <MessageList conversationId={conversationId} onReply={setReplyingTo} onOpenProfile={onOpenProfile} />
-      <MessageComposer conversationId={conversationId} />
-    </>
+      <MessageComposer ref={composerRef} conversationId={conversationId} />
+      {dragActive && (
+        <div className="pointer-events-none absolute inset-0 z-10 m-2 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary bg-bg-primary/90 text-text-primary">
+          <Upload size={28} className="text-primary" />
+          <p className="text-body font-medium">Solte para anexar</p>
+        </div>
+      )}
+    </div>
   );
 }
