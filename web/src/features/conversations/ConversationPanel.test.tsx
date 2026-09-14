@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { initialRoomState } from '../../state/roomReducer';
-import { renderWithRoom } from '../../test/roomContextFixture';
-import { MessageListBridge } from './ConversationPanel';
+import { RoomContext } from '../../state/RoomContext';
+import { createFakeRoomContextValue, renderWithRoom } from '../../test/roomContextFixture';
+import type { ChatMessage } from '../../types/protocol';
+import { MessageList, MessageListBridge } from './ConversationPanel';
 
 const joinedState = { ...initialRoomState, joined: true };
 
@@ -54,5 +56,38 @@ describe('MessageListBridge — drag and drop', () => {
     dropFiles(dropzone, [fakeFile('foto.jpg', 'image/jpeg')]);
 
     expect(screen.queryByText('Solte para anexar')).not.toBeInTheDocument();
+  });
+});
+
+describe('MessageList — regruda no final quando bottomPadding muda', () => {
+  it('reajusta o scroll quando o composer flutuante assenta numa altura real (bottomPadding muda sem mensagem nova)', () => {
+    const message: ChatMessage = { msgId: 1, conversationId: 'conv-1', id: 'u1', name: 'Fulana', avatar: '', text: 'oi', ts: Date.now() };
+    const value = createFakeRoomContextValue({ messagesByConversation: new Map([['conv-1', [message]]]) });
+
+    const { container, rerender } = render(
+      <RoomContext.Provider value={value}>
+        <MessageList conversationId="conv-1" onReply={() => {}} onOpenProfile={() => {}} bottomPadding={24} />
+      </RoomContext.Provider>
+    );
+
+    const scrollEl = container.querySelector('.overflow-y-auto') as HTMLDivElement;
+    expect(scrollEl).toBeTruthy();
+
+    let fakeScrollHeight = 300;
+    Object.defineProperty(scrollEl, 'scrollHeight', { configurable: true, get: () => fakeScrollHeight });
+    scrollEl.scrollTop = 0;
+
+    // O composer flutuante mede sua altura real depois do primeiro paint
+    // (bottomPadding vai de um chute pra altura de verdade) — isso aumenta
+    // o padding-bottom (e o scrollHeight) do PROPRIO scrollEl, sem mudar o
+    // tamanho do contentRef (o filho que o ResizeObserver observa).
+    fakeScrollHeight = 380;
+    rerender(
+      <RoomContext.Provider value={value}>
+        <MessageList conversationId="conv-1" onReply={() => {}} onOpenProfile={() => {}} bottomPadding={100} />
+      </RoomContext.Provider>
+    );
+
+    expect(scrollEl.scrollTop).toBe(380);
   });
 });

@@ -41,7 +41,7 @@ function buildRenderItems(messages: ChatMessage[]): RenderItem[] {
   return items;
 }
 
-function MessageList({ conversationId, onReply, onOpenProfile, bottomPadding }: {
+export function MessageList({ conversationId, onReply, onOpenProfile, bottomPadding }: {
   conversationId: string;
   onReply: (message: ChatMessage) => void;
   onOpenProfile: (userId: string) => void;
@@ -81,7 +81,14 @@ function MessageList({ conversationId, onReply, onOpenProfile, bottomPadding }: 
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+    // bottomPadding (the floating composer's measured height, reserved as
+    // scroll-area padding — see MessageListBridge) starts at a guess and
+    // jumps to the real value a tick after mount, and again whenever the
+    // composer grows/shrinks (e.g. attachments added). That changes this
+    // element's own scrollHeight without resizing contentRef below, so the
+    // ResizeObserver in the next effect never sees it — this dependency is
+    // what re-snaps to the true bottom when that happens.
+  }, [messages, bottomPadding]);
 
   useEffect(() => {
     const scrollEl = scrollRef.current;
