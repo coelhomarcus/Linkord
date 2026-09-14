@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Crosshair, Maximize2, PictureInPicture2, UserX, Volume2, VolumeX } from 'lucide-react';
 import type { Track as LKTrack } from 'livekit-client';
 import { useRoom } from '../../state/RoomContext';
 import type { AnchorRect } from '../../state/RoomContext';
 import { useParticipantMedia } from './useLiveKitTrack';
+import { useMuteForMe } from './useMuteForMe';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Slider } from '@/components/ui/slider';
-import { saveCallVolume } from '../settings/useCallVolumePreference';
 
 type StatsCapableTrack = { getRTCStatsReport?: () => Promise<RTCStatsReport | undefined> };
 
@@ -49,33 +49,18 @@ function formatElapsed(totalSeconds: number): string {
 }
 
 export function TileMenu() {
-  const { state, dispatch, menuTarget, closeTileMenu, tileDomRegistry, audioRegistry, showStats, kickFromCall, activeCallConversationId, conversations } = useRoom();
-  const [sliderValue, setSliderValue] = useState(0);
+  const { state, dispatch, menuTarget, closeTileMenu, tileDomRegistry, showStats, kickFromCall, activeCallConversationId, conversations } = useRoom();
   const [bitrateKbps, setBitrateKbps] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
-  // What the mute-toggle button restores to — the target's own volume when
-  // the menu opened if it was already above 0, else 40% (there's nothing
-  // meaningful to "go back to" if it was already at/left at 0).
-  const unmuteToRef = useRef(40);
 
   const key = menuTarget?.key ?? null;
   const participantId = menuTarget?.participantId ?? null;
   const kind = menuTarget?.kind ?? null;
   const isMe = participantId !== null && participantId === state.me.id;
-  const audioKey = kind === 'screen' ? `${participantId}:screen` : participantId;
-  const targetUserId = participantId !== null ? (state.participants.get(participantId)?.userId ?? null) : null;
-  const volumeStorageKey = kind === 'screen' ? `${targetUserId}:screen` : targetUserId;
 
   const media = useParticipantMedia(participantId ?? '');
   const mainTrack = kind === 'screen' ? media.screenTrack : kind === 'camera' ? media.cameraTrack : media.micTrack;
-
-  useEffect(() => {
-    if (!key || !audioKey) return;
-    const audio = audioRegistry.current.get(audioKey)?.element;
-    const initial = audio ? Math.round(audio.volume * 100) : 100;
-    setSliderValue(initial);
-    unmuteToRef.current = initial > 0 ? initial : 40;
-  }, [key, audioKey, audioRegistry]);
+  const { hasAudio, volume, muted, setVolume, toggleMute } = useMuteForMe(participantId, kind ?? 'camera', isMe);
 
   useEffect(() => {
     if (!key || !showStats || !mainTrack) { setBitrateKbps(0); return; }
@@ -105,10 +90,9 @@ export function TileMenu() {
     return () => clearInterval(interval);
   }, [isMe, showStats, state.me.sharingSince]);
 
-  if (!menuTarget || !key || !audioKey) return null;
+  if (!menuTarget || !key) return null;
 
   const handle = tileDomRegistry.current.get(key);
-  const hasAudio = !isMe && audioRegistry.current.has(audioKey);
   const isFocused = state.focusedId === key;
   // "Remove from call" is a group-moderation power — not offered for 1:1
   // direct calls, where "leave call" already covers it (mirrors the
@@ -134,15 +118,7 @@ export function TileMenu() {
     }
   }
   function handleVolumeChange(value: number | readonly number[]) {
-    const v = Array.isArray(value) ? (value[0] ?? 0) : (value as number);
-    setSliderValue(v);
-    if (v > 0) unmuteToRef.current = v;
-    const audio = audioRegistry.current.get(audioKey!)?.element;
-    if (audio) audio.volume = v / 100;
-    if (targetUserId) saveCallVolume(volumeStorageKey!, v / 100);
-  }
-  function toggleMute() {
-    handleVolumeChange(sliderValue > 0 ? 0 : unmuteToRef.current);
+    setVolume(Array.isArray(value) ? (value[0] ?? 0) : (value as number));
   }
   function handleKick() {
     if (participantId) kickFromCall(participantId);
@@ -179,12 +155,12 @@ export function TileMenu() {
               <button
                 type="button"
                 onClick={toggleMute}
-                aria-label={sliderValue === 0 ? 'Reativar áudio' : 'Silenciar áudio'}
+                aria-label={muted ? 'Reativar áudio' : 'Silenciar áudio'}
                 className="flex-none text-text-secondary transition-colors hover:text-text-primary"
               >
-                {sliderValue === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
               </button>
-              <Slider value={[sliderValue]} onValueChange={handleVolumeChange} min={0} max={100} />
+              <Slider value={[volume]} onValueChange={handleVolumeChange} min={0} max={100} />
             </div>
           </>
         )}
