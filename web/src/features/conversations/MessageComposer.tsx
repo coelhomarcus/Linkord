@@ -194,11 +194,7 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
 
       <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileChange} />
 
-      <motion.div
-        layout
-        transition={{ duration: 0.18, ease: 'easeOut' }}
-        className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-[rgb(18_18_20)] p-2 shadow-[0_16px_50px_rgb(0_0_0_/_0.25)]"
-      >
+      <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-[rgb(18_18_20)] p-2 shadow-[0_16px_50px_rgb(0_0_0_/_0.25)]">
         <AnimatePresence initial={false}>
           {pendingFiles.length > 0 && (
             <motion.div
@@ -311,7 +307,7 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
             <ArrowUp size={18} />
           </Button>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 });
