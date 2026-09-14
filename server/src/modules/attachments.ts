@@ -45,6 +45,18 @@ function filePathFor(id: string): string {
   return path.join(config.UPLOAD_DIR, id);
 }
 
+/** `messageId === null` rows are avatars/banners — public by design, any
+ * logged-in user can already see anyone's profile picture. Everything else
+ * is a chat attachment, gated by the SAME conversation-membership rule used
+ * everywhere else message history is read (see modules/conversations.ts) —
+ * no separate "ex-member" carve-out exists there, so none is invented here. */
+async function canViewAttachment(row: Attachment, userId: string): Promise<boolean> {
+  if (row.messageId === null) return true;
+  const [msg] = await db.select({ conversationId: messages.conversationId }).from(messages).where(eq(messages.id, row.messageId)).limit(1);
+  if (!msg) return false;
+  return conversationExistsForUser(msg.conversationId, userId);
+}
+
 const MAX_CROP_DIMENSION = 4096; // sane ceiling, well under sharp's own decompression-bomb guard
 
 /** Parses the `?crop=` query param (JSON `{x,y,width,height}`, same shape as
@@ -802,6 +814,10 @@ export async function serveUpload(request: FastifyRequest<{ Params: { id: string
 
   const [row] = await db.select().from(attachmentsTable).where(eq(attachmentsTable.id, id)).limit(1);
   if (!row) return reply.code(404).send('não encontrado');
+  // Same 404 as "row doesn't exist" — an unauthorized id must be
+  // indistinguishable from a wrong one, or the response itself becomes an
+  // oracle for probing which UUIDs are real.
+  if (!(await canViewAttachment(row, sess.userId))) return reply.code(404).send('não encontrado');
 
   const path = filePathFor(id);
   let size: number;
