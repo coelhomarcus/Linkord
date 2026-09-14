@@ -126,9 +126,9 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
     >
       {kind !== 'screen' && banner && <div className="absolute inset-0" style={bannerLayerStyle} />}
       {showsVideo ? (
-        <video ref={videoRef} autoPlay playsInline muted={isMine} className={`h-full w-full object-cover ${kind === 'screen' ? 'bg-black' : ''}`} />
+        <video ref={videoRef} autoPlay playsInline muted={isMine} className={`relative h-full w-full object-cover ${kind === 'screen' ? 'bg-black' : ''}`} />
       ) : (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-2.5">
+        <div className="relative flex h-full w-full flex-col items-center justify-center gap-2.5">
           <Avatar id={participantId} name={name} avatar={avatar} avatarColor={avatarColor} size={avatarSize} />
         </div>
       )}
