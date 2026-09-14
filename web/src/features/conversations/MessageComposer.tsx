@@ -3,7 +3,7 @@ import type { ChangeEvent, ClipboardEvent, KeyboardEvent as ReactKeyboardEvent }
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowUp, Paperclip, Reply, Smile, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/components/ui/emoji-picker';
+import { EmojiPicker } from '@/components/ui/emoji-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
@@ -290,10 +290,7 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
               <Smile size={18} />
             </PopoverTrigger>
             <PopoverContent className="w-75 p-0" side="top" align="end">
-              <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => insertEmoji(emoji)}>
-                <EmojiPickerSearch />
-                <EmojiPickerContent />
-              </EmojiPicker>
+              <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => insertEmoji(emoji)} />
             </PopoverContent>
           </Popover>
           <Button

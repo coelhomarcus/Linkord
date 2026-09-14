@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type { ContextMenuRootActions } from '@base-ui/react/context-menu';
 import { Copy, Download, Pencil, Pin, PinOff, Reply, Trash2, UsersRound, X } from 'lucide-react';
 import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu';
-import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/components/ui/emoji-picker';
+import { EmojiPicker } from '@/components/ui/emoji-picker';
 import { useRoom } from '../state/RoomContext';
 import { downloadFile } from '../shared/lib/download';
 
@@ -130,10 +130,7 @@ export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenu
       <ContextMenuContent className={showMessageBlock ? 'w-75' : undefined}>
         {showMessageBlock && targetMessage && (
           <>
-            <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => reactToChatMessage(targetMessage.msgId, emoji)}>
-              <EmojiPickerSearch />
-              <EmojiPickerContent />
-            </EmojiPicker>
+            <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => reactToChatMessage(targetMessage.msgId, emoji)} />
             <ContextMenuSeparator />
             <ContextMenuItem onClick={() => setReplyingTo(targetMessage)}>
               <Reply size={14} />

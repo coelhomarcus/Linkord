@@ -7,7 +7,7 @@ import { ImageAttachmentGrid } from '@/features/chat/ImageAttachmentGrid';
 import { ChatMessageText } from '@/features/chat/ChatMessageText';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/components/ui/emoji-picker';
+import { EmojiPicker } from '@/components/ui/emoji-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
 import { formatTime } from '@/shared/lib/formatChatTime';
@@ -32,10 +32,7 @@ function ReactionButton({ onPick }: { onPick: (emoji: string) => void }) {
             onPick(emoji);
             setOpen(false);
           }}
-        >
-          <EmojiPickerSearch />
-          <EmojiPickerContent />
-        </EmojiPicker>
+        />
       </PopoverContent>
     </Popover>
   );
