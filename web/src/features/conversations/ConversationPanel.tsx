@@ -41,10 +41,11 @@ function buildRenderItems(messages: ChatMessage[]): RenderItem[] {
   return items;
 }
 
-function MessageList({ conversationId, onReply, onOpenProfile }: {
+function MessageList({ conversationId, onReply, onOpenProfile, bottomPadding }: {
   conversationId: string;
   onReply: (message: ChatMessage) => void;
   onOpenProfile: (userId: string) => void;
+  bottomPadding: number;
 }) {
   const {
     messagesByConversation,
@@ -138,7 +139,7 @@ function MessageList({ conversationId, onReply, onOpenProfile }: {
 
   return (
     <div className="relative min-h-0 flex-1">
-      <div ref={scrollRef} className="h-full overflow-y-auto px-2 pb-4 pt-3">
+      <div ref={scrollRef} className="h-full overflow-y-auto px-2 pt-3" style={{ paddingBottom: bottomPadding }}>
         <div ref={contentRef} className="mx-auto flex w-full max-w-5xl flex-col">
           {isLoadingOlder && <p className="my-3 text-center text-label text-text-muted">Carregando mensagens anteriores...</p>}
           {messages.length === 0 && (
@@ -172,7 +173,8 @@ function MessageList({ conversationId, onReply, onOpenProfile }: {
             stickToBottomRef.current = true;
             openConversation(conversationId);
           }}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1.5 text-label font-medium text-primary-foreground shadow-popover"
+          style={{ bottom: bottomPadding + 16 }}
+          className="absolute left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1.5 text-label font-medium text-primary-foreground shadow-popover"
         >
           Voltar para o mais recente
         </button>
@@ -298,8 +300,21 @@ function hasFiles(e: DragEvent<HTMLDivElement>): boolean {
 export function MessageListBridge({ conversationId, onOpenProfile }: { conversationId: string; onOpenProfile: (userId: string) => void }) {
   const { state, setReplyingTo } = useRoom();
   const composerRef = useRef<MessageComposerHandle>(null);
+  const composerWrapRef = useRef<HTMLDivElement | null>(null);
+  const [composerHeight, setComposerHeight] = useState(0);
   const [dragActive, setDragActive] = useState(false);
   const dragDepthRef = useRef(0);
+
+  useEffect(() => {
+    const el = composerWrapRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      const next = entries[0]?.contentRect.height;
+      if (next != null) setComposerHeight(next);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   function handleDragEnter(e: DragEvent<HTMLDivElement>) {
     if (!state.joined || !hasFiles(e)) return;
@@ -334,8 +349,15 @@ export function MessageListBridge({ conversationId, onOpenProfile }: { conversat
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <MessageList conversationId={conversationId} onReply={setReplyingTo} onOpenProfile={onOpenProfile} />
-      <MessageComposer ref={composerRef} conversationId={conversationId} />
+      <MessageList conversationId={conversationId} onReply={setReplyingTo} onOpenProfile={onOpenProfile} bottomPadding={composerHeight + 24} />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-bg-primary to-transparent"
+        style={{ height: composerHeight + 48 }}
+      />
+      <div ref={composerWrapRef} className="absolute inset-x-0 bottom-0">
+        <MessageComposer ref={composerRef} conversationId={conversationId} />
+      </div>
       {dragActive && (
         <div className="pointer-events-none absolute inset-0 z-10 m-2 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary bg-bg-primary/90 text-text-primary">
           <Upload size={28} className="text-primary" />
