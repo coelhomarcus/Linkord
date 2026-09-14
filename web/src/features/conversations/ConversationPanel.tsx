@@ -61,6 +61,20 @@ export function MessageList({ conversationId, onReply, onOpenProfile, bottomPadd
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
+  // Set right before WE assign scrollTop ourselves (snapToBottom below),
+  // cleared next frame. Guards against a real race: an image/video/embed
+  // finishing layout fires the ResizeObserver below, which snaps scrollTop
+  // to the new (larger) scrollHeight — but that assignment dispatches an
+  // async native 'scroll' event. If a SECOND resize lands before that event
+  // fires, the event's handler reads a scrollTop that's already stale
+  // relative to the newest scrollHeight, measures a gap > 80, and wrongly
+  // decides the user scrolled away — after which no future resize re-snaps,
+  // since the ResizeObserver callback itself checks stickToBottomRef first.
+  // That's "it never quite reaches the bottom" when several media items
+  // resize in a burst (the exact case a media-heavy conversation hits on
+  // open) — this flag tells handleScroll to skip recomputing stickiness for
+  // 'scroll' events WE caused, so only a genuine user scroll can clear it.
+  const programmaticScrollRef = useRef(false);
   const pendingPrependRef = useRef(false);
   const prevScrollHeightRef = useRef(0);
   const wasLoadingOlderRef = useRef(false);
@@ -78,9 +92,19 @@ export function MessageList({ conversationId, onReply, onOpenProfile, bottomPadd
     wasLoadingOlderRef.current = false;
   }, [conversationId]);
 
+  // `el.scrollTop = el.scrollHeight` dispatches an async native 'scroll'
+  // event — mark it as ours so handleScroll (below) doesn't treat it as a
+  // real user scroll and misjudge stickiness against a stale read while
+  // more resizes are still landing (see programmaticScrollRef above).
+  function snapToBottom(el: HTMLDivElement) {
+    programmaticScrollRef.current = true;
+    el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => { programmaticScrollRef.current = false; });
+  }
+
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight;
+    if (el && stickToBottomRef.current) snapToBottom(el);
     // bottomPadding (the floating composer's measured height, reserved as
     // scroll-area padding — see MessageListBridge) starts at a guess and
     // jumps to the real value a tick after mount, and again whenever the
@@ -97,6 +121,7 @@ export function MessageList({ conversationId, onReply, onOpenProfile, bottomPadd
     const scrollNode: HTMLDivElement = scrollEl;
     const contentNode: HTMLDivElement = contentEl;
     function handleScroll() {
+      if (programmaticScrollRef.current) return;
       stickToBottomRef.current = scrollNode.scrollHeight - scrollNode.scrollTop - scrollNode.clientHeight < 80;
       if (scrollNode.scrollTop <= 100 && !pendingPrependRef.current && !isLoadingOlder && hasMoreHistory) {
         pendingPrependRef.current = true;
@@ -105,7 +130,7 @@ export function MessageList({ conversationId, onReply, onOpenProfile, bottomPadd
       }
     }
     const observer = new ResizeObserver(() => {
-      if (stickToBottomRef.current) scrollNode.scrollTop = scrollNode.scrollHeight;
+      if (stickToBottomRef.current) snapToBottom(scrollNode);
     });
     observer.observe(contentNode);
     scrollNode.addEventListener('scroll', handleScroll);
