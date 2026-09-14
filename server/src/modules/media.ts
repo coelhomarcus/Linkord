@@ -71,7 +71,7 @@ interface MediaBase {
 }
 
 interface UploadItem extends MediaBase {
-  attachment: { id: string; name: string; mime: string; size: number };
+  attachment: { id: string; name: string; mime: string; size: number; thumbId?: string };
 }
 
 interface EmbedItem extends MediaBase {
@@ -117,6 +117,7 @@ async function fetchUploadsPage(viewerId: string, before: number | null, limit: 
       fileName: attachmentsTable.fileName,
       mimeType: attachmentsTable.mimeType,
       size: attachmentsTable.size,
+      thumbId: attachmentsTable.thumbId,
     })
     .from(messages)
     // innerJoin (not left) on attachments.message_id=messages.id already
@@ -139,13 +140,19 @@ async function fetchUploadsPage(viewerId: string, before: number | null, limit: 
     .where(and(
       lt(messages.id, before ?? PG_INT4_MAX),
       conversationId ? eq(messages.conversationId, conversationId) : undefined,
+      // thumbnail rows share their parent's messageId on purpose (see
+      // schema.ts) — without this they'd show up as a second, duplicate item.
+      eq(attachmentsTable.isThumbnail, false),
     ))
     .orderBy(desc(messages.id))
     .limit(limit);
 
   const items: UploadItem[] = rows.map((row) => ({
     ...toMediaBase(row),
-    attachment: { id: row.attachmentId, name: row.fileName, mime: row.mimeType, size: row.size },
+    attachment: {
+      id: row.attachmentId, name: row.fileName, mime: row.mimeType, size: row.size,
+      ...(row.thumbId ? { thumbId: row.thumbId } : {}),
+    },
   }));
   return { items, nextBefore: rows.length === limit ? rows[rows.length - 1]!.msgId : null };
 }

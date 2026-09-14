@@ -5,7 +5,9 @@ export class EmailDeliveryError extends Error {
   statusCode = 503;
 }
 
-export async function sendAuthCodeEmail({ to, code, purpose }: { to: string; code: string; purpose: 'password_reset' | 'email_change' }): Promise<void> {
+export async function sendAuthCodeEmail(
+  { to, code, purpose, username }: { to: string; code: string; purpose: 'password_reset' | 'email_change'; username: string },
+): Promise<void> {
   if (!config.RESEND_API_KEY || !config.RESEND_FROM_EMAIL) {
     throw Object.assign(new EmailDeliveryError('E-mail transacional não configurado.'), { code: 'email_not_configured' });
   }
@@ -16,6 +18,11 @@ export async function sendAuthCodeEmail({ to, code, purpose }: { to: string; cod
   const intro = isRecovery
     ? 'Use este código para redefinir a senha da sua conta Linkord:'
     : 'Use este código para confirmar o novo e-mail da sua conta Linkord:';
+  // Sempre repete usuário + e-mail da conta — se a pessoa esqueceu qual dos
+  // dois usou (ou tem mais de uma conta), o e-mail já entrega a resposta.
+  const accountLine = isRecovery
+    ? `Esse código é para a conta de usuário "${username}", associada a este e-mail (${to}).`
+    : '';
   const appLine = config.APP_URL ? `Você também pode acessar ${config.APP_URL}.` : '';
 
   const response = await fetch('https://api.resend.com/emails', {
@@ -28,8 +35,8 @@ export async function sendAuthCodeEmail({ to, code, purpose }: { to: string; cod
       from: config.RESEND_FROM_EMAIL,
       to: [to],
       subject,
-      text: `${title}\n\n${intro}\n\n${code}\n\nO código expira em 30 minutos. Se você não solicitou isso, ignore este e-mail.\n${appLine}`,
-      html: `<h2>${title}</h2><p>${intro}</p><p style="font-size:32px;font-weight:700;letter-spacing:8px">${code}</p><p>O código expira em 30 minutos. Se você não solicitou isso, ignore este e-mail.</p><p>${appLine}</p>`,
+      text: `${title}\n\n${intro}\n\n${code}\n\n${accountLine}\n\nO código expira em 30 minutos. Se você não solicitou isso, ignore este e-mail.\n${appLine}`,
+      html: `<h2>${title}</h2><p>${intro}</p><p style="font-size:32px;font-weight:700;letter-spacing:8px">${code}</p>${accountLine ? `<p style="color:#666">${accountLine}</p>` : ''}<p>O código expira em 30 minutos. Se você não solicitou isso, ignore este e-mail.</p><p>${appLine}</p>`,
     }),
   });
 

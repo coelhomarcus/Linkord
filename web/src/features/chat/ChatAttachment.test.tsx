@@ -1,11 +1,46 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatAttachment } from './ChatAttachment';
+
+// Keeps this test off the real shiki/WASM init path — highlightCode's own
+// correctness isn't this file's concern, just that ChatAttachment routes to
+// TextPreviewCard and the fetched content ends up on screen.
+vi.mock('../../shared/lib/highlightCode', () => ({ highlightCode: vi.fn(async () => null) }));
 
 describe('ChatAttachment', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('imagem usa a miniatura (thumbId) quando existe, nao o original', () => {
+    const { container } = render(<ChatAttachment attachment={{ id: 'img-id', thumbId: 'thumb-id', name: 'foto.png', mime: 'image/png', size: 789 }} />);
+    expect(container.querySelector('img')).toHaveAttribute('src', '/uploads/thumb-id');
+  });
+
+  it('imagem sem thumbId cai pro original', () => {
+    const { container } = render(<ChatAttachment attachment={{ id: 'img-id', name: 'foto.png', mime: 'image/png', size: 789 }} />);
+    expect(container.querySelector('img')).toHaveAttribute('src', '/uploads/img-id');
+  });
+
+  it('arquivo generico (nao previsualizavel) vira link de download simples', () => {
+    render(<ChatAttachment attachment={{ id: 'zip-id', name: 'projeto.zip', mime: 'application/zip', size: 999 }} />);
+    const link = screen.getByText('projeto.zip').closest('a');
+    expect(link).toHaveAttribute('href', '/uploads/zip-id');
+    expect(link).toHaveAttribute('download', 'projeto.zip');
+  });
+
+  it('arquivo de texto/codigo busca o preview e mostra o conteudo', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ previewable: true, content: 'print("oi")', truncated: false, totalSize: 12, language: 'python' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ChatAttachment attachment={{ id: 'py-id', name: 'script.py', mime: 'text/x-python', size: 12 }} />);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/attachments/py-id/preview', { credentials: 'same-origin' });
+    await waitFor(() => expect(screen.getByText('print("oi")')).toBeInTheDocument());
   });
 
   it('renderiza upload de video com o player proprio e lightbox interno', async () => {

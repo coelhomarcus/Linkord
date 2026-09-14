@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
-import { HeadphoneOff, MicOff, ScreenShare, Settings, Video } from 'lucide-react';
+import { HeadphoneOff, MicOff, ScreenShare, Settings, Video, VolumeX } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { useParticipantMedia, useAttachTrack, useIsSpeaking } from './useLiveKitTrack';
+import { useMuteForMe } from './useMuteForMe';
 import { tileKey } from './tileTypes';
 import type { TileKind } from './tileTypes';
 import { Avatar, colorFor } from '../../shared/Avatar';
@@ -34,6 +35,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
 
   const media = useParticipantMedia(participantId);
   const isSpeaking = useIsSpeaking(participantId);
+  const { hasAudio: hasMutableAudio, muted: mutedForMe, toggleMute: toggleMuteForMe } = useMuteForMe(participantId, kind, isMine);
 
   const showsVideo = kind !== 'avatar';
   const videoTrack = kind === 'screen' ? media.screenTrack : kind === 'camera' ? media.cameraTrack : null;
@@ -92,6 +94,11 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
     openTileMenu(key, participantId, kind, e.currentTarget.getBoundingClientRect());
   }, [key, participantId, kind, openTileMenu]);
 
+  const handleUnmuteClick = useCallback((e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    toggleMuteForMe();
+  }, [toggleMuteForMe]);
+
   // A banner replaces the flat tint (still shown as letterbox filler behind
   // a `contain`-fit camera track, same as the tint was). Rendered as its
   // own absolutely-positioned layer (not the root's own background) so the
@@ -149,6 +156,19 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
           )
         )}
       </div>
+
+      {hasMutableAudio && mutedForMe && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Reativar áudio"
+          onClick={handleUnmuteClick}
+          className="absolute right-11 top-2 bg-bg-tertiary/75 text-red hover:bg-primary hover:text-text-primary"
+        >
+          <VolumeX size={14} />
+        </Button>
+      )}
 
       <Button
         type="button"

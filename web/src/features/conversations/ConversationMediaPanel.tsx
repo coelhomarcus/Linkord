@@ -26,6 +26,7 @@ function UploadItemCard({ item, onOpenImage }: { item: MediaItem; onOpenImage: (
   const attachment = item.attachment;
   if (!attachment) return null;
   const url = `/uploads/${attachment.id}`;
+  const thumbUrl = attachment.thumbId ? `/uploads/${attachment.thumbId}` : url;
 
   if (IMAGE_MIME_TYPES.has(attachment.mime)) {
     return (
@@ -42,7 +43,7 @@ function UploadItemCard({ item, onOpenImage }: { item: MediaItem; onOpenImage: (
             against the 0-height guess) ends up overlapping it. A fixed
             ratio makes the box's real height known at layout time, same
             fix already applied to the video card's aspect-video below. */}
-        <img src={url} alt={attachment.name} loading="lazy" className="block aspect-square w-full object-cover" />
+        <img src={thumbUrl} alt={attachment.name} loading="lazy" className="block aspect-square w-full object-cover" />
       </button>
     );
   }

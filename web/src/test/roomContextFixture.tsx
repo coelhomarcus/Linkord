@@ -49,6 +49,8 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     setHideAudioOnlyTiles: noop,
     showTileBanners: true,
     setShowTileBanners: noop,
+    compressImagesDefault: true,
+    setCompressImagesDefault: noop,
     conversations: [],
     activeConversationId: null,
     openConversation: noop,

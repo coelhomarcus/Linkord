@@ -198,9 +198,11 @@ export function OTPInput({
                 data-active={isActive}
                 data-filled={char !== ""}
                 className={cn(
-                  "relative grid h-14 w-12 place-items-center overflow-hidden rounded-xl border text-xl font-semibold tabular-nums transition-colors duration-200",
-                  showSuccess ? "border-emerald-500/60 text-foreground" : status === "error" ? "border-destructive/60 text-foreground" : char ? "border-border-strong text-foreground" : "border-border text-muted-foreground",
-                  isActive && !showSuccess && status !== "error" && "border-foreground",
+                  "relative grid h-14 w-12 place-items-center overflow-hidden rounded-xl border bg-black/20 text-xl font-semibold tabular-nums transition-colors duration-200",
+                  showSuccess ? "border-emerald-500/60 text-foreground" : status === "error" ? "border-destructive text-foreground" : char ? "border-white/25 text-foreground" : "border-white/15 text-muted-foreground",
+                  showSuccess && "ring-2 ring-emerald-500/25",
+                  status === "error" && "ring-2 ring-destructive/25",
+                  isActive && !showSuccess && status !== "error" && "border-foreground/50 ring-2 ring-ring/40",
                   disabled && "opacity-50",
                 )}
               >

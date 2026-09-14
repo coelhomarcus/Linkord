@@ -50,7 +50,7 @@ interface ChatMessagePayload {
   editedAt?: number;
   replyTo?: ReplyRef;
   reactions?: Record<string, string[]>;
-  attachments?: { id: string; name: string; mime: string; size: number }[];
+  attachments?: { id: string; name: string; mime: string; size: number; thumbId?: string }[];
 }
 
 interface MessageWithAuthor {
@@ -140,7 +140,11 @@ function rowToMessage(row: MessageWithAuthor, attachments?: Attachment[]): ChatM
   if (replyTo) out.replyTo = replyTo;
   const reactions = row.reactions as Record<string, string[]> | null;
   if (reactions && Object.keys(reactions).length) out.reactions = reactions;
-  if (attachments?.length) out.attachments = attachments.map((a) => ({ id: a.id, name: a.fileName, mime: a.mimeType, size: a.size }));
+  if (attachments?.length) {
+    out.attachments = attachments.map((a) => ({
+      id: a.id, name: a.fileName, mime: a.mimeType, size: a.size, ...(a.thumbId ? { thumbId: a.thumbId } : {}),
+    }));
+  }
   return out;
 }
 

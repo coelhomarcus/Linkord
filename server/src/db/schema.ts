@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, integer, bigint, jsonb, serial, uniqueIndex, index, customType } from 'drizzle-orm/pg-core';
+import { pgTable, text, varchar, timestamp, integer, bigint, jsonb, serial, boolean, uniqueIndex, index, customType } from 'drizzle-orm/pg-core';
 import { sql, type SQL } from 'drizzle-orm';
 
 // Postgres tsvector has no first-class drizzle column type — customType
@@ -142,7 +142,10 @@ export const messages = pgTable('messages', {
  * filename — Postgres doesn't know that, so deleting this row (directly or
  * via CASCADE from messages/conversations) NEVER deletes the file by itself;
  * that's on the code that deletes the row (see
- * deleteForMessage/deleteForConversation/deleteAvatarFile). */
+ * deleteForMessage/deleteForConversation/deleteAvatarFile). A generated
+ * thumbnail is a THIRD kind of row: `messageId` set to the same message as
+ * the attachment it previews (`isThumbnail: true`), not null — see
+ * `thumbId`/`isThumbnail` below for why. */
 export const attachments = pgTable('attachments', {
   id: text('id').primaryKey(),
   messageId: integer('message_id').references(() => messages.id, { onDelete: 'cascade' }),
@@ -154,6 +157,19 @@ export const attachments = pgTable('attachments', {
   // Number.MAX_SAFE_INTEGER.
   size: bigint('size', { mode: 'number' }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  // Points at another row's `id` in THIS same table — the resized preview
+  // generated for an image attachment (see attachments.ts#generateThumbnail).
+  // No FK: it's a soft, optional link, same spirit as the nullable
+  // `messageId` above. Null when there's no thumbnail (non-image, animation
+  // too small to bother, or generation failed — never fatal to the upload).
+  thumbId: text('thumb_id'),
+  // True ONLY on the thumbnail row itself (messageId set to the SAME
+  // message as its parent, on purpose — see attachments.ts#generateThumbnail
+  // for why: it has to ride the parent's cascade-delete/quota-counting,
+  // but must NOT show up as a second, duplicate attachment of that message).
+  // Every query that lists "this message's attachments" must filter
+  // isThumbnail = false (see getByMessageIds, modules/media.ts).
+  isThumbnail: boolean('is_thumbnail').notNull().default(false),
 }, (t) => [
   index('attachments_message_id_idx').on(t.messageId),
 ]);

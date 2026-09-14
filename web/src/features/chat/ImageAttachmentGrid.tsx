@@ -28,7 +28,7 @@ export function ImageAttachmentGrid({ attachments }: { attachments: ChatAttachme
             className="block h-full w-full cursor-zoom-in overflow-hidden"
           >
             <img
-              src={`/uploads/${attachment.id}`}
+              src={`/uploads/${attachment.thumbId ?? attachment.id}`}
               alt={attachment.name}
               loading="lazy"
               className="block h-full w-full object-cover"

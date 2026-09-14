@@ -1,12 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import type { ChangeEvent, ClipboardEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { ArrowUp, Paperclip, Reply, Smile, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/components/ui/emoji-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { DocumentAttachmentCard } from '@/shared/DocumentAttachmentCard';
 import { UploadProgressBar } from '@/shared/UploadProgressBar';
+import { compressImageFile } from '@/shared/lib/compressImageFile';
 import { formatFileSize, formatSizeLimit } from '@/shared/lib/formatBytes';
 import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
@@ -18,9 +21,14 @@ export interface PendingAttachment {
   previewUrl: string | null;
 }
 
-export function MessageComposer({ conversationId }: { conversationId: string }) {
-  const { state, allUsers, sendChatMessage, sendAttachments, replyingTo, setReplyingTo } = useRoom();
+export interface MessageComposerHandle {
+  addFiles: (files: File[]) => void;
+}
+
+export const MessageComposer = forwardRef<MessageComposerHandle, { conversationId: string }>(function MessageComposer({ conversationId }, ref) {
+  const { state, allUsers, sendChatMessage, sendAttachments, replyingTo, setReplyingTo, compressImagesDefault, setCompressImagesDefault } = useRoom();
   const [text, setText] = useState('');
+  const [compressImages, setCompressImages] = useState(compressImagesDefault);
   const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
@@ -64,6 +72,8 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
     setAttachError(error);
   }
 
+  useImperativeHandle(ref, () => ({ addFiles }));
+
   function removeFile(id: string) {
     setPendingFiles((prev) => {
       const found = prev.find((file) => file.id === id);
@@ -79,6 +89,11 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
       });
       return [];
     });
+  }
+
+  function toggleCompress(next: boolean) {
+    setCompressImages(next);
+    setCompressImagesDefault(next);
   }
 
   async function submit() {
@@ -97,7 +112,12 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
         // network round-trip, so the UI reacts the instant the user submits
         // instead of waiting on the first progress event to arrive.
         setActiveUploadId(pendingFiles[0]?.id ?? null);
-        await sendAttachments(conversationId, pendingFiles.map((item) => item.file), trimmed, (fileIndex, fraction) => {
+        const filesToSend = compressImages
+          ? await Promise.all(pendingFiles.map((item) => (
+              item.file.type.startsWith('image/') ? compressImageFile(item.file) : item.file
+            )))
+          : pendingFiles.map((item) => item.file);
+        await sendAttachments(conversationId, filesToSend, trimmed, (fileIndex, fraction) => {
           setActiveUploadId(pendingFiles[fileIndex]?.id ?? null);
           setUploadProgress(fraction);
         });
@@ -158,7 +178,7 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
   const replyName = replyAuthor?.displayName ?? replyingTo?.name;
 
   return (
-    <div className="mx-auto w-full max-w-4xl flex-none px-4 pb-4">
+    <div className="mx-auto w-full max-w-5xl flex-none px-2 pb-4">
       {replyingTo && (
         <div className="mb-2 flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-label">
           <Reply size={14} className="text-text-muted" />
@@ -172,101 +192,122 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
         </div>
       )}
 
-      {pendingFiles.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2">
-          {pendingFiles.map((item) => {
-            const uploading = activeUploadId === item.id;
-            return (
-              <div
-                key={item.id}
-                title={`${item.file.name} - ${formatFileSize(item.file.size)}`}
-                className={cn(
-                  'relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]',
-                  item.previewUrl ? 'size-18' : 'flex w-56 max-w-full items-center py-2.5 pl-2.5 pr-8'
-                )}
-              >
-                {item.previewUrl ? (
-                  <img src={item.previewUrl} alt="" className="size-full object-cover" />
-                ) : (
-                  <DocumentAttachmentCard name={item.file.name} size={item.file.size} mime={item.file.type} className="min-w-0" />
-                )}
-                {uploading ? (
-                  <>
-                    <div className="absolute inset-0 bg-black/55" />
-                    <div className="absolute inset-x-1.5 bottom-1.5"><UploadProgressBar progress={uploadProgress} /></div>
-                  </>
-                ) : (
-                  <Button type="button" variant="ghost" size="icon-xs" aria-label="Remover anexo" onClick={() => removeFile(item.id)} className="absolute right-1 top-1 size-5 rounded-full bg-black/60 text-white hover:bg-black/80 hover:text-white">
-                    <X size={12} />
-                  </Button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {attachError && <p className="mb-2 rounded-lg border border-red/20 bg-red/10 px-3 py-2 text-label text-red">{attachError}</p>}
-
       <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileChange} />
 
-      <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-[rgb(18_18_20)] p-2 shadow-[0_16px_50px_rgb(0_0_0_/_0.25)]">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="Anexar arquivo"
-          disabled={disabled}
-          onClick={() => fileInputRef.current?.click()}
-          className="flex-none rounded-full text-text-muted hover:text-text-primary"
-        >
-          <Paperclip size={18} />
-        </Button>
-        <Textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          disabled={disabled}
-          maxLength={2000}
-          rows={1}
-          placeholder={pendingFiles.length ? 'Adicionar legenda' : 'Mensagem'}
-          className="min-h-9 max-h-40 flex-1 resize-none border-none bg-transparent px-1 py-1.5 text-body shadow-none focus-visible:ring-0"
-        />
-        <Popover open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
-          <PopoverTrigger
-            render={
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="Inserir emoji"
-                disabled={disabled}
-                className="flex-none rounded-full text-text-muted hover:text-text-primary"
-              />
-            }
+      <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-[rgb(18_18_20)] p-2 shadow-[0_16px_50px_rgb(0_0_0_/_0.25)]">
+        <AnimatePresence initial={false}>
+          {pendingFiles.length > 0 && (
+            <motion.div
+              key="attachments"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className="overflow-hidden"
+            >
+              <div className="flex flex-wrap gap-2 px-1 pt-1">
+                {pendingFiles.map((item) => {
+                  const uploading = activeUploadId === item.id;
+                  return (
+                    <motion.div
+                      key={item.id}
+                      layout
+                      title={`${item.file.name} - ${formatFileSize(item.file.size)}`}
+                      className={cn(
+                        'relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]',
+                        item.previewUrl ? 'size-18' : 'flex w-56 max-w-full items-center py-2.5 pl-2.5 pr-8'
+                      )}
+                    >
+                      {item.previewUrl ? (
+                        <img src={item.previewUrl} alt="" className="size-full object-cover" />
+                      ) : (
+                        <DocumentAttachmentCard name={item.file.name} size={item.file.size} mime={item.file.type} className="min-w-0" />
+                      )}
+                      {uploading ? (
+                        <>
+                          <div className="absolute inset-0 bg-black/55" />
+                          <div className="absolute inset-x-1.5 bottom-1.5"><UploadProgressBar progress={uploadProgress} /></div>
+                        </>
+                      ) : (
+                        <Button type="button" variant="ghost" size="icon-xs" aria-label="Remover anexo" onClick={() => removeFile(item.id)} className="absolute right-1 top-1 size-5 rounded-full bg-black/60 text-white hover:bg-black/80 hover:text-white">
+                          <X size={12} />
+                        </Button>
+                      )}
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {pendingFiles.some((item) => item.file.type.startsWith('image/')) && (
+          <div className="flex items-center gap-2 px-1 text-label text-text-muted">
+            <Switch checked={compressImages} onCheckedChange={toggleCompress} size="sm" aria-label="Compactar imagens antes de enviar" />
+            <span className="select-none">Compactar imagens (WebP)</span>
+          </div>
+        )}
+
+        {attachError && <p className="rounded-lg border border-red/20 bg-red/10 px-3 py-2 text-label text-red">{attachError}</p>}
+
+        <div className="flex items-end gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Anexar arquivo"
+            disabled={disabled}
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-none rounded-full text-text-muted hover:text-text-primary"
           >
-            <Smile size={18} />
-          </PopoverTrigger>
-          <PopoverContent className="w-75 p-0" side="top" align="end">
-            <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => insertEmoji(emoji)}>
-              <EmojiPickerSearch />
-              <EmojiPickerContent />
-            </EmojiPicker>
-          </PopoverContent>
-        </Popover>
-        <Button
-          type="button"
-          size="icon"
-          aria-label="Enviar mensagem"
-          disabled={!canSubmit}
-          onClick={() => void submit()}
-          className="flex-none rounded-full"
-        >
-          <ArrowUp size={18} />
-        </Button>
+            <Paperclip size={18} />
+          </Button>
+          <Textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            disabled={disabled}
+            maxLength={2000}
+            rows={1}
+            placeholder={pendingFiles.length ? 'Adicionar legenda' : 'Mensagem'}
+            className="min-h-9 max-h-40 flex-1 resize-none border-none bg-transparent px-1 py-1.5 text-body shadow-none focus-visible:ring-0"
+          />
+          <Popover open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
+            <PopoverTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Inserir emoji"
+                  disabled={disabled}
+                  className="flex-none rounded-full text-text-muted hover:text-text-primary"
+                />
+              }
+            >
+              <Smile size={18} />
+            </PopoverTrigger>
+            <PopoverContent className="w-75 p-0" side="top" align="end">
+              <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => insertEmoji(emoji)}>
+                <EmojiPickerSearch />
+                <EmojiPickerContent />
+              </EmojiPicker>
+            </PopoverContent>
+          </Popover>
+          <Button
+            type="button"
+            size="icon"
+            aria-label="Enviar mensagem"
+            disabled={!canSubmit}
+            onClick={() => void submit()}
+            className="flex-none rounded-full"
+          >
+            <ArrowUp size={18} />
+          </Button>
+        </div>
       </div>
     </div>
   );
-}
+});

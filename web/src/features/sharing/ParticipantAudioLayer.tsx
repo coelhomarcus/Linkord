@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useRoom } from '../../state/RoomContext';
 import { useParticipantMedia, useAttachTrack } from './useLiveKitTrack';
 import { loadCallVolume } from '../settings/useCallVolumePreference';
+import { loadDevicePreference } from '../settings/useDevicePreference';
 
 function ParticipantAudio({ participantId }: { participantId: string }) {
   const { state, audioRegistry, audioUnlocked, deafened } = useRoom();
@@ -24,6 +25,16 @@ function ParticipantAudio({ participantId }: { participantId: string }) {
     const screenKey = `${participantId}:screen`;
     const micEl = micRef.current;
     const screenEl = screenRef.current;
+    // Same reasoning as the saved mic/camera device (useMicrophone.ts,
+    // useCamera.ts): a freshly created <audio> element otherwise plays out
+    // whatever the browser's default output is, ignoring the speaker saved
+    // in Settings. setSinkId isn't in every browser (no Firefox support).
+    const savedOutputId = loadDevicePreference('audiooutput');
+    if (savedOutputId) {
+      for (const el of [micEl, screenEl]) {
+        if (el && 'setSinkId' in el) el.setSinkId(savedOutputId).catch(() => {});
+      }
+    }
     if (micEl) {
       micEl.volume = userId ? loadCallVolume(userId) : 1;
       audioRegistry.current.set(participantId, { element: micEl });
