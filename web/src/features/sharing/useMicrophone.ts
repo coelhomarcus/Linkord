@@ -4,6 +4,7 @@ import { ConnectionState, RoomEvent, Track } from 'livekit-client';
 import type { Room } from 'livekit-client';
 import type { RoomAction } from '../../state/roomReducer';
 import { playSound } from '../../shared/sounds';
+import { loadDevicePreference } from '../settings/useDevicePreference';
 
 export interface MicrophoneApi {
   activateMic: () => Promise<void>;
@@ -41,7 +42,15 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
     activatingRef.current = true;
     try {
       await waitForConnection(room);
-      await room.localParticipant.setMicrophoneEnabled(true);
+      // Without this, a freshly created track always starts on whatever
+      // device the browser picks by default — the device saved in Settings
+      // (useMediaDevices#selectDevice) only ever got applied to an ALREADY
+      // active track via room.switchActiveDevice, called from within the
+      // Settings modal itself. Activating the mic without opening Settings
+      // first (the common case — a call's mic button) never consulted it,
+      // so the choice looked like it "didn't stick".
+      const savedDeviceId = loadDevicePreference('audioinput');
+      await room.localParticipant.setMicrophoneEnabled(true, savedDeviceId ? { deviceId: savedDeviceId } : undefined);
     } catch (err) {
       if (err instanceof Error && err.message === 'timeout') {
         dispatch({ type: 'SET_SHARE_ERROR', message: 'Não foi possível conectar ao servidor de vídeo. Verifique sua conexão e tente de novo.' });
