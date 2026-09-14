@@ -4,9 +4,11 @@ import { ArrowUp, Paperclip, Reply, Smile, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/components/ui/emoji-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { DocumentAttachmentCard } from '@/shared/DocumentAttachmentCard';
 import { UploadProgressBar } from '@/shared/UploadProgressBar';
+import { compressImageFile } from '@/shared/lib/compressImageFile';
 import { formatFileSize, formatSizeLimit } from '@/shared/lib/formatBytes';
 import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
@@ -19,8 +21,9 @@ export interface PendingAttachment {
 }
 
 export function MessageComposer({ conversationId }: { conversationId: string }) {
-  const { state, allUsers, sendChatMessage, sendAttachments, replyingTo, setReplyingTo } = useRoom();
+  const { state, allUsers, sendChatMessage, sendAttachments, replyingTo, setReplyingTo, compressImagesDefault, setCompressImagesDefault } = useRoom();
   const [text, setText] = useState('');
+  const [compressImages, setCompressImages] = useState(compressImagesDefault);
   const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
@@ -81,6 +84,11 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
     });
   }
 
+  function toggleCompress(next: boolean) {
+    setCompressImages(next);
+    setCompressImagesDefault(next);
+  }
+
   async function submit() {
     // Guard against a second submit firing before `disabled` (an async
     // state update) has re-rendered — e.g. a fast double-click, or Enter
@@ -97,7 +105,12 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
         // network round-trip, so the UI reacts the instant the user submits
         // instead of waiting on the first progress event to arrive.
         setActiveUploadId(pendingFiles[0]?.id ?? null);
-        await sendAttachments(conversationId, pendingFiles.map((item) => item.file), trimmed, (fileIndex, fraction) => {
+        const filesToSend = compressImages
+          ? await Promise.all(pendingFiles.map((item) => (
+              item.file.type.startsWith('image/') ? compressImageFile(item.file) : item.file
+            )))
+          : pendingFiles.map((item) => item.file);
+        await sendAttachments(conversationId, filesToSend, trimmed, (fileIndex, fraction) => {
           setActiveUploadId(pendingFiles[fileIndex]?.id ?? null);
           setUploadProgress(fraction);
         });
@@ -203,6 +216,13 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
               </div>
             );
           })}
+        </div>
+      )}
+
+      {pendingFiles.some((item) => item.file.type.startsWith('image/')) && (
+        <div className="mb-2 flex items-center gap-2 text-label text-text-muted">
+          <Switch checked={compressImages} onCheckedChange={toggleCompress} size="sm" aria-label="Compactar imagens antes de enviar" />
+          <span className="select-none">Compactar imagens (WebP)</span>
         </div>
       )}
 

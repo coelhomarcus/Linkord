@@ -83,6 +83,8 @@ export interface RoomContextValue {
   setHideAudioOnlyTiles: (value: boolean) => void;
   showTileBanners: boolean;
   setShowTileBanners: (value: boolean) => void;
+  compressImagesDefault: boolean;
+  setCompressImagesDefault: (value: boolean) => void;
   conversations: Conversation[];
   activeConversationId: string | null;
   openConversation: (conversationId: string) => void;

@@ -17,6 +17,7 @@ import type { TileKind } from '../features/sharing/tileTypes';
 import { loadShowStats, saveShowStats, loadNotifyVolume, saveNotifyVolume } from '../features/settings/useSettingsPreference';
 import { loadHideAudioOnlyTiles, saveHideAudioOnlyTiles } from '../features/settings/useStageViewPreference';
 import { loadShowTileBanners, saveShowTileBanners } from '../features/settings/useTileBannerPreference';
+import { loadCompressImages, saveCompressImages } from '../features/settings/useCompressImagesPreference';
 import { playSound, preloadSounds, setVolume } from '../shared/sounds';
 import {
   loadNotificationsEnabled, saveNotificationsEnabled, setNotificationsModuleEnabled,
@@ -158,6 +159,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const setShowTileBanners = useCallback((value: boolean) => {
     setShowTileBannersState(value);
     saveShowTileBanners(value);
+  }, []);
+
+  const [compressImagesDefault, setCompressImagesDefaultState] = useState(loadCompressImages);
+  const setCompressImagesDefault = useCallback((value: boolean) => {
+    setCompressImagesDefaultState(value);
+    saveCompressImages(value);
   }, []);
 
   const sendWs = useCallback((msg: ClientMessage) => {
@@ -882,6 +889,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         updateAvatar, updateProfile, uploadProfileImage, menuTarget, openTileMenu, closeTileMenu,
         reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
         hideAudioOnlyTiles, setHideAudioOnlyTiles, showTileBanners, setShowTileBanners,
+        compressImagesDefault, setCompressImagesDefault,
         conversations, activeConversationId, openConversation, openDirect, closeConversation, pinConversation, createGroup, deleteGroup,
         updateGroupTitle, updateGroupAvatar, addGroupMembers, removeGroupMember,
         messagesByConversation, hasMoreByConversation, loadingOlderByConversation, loadOlderMessages, unreadByConversation,
