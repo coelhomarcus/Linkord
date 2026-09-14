@@ -44,6 +44,13 @@ export function EmojiPicker({ className, onEmojiSelect }: EmojiPickerProps) {
         skinTonePosition: "search",
         dynamicWidth: true,
       }) as unknown as HTMLElement;
+      // emoji-mart's own shadow DOM sets a fixed `:host { height: 435px }` —
+      // an external stylesheet rule (even with a matching selector) isn't
+      // guaranteed to win that cascade, so this has to be an inline style
+      // (highest specificity short of !important) to reliably force it to
+      // fill whatever box the caller gives this component (className below).
+      picker.style.height = "100%";
+      picker.style.width = "100%";
       container.appendChild(picker);
     });
 
@@ -54,10 +61,10 @@ export function EmojiPicker({ className, onEmojiSelect }: EmojiPickerProps) {
   }, []);
 
   return (
-    <div
-      ref={containerRef}
-      data-slot="emoji-picker"
-      className={cn("[&_em-emoji-picker]:block [&_em-emoji-picker]:h-full [&_em-emoji-picker]:w-full", className)}
-    />
+    // overflow-hidden is a safety net, not the fix itself — if the inline
+    // style above ever fails to apply (e.g. a future emoji-mart version
+    // renames the custom element), this keeps its fixed intrinsic size from
+    // blowing out whatever it's dropped into instead of just clipping it.
+    <div ref={containerRef} data-slot="emoji-picker" className={cn("overflow-hidden", className)} />
   );
 }
