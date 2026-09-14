@@ -47,6 +47,10 @@ export interface ChatAttachment {
   name: string;
   mime: string;
   size: number;
+  // Present for image attachments with a generated preview — smaller,
+  // resized copy for thumbnails. The ORIGINAL (`id`) is still what full-size
+  // views (lightbox, download) use.
+  thumbId?: string;
 }
 export const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_MESSAGE = 4;

@@ -33,6 +33,11 @@ const INLINE_MIME_TYPES = new Set([
 const ID_RE = /^[0-9a-f]{32}$/; // crypto.randomUUID() without dashes, see newId
 const RANGE_RE = /^bytes=(\d*)-(\d*)$/; // single-range only — the only form <video>/<audio> ever sends
 const AVATAR_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+// Chat images eligible for a generated thumbnail — same set the frontend
+// treats as "image" (web/src/features/chat/ChatAttachment.tsx). Video/audio/
+// documents never get one.
+const THUMBNAIL_SOURCE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+const THUMBNAIL_MAX_DIMENSION = 640;
 // only matches our own upload format (see newId) — an external URL just
 // doesn't match, treated as "not ours," not an error.
 const AVATAR_URL_RE = /^\/uploads\/([0-9a-f]{32})$/;
@@ -219,7 +224,9 @@ export async function getByMessageIds(messageIds: number[]): Promise<Map<number,
   const map = new Map<number, Attachment[]>();
   if (!messageIds.length) return map;
   const rows = await db.select().from(attachmentsTable)
-    .where(inArray(attachmentsTable.messageId, messageIds))
+    // isThumbnail rows share their parent's messageId on purpose (see
+    // schema.ts) but must never surface as a second, duplicate attachment.
+    .where(and(inArray(attachmentsTable.messageId, messageIds), eq(attachmentsTable.isThumbnail, false)))
     .orderBy(asc(attachmentsTable.createdAt));
   for (const row of rows) {
     if (row.messageId === null) continue;
@@ -499,7 +506,29 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
       .catch((err) => console.error('[attachments] falha ao apagar chunks apos montagem:', err instanceof Error ? err.stack : err));
     pendingUploadBytes.delete(uploadId);
 
-    const attachmentPayload = { id: row.id, name: row.fileName, mime: row.mimeType, size: row.size };
+    // Best-effort: a thumbnail that fails to generate/save just means this
+    // attachment serves its full original for the inline preview too — never
+    // fails the upload itself.
+    let thumbId: string | null = null;
+    if (THUMBNAIL_SOURCE_MIME_TYPES.has(row.mimeType)) {
+      const thumb = await generateThumbnail(destPath);
+      if (thumb) {
+        const newThumbId = newId();
+        try {
+          await fs.writeFile(filePathFor(newThumbId), thumb.buffer);
+          await db.insert(attachmentsTable).values({
+            id: newThumbId, messageId: row.messageId, fileName: row.fileName, mimeType: thumb.mime, size: thumb.buffer.length, isThumbnail: true,
+          });
+          await db.update(attachmentsTable).set({ thumbId: newThumbId }).where(eq(attachmentsTable.id, row.id));
+          thumbId = newThumbId;
+        } catch (err) {
+          console.warn('[attachments] falha ao salvar miniatura:', err instanceof Error ? err.message : err);
+          await fs.unlink(filePathFor(newThumbId)).catch(() => {});
+        }
+      }
+    }
+
+    const attachmentPayload = { id: row.id, name: row.fileName, mime: row.mimeType, size: row.size, ...(thumbId ? { thumbId } : {}) };
     if (message) {
       const chatMessage = {
         msgId: message.id,
@@ -682,6 +711,38 @@ async function fetchImageFromUrl(rawUrl: string, maxBytes: number, redirectsLeft
     }
     return result;
   });
+}
+
+/** Resizes a just-uploaded chat image down to a small inline-preview copy —
+ * same animated-frame handling as the avatar crop below (`{ animated: true }`
+ * + checking `meta.pages`), reused rather than duplicated in spirit, kept
+ * separate in code since the encode choices genuinely differ: a chat image
+ * can be a transparent PNG (screenshot, sticker) where the avatar path's
+ * "always flatten single-frame to JPEG" would bake in an ugly background.
+ * Returns null (never throws) when there's nothing worth generating — the
+ * source is already thumbnail-sized, or sharp failed for any reason; either
+ * way the original attachment still serves fine without a thumbnail. */
+async function generateThumbnail(srcPath: string): Promise<{ buffer: Buffer; mime: string } | null> {
+  try {
+    const image = sharp(srcPath, { animated: true });
+    const meta = await image.metadata();
+    const frameHeight = meta.pageHeight ?? meta.height ?? 0;
+    if (!meta.width || !frameHeight) return null;
+    if (meta.width <= THUMBNAIL_MAX_DIMENSION && frameHeight <= THUMBNAIL_MAX_DIMENSION) return null;
+
+    const resized = image.resize({
+      width: THUMBNAIL_MAX_DIMENSION, height: THUMBNAIL_MAX_DIMENSION, fit: 'inside', withoutEnlargement: true,
+    });
+    if ((meta.pages ?? 1) > 1) {
+      if (meta.format === 'webp') return { buffer: await resized.webp({ quality: 80 }).toBuffer(), mime: 'image/webp' };
+      return { buffer: await resized.gif().toBuffer(), mime: 'image/gif' };
+    }
+    if (meta.hasAlpha) return { buffer: await resized.webp({ quality: 82 }).toBuffer(), mime: 'image/webp' };
+    return { buffer: await resized.jpeg({ quality: 82 }).toBuffer(), mime: 'image/jpeg' };
+  } catch (err) {
+    console.warn(`[attachments] falha ao gerar miniatura: ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
 }
 
 /** Avatar upload — same storage/serving route as chat attachments

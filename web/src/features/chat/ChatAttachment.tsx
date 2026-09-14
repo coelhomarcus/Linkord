@@ -29,6 +29,9 @@ interface ChatAttachmentProps {
 
 export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) {
   const url = `/uploads/${attachment.id}`;
+  // Thumbnail (when one was generated) for the inline preview — the
+  // lightbox below always opens the full original, same as the download.
+  const thumbUrl = attachment.thumbId ? `/uploads/${attachment.thumbId}` : url;
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const surfaceWidth = useChatSurfaceWidth(384 + 120);
   const maxWidth = availableAttachmentWidth(surfaceWidth, 384);
@@ -38,7 +41,7 @@ export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) 
       <>
         <button type="button" onClick={() => setLightboxOpen(true)} className={cn('block max-w-full cursor-zoom-in', !edgeToEdge && 'mt-1.5')}>
           <img
-            src={url}
+            src={thumbUrl}
             alt={attachment.name}
             loading="lazy"
             style={{ maxWidth }}
