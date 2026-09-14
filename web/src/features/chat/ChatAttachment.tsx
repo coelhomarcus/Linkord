@@ -4,12 +4,27 @@ import type { ChatAttachment as ChatAttachmentData } from '../../types/protocol'
 import { DocumentAttachmentCard } from '../../shared/DocumentAttachmentCard';
 import { ImageLightbox } from '../../shared/ImageLightbox';
 import { AudioPlayer, VideoPlayer } from '../../shared/MediaPlayers';
+import { TextPreviewCard } from '../../shared/TextPreviewCard';
 import { availableAttachmentWidth, useChatSurfaceWidth } from '../../shared/lib/chatSurfaceWidth';
 import { cn } from '../../shared/lib/utils';
 
 export const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 export const VIDEO_MIME_TYPES = new Set(['video/mp4', 'video/webm', 'video/ogg']);
 export const AUDIO_MIME_TYPES = new Set(['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4']);
+// Mirrors server/src/modules/attachments.ts#TEXT_PREVIEW_EXTENSIONS — no
+// shared package between web/ and server/, so this is duplicated on
+// purpose, same as the mime sets above vs INLINE_MIME_TYPES.
+const TEXT_PREVIEW_EXTENSIONS = new Set([
+  'md', 'markdown', 'txt', 'json', 'jsonc', 'yaml', 'yml', 'csv', 'tsv', 'xml', 'log', 'env',
+  'js', 'jsx', 'ts', 'tsx', 'py', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'rb', 'php',
+  'sh', 'bash', 'sql', 'css', 'scss', 'html', 'vue', 'toml', 'ini', 'diff', 'patch',
+]);
+
+function isTextPreviewable(attachment: ChatAttachmentData): boolean {
+  const match = /\.([^./\\]+)$/.exec(attachment.name);
+  const ext = match ? match[1]!.toLowerCase() : '';
+  return TEXT_PREVIEW_EXTENSIONS.has(ext) || attachment.mime.startsWith('text/');
+}
 
 /** Whether this attachment can render flush with the bubble's own edges
  * (see `edgeToEdge` on ChatAttachment) instead of sitting in its own
@@ -74,6 +89,10 @@ export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) 
         className={edgeToEdge ? 'max-w-full rounded-2xl border-0 bg-transparent shadow-none' : 'mt-1.5'}
       />
     );
+  }
+
+  if (isTextPreviewable(attachment)) {
+    return <TextPreviewCard attachment={attachment} maxWidth={maxWidth} />;
   }
 
   return (

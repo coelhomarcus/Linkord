@@ -38,6 +38,33 @@ const AVATAR_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'imag
 // documents never get one.
 const THUMBNAIL_SOURCE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const THUMBNAIL_MAX_DIMENSION = 640;
+
+// Extensions eligible for the text/markdown/code preview (handleAttachmentPreview
+// below). Extension, not client-declared mime — code files routinely arrive
+// as application/octet-stream or '' depending on OS/browser, mime is not a
+// reliable signal here. Mirrored on the frontend (web/src/features/chat/
+// ChatAttachment.tsx) since web/ and server/ don't share a package.
+const TEXT_PREVIEW_EXTENSIONS = new Set([
+  'md', 'markdown', 'txt', 'json', 'jsonc', 'yaml', 'yml', 'csv', 'tsv', 'xml', 'log', 'env',
+  'js', 'jsx', 'ts', 'tsx', 'py', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'rb', 'php',
+  'sh', 'bash', 'sql', 'css', 'scss', 'html', 'vue', 'toml', 'ini', 'diff', 'patch',
+]);
+// Extension -> language id, in the vocabulary the frontend's syntax
+// highlighter expects — computed once here so the client never has to
+// re-derive it from a filename.
+const EXTENSION_LANGUAGE: Record<string, string> = {
+  md: 'markdown', markdown: 'markdown',
+  txt: 'text', log: 'text', env: 'text', csv: 'text', tsv: 'text',
+  json: 'json', jsonc: 'jsonc', yaml: 'yaml', yml: 'yaml', xml: 'xml',
+  js: 'javascript', jsx: 'jsx', ts: 'typescript', tsx: 'tsx',
+  py: 'python', go: 'go', rs: 'rust', java: 'java',
+  c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp', cs: 'csharp',
+  rb: 'ruby', php: 'php', sh: 'bash', bash: 'bash',
+  sql: 'sql', css: 'css', scss: 'scss', html: 'html', vue: 'vue',
+  toml: 'toml', ini: 'ini', diff: 'diff', patch: 'diff',
+};
+const PREVIEW_MAX_BYTES = 65536;
+const PREVIEW_MAX_LINES = 500;
 // only matches our own upload format (see newId) — an external URL just
 // doesn't match, treated as "not ours," not an error.
 const AVATAR_URL_RE = /^\/uploads\/([0-9a-f]{32})$/;
@@ -943,11 +970,86 @@ export async function serveUpload(request: FastifyRequest<{ Params: { id: string
     .send(fsStreams.createReadStream(path));
 }
 
+export function extensionOf(fileName: string): string {
+  const match = /\.([^./\\]+)$/.exec(fileName);
+  return match ? match[1]!.toLowerCase() : '';
+}
+
+export function isPreviewable(row: Attachment): boolean {
+  return TEXT_PREVIEW_EXTENSIONS.has(extensionOf(row.fileName)) || row.mimeType.startsWith('text/');
+}
+
+/** Decodes a (possibly byte-truncated) buffer as UTF-8 text, trimming up to
+ * 3 trailing bytes first if the cut landed mid multi-byte character — that's
+ * the only reason a genuinely-text file's PREFIX would fail strict decoding.
+ * Returns null (never throws) when it's not valid UTF-8 at all — the actual
+ * "is this secretly binary" signal handleAttachmentPreview relies on. */
+export function decodeUtf8Prefix(buffer: Buffer): string | null {
+  for (let trim = 0; trim <= 3 && trim <= buffer.length; trim++) {
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, buffer.length - trim));
+    } catch { /* keep trimming */ }
+  }
+  return null;
+}
+
+/** GET /api/attachments/:id/preview — a size-capped, sniffed-as-text peek at
+ * a chat attachment's content, for the inline text/markdown/code preview
+ * card. Deliberately a SEPARATE endpoint from serveUpload/`/uploads/:id`
+ * rather than just adding text/* to INLINE_MIME_TYPES there: serveUpload has
+ * no concept of "first N KB only" (a text attachment can be up to
+ * MAX_ATTACHMENT_BYTES = 2GiB) and no binary-sniffing — both of which matter
+ * here but would be out of place bolted onto the real-download path. */
+async function handleAttachmentPreview(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> {
+  const cookies = parseCookies(request.headers.cookie || '');
+  const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
+  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
+
+  const id = request.params.id;
+  if (!ID_RE.test(id)) return sendError(reply, 400, 'invalid_id', 'Id inválido.');
+
+  const [row] = await db.select().from(attachmentsTable).where(eq(attachmentsTable.id, id)).limit(1);
+  if (!row || !(await canViewAttachment(row, sess.userId))) return sendError(reply, 404, 'not_found', 'Não encontrado.');
+
+  // Defense in depth — don't just trust the frontend's own extension gate.
+  if (!isPreviewable(row)) return sendJson(reply, 200, { previewable: false });
+
+  let buffer: Buffer;
+  try {
+    const handle = await fs.open(filePathFor(id), 'r');
+    try {
+      buffer = Buffer.alloc(Math.min(PREVIEW_MAX_BYTES, row.size));
+      await handle.read(buffer, 0, buffer.length, 0);
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return sendJson(reply, 200, { previewable: false });
+  }
+
+  const text = decodeUtf8Prefix(buffer);
+  if (text === null) return sendJson(reply, 200, { previewable: false }); // secretly binary
+
+  const lines = text.split('\n');
+  const byteTruncated = row.size > buffer.length;
+  const lineTruncated = lines.length > PREVIEW_MAX_LINES;
+  const content = lineTruncated ? lines.slice(0, PREVIEW_MAX_LINES).join('\n') : text;
+
+  sendJson(reply, 200, {
+    previewable: true,
+    content,
+    truncated: byteTruncated || lineTruncated,
+    totalSize: row.size,
+    language: EXTENSION_LANGUAGE[extensionOf(row.fileName)] ?? null,
+  });
+}
+
 export function registerAttachmentRoutes(fastify: FastifyInstance): void {
   fastify.post('/api/attachments/init', handleAttachmentInit);
   fastify.post('/api/attachments/:id/complete', handleAttachmentComplete);
   fastify.delete('/api/attachments/:id', handleAttachmentCancel);
   fastify.get('/uploads/:id', serveUpload);
+  fastify.get('/api/attachments/:id/preview', handleAttachmentPreview);
 
   // raw Buffer body, not JSON — scoped plugin for just these 2 routes:
   // swapping addContentTypeParser on the root instance would break JSON
