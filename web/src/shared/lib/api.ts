@@ -61,12 +61,18 @@ export function register(username: string, email: string, password: string, conf
   return apiFetch('/api/auth/register', { method: 'POST', body: JSON.stringify({ username, email, password, confirmPassword, code }) });
 }
 
-export function requestPasswordRecovery(email: string): Promise<{ ok: true }> {
-  return apiFetch('/api/auth/recovery/request', { method: 'POST', body: JSON.stringify({ email }) });
+export type RecoveryIdentifier = { type: 'email'; value: string } | { type: 'username'; value: string };
+
+function identifierPayload(identifier: RecoveryIdentifier): { email: string } | { username: string } {
+  return identifier.type === 'email' ? { email: identifier.value } : { username: identifier.value };
 }
 
-export function resetPassword(email: string, code: string, password: string): Promise<{ ok: true }> {
-  return apiFetch('/api/auth/recovery/reset', { method: 'POST', body: JSON.stringify({ email, code, password }) });
+export function requestPasswordRecovery(identifier: RecoveryIdentifier): Promise<{ ok: true }> {
+  return apiFetch('/api/auth/recovery/request', { method: 'POST', body: JSON.stringify(identifierPayload(identifier)) });
+}
+
+export function resetPassword(identifier: RecoveryIdentifier, code: string, password: string): Promise<{ ok: true }> {
+  return apiFetch('/api/auth/recovery/reset', { method: 'POST', body: JSON.stringify({ ...identifierPayload(identifier), code, password }) });
 }
 
 export function linkEmail(email: string): Promise<{ user: ApiUser }> {

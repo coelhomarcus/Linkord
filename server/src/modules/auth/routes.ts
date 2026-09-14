@@ -7,6 +7,7 @@ import { parseCookies, serializeCookie, clearCookie, isSecureRequest } from '../
 import { hashPassword, verifyPassword, needsRehash, DUMMY_HASH } from './password.js';
 import { createSession, resolveSession, destroyAllSessionsForUser, destroySession } from './session.js';
 import { findByEmailLower, findByUsernameLower, createUser, isAdminUsername, isValidEmail, normalizeEmail, privateUser, publicUser, updateEmail, updatePassword } from './users.js';
+import type { User } from '../../db/schema.js';
 import { issueAuthCode, verifyAuthCode, type AuthCodePurpose } from './codes.js';
 import { sendAuthCodeEmail } from './email.js';
 import { broadcast } from '../../realtime/participants.js';
@@ -197,35 +198,59 @@ function sessionForRequest(request: FastifyRequest) {
   return resolveSession(cookies[config.SESSION_COOKIE]);
 }
 
-async function issueAndSendCode(userId: string, email: string, purpose: AuthCodePurpose): Promise<void> {
+async function issueAndSendCode(userId: string, email: string, username: string, purpose: AuthCodePurpose): Promise<void> {
   const code = await issueAuthCode(userId, purpose, email);
   try {
-    await sendAuthCodeEmail({ to: email, code, purpose });
+    await sendAuthCodeEmail({ to: email, code, purpose, username });
   } catch (err) {
     console.error('[auth] falha ao enviar código:', err instanceof Error ? err.message : err);
     throw err;
   }
 }
 
+// Recovery accepts either identifier — whichever the user still remembers.
+// Resolved to a DB user without ever leaking which of the two exists (same
+// generic { ok: true } response either way), and the code is always issued
+// to the account's actual email on file, never to whatever the client typed.
+type RecoveryIdentifier = { type: 'username'; value: string } | { type: 'email'; value: string };
+
+function parseRecoveryIdentifier(body: Record<string, unknown>): RecoveryIdentifier | null {
+  const rawUsername = body.username == null ? '' : String(body.username).trim();
+  if (rawUsername) return { type: 'username', value: rawUsername };
+  const rawEmail = body.email == null ? '' : String(body.email);
+  if (rawEmail) return { type: 'email', value: normalizeEmail(rawEmail) };
+  return null;
+}
+
+function findUserByIdentifier(id: RecoveryIdentifier): Promise<User | null> {
+  return id.type === 'username' ? findByUsernameLower(id.value) : findByEmailLower(id.value);
+}
+
 async function handleRecoveryRequest(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const body = jsonBody(request.body);
-  const email = normalizeEmail(String(body.email == null ? '' : body.email));
-  if (!isValidEmail(email)) return sendError(reply, 400, 'invalid_email', 'Informe um e-mail válido.');
+  const identifier = parseRecoveryIdentifier(body);
+  if (!identifier) return sendError(reply, 400, 'invalid_email', 'Informe seu usuário ou e-mail.');
+  if (identifier.type === 'email' && !isValidEmail(identifier.value)) {
+    return sendError(reply, 400, 'invalid_email', 'Informe um e-mail válido.');
+  }
+  if (identifier.type === 'username' && !USERNAME_RE.test(identifier.value)) {
+    return sendError(reply, 400, 'invalid_email', 'Informe um nome de usuário válido.');
+  }
 
   const ipKey = `recovery-ip:${ipOfRequest(request)}`;
-  const emailKey = `recovery-email:${email}`;
-  const blocked = ratelimit.checkBlocked(ipKey) || ratelimit.checkBlocked(emailKey);
+  const identifierKey = `recovery-${identifier.type}:${identifier.value.toLowerCase()}`;
+  const blocked = ratelimit.checkBlocked(ipKey) || ratelimit.checkBlocked(identifierKey);
   if (blocked) {
     reply.header('Retry-After', String(blocked));
     return sendError(reply, 429, 'rate_limited', 'Muitas solicitações. Tente novamente mais tarde.');
   }
   ratelimit.recordFailure(ipKey);
-  ratelimit.recordFailure(emailKey);
+  ratelimit.recordFailure(identifierKey);
 
-  const user = await findByEmailLower(email);
-  if (user) {
+  const user = await findUserByIdentifier(identifier);
+  if (user?.email) {
     try {
-      await issueAndSendCode(user.id, email, 'password_reset');
+      await issueAndSendCode(user.id, user.email, user.username, 'password_reset');
     } catch { /* Keep the response identical so recovery never enumerates accounts. */ }
   }
   sendJson(reply, 200, { ok: true });
@@ -233,18 +258,21 @@ async function handleRecoveryRequest(request: FastifyRequest, reply: FastifyRepl
 
 async function handleRecoveryReset(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const body = jsonBody(request.body);
-  const email = normalizeEmail(String(body.email == null ? '' : body.email));
+  const identifier = parseRecoveryIdentifier(body);
   const code = String(body.code == null ? '' : body.code).trim();
   const password = String(body.password == null ? '' : body.password);
-  if (!isValidEmail(email)) return sendError(reply, 400, 'invalid_email', 'Informe um e-mail válido.');
+  if (!identifier) return sendError(reply, 400, 'invalid_email', 'Informe seu usuário ou e-mail.');
+  if (identifier.type === 'email' && !isValidEmail(identifier.value)) {
+    return sendError(reply, 400, 'invalid_email', 'Informe um e-mail válido.');
+  }
   if (!/^\d{6}$/.test(code)) return sendError(reply, 400, 'invalid_code', 'Informe o código de 6 dígitos.');
   if (password.length < config.MIN_PASSWORD_LEN || password.length > config.MAX_PASSWORD_LEN) {
     return sendError(reply, 400, 'weak_password', `Senha deve ter pelo menos ${config.MIN_PASSWORD_LEN} caracteres.`);
   }
 
-  const user = await findByEmailLower(email);
-  if (!user) return sendError(reply, 400, 'invalid_code', 'Código inválido.');
-  const result = await verifyAuthCode(user.id, 'password_reset', email, code);
+  const user = await findUserByIdentifier(identifier);
+  if (!user?.email) return sendError(reply, 400, 'invalid_code', 'Código inválido.');
+  const result = await verifyAuthCode(user.id, 'password_reset', user.email, code);
   if (!result.ok) return purposeError(reply, result.reason);
 
   await updatePassword(user.id, await hashPassword(password));
@@ -282,7 +310,7 @@ async function handleEmailChangeRequest(request: FastifyRequest, reply: FastifyR
   }
   ratelimit.recordFailure(changeKey);
   try {
-    await issueAndSendCode(sess.userId, email, 'email_change');
+    await issueAndSendCode(sess.userId, email, sess.username, 'email_change');
   } catch {
     return sendError(reply, 503, 'email_unavailable', 'Não foi possível enviar o código agora. Tente novamente mais tarde.');
   }

@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, Lock, LogIn, Mail, User, UserPlus } from 'lucide-react';
 import { useAuth } from '../../state/AuthContext';
 import { ApiError, requestPasswordRecovery, resetPassword } from '../../shared/lib/api';
+import type { RecoveryIdentifier } from '../../shared/lib/api';
 import { ErrorBanner } from '../../shared/ErrorBanner';
 import { ShaderBackground } from '@/components/motion/shader-background';
 import { Input } from '@/components/motion/input';
@@ -188,7 +189,8 @@ function RegisterForm() {
 }
 
 function RecoveryForm({ onBack }: { onBack: () => void }) {
-  const [email, setEmail] = useState('');
+  const [identifierType, setIdentifierType] = useState<'email' | 'username'>('email');
+  const [identifierValue, setIdentifierValue] = useState('');
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [requested, setRequested] = useState(false);
@@ -196,12 +198,14 @@ function RecoveryForm({ onBack }: { onBack: () => void }) {
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
+  const identifier: RecoveryIdentifier = { type: identifierType, value: identifierValue };
+
   async function requestCode(e: FormEvent) {
     e.preventDefault();
     setMessage(null);
     setPending(true);
     try {
-      await requestPasswordRecovery(email);
+      await requestPasswordRecovery(identifier);
       setRequested(true);
       setStatus('idle');
     } catch (err) {
@@ -217,7 +221,7 @@ function RecoveryForm({ onBack }: { onBack: () => void }) {
     setStatus('idle');
     setPending(true);
     try {
-      await resetPassword(email, nextCode, password);
+      await resetPassword(identifier, nextCode, password);
       setStatus('success');
     } catch (err) {
       setStatus('error');
@@ -232,10 +236,24 @@ function RecoveryForm({ onBack }: { onBack: () => void }) {
       <form onSubmit={requestCode} className="flex flex-col gap-3.5">
         <div className="flex flex-col gap-1">
           <h2 className="text-title font-semibold text-text-primary">Recuperar conta</h2>
-          <p className="text-label text-text-muted">Informe seu e-mail para receber um código de recuperação.</p>
+          <p className="text-label text-text-muted">Informe seu usuário ou e-mail para receber um código de recuperação.</p>
         </div>
-        <Input id="recoveryEmail" label="E-mail" type="email" autoFocus autoComplete="email" leftIcon={<Mail />} value={email} onChange={setEmail} />
-        <Button type="submit" size="lg" className="w-full" disabled={pending || !email}>
+        <Tabs
+          value={identifierType}
+          onValueChange={(v) => { setIdentifierType(v as 'email' | 'username'); setIdentifierValue(''); }}
+          variant="segment"
+        >
+          <TabsList className="w-full grid grid-cols-2 rounded-xl border border-white/10 bg-black/25 p-1">
+            <TabsTrigger value="email" className="w-full rounded-lg">E-mail</TabsTrigger>
+            <TabsTrigger value="username" className="w-full rounded-lg">Usuário</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        {identifierType === 'email' ? (
+          <Input id="recoveryEmail" label="E-mail" type="email" autoFocus autoComplete="email" leftIcon={<Mail />} value={identifierValue} onChange={setIdentifierValue} />
+        ) : (
+          <Input id="recoveryUsername" label="Usuário" autoFocus autoComplete="username" leftIcon={<User />} value={identifierValue} onChange={setIdentifierValue} />
+        )}
+        <Button type="submit" size="lg" className="w-full" disabled={pending || !identifierValue}>
           {pending ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
           <span>{pending ? 'Enviando…' : 'Enviar código'}</span>
           {!pending && <ArrowRight size={16} className="ml-auto" />}
@@ -250,7 +268,11 @@ function RecoveryForm({ onBack }: { onBack: () => void }) {
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <h2 className="text-title font-semibold text-text-primary">Digite o código</h2>
-        <p className="text-label text-text-muted">Enviamos um código para {email}. Ele expira em 30 minutos.</p>
+        <p className="text-label text-text-muted">
+          {identifierType === 'email'
+            ? `Enviamos um código para ${identifierValue}. Ele expira em 30 minutos.`
+            : 'Enviamos um código para o e-mail cadastrado nessa conta. Ele expira em 30 minutos.'}
+        </p>
       </div>
       <OTPInput
         label="Código de recuperação"
@@ -272,7 +294,9 @@ function RecoveryForm({ onBack }: { onBack: () => void }) {
       {status === 'success' ? (
         <button type="button" onClick={onBack} className="text-label text-text-muted hover:text-text-primary">Voltar para entrar</button>
       ) : (
-        <button type="button" onClick={() => { setRequested(false); setStatus('idle'); setMessage(null); }} className="text-label text-text-muted hover:text-text-primary">Usar outro e-mail</button>
+        <button type="button" onClick={() => { setRequested(false); setStatus('idle'); setMessage(null); }} className="text-label text-text-muted hover:text-text-primary">
+          {identifierType === 'email' ? 'Usar outro e-mail' : 'Usar outro usuário'}
+        </button>
       )}
     </div>
   );
