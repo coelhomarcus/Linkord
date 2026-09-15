@@ -67,6 +67,8 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     hasMoreByConversation: new Map(),
     loadingOlderByConversation: new Set(),
     unreadByConversation: new Map(),
+    typingByConversation: new Map(),
+    sendTyping: noop,
     loadOlderMessages: noop,
     allUsers: new Map(),
     onlineUserIds: new Set(),

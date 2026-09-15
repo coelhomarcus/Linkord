@@ -48,7 +48,9 @@ interface JoinMessage {
 // against the DB on every call, so it gets a conservative cap as defense in
 // depth against a scripted client bypassing the search box's own debounce;
 // 'load-messages-around' stays unthrottled like the other reads since it's
-// click-driven, not keystroke-driven.
+// click-driven, not keystroke-driven. 'typing' is intentionally absent too —
+// it never touches the DB, and the composer itself throttles to about one
+// emit per 3s while held down (see MessageComposer.tsx).
 const ACTION_LIMITS: Record<string, { windowMs: number; max: number }> = {
   chat: { windowMs: 10_000, max: 10 },
   'chat-edit': { windowMs: 10_000, max: 10 },

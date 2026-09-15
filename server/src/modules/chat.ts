@@ -421,6 +421,22 @@ async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Pr
   });
 }
 
+// No DB write at all — pure ephemeral fan-out, same spirit as
+// speaking/deafened (realtime/participants.ts). The client is responsible
+// for throttling emits (see MessageComposer.tsx); this only relays.
+async function handleTyping(socket: AppSocket, msg: { conversationId?: string; value?: unknown }): Promise<void> {
+  const p = participants.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  const conversationId = conversationIdFrom(msg);
+  if (!conversationId || !(await conversationExistsForUser(conversationId, p.userId))) return;
+  await broadcastToConversationMembers(conversationId, {
+    t: 'typing',
+    conversationId,
+    userId: p.userId,
+    value: !!msg.value,
+  });
+}
+
 export const handlers: HandlerTable = {
   'conversation-open': handleConversationOpen,
   'load-more-messages': handleLoadMoreMessages,
@@ -430,4 +446,5 @@ export const handlers: HandlerTable = {
   'chat-delete': handleChatDelete,
   'chat-edit': handleChatEdit,
   'chat-react': handleChatReact,
+  typing: handleTyping,
 };

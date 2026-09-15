@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { initialRoomState } from '../../state/roomReducer';
 import { renderWithRoom } from '../../test/roomContextFixture';
@@ -147,5 +147,65 @@ describe('MessageComposer', () => {
 
     expect(compressImageFile).not.toHaveBeenCalled();
     expect(sendAttachments).toHaveBeenCalledWith('conv-1', [original], '', expect.any(Function));
+  });
+});
+
+describe('MessageComposer — typing indicator', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('emite typing:true na primeira tecla, e nao de novo dentro da janela de throttle (3s)', () => {
+    const sendTyping = vi.fn();
+    renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendTyping });
+
+    const textarea = screen.getByPlaceholderText('Mensagem');
+    fireEvent.change(textarea, { target: { value: 'a' } });
+    expect(sendTyping).toHaveBeenCalledWith('conv-1', true);
+    expect(sendTyping).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(1000);
+    fireEvent.change(textarea, { target: { value: 'ab' } });
+    expect(sendTyping).toHaveBeenCalledTimes(1); // ainda dentro dos 3s, nao reemite
+  });
+
+  it('emite typing:false sozinho depois de 5s sem digitar', () => {
+    const sendTyping = vi.fn();
+    renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendTyping });
+
+    fireEvent.change(screen.getByPlaceholderText('Mensagem'), { target: { value: 'oi' } });
+    expect(sendTyping).toHaveBeenCalledWith('conv-1', true);
+
+    vi.advanceTimersByTime(5000);
+    expect(sendTyping).toHaveBeenLastCalledWith('conv-1', false);
+  });
+
+  it('limpar o campo (apagar tudo) emite typing:false na hora, sem esperar o idle', () => {
+    const sendTyping = vi.fn();
+    renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendTyping });
+
+    const textarea = screen.getByPlaceholderText('Mensagem');
+    fireEvent.change(textarea, { target: { value: 'oi' } });
+    fireEvent.change(textarea, { target: { value: '' } });
+
+    expect(sendTyping).toHaveBeenLastCalledWith('conv-1', false);
+  });
+
+  it('enviar a mensagem emite typing:false na hora, antes do idle de 5s', async () => {
+    const sendTyping = vi.fn();
+    const sendChatMessage = vi.fn();
+    renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendTyping, sendChatMessage });
+
+    const textarea = screen.getByPlaceholderText('Mensagem');
+    fireEvent.change(textarea, { target: { value: 'ola' } });
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+
+    expect(sendChatMessage).toHaveBeenCalledWith('conv-1', 'ola', undefined);
+    expect(sendTyping).toHaveBeenLastCalledWith('conv-1', false);
   });
 });

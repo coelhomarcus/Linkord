@@ -21,12 +21,18 @@ export interface PendingAttachment {
   previewUrl: string | null;
 }
 
+// How often notifyTyping actually emits typing:true while the user keeps
+// typing (leading-edge: fires right away after being idle, then throttles),
+// and how long without a keystroke before it emits typing:false on its own.
+const TYPING_THROTTLE_MS = 3000;
+const TYPING_IDLE_MS = 5000;
+
 export interface MessageComposerHandle {
   addFiles: (files: File[]) => void;
 }
 
 export const MessageComposer = forwardRef<MessageComposerHandle, { conversationId: string }>(function MessageComposer({ conversationId }, ref) {
-  const { state, allUsers, sendChatMessage, sendAttachments, replyingTo, setReplyingTo, compressImagesDefault, setCompressImagesDefault } = useRoom();
+  const { state, allUsers, sendChatMessage, sendAttachments, sendTyping, replyingTo, setReplyingTo, compressImagesDefault, setCompressImagesDefault } = useRoom();
   const [text, setText] = useState('');
   const [compressImages, setCompressImages] = useState(compressImagesDefault);
   const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([]);
@@ -38,6 +44,9 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingFilesRef = useRef<PendingAttachment[]>([]);
   const isSubmittingRef = useRef(false);
+  const typingThrottleRef = useRef<number | null>(null); // Date.now() of the last emitted typing:true
+  const typingIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTypingRef = useRef(false);
   const disabled = !state.joined || activeUploadId !== null;
   const canSubmit = !disabled && (text.trim().length > 0 || pendingFiles.length > 0);
 
@@ -47,6 +56,35 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
       if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
     });
   }, []);
+
+  function notifyTyping() {
+    if (disabled) return;
+    const now = Date.now();
+    if (!isTypingRef.current || typingThrottleRef.current === null || now - typingThrottleRef.current >= TYPING_THROTTLE_MS) {
+      sendTyping(conversationId, true);
+      typingThrottleRef.current = now;
+      isTypingRef.current = true;
+    }
+    if (typingIdleTimerRef.current !== null) clearTimeout(typingIdleTimerRef.current);
+    typingIdleTimerRef.current = setTimeout(() => {
+      isTypingRef.current = false;
+      typingThrottleRef.current = null;
+      sendTyping(conversationId, false);
+    }, TYPING_IDLE_MS);
+  }
+
+  function stopTyping() {
+    if (typingIdleTimerRef.current !== null) { clearTimeout(typingIdleTimerRef.current); typingIdleTimerRef.current = null; }
+    if (isTypingRef.current) sendTyping(conversationId, false);
+    isTypingRef.current = false;
+    typingThrottleRef.current = null;
+  }
+
+  // Composer isn't remounted when switching conversations (ConversationPanel
+  // renders one persistent instance) — this cleanup fires on conversationId
+  // change too, flushing typing:false for the conversation being LEFT before
+  // sendTyping starts targeting the new one.
+  useEffect(() => () => { stopTyping(); }, [conversationId]);
 
   function addFiles(files: File[]) {
     if (!files.length) return;
@@ -104,6 +142,7 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
     const trimmed = text.trim();
     if (!pendingFiles.length && !trimmed) return;
     isSubmittingRef.current = true;
+    stopTyping(); // sending is proof they stopped — don't wait for the idle timeout
     try {
       if (pendingFiles.length) {
         setAttachError(null);
@@ -265,7 +304,11 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
           <Textarea
             ref={textareaRef}
             value={text}
-            onChange={(event) => setText(event.target.value)}
+            onChange={(event) => {
+              const value = event.target.value;
+              setText(value);
+              if (value.trim()) notifyTyping(); else stopTyping();
+            }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             disabled={disabled}

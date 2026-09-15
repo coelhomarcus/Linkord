@@ -199,12 +199,41 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const [loadingOlderByConversation, setLoadingOlderByConversation] = useState<Set<string>>(new Set());
   const loadingOlderRef = useRef<Set<string>>(new Set());
   const [unreadByConversation, setUnreadByConversation] = useState<Map<string, number>>(new Map());
+  const [typingByConversation, setTypingByConversation] = useState<Map<string, Set<string>>>(new Map());
+  // Per (conversationId, userId) auto-expiry timers — kept out of React
+  // state (nothing renders off the timer itself), reset on every incoming
+  // typing:true, cleared on typing:false. Covers a sender that disconnects
+  // mid-typing without ever sending false (typing has no persisted/server-
+  // held state to reconcile on disconnect, unlike speaking/deafened).
+  const typingTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [allUsers, setAllUsers] = useState<Map<string, PublicUser>>(new Map());
   const allUsersRef = useRef<Map<string, PublicUser>>(new Map());
   useEffect(() => { allUsersRef.current = allUsers; }, [allUsers]);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [storageUsage, setStorageUsage] = useState<StorageUsage>({ totalBytes: 0, totalFiles: 0, maxBytes: 0 });
   const [moderationError, setModerationError] = useState<string | null>(null);
+
+  const clearTypingEntry = useCallback((conversationId: string, userId: string) => {
+    const key = `${conversationId}:${userId}`;
+    const timer = typingTimersRef.current.get(key);
+    if (timer) { clearTimeout(timer); typingTimersRef.current.delete(key); }
+    setTypingByConversation((prev) => {
+      const existing = prev.get(conversationId);
+      if (!existing || !existing.has(userId)) return prev;
+      const nextSet = new Set(existing);
+      nextSet.delete(userId);
+      const next = new Map(prev);
+      if (nextSet.size) next.set(conversationId, nextSet); else next.delete(conversationId);
+      return next;
+    });
+  }, []);
+
+  // Timers are per-conversation-per-user, not tied to any single render —
+  // only flush them on unmount, not on every clearTypingEntry identity change.
+  useEffect(() => () => {
+    typingTimersRef.current.forEach((timer) => clearTimeout(timer));
+    typingTimersRef.current.clear();
+  }, []);
 
   const switchActiveConversation = useCallback((conversationId: string) => {
     activeConversationIdRef.current = conversationId;
@@ -317,6 +346,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     if (trimmed) sendWs({ t: 'chat-edit', msgId, text: trimmed });
   }, [sendWs]);
   const reactToChatMessage = useCallback((msgId: number, emoji: ReactionEmoji) => sendWs({ t: 'chat-react', msgId, emoji }), [sendWs]);
+  const sendTyping = useCallback((conversationId: string, value: boolean) => sendWs({ t: 'typing', conversationId, value }), [sendWs]);
 
   const sendAttachments = useCallback(async (
     conversationId: string, files: File[], caption: string, onProgress?: (fileIndex: number, fraction: number) => void
@@ -592,6 +622,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         if (conversationId !== activeConversationIdRef.current) {
           setUnreadByConversation((prev) => new Map(prev).set(conversationId, (prev.get(conversationId) || 0) + 1));
         }
+        // The message itself is proof they stopped typing — don't wait for
+        // their typing:false (or the local expiry timer) to catch up.
+        if (m.message.id) clearTypingEntry(conversationId, m.message.id);
         const amLookingAtIt = document.hasFocus() && activeViewRef.current === 'chat' && conversationId === activeConversationIdRef.current;
         if (m.message.id !== myUserIdRef.current && !amLookingAtIt) {
           playSound('newMessage');
@@ -603,6 +636,29 @@ export function RoomProvider({ children }: { children: ReactNode }) {
             text: m.message.text,
             mentioned: mentionsUsername(m.message.text, myUsernameRef.current),
           });
+        }
+        break;
+      }
+      case 'typing': {
+        if (m.userId === myUserIdRef.current) break; // never show yourself your own indicator
+        const key = `${m.conversationId}:${m.userId}`;
+        const existingTimer = typingTimersRef.current.get(key);
+        if (existingTimer) clearTimeout(existingTimer);
+        if (m.value) {
+          setTypingByConversation((prev) => {
+            const existing = prev.get(m.conversationId);
+            if (existing?.has(m.userId)) return prev; // already shown, just refreshing the expiry below
+            const nextSet = new Set(existing).add(m.userId);
+            return new Map(prev).set(m.conversationId, nextSet);
+          });
+          // Slightly longer than the composer's own 5s idle-timeout (see
+          // MessageComposer.tsx) so a normal in-flight refresh always beats
+          // this — only a genuinely lost typing:false (e.g. tab closed) ever
+          // lets this fire.
+          typingTimersRef.current.set(key, setTimeout(() => clearTypingEntry(m.conversationId, m.userId), 6000));
+        } else {
+          typingTimersRef.current.delete(key);
+          clearTypingEntry(m.conversationId, m.userId);
         }
         break;
       }
@@ -893,6 +949,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         conversations, activeConversationId, openConversation, openDirect, closeConversation, pinConversation, createGroup, deleteGroup,
         updateGroupTitle, updateGroupAvatar, addGroupMembers, removeGroupMember,
         messagesByConversation, hasMoreByConversation, loadingOlderByConversation, loadOlderMessages, unreadByConversation,
+        typingByConversation, sendTyping,
         allUsers, onlineUserIds,
         deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null), kickFromCall,
         sendChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,

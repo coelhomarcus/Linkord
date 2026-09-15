@@ -128,6 +128,7 @@ export type ClientMessage =
   | { t: 'chat-delete'; msgId: number }
   | { t: 'chat-edit'; msgId: number; text: string }
   | { t: 'chat-react'; msgId: number; emoji: ReactionEmoji }
+  | { t: 'typing'; conversationId: string; value: boolean }
   | { t: 'user-delete'; userId: string }
   | { t: 'call-event'; kind: 'joined' | 'screenshare' }
   | { t: 'call-join'; conversationId: string }
@@ -162,6 +163,7 @@ export type ServerMessage =
   | { t: 'chat-deleted'; conversationId: string; msgId: number }
   | { t: 'chat-edited'; message: ChatMessage }
   | { t: 'chat-reaction-updated'; conversationId: string; msgId: number; emoji: ReactionEmoji; userIds: string[] }
+  | { t: 'typing'; conversationId: string; userId: string; value: boolean }
   | { t: 'chat-attachment-added'; conversationId: string; msgId: number; attachment: ChatAttachment }
   | { t: 'user-online'; userId: string }
   | { t: 'user-offline'; userId: string }
