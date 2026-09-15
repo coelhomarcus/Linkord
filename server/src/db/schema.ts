@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, integer, bigint, jsonb, serial, boolean, uniqueIndex, index, customType } from 'drizzle-orm/pg-core';
+import { pgTable, text, varchar, timestamp, integer, bigint, jsonb, serial, boolean, uniqueIndex, index, primaryKey, customType } from 'drizzle-orm/pg-core';
 import { sql, type SQL } from 'drizzle-orm';
 
 // Postgres tsvector has no first-class drizzle column type — customType
@@ -120,7 +120,6 @@ export const messages = pgTable('messages', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   editedAt: timestamp('edited_at', { withTimezone: true }),
   replyTo: jsonb('reply_to'),
-  reactions: jsonb('reactions').notNull().default({}),
   // Postgres computes/maintains this itself (GENERATED ALWAYS AS ... STORED)
   // on every insert/update of `text` — never set from the app. 'portuguese'
   // config for stemming (a search for "mensagem" should also find
@@ -130,6 +129,27 @@ export const messages = pgTable('messages', {
 }, (t) => [
   index('messages_conversation_id_idx').on(t.conversationId),
   index('messages_search_vector_idx').using('gin', t.searchVector),
+]);
+
+/** One row per (message, user, emoji) — a user can react to the same
+ * message with several DIFFERENT emoji at once, but only once per emoji
+ * (that's the toggle in modules/chat.ts#handleChatReact: reacting again
+ * with the same emoji removes this exact row). No surrogate id: nothing
+ * ever references a single reaction row on its own — it's only ever
+ * inserted, deleted, or listed grouped by message/emoji — so the natural
+ * key IS the primary key (contrast with attachments.id, which exists
+ * because a file has its own on-disk identity). Both FKs cascade: a
+ * reaction with no message or no reactor left means nothing, unlike
+ * messages.authorId (set null) which preserves history on account
+ * deletion — there's no "ghost reaction" worth keeping around. */
+export const messageReactions = pgTable('message_reactions', {
+  messageId: integer('message_id').notNull().references(() => messages.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  emoji: varchar('emoji', { length: 16 }).notNull(), // same cap as isSingleEmoji, modules/emoji.ts
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.messageId, t.userId, t.emoji] }),
+  index('message_reactions_message_id_idx').on(t.messageId),
 ]);
 
 /** A file on disk (config.UPLOAD_DIR) — either a message attachment or an
@@ -181,3 +201,4 @@ export type Conversation = typeof conversations.$inferSelect;
 export type ConversationMember = typeof conversationMembers.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;
+export type MessageReaction = typeof messageReactions.$inferSelect;
