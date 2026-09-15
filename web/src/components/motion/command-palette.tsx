@@ -28,6 +28,10 @@ export type CommandItem = {
   hint?: string;
   keywords?: string[];
   icon?: LucideIcon;
+  /** A richer leading visual (a user/group avatar) instead of `icon` — takes
+   * precedence over it when both are given. Expected to already be sized for
+   * the row (see the h-5 w-5 wrapper below); callers own their own shape/fit. */
+  avatar?: ReactNode;
   badge?: ReactNode;
   onSelect: () => void;
 };
@@ -114,9 +118,9 @@ export function CommandPalette({
 
   const filtered = useMemo(() => searchCommands(items, query), [items, query]);
 
-  // Reserve the icon column only when at least one item brings an icon, so
-  // icon-less lists don't render a dead gap before every label.
-  const hasIcons = useMemo(() => items.some((it) => it.icon), [items]);
+  // Reserve the icon column only when at least one item brings an icon or an
+  // avatar, so icon-less lists don't render a dead gap before every label.
+  const hasIcons = useMemo(() => items.some((it) => it.icon || it.avatar), [items]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, CommandItem[]>();
@@ -328,10 +332,14 @@ export function CommandPalette({
                                   }
                                 />
                               ) : null}
-                              {Icon ? (
-                                <Icon className="relative z-10 h-4 w-4" />
+                              {it.avatar ? (
+                                <span className="relative z-10 flex h-5 w-5 flex-none items-center justify-center overflow-hidden rounded-full">
+                                  {it.avatar}
+                                </span>
+                              ) : Icon ? (
+                                <Icon className="relative z-10 h-4 w-4 flex-none" />
                               ) : hasIcons ? (
-                                <span className="relative z-10 h-4 w-4" />
+                                <span className="relative z-10 h-4 w-4 flex-none" />
                               ) : null}
                               <span className="relative z-10 flex-1 truncate">
                                 {it.label}
