@@ -1,5 +1,5 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import type { ChangeEvent, ClipboardEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, ClipboardEvent, KeyboardEvent as ReactKeyboardEvent, SyntheticEvent } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowUp, Paperclip, Reply, Smile, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/components
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { Avatar } from '@/shared/Avatar';
 import { DocumentAttachmentCard } from '@/shared/DocumentAttachmentCard';
 import { UploadProgressBar } from '@/shared/UploadProgressBar';
 import { compressImageFile } from '@/shared/lib/compressImageFile';
@@ -14,6 +15,7 @@ import { formatFileSize, formatSizeLimit } from '@/shared/lib/formatBytes';
 import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE } from '@/types/protocol';
+import type { PublicUser } from '@/types/protocol';
 
 export interface PendingAttachment {
   id: string;
@@ -21,12 +23,33 @@ export interface PendingAttachment {
   previewUrl: string | null;
 }
 
+// How often notifyTyping actually emits typing:true while the user keeps
+// typing (leading-edge: fires right away after being idle, then throttles),
+// and how long without a keystroke before it emits typing:false on its own.
+const TYPING_THROTTLE_MS = 3000;
+const TYPING_IDLE_MS = 5000;
+
+const MAX_MENTION_RESULTS = 8;
+
+/** Finds the "@query" the cursor is currently sitting inside of, if any —
+ * "@" must start a token (preceded by whitespace or the start of the text),
+ * otherwise a plain email like "a@b.com" would trigger the dropdown too. */
+function getMentionQuery(text: string, cursor: number): { start: number; query: string } | null {
+  const upToCursor = text.slice(0, cursor);
+  const match = /@([A-Za-z0-9_.-]{0,20})$/.exec(upToCursor);
+  if (!match) return null;
+  const atIndex = match.index;
+  const charBefore = atIndex > 0 ? upToCursor[atIndex - 1] : ' ';
+  if (!/\s/.test(charBefore!)) return null;
+  return { start: atIndex, query: match[1] ?? '' };
+}
+
 export interface MessageComposerHandle {
   addFiles: (files: File[]) => void;
 }
 
 export const MessageComposer = forwardRef<MessageComposerHandle, { conversationId: string }>(function MessageComposer({ conversationId }, ref) {
-  const { state, allUsers, sendChatMessage, sendAttachments, replyingTo, setReplyingTo, compressImagesDefault, setCompressImagesDefault } = useRoom();
+  const { state, allUsers, conversations, sendChatMessage, sendAttachments, sendTyping, replyingTo, setReplyingTo, compressImagesDefault, setCompressImagesDefault } = useRoom();
   const [text, setText] = useState('');
   const [compressImages, setCompressImages] = useState(compressImagesDefault);
   const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([]);
@@ -34,10 +57,17 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  // active "@query" under the cursor, or null when not mentioning anyone
+  // right now (see getMentionQuery) — drives the autocomplete dropdown.
+  const [mentionQuery, setMentionQuery] = useState<{ start: number; query: string } | null>(null);
+  const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingFilesRef = useRef<PendingAttachment[]>([]);
   const isSubmittingRef = useRef(false);
+  const typingThrottleRef = useRef<number | null>(null); // Date.now() of the last emitted typing:true
+  const typingIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTypingRef = useRef(false);
   const disabled = !state.joined || activeUploadId !== null;
   const canSubmit = !disabled && (text.trim().length > 0 || pendingFiles.length > 0);
 
@@ -47,6 +77,86 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
       if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
     });
   }, []);
+
+  function notifyTyping() {
+    if (disabled) return;
+    const now = Date.now();
+    if (!isTypingRef.current || typingThrottleRef.current === null || now - typingThrottleRef.current >= TYPING_THROTTLE_MS) {
+      sendTyping(conversationId, true);
+      typingThrottleRef.current = now;
+      isTypingRef.current = true;
+    }
+    if (typingIdleTimerRef.current !== null) clearTimeout(typingIdleTimerRef.current);
+    typingIdleTimerRef.current = setTimeout(() => {
+      isTypingRef.current = false;
+      typingThrottleRef.current = null;
+      sendTyping(conversationId, false);
+    }, TYPING_IDLE_MS);
+  }
+
+  function stopTyping() {
+    if (typingIdleTimerRef.current !== null) { clearTimeout(typingIdleTimerRef.current); typingIdleTimerRef.current = null; }
+    if (isTypingRef.current) sendTyping(conversationId, false);
+    isTypingRef.current = false;
+    typingThrottleRef.current = null;
+  }
+
+  // Composer isn't remounted when switching conversations (ConversationPanel
+  // renders one persistent instance) — this cleanup fires on conversationId
+  // change too, flushing typing:false for the conversation being LEFT before
+  // sendTyping starts targeting the new one, and dismissing any dropdown
+  // left open from the conversation being left.
+  useEffect(() => () => { stopTyping(); setMentionQuery(null); }, [conversationId]);
+
+  // Scoped to this conversation's actual members (not every registered
+  // user in the room) — a big roster elsewhere shouldn't show up as
+  // mentionable in a DM/group they're not part of.
+  const memberIds = conversations.find((c) => c.id === conversationId)?.memberIds ?? [];
+  const mentionCandidates = useMemo(() => {
+    if (!mentionQuery) return [];
+    const q = mentionQuery.query.toLowerCase();
+    const members: PublicUser[] = [];
+    for (const id of memberIds) {
+      const user = allUsers.get(id);
+      if (user) members.push(user);
+    }
+    return members
+      .filter((u) => u.username.toLowerCase().startsWith(q))
+      .sort((a, b) => a.username.localeCompare(b.username))
+      .slice(0, MAX_MENTION_RESULTS);
+  }, [allUsers, mentionQuery, memberIds]);
+
+  // re-derives the active "@query" from wherever the cursor is now — called
+  // after every edit (the Textarea's onChange) and every cursor move that
+  // ISN'T an edit (onSelect: arrow keys, click), since either can start,
+  // change, or leave a mention.
+  function syncMentionQuery(value: string, cursor: number) {
+    setMentionQuery(getMentionQuery(value, cursor));
+    setMentionSelectedIndex(0);
+  }
+
+  function handleTextareaSelect(event: SyntheticEvent<HTMLTextAreaElement>) {
+    const el = event.currentTarget;
+    syncMentionQuery(el.value, el.selectionStart ?? 0);
+  }
+
+  // replaces the "@query" itself (not the whole field) with "@username " —
+  // mirrors insertEmoji's cursor handling below.
+  function selectMention(user: PublicUser) {
+    const el = textareaRef.current;
+    if (!mentionQuery) return;
+    const before = text.slice(0, mentionQuery.start);
+    const after = text.slice(mentionQuery.start + 1 + mentionQuery.query.length);
+    const insertion = `@${user.username} `;
+    const next = before + insertion + after;
+    setText(next);
+    setMentionQuery(null);
+    const caret = before.length + insertion.length;
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(caret, caret);
+    });
+  }
 
   function addFiles(files: File[]) {
     if (!files.length) return;
@@ -104,6 +214,8 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
     const trimmed = text.trim();
     if (!pendingFiles.length && !trimmed) return;
     isSubmittingRef.current = true;
+    stopTyping(); // sending is proof they stopped — don't wait for the idle timeout
+    setMentionQuery(null);
     try {
       if (pendingFiles.length) {
         setAttachError(null);
@@ -138,6 +250,15 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    // the mention dropdown intercepts navigation/confirm keys FIRST — while
+    // it's open, Enter picks a mention instead of sending the message, and
+    // arrows move the selection instead of the caret.
+    if (mentionQuery && mentionCandidates.length) {
+      if (event.key === 'ArrowDown') { event.preventDefault(); setMentionSelectedIndex((i) => (i + 1) % mentionCandidates.length); return; }
+      if (event.key === 'ArrowUp') { event.preventDefault(); setMentionSelectedIndex((i) => (i - 1 + mentionCandidates.length) % mentionCandidates.length); return; }
+      if (event.key === 'Enter' || event.key === 'Tab') { event.preventDefault(); selectMention(mentionCandidates[mentionSelectedIndex]!); return; }
+      if (event.key === 'Escape') { event.preventDefault(); setMentionQuery(null); return; }
+    }
     if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
     void submit();
@@ -155,6 +276,7 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
     const end = el?.selectionEnd ?? text.length;
     setText(text.slice(0, start) + emoji + text.slice(end));
     setEmojiPickerOpen(false);
+    setMentionQuery(null);
     // caret restore has to wait for the controlled value to actually reach
     // the DOM (this same tick's setText hasn't rendered yet).
     requestAnimationFrame(() => {
@@ -194,7 +316,32 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
 
       <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileChange} />
 
-      <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-[rgb(18_18_20)] p-2 shadow-[0_16px_50px_rgb(0_0_0_/_0.25)]">
+      <div className="relative flex flex-col gap-2 rounded-2xl border border-white/10 bg-[rgb(18_18_20)] p-2 shadow-[0_16px_50px_rgb(0_0_0_/_0.25)]">
+        {mentionQuery && mentionCandidates.length > 0 && (
+          <div className="absolute inset-x-0 bottom-full z-20 mb-1 max-h-56 overflow-y-auto rounded-xl border border-white/10 bg-[rgb(24_24_27)] py-1 shadow-[0_16px_50px_rgb(0_0_0_/_0.25)]">
+            <p className="select-none px-3 pb-1 pt-0.5 text-caption font-semibold uppercase text-text-muted">Mencionar alguém</p>
+            {mentionCandidates.map((user, i) => (
+              <button
+                key={user.id}
+                type="button"
+                // onMouseDown (not onClick) fires BEFORE the textarea's blur
+                // — preventDefault stops that blur from happening at all, so
+                // focus/caret position never leaves the field.
+                onMouseDown={(event) => { event.preventDefault(); selectMention(user); }}
+                className={cn(
+                  'flex w-full items-center gap-2 px-3 py-1.5 text-left',
+                  i === mentionSelectedIndex ? 'bg-white/8 text-text-primary' : 'text-text-secondary hover:bg-white/5'
+                )}
+              >
+                <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={24} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-label font-medium">{user.displayName}</span>
+                  <span className="block truncate text-caption text-text-muted">@{user.username}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
         <AnimatePresence initial={false}>
           {pendingFiles.length > 0 && (
             <motion.div
@@ -265,7 +412,13 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
           <Textarea
             ref={textareaRef}
             value={text}
-            onChange={(event) => setText(event.target.value)}
+            onChange={(event) => {
+              const value = event.target.value;
+              setText(value);
+              if (value.trim()) notifyTyping(); else stopTyping();
+              syncMentionQuery(value, event.target.selectionStart ?? value.length);
+            }}
+            onSelect={handleTextareaSelect}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             disabled={disabled}

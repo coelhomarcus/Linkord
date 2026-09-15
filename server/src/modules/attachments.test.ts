@@ -1,6 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { expectedChunkLength, contentDispositionFor, sanitizeFileName, extensionOf, isPreviewable, decodeUtf8Prefix } from './attachments.js';
+import { expectedChunkLength, sanitizeFileName } from './attachmentUploads.js';
+import { contentDispositionFor, extensionOf, isPreviewable, decodeUtf8Prefix } from './attachmentServing.js';
 import type { Attachment } from '../db/schema.js';
 
 describe('expectedChunkLength', () => {

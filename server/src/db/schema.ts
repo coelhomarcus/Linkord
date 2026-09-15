@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, integer, bigint, jsonb, serial, boolean, uniqueIndex, index, customType } from 'drizzle-orm/pg-core';
+import { pgTable, text, varchar, timestamp, integer, bigint, jsonb, serial, boolean, uniqueIndex, index, primaryKey, customType } from 'drizzle-orm/pg-core';
 import { sql, type SQL } from 'drizzle-orm';
 
 // Postgres tsvector has no first-class drizzle column type — customType
@@ -68,7 +68,21 @@ export const authCodes = pgTable('auth_codes', {
 
 /** A messaging conversation. `direct` rows represent a one-to-one DM and
  * use `dmKey` (sorted user ids) to guarantee there is only one conversation
- * per pair. `group` rows are admin-created spaces that can also host calls. */
+ * per pair. `group` rows are admin-created spaces that can also host calls.
+ *
+ * Three separate timestamps, deliberately not conflated (see
+ * modules/conversations.ts#touchConversation / #recordConversationActivity):
+ * `lastMessageAt` moves ONLY when a genuinely NEW message is sent — it's
+ * what sorts the sidebar (listForUser) and what makes an otherwise-empty
+ * direct conversation start showing / a closed one resurface, so an edit or
+ * delete of an OLD message must never touch it (that used to bump a
+ * conversation to the top of everyone's sidebar for no new activity).
+ * `updatedAt` is the conversation ROW itself changing (rename/avatar via
+ * handleGroupUpdate) — unrelated to message activity. `lastActivityAt` is
+ * the broad bookkeeping timestamp: any chat activity at all (send, edit,
+ * delete) — not read by any sort/visibility rule today, kept for future
+ * "last touched" needs (moderation, cleanup) without it silently doubling
+ * as the sort key the way `lastMessageAt` used to. */
 export const conversations = pgTable('conversations', {
   id: text('id').primaryKey(),
   type: varchar('type', { length: 12 }).notNull(), // 'direct' | 'group'
@@ -77,6 +91,7 @@ export const conversations = pgTable('conversations', {
   createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
   dmKey: text('dm_key'),
   lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
+  lastActivityAt: timestamp('last_activity_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -120,7 +135,6 @@ export const messages = pgTable('messages', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   editedAt: timestamp('edited_at', { withTimezone: true }),
   replyTo: jsonb('reply_to'),
-  reactions: jsonb('reactions').notNull().default({}),
   // Postgres computes/maintains this itself (GENERATED ALWAYS AS ... STORED)
   // on every insert/update of `text` — never set from the app. 'portuguese'
   // config for stemming (a search for "mensagem" should also find
@@ -130,6 +144,27 @@ export const messages = pgTable('messages', {
 }, (t) => [
   index('messages_conversation_id_idx').on(t.conversationId),
   index('messages_search_vector_idx').using('gin', t.searchVector),
+]);
+
+/** One row per (message, user, emoji) — a user can react to the same
+ * message with several DIFFERENT emoji at once, but only once per emoji
+ * (that's the toggle in modules/chat.ts#handleChatReact: reacting again
+ * with the same emoji removes this exact row). No surrogate id: nothing
+ * ever references a single reaction row on its own — it's only ever
+ * inserted, deleted, or listed grouped by message/emoji — so the natural
+ * key IS the primary key (contrast with attachments.id, which exists
+ * because a file has its own on-disk identity). Both FKs cascade: a
+ * reaction with no message or no reactor left means nothing, unlike
+ * messages.authorId (set null) which preserves history on account
+ * deletion — there's no "ghost reaction" worth keeping around. */
+export const messageReactions = pgTable('message_reactions', {
+  messageId: integer('message_id').notNull().references(() => messages.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  emoji: varchar('emoji', { length: 16 }).notNull(), // same cap as isSingleEmoji, modules/emoji.ts
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.messageId, t.userId, t.emoji] }),
+  index('message_reactions_message_id_idx').on(t.messageId),
 ]);
 
 /** A file on disk (config.UPLOAD_DIR) — either a message attachment or an
@@ -181,3 +216,4 @@ export type Conversation = typeof conversations.$inferSelect;
 export type ConversationMember = typeof conversationMembers.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;
+export type MessageReaction = typeof messageReactions.$inferSelect;

@@ -120,6 +120,20 @@
       "when": 1789417508585,
       "tag": "0016_omniscient_payback",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789450161271,
+      "tag": "0017_sudden_stepford_cuckoos",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789458593034,
+      "tag": "0018_late_ender_wiggin",
+      "breakpoints": true
     }
   ]
 }

@@ -10,7 +10,7 @@ import * as reactions from './reactions.js';
 import * as floodControl from './floodControl.js';
 import * as chat from '../modules/chat.js';
 import * as conversations from '../modules/conversations.js';
-import * as attachments from '../modules/attachments.js';
+import { getUsage } from '../modules/attachmentQuota.js';
 import * as discordWebhook from '../modules/discordWebhook.js';
 import * as moderation from '../modules/moderation.js';
 import { listAllUsers } from '../modules/auth/users.js';
@@ -48,7 +48,9 @@ interface JoinMessage {
 // against the DB on every call, so it gets a conservative cap as defense in
 // depth against a scripted client bypassing the search box's own debounce;
 // 'load-messages-around' stays unthrottled like the other reads since it's
-// click-driven, not keystroke-driven.
+// click-driven, not keystroke-driven. 'typing' is intentionally absent too —
+// it never touches the DB, and the composer itself throttles to about one
+// emit per 3s while held down (see MessageComposer.tsx).
 const ACTION_LIMITS: Record<string, { windowMs: number; max: number }> = {
   chat: { windowMs: 10_000, max: 10 },
   'chat-edit': { windowMs: 10_000, max: 10 },
@@ -87,7 +89,7 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
     conversations: await conversations.listForUser(p.userId),
     users: await listAllUsers(),
     onlineUserIds: listOnlineUserIds(),
-    storageUsage: await attachments.getUsage(),
+    storageUsage: await getUsage(),
     livekitUrl: config.LIVEKIT_URL,
   });
   broadcast({ t: 'participant-joined', participant: publicParticipant(p) }, p.id);

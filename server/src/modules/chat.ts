@@ -9,9 +9,11 @@ import {
   conversationDisplayName,
   conversationExistsForUser,
   touchConversation,
+  recordConversationActivity,
 } from './conversations.js';
 import { resolveDisplayName } from './auth/users.js';
 import * as attachments from './attachments.js';
+import * as reactions from './reactions.js';
 import type { AppSocket, HandlerTable, Participant } from '../types.js';
 
 // Deleting a conversation CASCADEs here.
@@ -64,7 +66,6 @@ interface MessageWithAuthor {
   createdAt: Date;
   editedAt: Date | null;
   replyTo: unknown;
-  reactions: unknown;
 }
 
 function sanitizeChatText(text: unknown): string {
@@ -82,7 +83,6 @@ const messageWithAuthorSelect = {
   createdAt: messages.createdAt,
   editedAt: messages.editedAt,
   replyTo: messages.replyTo,
-  reactions: messages.reactions,
 };
 
 function rowWithParticipant(row: Message, participant: Participant): MessageWithAuthor {
@@ -97,7 +97,6 @@ function rowWithParticipant(row: Message, participant: Participant): MessageWith
     createdAt: row.createdAt,
     editedAt: row.editedAt,
     replyTo: row.replyTo,
-    reactions: row.reactions,
   };
 }
 
@@ -123,9 +122,10 @@ function normalizeReplyRef(raw: unknown): ReplyRef | undefined {
 }
 
 /** `attachments` (optional, up to MAX_ATTACHMENTS_PER_MESSAGE) are the raw
- * attachments-table rows — attachments don't live in the messages table,
- * see modules/attachments.ts. */
-function rowToMessage(row: MessageWithAuthor, attachments?: Attachment[]): ChatMessagePayload {
+ * attachments-table rows, and `reactionsByEmoji` the grouped
+ * message_reactions rows for this message — neither lives in the messages
+ * table itself, see modules/attachments.ts and modules/reactions.ts. */
+function rowToMessage(row: MessageWithAuthor, attachments?: Attachment[], reactionsByEmoji?: Record<string, string[]>): ChatMessagePayload {
   const out: ChatMessagePayload = {
     msgId: row.id,
     conversationId: row.conversationId,
@@ -138,8 +138,7 @@ function rowToMessage(row: MessageWithAuthor, attachments?: Attachment[]): ChatM
   if (row.editedAt) out.editedAt = row.editedAt.getTime();
   const replyTo = normalizeReplyRef(row.replyTo);
   if (replyTo) out.replyTo = replyTo;
-  const reactions = row.reactions as Record<string, string[]> | null;
-  if (reactions && Object.keys(reactions).length) out.reactions = reactions;
+  if (reactionsByEmoji && Object.keys(reactionsByEmoji).length) out.reactions = reactionsByEmoji;
   if (attachments?.length) {
     out.attachments = attachments.map((a) => ({
       id: a.id, name: a.fileName, mime: a.mimeType, size: a.size, ...(a.thumbId ? { thumbId: a.thumbId } : {}),
@@ -188,15 +187,34 @@ async function handleConversationOpen(socket: AppSocket, msg: { conversationId?:
     .orderBy(desc(messages.id))
     .limit(config.CHAT_HISTORY_LIMIT);
   rows.reverse();
-  // one query for all history messages' attachments, not one per message
-  // (N+1) — most have no attachment anyway.
-  const attachmentByMessageId = await attachments.getByMessageIds(rows.map((r) => r.id));
+  // one query for all history messages' attachments/reactions, not one per
+  // message (N+1) — most have neither anyway.
+  const messageIds = rows.map((r) => r.id);
+  const [attachmentByMessageId, reactionsByMessageId] = await Promise.all([
+    attachments.getByMessageIds(messageIds),
+    reactions.getByMessageIds(messageIds),
+  ]);
   send(socket, {
     t: 'conversation-history',
     conversationId,
-    messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id))),
+    messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id), reactionsByMessageId.get(r.id))),
     hasMore: rows.length === config.CHAT_HISTORY_LIMIT,
   });
+
+  // Opening a conversation means "I've seen everything up to its newest
+  // message" — record that and let the user's OTHER tabs/devices know, so
+  // an unread badge doesn't linger somewhere just because it was cleared
+  // here. Not marked on load-more/jump-to-message: scrolling up or landing
+  // on an old search result isn't "read up to the latest".
+  const newest = rows[rows.length - 1];
+  if (newest) {
+    await db.update(conversationMembers)
+      .set({ lastReadMessageId: newest.id })
+      .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, p.userId)));
+    for (const participant of participants.values()) {
+      if (participant.userId === p.userId) send(participant.socket, { t: 'conversation-read', conversationId, lastReadMessageId: newest.id });
+    }
+  }
 }
 
 /** Client scrolled to the top of an already-open conversation — sends up to
@@ -216,11 +234,15 @@ async function handleLoadMoreMessages(socket: AppSocket, msg: { conversationId?:
     .orderBy(desc(messages.id))
     .limit(config.CHAT_HISTORY_LIMIT);
   rows.reverse();
-  const attachmentByMessageId = await attachments.getByMessageIds(rows.map((r) => r.id));
+  const messageIds = rows.map((r) => r.id);
+  const [attachmentByMessageId, reactionsByMessageId] = await Promise.all([
+    attachments.getByMessageIds(messageIds),
+    reactions.getByMessageIds(messageIds),
+  ]);
   send(socket, {
     t: 'conversation-history-more',
     conversationId,
-    messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id))),
+    messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id), reactionsByMessageId.get(r.id))),
     hasMore: rows.length === config.CHAT_HISTORY_LIMIT,
   });
 }
@@ -258,12 +280,16 @@ async function handleLoadMessagesAround(socket: AppSocket, msg: { conversationId
   ]);
   beforeRows.reverse();
   const rows = [...beforeRows, ...afterRows];
-  const attachmentByMessageId = await attachments.getByMessageIds(rows.map((r) => r.id));
+  const messageIds = rows.map((r) => r.id);
+  const [attachmentByMessageId, reactionsByMessageId] = await Promise.all([
+    attachments.getByMessageIds(messageIds),
+    reactions.getByMessageIds(messageIds),
+  ]);
   send(socket, {
     t: 'conversation-history-around',
     conversationId,
     msgId,
-    messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id))),
+    messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id), reactionsByMessageId.get(r.id))),
     hasMoreBefore: beforeRows.length === AROUND_BEFORE_LIMIT,
     hasMoreAfter: afterRows.length === AROUND_AFTER_LIMIT,
   });
@@ -358,12 +384,15 @@ async function handleChatEdit(socket: AppSocket, msg: { msgId?: unknown; text?: 
   if (!existing || existing.authorId !== p.userId) return;
   if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return;
   const [updated] = await db.update(messages).set({ text, editedAt: new Date() }).where(eq(messages.id, msgId)).returning();
-  // without this, editing a caption on a message WITH an attachment made
-  // the attachment disappear for everyone (the client replaces the whole
+  // without these, editing a caption on a message WITH an attachment or a
+  // reaction made it disappear for everyone (the client replaces the whole
   // message with what arrives in 'chat-edited', see RoomProvider.tsx).
-  const attachment = (await attachments.getByMessageIds([msgId])).get(msgId);
-  await touchConversation(existing.conversationId);
-  await broadcastToConversationMembers(existing.conversationId, { t: 'chat-edited', message: rowToMessage(rowWithParticipant(updated!, p), attachment) });
+  const [attachment, reactionsByEmoji] = await Promise.all([
+    attachments.getByMessageIds([msgId]).then((m) => m.get(msgId)),
+    reactions.getByMessageIds([msgId]).then((m) => m.get(msgId)),
+  ]);
+  await recordConversationActivity(existing.conversationId);
+  await broadcastToConversationMembers(existing.conversationId, { t: 'chat-edited', message: rowToMessage(rowWithParticipant(updated!, p), attachment, reactionsByEmoji) });
 }
 
 /** Toggles (not just adds) — reacting again with the same emoji removes
@@ -374,21 +403,16 @@ async function handleChatReact(socket: AppSocket, msg: { msgId?: unknown; emoji?
   const msgId = Number(msg.msgId);
   const emoji = String(msg.emoji || '');
   if (!Number.isFinite(msgId) || !isSingleEmoji(emoji)) return;
-  const [existing] = await db.select().from(messages).where(eq(messages.id, msgId)).limit(1);
+  const [existing] = await db.select({ conversationId: messages.conversationId }).from(messages).where(eq(messages.id, msgId)).limit(1);
   if (!existing) return;
   if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return;
-  const reactions: Record<string, string[]> = { ...(existing.reactions as Record<string, string[]> | null || {}) };
-  const list = reactions[emoji] ? [...reactions[emoji]] : [];
-  const idx = list.indexOf(p.userId);
-  if (idx === -1) list.push(p.userId); else list.splice(idx, 1);
-  if (list.length === 0) delete reactions[emoji]; else reactions[emoji] = list;
-  await db.update(messages).set({ reactions }).where(eq(messages.id, msgId));
+  const userIds = await reactions.toggle(msgId, p.userId, emoji);
   await broadcastToConversationMembers(existing.conversationId, {
     t: 'chat-reaction-updated',
     conversationId: existing.conversationId,
     msgId,
     emoji,
-    userIds: reactions[emoji] || [],
+    userIds,
   });
 }
 
@@ -413,11 +437,27 @@ async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Pr
   // file to delete anymore (see modules/attachments.ts).
   await attachments.deleteForMessage(msgId);
   await db.delete(messages).where(eq(messages.id, msgId));
-  await touchConversation(existing.conversationId);
+  await recordConversationActivity(existing.conversationId);
   await broadcastToConversationMembers(existing.conversationId, {
     t: 'chat-deleted',
     conversationId: existing.conversationId,
     msgId,
+  });
+}
+
+// No DB write at all — pure ephemeral fan-out, same spirit as
+// speaking/deafened (realtime/participants.ts). The client is responsible
+// for throttling emits (see MessageComposer.tsx); this only relays.
+async function handleTyping(socket: AppSocket, msg: { conversationId?: string; value?: unknown }): Promise<void> {
+  const p = participants.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  const conversationId = conversationIdFrom(msg);
+  if (!conversationId || !(await conversationExistsForUser(conversationId, p.userId))) return;
+  await broadcastToConversationMembers(conversationId, {
+    t: 'typing',
+    conversationId,
+    userId: p.userId,
+    value: !!msg.value,
   });
 }
 
@@ -430,4 +470,5 @@ export const handlers: HandlerTable = {
   'chat-delete': handleChatDelete,
   'chat-edit': handleChatEdit,
   'chat-react': handleChatReact,
+  typing: handleTyping,
 };

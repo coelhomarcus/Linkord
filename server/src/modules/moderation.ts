@@ -81,7 +81,7 @@ async function handleUserDelete(socket: AppSocket, msg: { userId?: string }): Pr
 
   // a deleted account can't stay a member of anything — reuse the same
   // "did this empty the group" cleanup a normal group-members-remove does.
-  for (const conversationId of groupIds) await reconcileGroupMembership(conversationId);
+  for (const conversationId of groupIds) await reconcileGroupMembership(conversationId, targetId);
 }
 
 /** Removes one CONNECTION (not account) from its current GROUP call —
