@@ -68,7 +68,21 @@ export const authCodes = pgTable('auth_codes', {
 
 /** A messaging conversation. `direct` rows represent a one-to-one DM and
  * use `dmKey` (sorted user ids) to guarantee there is only one conversation
- * per pair. `group` rows are admin-created spaces that can also host calls. */
+ * per pair. `group` rows are admin-created spaces that can also host calls.
+ *
+ * Three separate timestamps, deliberately not conflated (see
+ * modules/conversations.ts#touchConversation / #recordConversationActivity):
+ * `lastMessageAt` moves ONLY when a genuinely NEW message is sent — it's
+ * what sorts the sidebar (listForUser) and what makes an otherwise-empty
+ * direct conversation start showing / a closed one resurface, so an edit or
+ * delete of an OLD message must never touch it (that used to bump a
+ * conversation to the top of everyone's sidebar for no new activity).
+ * `updatedAt` is the conversation ROW itself changing (rename/avatar via
+ * handleGroupUpdate) — unrelated to message activity. `lastActivityAt` is
+ * the broad bookkeeping timestamp: any chat activity at all (send, edit,
+ * delete) — not read by any sort/visibility rule today, kept for future
+ * "last touched" needs (moderation, cleanup) without it silently doubling
+ * as the sort key the way `lastMessageAt` used to. */
 export const conversations = pgTable('conversations', {
   id: text('id').primaryKey(),
   type: varchar('type', { length: 12 }).notNull(), // 'direct' | 'group'
@@ -77,6 +91,7 @@ export const conversations = pgTable('conversations', {
   createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
   dmKey: text('dm_key'),
   lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
+  lastActivityAt: timestamp('last_activity_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

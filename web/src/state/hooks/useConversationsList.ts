@@ -4,12 +4,15 @@ import type { ClientMessage, Conversation, ServerMessage } from '../../types/pro
 /** Mirrors listForUser's own ORDER BY (server/src/modules/conversations.ts)
  * — pinned first (most recently pinned first among those), then everyone
  * else by recency. Used both for the optimistic pin re-sort and for
- * re-sorting after any incremental update that could change ordering. */
+ * re-sorting after any incremental update that could change ordering.
+ * Deliberately `lastMessageAt ?? createdAt`, not `updatedAt` — a rename or
+ * a message edit/delete must not resort the sidebar, only a genuinely NEW
+ * message does (server-side: schema.ts#conversations, touchConversation). */
 function sortConversations(list: Conversation[]): Conversation[] {
   return [...list].sort((a, b) => (
     Number(!!b.pinnedAt) - Number(!!a.pinnedAt)
     || (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0)
-    || (b.lastMessageAt ?? b.updatedAt) - (a.lastMessageAt ?? a.updatedAt)
+    || (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt)
   ));
 }
 

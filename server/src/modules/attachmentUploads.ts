@@ -9,7 +9,7 @@ import { attachments as attachmentsTable, messages, type Attachment } from '../d
 import { sendJson, sendError, jsonBody } from '../http/respond.js';
 import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from './auth/session.js';
-import { broadcastToConversationMembers, conversationExistsForUser, touchConversation } from './conversations.js';
+import { broadcastToConversationMembers, conversationExistsForUser, touchConversation, recordConversationActivity } from './conversations.js';
 import { newId, filePathFor } from './attachmentStorage.js';
 import { generateThumbnail, THUMBNAIL_SOURCE_MIME_TYPES } from './attachmentThumbnails.js';
 import { getUsage, broadcastUsage } from './attachmentQuota.js';
@@ -398,7 +398,10 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
       await broadcastUsage();
       sendJson(reply, 201, { message: chatMessage });
     } else {
-      await touchConversation(manifest.conversationId);
+      // an EXISTING message just got another attachment (2nd-4th file of a
+      // multi-file upload) — not a new message, so this doesn't touch
+      // lastMessageAt either (see conversations.ts#recordConversationActivity).
+      await recordConversationActivity(manifest.conversationId);
       await broadcastToConversationMembers(manifest.conversationId, {
         t: 'chat-attachment-added',
         conversationId: manifest.conversationId,

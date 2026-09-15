@@ -9,6 +9,7 @@ import {
   conversationDisplayName,
   conversationExistsForUser,
   touchConversation,
+  recordConversationActivity,
 } from './conversations.js';
 import { resolveDisplayName } from './auth/users.js';
 import * as attachments from './attachments.js';
@@ -390,7 +391,7 @@ async function handleChatEdit(socket: AppSocket, msg: { msgId?: unknown; text?: 
     attachments.getByMessageIds([msgId]).then((m) => m.get(msgId)),
     reactions.getByMessageIds([msgId]).then((m) => m.get(msgId)),
   ]);
-  await touchConversation(existing.conversationId);
+  await recordConversationActivity(existing.conversationId);
   await broadcastToConversationMembers(existing.conversationId, { t: 'chat-edited', message: rowToMessage(rowWithParticipant(updated!, p), attachment, reactionsByEmoji) });
 }
 
@@ -436,7 +437,7 @@ async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Pr
   // file to delete anymore (see modules/attachments.ts).
   await attachments.deleteForMessage(msgId);
   await db.delete(messages).where(eq(messages.id, msgId));
-  await touchConversation(existing.conversationId);
+  await recordConversationActivity(existing.conversationId);
   await broadcastToConversationMembers(existing.conversationId, {
     t: 'chat-deleted',
     conversationId: existing.conversationId,

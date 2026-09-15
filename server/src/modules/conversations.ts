@@ -79,11 +79,14 @@ export async function listForUser(userId: string): Promise<ConversationSummary[]
       )
     ))
     // pinned conversations first (most recently pinned first among those),
-    // then everyone else by the usual recency rule.
+    // then everyone else by the usual recency rule. Deliberately
+    // lastMessageAt (not updatedAt/lastActivityAt) — a rename or a message
+    // edit/delete must not resort the sidebar, only a genuinely NEW message
+    // does (see schema.ts#conversations and touchConversation below).
     .orderBy(
       desc(sql`${conversationMembers.pinnedAt} is not null`),
       desc(conversationMembers.pinnedAt),
-      desc(sql`coalesce(${conversations.lastMessageAt}, ${conversations.updatedAt}, ${conversations.createdAt})`)
+      desc(sql`coalesce(${conversations.lastMessageAt}, ${conversations.createdAt})`)
     );
 
   const ids = rows.map((r) => r.conversation.id);
@@ -150,9 +153,24 @@ export async function conversationExistsForUser(conversationId: string, userId: 
   return !!(await getConversationForUser(conversationId, userId));
 }
 
+/** A genuinely NEW message was created (send, or a fresh attachment-only
+ * message) — the only thing that should move a conversation to the top of
+ * anyone's sidebar or make an otherwise-empty/closed direct conversation
+ * start showing (see listForUser's `lastMessageAt`-gated visibility rule
+ * above). Broadcasts, since `lastMessageAt` is part of what the client
+ * displays/sorts by. */
 export async function touchConversation(conversationId: string, when = new Date()): Promise<void> {
-  const [row] = await db.update(conversations).set({ lastMessageAt: when, updatedAt: when }).where(eq(conversations.id, conversationId)).returning();
+  const [row] = await db.update(conversations).set({ lastMessageAt: when, lastActivityAt: when }).where(eq(conversations.id, conversationId)).returning();
   if (row) await sendConversationUpdateToMembers('conversation-updated', row);
+}
+
+/** A message was edited or deleted, or a file was attached to a message
+ * that already exists — real chat activity, but NOT a new message, so
+ * `lastMessageAt` must stay untouched (see touchConversation above for
+ * why). Only bumps the bookkeeping-only `lastActivityAt` — nothing the
+ * client displays changes, so there's nothing worth broadcasting either. */
+export async function recordConversationActivity(conversationId: string, when = new Date()): Promise<void> {
+  await db.update(conversations).set({ lastActivityAt: when }).where(eq(conversations.id, conversationId));
 }
 
 export async function conversationDisplayName(conversationId: string, viewerUserId: string): Promise<string> {
