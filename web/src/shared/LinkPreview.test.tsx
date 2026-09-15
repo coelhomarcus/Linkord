@@ -32,4 +32,30 @@ describe('LinkPreview', () => {
     expect(screen.getByRole('button', { name: 'Reproduzir' })).toBeInTheDocument();
     expect(container.querySelector('[aria-label="Volume"]')).toBeInTheDocument();
   });
+
+  describe('embed de imagem direta', () => {
+    it('sem fitContainer (mensagem de chat): usa o cap de largura em px calculado via JS', () => {
+      const { container } = render(<LinkPreview embed={{ kind: 'image', url: 'https://cdn.example.com/foto.png' }} />);
+
+      const img = container.querySelector('img');
+      expect(img).toHaveAttribute('src', 'https://cdn.example.com/foto.png');
+      // inline max-width em px — sem isso a imagem não tem nenhum teto de
+      // largura confiável dentro do container flex do chat, que encolhe
+      // pro próprio conteúdo (ver o comentário em chatSurfaceWidth.tsx).
+      expect(img?.style.maxWidth).not.toBe('');
+      expect(img?.className.split(/\s+/)).not.toContain('w-full');
+    });
+
+    it('com fitContainer (grid de mídias): preenche o container real via w-full, sem o cap em px', () => {
+      const { container } = render(<LinkPreview embed={{ kind: 'image', url: 'https://cdn.example.com/foto.png' }} fitContainer />);
+
+      const img = container.querySelector('img');
+      // sem isso, o cap de largura pensado pra mensagem de chat "vencia" o
+      // max-w-full da classe (mesma propriedade CSS, inline sempre ganha),
+      // deixando a imagem mais larga que a coluna da masonry e
+      // sobrepondo o card vizinho — exatamente o bug relatado.
+      expect(img?.style.maxWidth).toBe('');
+      expect(img?.className.split(/\s+/)).toContain('w-full');
+    });
+  });
 });
