@@ -175,7 +175,19 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
               className="mb-1 flex max-w-full items-center gap-1.5 truncate text-caption text-text-muted hover:text-text-secondary"
             >
               <Reply size={12} className="flex-none -scale-x-100" />
-              <span className="flex-none font-medium text-text-secondary">{replyAuthor?.displayName ?? DELETED_AUTHOR_NAME}</span>
+              {message.replyTo.authorId && (
+                <Avatar
+                  id={message.replyTo.authorId}
+                  name={replyAuthor?.displayName ?? DELETED_AUTHOR_NAME}
+                  avatar={replyAuthor?.avatar ?? ''}
+                  avatarColor={replyAuthor?.avatarColor}
+                  size={14}
+                  className="flex-none"
+                />
+              )}
+              <span className="flex-none font-medium text-text-secondary">
+                {replyAuthor ? `@${replyAuthor.displayName}` : DELETED_AUTHOR_NAME}
+              </span>
               {message.replyTo.text && <span className="truncate">{message.replyTo.text}</span>}
             </button>
           )}
