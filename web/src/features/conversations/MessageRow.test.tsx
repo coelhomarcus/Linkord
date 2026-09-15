@@ -108,3 +108,46 @@ describe('MessageRow', () => {
     expect(onReply).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('MessageRow — reações rápidas', () => {
+  it('abrir "Reagir" mostra o conjunto rápido, sem montar o picker completo', async () => {
+    const user = userEvent.setup();
+    renderWithRoom(
+      <MessageRow message={makeMessage()} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />
+    );
+
+    await user.click(screen.getAllByRole('button', { name: 'Reagir' })[0]!);
+
+    expect(screen.getByRole('button', { name: 'Reagir com 👍' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mais emojis' })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Buscar emoji…')).not.toBeInTheDocument();
+  });
+
+  it('clicar num emoji rápido reage direto e fecha o popover', async () => {
+    const user = userEvent.setup();
+    const reactToChatMessage = vi.fn();
+    renderWithRoom(
+      <MessageRow message={makeMessage()} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />,
+      { reactToChatMessage }
+    );
+
+    await user.click(screen.getAllByRole('button', { name: 'Reagir' })[0]!);
+    await user.click(screen.getByRole('button', { name: 'Reagir com 👍' }));
+
+    expect(reactToChatMessage).toHaveBeenCalledWith(1, '👍');
+    expect(screen.queryByRole('button', { name: 'Mais emojis' })).not.toBeInTheDocument();
+  });
+
+  it('clicar em "+" troca pro picker completo (busca de emoji)', async () => {
+    const user = userEvent.setup();
+    renderWithRoom(
+      <MessageRow message={makeMessage()} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />
+    );
+
+    await user.click(screen.getAllByRole('button', { name: 'Reagir' })[0]!);
+    await user.click(screen.getByRole('button', { name: 'Mais emojis' }));
+
+    expect(await screen.findByPlaceholderText('Buscar emoji…')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reagir com 👍' })).not.toBeInTheDocument();
+  });
+});
