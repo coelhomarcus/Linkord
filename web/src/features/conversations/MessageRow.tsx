@@ -156,7 +156,7 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
           ) : (
             <>
               <div className="text-body leading-[1.375rem] text-text-secondary">
-                <ChatMessageText text={message.text} mentionLookup={mentionLookup} myUserId={state.me.userId} />
+                <ChatMessageText text={message.text} mentionLookup={mentionLookup} myUserId={state.me.userId} onOpenProfile={onOpenProfile} />
                 {message.editedAt && <span className="ml-1 text-caption text-text-muted">(editado)</span>}
               </div>
               {message.attachments?.length === 4 && message.attachments.every((a) => IMAGE_MIME_TYPES.has(a.mime)) ? (
