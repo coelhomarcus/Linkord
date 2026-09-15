@@ -152,7 +152,7 @@ export function ConversationMediaPanel({ conversationId, open, onOpenChange }: C
             kind === 'uploads' ? (
               <UploadItemCard item={item} onOpenImage={(src, alt) => setLightbox({ src, alt })} />
             ) : item.embed ? (
-              <LinkPreview embed={item.embed} className="w-full max-w-full" />
+              <LinkPreview embed={item.embed} className="w-full max-w-full" fitContainer />
             ) : null
           )}
           onLoadMore={() => { if (conversationId && nextBefore != null) load(conversationId, kind, nextBefore, false); }}

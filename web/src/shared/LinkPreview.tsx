@@ -27,9 +27,20 @@ interface LinkPreviewProps {
    * border/rounding so the preview fills the bubble instead of sitting in
    * a second frame nested inside it. */
   edgeToEdge?: boolean;
+  /** True when this card's immediate parent already has a definite,
+   * non-content-dependent width (e.g. a masonry grid column, which sets an
+   * explicit pixel width on each item) — lets the bare-image case below
+   * just fill it (`w-full`) instead of using the JS-computed chat-row
+   * width cap. That cap exists because a chat message's real parent is a
+   * flex item that hugs its own content (see chatSurfaceWidth.tsx), where
+   * a CSS percentage can't resolve correctly — that reasoning doesn't
+   * apply once the parent already has a real width, so forcing the same
+   * fixed px cap there instead only made the image wider than its column,
+   * overlapping the next one. */
+  fitContainer?: boolean;
 }
 
-export function LinkPreview({ embed, className = '', edgeToEdge }: LinkPreviewProps) {
+export function LinkPreview({ embed, className = '', edgeToEdge, fitContainer }: LinkPreviewProps) {
   const [failed, setFailed] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const surfaceWidth = useChatSurfaceWidth(384 + 120);
@@ -57,8 +68,8 @@ export function LinkPreview({ embed, className = '', edgeToEdge }: LinkPreviewPr
           alt=""
           loading="lazy"
           onError={() => setFailed(true)}
-          style={{ maxWidth }}
-          className={`block h-auto max-h-70 max-w-full object-contain ${edgeToEdge ? 'rounded-2xl' : 'rounded-md border border-white/10'}`}
+          style={fitContainer ? undefined : { maxWidth }}
+          className={`block h-auto max-h-70 max-w-full object-contain ${fitContainer ? 'w-full' : ''} ${edgeToEdge ? 'rounded-2xl' : 'rounded-md border border-white/10'}`}
         />
       </button>
       <ImageLightbox src={embed.url} alt="" open={lightboxOpen} onOpenChange={setLightboxOpen} />

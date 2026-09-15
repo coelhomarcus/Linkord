@@ -302,7 +302,7 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
   return (
     <div className="mx-auto w-full max-w-5xl flex-none px-2 pb-4">
       {replyingTo && (
-        <div className="mb-2 flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-label">
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-white/10 bg-[rgb(18_18_20)] px-3 py-2 text-label">
           <Reply size={14} className="text-text-muted" />
           <span className="min-w-0 flex-1 truncate">
             <span className="font-medium text-text-secondary">{replyName}</span>

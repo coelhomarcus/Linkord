@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { initialRoomState } from '../../state/roomReducer';
 import { renderWithRoom } from '../../test/roomContextFixture';
 import { MessageRow } from './MessageRow';
-import type { ChatMessage } from '../../types/protocol';
+import type { ChatMessage, PublicUser } from '../../types/protocol';
 
 function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -106,5 +106,87 @@ describe('MessageRow', () => {
 
     await user.click(screen.getByRole('button', { name: 'Responder' }));
     expect(onReply).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('MessageRow — referência de resposta', () => {
+  const marcus: PublicUser = { id: 'user-marcus', username: 'marcus', displayName: 'Marcus', avatar: '', avatarColor: 'blurple', banner: '', bio: '', profileLinks: [], role: 'user' };
+
+  it('mostra "@Nome" e o avatar de quem foi respondido', () => {
+    const message = makeMessage({ replyTo: { msgId: 1, authorId: 'user-marcus', text: 'tacada.mp4' } });
+    renderWithRoom(
+      <MessageRow message={message} showHeader highlighted={false} allUsers={new Map([['user-marcus', marcus]])} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />
+    );
+
+    const replyButton = screen.getByRole('button', { name: /@Marcus/ });
+    expect(replyButton).toHaveTextContent('@Marcus');
+    expect(replyButton.querySelector('[data-slot="avatar"]')).not.toBeNull();
+  });
+
+  it('autor apagado: sem "@" (só o rótulo padrão), mas ainda mostra um avatar-placeholder', () => {
+    const message = makeMessage({ replyTo: { msgId: 1, authorId: 'user-sumiu', text: 'oi' } });
+    renderWithRoom(
+      <MessageRow message={message} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />
+    );
+
+    const replyButton = screen.getByRole('button', { name: /Usuário apagado/ });
+    expect(replyButton).not.toHaveTextContent('@Usuário');
+    expect(replyButton.querySelector('[data-slot="avatar"]')).not.toBeNull();
+  });
+
+  it('clicar na referência chama onJumpTo com o msgId original', async () => {
+    const user = userEvent.setup();
+    const onJumpTo = vi.fn();
+    const message = makeMessage({ replyTo: { msgId: 42, authorId: 'user-marcus', text: 'oi' } });
+    renderWithRoom(
+      <MessageRow message={message} showHeader highlighted={false} allUsers={new Map([['user-marcus', marcus]])} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={onJumpTo} />
+    );
+
+    await user.click(screen.getByRole('button', { name: /@Marcus/ }));
+
+    expect(onJumpTo).toHaveBeenCalledWith(42);
+  });
+});
+
+describe('MessageRow — reações rápidas', () => {
+  it('abrir "Reagir" mostra o conjunto rápido, sem montar o picker completo', async () => {
+    const user = userEvent.setup();
+    renderWithRoom(
+      <MessageRow message={makeMessage()} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />
+    );
+
+    await user.click(screen.getAllByRole('button', { name: 'Reagir' })[0]!);
+
+    expect(screen.getByRole('button', { name: 'Reagir com 👍' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mais emojis' })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Buscar emoji…')).not.toBeInTheDocument();
+  });
+
+  it('clicar num emoji rápido reage direto e fecha o popover', async () => {
+    const user = userEvent.setup();
+    const reactToChatMessage = vi.fn();
+    renderWithRoom(
+      <MessageRow message={makeMessage()} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />,
+      { reactToChatMessage }
+    );
+
+    await user.click(screen.getAllByRole('button', { name: 'Reagir' })[0]!);
+    await user.click(screen.getByRole('button', { name: 'Reagir com 👍' }));
+
+    expect(reactToChatMessage).toHaveBeenCalledWith(1, '👍');
+    expect(screen.queryByRole('button', { name: 'Mais emojis' })).not.toBeInTheDocument();
+  });
+
+  it('clicar em "+" troca pro picker completo (busca de emoji)', async () => {
+    const user = userEvent.setup();
+    renderWithRoom(
+      <MessageRow message={makeMessage()} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />
+    );
+
+    await user.click(screen.getAllByRole('button', { name: 'Reagir' })[0]!);
+    await user.click(screen.getByRole('button', { name: 'Mais emojis' }));
+
+    expect(await screen.findByPlaceholderText('Buscar emoji…')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reagir com 👍' })).not.toBeInTheDocument();
   });
 });
