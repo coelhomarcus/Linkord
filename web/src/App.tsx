@@ -24,7 +24,9 @@ import { TileMenu } from './features/sharing/TileMenu';
 import { ReactionsOverlay } from './features/reactions/ReactionsOverlay';
 import { GlobalContextMenu } from './components/GlobalContextMenu';
 import { ProfileModal } from './features/profile/ProfileModal';
-import { AnimatedSidebarInset, AnimatedSidebarProvider } from '@/components/motion/animated-sidebar';
+import { AnimatedSidebarInset, AnimatedSidebarProvider, useAnimatedSidebar } from '@/components/motion/animated-sidebar';
+import { CommandPalette } from '@/components/motion/command-palette';
+import { buildCommandItems } from './features/conversations/commandPaletteItems';
 import { loadSidebarCollapsed, saveSidebarCollapsed } from './shared/lib/useSidebarCollapsedPreference';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
@@ -44,6 +46,7 @@ function Shell() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
   const [callChatOpen, setCallChatOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const [sidebarOpen, setSidebarOpenState] = useState(() => !loadSidebarCollapsed());
   const setSidebarOpen = useCallback((next: boolean) => {
@@ -132,6 +135,7 @@ function Shell() {
         <ConversationSidebar
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenProfile={setProfileUserId}
+          onOpenPalette={() => setPaletteOpen(true)}
         />
         <AnimatedSidebarInset className="relative min-h-0 overflow-hidden bg-[rgb(10_10_12)] md:my-2 md:mr-2 md:ml-2 md:rounded-2xl md:border md:border-white/10">
           {activeView === 'call' && activeCallConversationId && inCall ? (
@@ -174,6 +178,12 @@ function Shell() {
         />
         <TileMenu />
         <ProfileModal userId={profileUserId} onClose={() => setProfileUserId(null)} />
+        <CommandPaletteMount
+          open={paletteOpen}
+          onOpenChange={setPaletteOpen}
+          onCall={handleOpenCall}
+          onMobileNavigated={() => setMobileShowSidebar(false)}
+        />
         <Suspense fallback={null}>
           <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
         </Suspense>
@@ -185,6 +195,51 @@ function Shell() {
         />
       </AnimatedSidebarProvider>
     </GlobalContextMenu>
+  );
+}
+
+/** Split out from Shell only because it needs `useAnimatedSidebar()` (for
+ * `isMobile`, to close the mobile sidebar sheet after a palette selection,
+ * same as ConversationSidebar's own row clicks) — a hook that only works
+ * inside the AnimatedSidebarProvider Shell itself renders, so Shell (the
+ * provider's parent, not a descendant of it) can't call it directly. */
+function CommandPaletteMount({ open, onOpenChange, onCall, onMobileNavigated }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCall: (conversationId: string) => void;
+  onMobileNavigated: () => void;
+}) {
+  const { state, conversations, allUsers, activeCallConversationId, openConversation, openDirect, requestChatView } = useRoom();
+  const { isMobile } = useAnimatedSidebar();
+
+  const commandItems = useMemo(() => buildCommandItems(
+    conversations, allUsers, state.me.userId, state.participants, activeCallConversationId,
+    {
+      onOpenConversation: (id) => {
+        openConversation(id);
+        requestChatView();
+        if (isMobile) onMobileNavigated();
+      },
+      onMessageUser: (userId) => {
+        openDirect(userId);
+        requestChatView();
+        if (isMobile) onMobileNavigated();
+      },
+      onCall: (id) => {
+        openConversation(id);
+        onCall(id);
+      },
+    }
+  ), [conversations, allUsers, state.me.userId, state.participants, activeCallConversationId, isMobile, openConversation, openDirect, requestChatView, onCall, onMobileNavigated]);
+
+  return (
+    <CommandPalette
+      items={commandItems}
+      open={open}
+      onOpenChange={onOpenChange}
+      placeholder="Buscar pessoas, conversas, chamadas…"
+      emptyMessage="Nada encontrado."
+    />
   );
 }
 

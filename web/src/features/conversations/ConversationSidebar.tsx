@@ -17,6 +17,7 @@ import { GroupCreateDialog } from './GroupCreateDialog';
 interface ConversationSidebarProps {
   onOpenSettings: () => void;
   onOpenProfile: (userId: string) => void;
+  onOpenPalette: () => void;
 }
 
 function ConversationRow({ conversation, active, onClick }: {
@@ -170,7 +171,7 @@ function CollapsedConversationButton({ conversation, active, onClick }: {
   );
 }
 
-export function ConversationSidebar({ onOpenSettings, onOpenProfile }: ConversationSidebarProps) {
+export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalette }: ConversationSidebarProps) {
   const { state, conversations, activeConversationId, openConversation, openDirect, allUsers, requestChatView } = useRoom();
   const { isMobile, open: sidebarOpen, setOpenMobile, toggleSidebar } = useAnimatedSidebar();
   const collapsed = !isMobile && !sidebarOpen;
@@ -310,6 +311,14 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile }: Conversat
                   placeholder={tab === 'people' ? 'Buscar pessoas' : 'Buscar conversas'}
                   className="h-10 min-w-0 flex-1 bg-transparent text-label outline-none placeholder:text-text-muted"
                 />
+                <button
+                  type="button"
+                  onClick={onOpenPalette}
+                  aria-label="Abrir busca rápida (Ctrl+K)"
+                  className="flex-none rounded border border-white/10 bg-black/20 px-1.5 py-0.5 text-[10px] font-medium text-text-muted transition-colors hover:text-text-secondary"
+                >
+                  ⌘K
+                </button>
               </div>
               <Tabs value={tab} onValueChange={setTab} variant="segment" className="flex min-h-0 flex-1 flex-col">
                 <TabsList className="flex-none grid w-full grid-cols-2 rounded-xl border border-white/10 bg-black/25 p-1">
