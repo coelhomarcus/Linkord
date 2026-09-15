@@ -5,6 +5,7 @@ import { initialRoomState } from '../../state/roomReducer';
 import { renderWithRoom } from '../../test/roomContextFixture';
 import { MessageComposer } from './MessageComposer';
 import { compressImageFile } from '@/shared/lib/compressImageFile';
+import type { Conversation, PublicUser } from '@/types/protocol';
 
 vi.mock('@/shared/lib/compressImageFile', () => ({
   compressImageFile: vi.fn(async (file: File) => file),
@@ -207,5 +208,86 @@ describe('MessageComposer — typing indicator', () => {
 
     expect(sendChatMessage).toHaveBeenCalledWith('conv-1', 'ola', undefined);
     expect(sendTyping).toHaveBeenLastCalledWith('conv-1', false);
+  });
+});
+
+function fakeUser(id: string, username: string, displayName: string): PublicUser {
+  return { id, username, displayName, avatar: '', avatarColor: 'blurple', banner: '', bio: '', profileLinks: [], role: 'user' };
+}
+
+describe('MessageComposer — menções (@)', () => {
+  const ana = fakeUser('u-ana', 'ana', 'Ana Silva');
+  const andre = fakeUser('u-andre', 'andre', 'André Costa');
+  const outsider = fakeUser('u-fora', 'foradaconversa', 'Fora Da Conversa');
+
+  const conversation: Conversation = {
+    id: 'conv-1', type: 'group', title: 'Squad', avatar: '', createdBy: null,
+    memberIds: ['u-ana', 'u-andre'], lastMessageAt: null, createdAt: 1, updatedAt: 1, pinnedAt: null,
+  };
+
+  function renderComposer(overrides: Partial<Parameters<typeof renderWithRoom>[1]> = {}) {
+    const allUsers = new Map([[ana.id, ana], [andre.id, andre], [outsider.id, outsider]]);
+    return renderWithRoom(<MessageComposer conversationId="conv-1" />, {
+      state: joinedState, conversations: [conversation], allUsers, ...overrides,
+    });
+  }
+
+  it('digitar "@" mostra só candidatos que são membros desta conversa', async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    await user.type(screen.getByPlaceholderText('Mensagem'), 'oi @an');
+
+    expect(await screen.findByText('Ana Silva')).toBeInTheDocument();
+    expect(screen.getByText('André Costa')).toBeInTheDocument();
+    expect(screen.queryByText('Fora Da Conversa')).not.toBeInTheDocument();
+  });
+
+  it('Enter com o dropdown aberto insere a menção em vez de enviar a mensagem', async () => {
+    const user = userEvent.setup();
+    const sendChatMessage = vi.fn();
+    renderComposer({ sendChatMessage });
+
+    const textarea = screen.getByPlaceholderText('Mensagem');
+    await user.type(textarea, 'oi @an');
+    await screen.findByText('Ana Silva');
+    await user.keyboard('{Enter}');
+
+    expect(textarea).toHaveValue('oi @ana ');
+    expect(sendChatMessage).not.toHaveBeenCalled();
+    expect(screen.queryByText('Ana Silva')).not.toBeInTheDocument();
+  });
+
+  it('clicar num candidato insere a menção', async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    const textarea = screen.getByPlaceholderText('Mensagem');
+    await user.type(textarea, '@an');
+    await user.click(await screen.findByText('André Costa'));
+
+    expect(textarea).toHaveValue('@andre ');
+  });
+
+  it('Escape fecha o dropdown sem alterar o texto nem enviar', async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    const textarea = screen.getByPlaceholderText('Mensagem');
+    await user.type(textarea, '@an');
+    await screen.findByText('Ana Silva');
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByText('Ana Silva')).not.toBeInTheDocument();
+    expect(textarea).toHaveValue('@an');
+  });
+
+  it('um "@" no meio de uma palavra (ex.: e-mail) não abre o dropdown', async () => {
+    const user = userEvent.setup();
+    renderComposer();
+
+    await user.type(screen.getByPlaceholderText('Mensagem'), 'fulano@an');
+
+    expect(screen.queryByText('Ana Silva')).not.toBeInTheDocument();
   });
 });
