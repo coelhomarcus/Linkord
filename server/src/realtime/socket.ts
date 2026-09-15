@@ -10,7 +10,7 @@ import * as reactions from './reactions.js';
 import * as floodControl from './floodControl.js';
 import * as chat from '../modules/chat.js';
 import * as conversations from '../modules/conversations.js';
-import * as attachments from '../modules/attachments.js';
+import { getUsage } from '../modules/attachmentQuota.js';
 import * as discordWebhook from '../modules/discordWebhook.js';
 import * as moderation from '../modules/moderation.js';
 import { listAllUsers } from '../modules/auth/users.js';
@@ -89,7 +89,7 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
     conversations: await conversations.listForUser(p.userId),
     users: await listAllUsers(),
     onlineUserIds: listOnlineUserIds(),
-    storageUsage: await attachments.getUsage(),
+    storageUsage: await getUsage(),
     livekitUrl: config.LIVEKIT_URL,
   });
   broadcast({ t: 'participant-joined', participant: publicParticipant(p) }, p.id);
