@@ -1,76 +1,40 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useReducer } from 'react';
 import type { ReactNode } from 'react';
 import { io } from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
-import { DisconnectReason, Room, RoomEvent, Track } from 'livekit-client';
-import type { LocalTrackPublication, Track as LKTrack } from 'livekit-client';
+import { Room } from 'livekit-client';
 import { RoomContext } from './RoomContext';
-import type { AnchorRect, AudioHandle, CropRect, ReactionEvent, TileDomHandle } from './RoomContext';
+import type { AnchorRect, AudioHandle, CropRect, TileDomHandle } from './RoomContext';
 import { roomReducer, initialRoomState } from './roomReducer';
 import { useAuth } from './AuthContext';
 import { loadIdentity, saveIdentity } from './useIdentitySession';
 import { useScreenShare } from '../features/sharing/useScreenShare';
 import { useCamera } from '../features/sharing/useCamera';
 import { useMicrophone } from '../features/sharing/useMicrophone';
-import { useTrackSpeaking } from '../features/sharing/useLiveKitTrack';
 import type { TileKind } from '../features/sharing/tileTypes';
+import { useConversationsList } from './hooks/useConversationsList';
+import { useChatMessages } from './hooks/useChatMessages';
+import { useTypingIndicator } from './hooks/useTypingIndicator';
+import { useMessageReactions } from './hooks/useMessageReactions';
+import { useMessageSearch } from './hooks/useMessageSearch';
+import { useAttachmentsUpload } from './hooks/useAttachmentsUpload';
+import { usePresence } from './hooks/usePresence';
+import { useCallLifecycle } from './hooks/useCallLifecycle';
 import { loadShowStats, saveShowStats, loadNotifyVolume, saveNotifyVolume } from '../features/settings/useSettingsPreference';
 import { loadHideAudioOnlyTiles, saveHideAudioOnlyTiles } from '../features/settings/useStageViewPreference';
 import { loadShowTileBanners, saveShowTileBanners } from '../features/settings/useTileBannerPreference';
 import { loadCompressImages, saveCompressImages } from '../features/settings/useCompressImagesPreference';
-import { playSound, preloadSounds, setVolume } from '../shared/sounds';
+import { preloadSounds, setVolume } from '../shared/sounds';
 import {
-  loadNotificationsEnabled, saveNotificationsEnabled, setNotificationsModuleEnabled,
-  setNotificationClickHandler, notifyIncomingChatMessage,
+  loadNotificationsEnabled, saveNotificationsEnabled, setNotificationsModuleEnabled, setNotificationClickHandler,
 } from '../shared/notifications';
-import { mentionsUsername } from '../shared/lib/mentions';
 import { uploadWithProgress } from '../shared/lib/uploadWithProgress';
-import { uploadFileInChunks } from '../shared/lib/chunkedUpload';
 import { DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../shared/Avatar';
 import { sanitizeDisplayName } from '../shared/lib/displayName';
-import type { ChatMessage, ClientMessage, Conversation, Participant, PublicUser, ReactionEmoji, SearchResult, ServerMessage, StorageUsage } from '../types/protocol';
+import type { ClientMessage, ServerMessage } from '../types/protocol';
 import { MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '../types/protocol';
 
-const REACTION_DURATION_MS = 3000;
-const CHAT_CLIENT_LIMIT = 300;
-
-export class PartialAttachmentError extends Error {
-  sentCount: number;
-  totalCount: number;
-  constructor(sentCount: number, totalCount: number) {
-    super(`partial_attachment_failure: ${sentCount}/${totalCount}`);
-    this.sentCount = sentCount;
-    this.totalCount = totalCount;
-  }
-}
-
-function mergeUserFromParticipant(prev: Map<string, PublicUser>, participant: Participant): Map<string, PublicUser> {
-  const existing = prev.get(participant.userId);
-  if (!existing || (
-    existing.avatar === participant.avatar
-    && existing.avatarColor === participant.avatarColor
-    && existing.displayName === participant.displayName
-    && existing.banner === participant.banner
-    && existing.bio === participant.bio
-    && JSON.stringify(existing.profileLinks) === JSON.stringify(participant.profileLinks)
-    && existing.role === participant.role
-  )) return prev;
-  const next = new Map(prev);
-  next.set(participant.userId, {
-    ...existing, avatar: participant.avatar, avatarColor: participant.avatarColor,
-    displayName: participant.displayName, banner: participant.banner, bio: participant.bio,
-    profileLinks: participant.profileLinks, role: participant.role,
-  });
-  return next;
-}
-
-function displayNameForConversation(conversation: Conversation | undefined, meUserId: string | null, users: Map<string, PublicUser>): string {
-  if (!conversation) return 'Conversa';
-  if (conversation.type === 'group') return conversation.title || 'Grupo';
-  const otherId = conversation.memberIds.find((id) => id !== meUserId) ?? conversation.memberIds[0];
-  const other = otherId ? users.get(otherId) : undefined;
-  return other?.displayName || other?.username || 'Conversa direta';
-}
+export { PartialAttachmentError } from './hooks/useAttachmentsUpload';
 
 function sanitizeBanner(value: unknown): string {
   const url = String(value == null ? '' : value).trim().slice(0, MAX_BANNER_LEN);
@@ -109,20 +73,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const intentionalCloseRef = useRef(false);
   const tileDomRegistry = useRef<Map<string, TileDomHandle>>(new Map());
   const audioRegistry = useRef<Map<string, AudioHandle>>(new Map());
-
-  const [audioUnlocked, setAudioUnlocked] = useState(false);
-  useEffect(() => {
-    if (audioUnlocked) return;
-    const unlock = () => setAudioUnlocked(true);
-    document.addEventListener('pointerdown', unlock, { once: true });
-    document.addEventListener('keydown', unlock, { once: true });
-    return () => {
-      document.removeEventListener('pointerdown', unlock);
-      document.removeEventListener('keydown', unlock);
-    };
-  }, [audioUnlocked]);
-
-  const [deafened, setDeafened] = useState(false);
 
   const [livekitRoom] = useState(() => new Room({
     adaptiveStream: true,
@@ -171,330 +121,67 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     if (socketRef.current?.connected) socketRef.current.emit(msg.t, msg);
   }, []);
 
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const conversationsRef = useRef<Conversation[]>([]);
-  const [activeConversationId, setActiveConversationIdState] = useState<string | null>(null);
-  const activeConversationIdRef = useRef<string | null>(null);
-  const [activeCallConversationId, setActiveCallConversationIdState] = useState<string | null>(null);
-  const activeCallConversationIdRef = useRef<string | null>(null);
-  const pendingCallConversationIdRef = useRef<string | null>(null);
-  const setActiveCallConversationId = useCallback((id: string | null) => {
-    activeCallConversationIdRef.current = id;
-    setActiveCallConversationIdState(id);
-  }, []);
   const activeViewRef = useRef<'chat' | 'call'>('chat');
   const notifyActiveView = useCallback((view: 'chat' | 'call') => { activeViewRef.current = view; }, []);
   const requestChatViewRef = useRef<(() => void) | null>(null);
   const registerRequestChatView = useCallback((fn: () => void) => { requestChatViewRef.current = fn; }, []);
   const requestChatView = useCallback(() => { requestChatViewRef.current?.(); }, []);
-  const [messagesByConversation, setMessagesByConversation] = useState<Map<string, ChatMessage[]>>(new Map());
-  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
-  const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
-  const messagesByConversationRef = useRef<Map<string, ChatMessage[]>>(new Map());
-  useEffect(() => { messagesByConversationRef.current = messagesByConversation; }, [messagesByConversation]);
-  const [hasMoreByConversation, setHasMoreByConversation] = useState<Map<string, boolean>>(new Map());
-  const hasMoreByConversationRef = useRef<Map<string, boolean>>(new Map());
-  useEffect(() => { hasMoreByConversationRef.current = hasMoreByConversation; }, [hasMoreByConversation]);
-  const [hasMoreAfterByConversation, setHasMoreAfterByConversation] = useState<Map<string, boolean>>(new Map());
-  const [loadingOlderByConversation, setLoadingOlderByConversation] = useState<Set<string>>(new Set());
-  const loadingOlderRef = useRef<Set<string>>(new Set());
-  const [unreadByConversation, setUnreadByConversation] = useState<Map<string, number>>(new Map());
-  const [typingByConversation, setTypingByConversation] = useState<Map<string, Set<string>>>(new Map());
-  // Per (conversationId, userId) auto-expiry timers — kept out of React
-  // state (nothing renders off the timer itself), reset on every incoming
-  // typing:true, cleared on typing:false. Covers a sender that disconnects
-  // mid-typing without ever sending false (typing has no persisted/server-
-  // held state to reconcile on disconnect, unlike speaking/deafened).
-  const typingTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const [allUsers, setAllUsers] = useState<Map<string, PublicUser>>(new Map());
-  const allUsersRef = useRef<Map<string, PublicUser>>(new Map());
-  useEffect(() => { allUsersRef.current = allUsers; }, [allUsers]);
-  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
-  const [storageUsage, setStorageUsage] = useState<StorageUsage>({ totalBytes: 0, totalFiles: 0, maxBytes: 0 });
+
   const [moderationError, setModerationError] = useState<string | null>(null);
 
-  const clearTypingEntry = useCallback((conversationId: string, userId: string) => {
-    const key = `${conversationId}:${userId}`;
-    const timer = typingTimersRef.current.get(key);
-    if (timer) { clearTimeout(timer); typingTimersRef.current.delete(key); }
-    setTypingByConversation((prev) => {
-      const existing = prev.get(conversationId);
-      if (!existing || !existing.has(userId)) return prev;
-      const nextSet = new Set(existing);
-      nextSet.delete(userId);
-      const next = new Map(prev);
-      if (nextSet.size) next.set(conversationId, nextSet); else next.delete(conversationId);
-      return next;
-    });
-  }, []);
-
-  // Timers are per-conversation-per-user, not tied to any single render —
-  // only flush them on unmount, not on every clearTypingEntry identity change.
-  useEffect(() => () => {
-    typingTimersRef.current.forEach((timer) => clearTimeout(timer));
-    typingTimersRef.current.clear();
-  }, []);
-
-  const switchActiveConversation = useCallback((conversationId: string) => {
-    activeConversationIdRef.current = conversationId;
-    setActiveConversationIdState(conversationId);
-    setUnreadByConversation((prev) => {
-      if (!prev.has(conversationId)) return prev;
-      const next = new Map(prev);
-      next.delete(conversationId);
-      return next;
-    });
-    setReplyingTo(null);
-    setEditingMsgId(null);
-  }, []);
-
-  const openConversation = useCallback((conversationId: string) => {
-    switchActiveConversation(conversationId);
-    sendWs({ t: 'conversation-open', conversationId });
-  }, [sendWs, switchActiveConversation]);
-
-  const openDirect = useCallback((userId: string) => sendWs({ t: 'direct-open', userId }), [sendWs]);
-  const closeConversation = useCallback((conversationId: string) => {
-    // Optimistic — same shape as the 'conversation-deleted' cleanup, minus
-    // the parts that only make sense for an actual delete (leaving a call,
-    // wiping cached messages the user could still reopen the DM to see).
-    setConversations((prev) => prev.filter((c) => c.id !== conversationId));
-    conversationsRef.current = conversationsRef.current.filter((c) => c.id !== conversationId);
-    setUnreadByConversation((prev) => {
-      if (!prev.has(conversationId)) return prev;
-      const next = new Map(prev);
-      next.delete(conversationId);
-      return next;
-    });
-    if (conversationId === activeConversationIdRef.current) {
-      activeConversationIdRef.current = null;
-      setActiveConversationIdState(null);
-    }
-    sendWs({ t: 'conversation-close', conversationId });
-  }, [sendWs]);
-  const pinConversation = useCallback((conversationId: string, pinned: boolean) => {
-    // Optimistic re-sort — mirrors listForUser's ORDER BY (pinned first,
-    // then by recency) so the row jumps immediately instead of waiting on
-    // the round-trip; the real conversation-list broadcast settles it.
-    const next = conversationsRef.current
-      .map((c) => (c.id === conversationId ? { ...c, pinnedAt: pinned ? Date.now() : null } : c))
-      .sort((a, b) => (
-        Number(!!b.pinnedAt) - Number(!!a.pinnedAt)
-        || (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0)
-        || (b.lastMessageAt ?? b.updatedAt) - (a.lastMessageAt ?? a.updatedAt)
-      ));
-    conversationsRef.current = next;
-    setConversations(next);
-    sendWs({ t: 'conversation-pin', conversationId, pinned });
-  }, [sendWs]);
-  const createGroup = useCallback((title: string, memberIds: string[]) => sendWs({ t: 'group-create', title, memberIds }), [sendWs]);
-  const deleteGroup = useCallback((conversationId: string) => sendWs({ t: 'group-delete', conversationId }), [sendWs]);
-  const updateGroupTitle = useCallback((conversationId: string, title: string) => sendWs({ t: 'group-update', conversationId, title }), [sendWs]);
-  const updateGroupAvatar = useCallback((conversationId: string, avatar: string) => sendWs({ t: 'group-update', conversationId, avatar }), [sendWs]);
-  const addGroupMembers = useCallback((conversationId: string, memberIds: string[]) => sendWs({ t: 'group-members-add', conversationId, memberIds }), [sendWs]);
-  const removeGroupMember = useCallback((conversationId: string, userId: string) => sendWs({ t: 'group-members-remove', conversationId, userId }), [sendWs]);
-
-  const loadOlderMessages = useCallback((conversationId: string) => {
-    if (loadingOlderRef.current.has(conversationId)) return;
-    if (hasMoreByConversationRef.current.get(conversationId) === false) return;
-    const oldest = messagesByConversationRef.current.get(conversationId)?.[0];
-    if (!oldest) return;
-    loadingOlderRef.current.add(conversationId);
-    setLoadingOlderByConversation((prev) => new Set(prev).add(conversationId));
-    sendWs({ t: 'load-more-messages', conversationId, beforeMsgId: oldest.msgId });
-  }, [sendWs]);
-
-  const [pendingJumpTarget, setPendingJumpTargetState] = useState<{ conversationId: string; msgId: number } | null>(null);
-  const pendingJumpRef = useRef<{ conversationId: string; msgId: number } | null>(null);
-  const clearPendingJumpTarget = useCallback(() => setPendingJumpTargetState(null), []);
-
-  const jumpToMessage = useCallback((conversationId: string, msgId: number) => {
-    const alreadyLoaded = messagesByConversationRef.current.get(conversationId)?.some((msg) => msg.msgId === msgId) ?? false;
-    if (conversationId !== activeConversationIdRef.current) switchActiveConversation(conversationId);
-    setPendingJumpTargetState({ conversationId, msgId });
-    if (alreadyLoaded) return;
-    pendingJumpRef.current = { conversationId, msgId };
-    sendWs({ t: 'load-messages-around', conversationId, msgId });
-  }, [sendWs, switchActiveConversation]);
-
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const pendingSearchRef = useRef<{ query: string; conversationId?: string } | null>(null);
-  const clearSearchError = useCallback(() => setSearchError(null), []);
-
-  const searchMessages = useCallback((query: string, conversationId?: string) => {
-    const trimmed = query.trim();
-    if (!trimmed) {
-      pendingSearchRef.current = null;
-      setSearchResults([]);
-      setSearchLoading(false);
-      return;
-    }
-    pendingSearchRef.current = { query: trimmed, conversationId };
-    setSearchLoading(true);
-    sendWs({ t: 'message-search', query: trimmed, ...(conversationId ? { conversationId } : {}) });
-  }, [sendWs]);
-
-  const sendChatMessage = useCallback((conversationId: string, text: string, replyTo?: number) => {
-    const trimmed = text.trim();
-    if (trimmed) sendWs({ t: 'chat', conversationId, text: trimmed, ...(replyTo ? { replyTo } : {}) });
-  }, [sendWs]);
-  const deleteChatMessage = useCallback((msgId: number) => sendWs({ t: 'chat-delete', msgId }), [sendWs]);
-  const editChatMessage = useCallback((msgId: number, text: string) => {
-    const trimmed = text.trim();
-    if (trimmed) sendWs({ t: 'chat-edit', msgId, text: trimmed });
-  }, [sendWs]);
-  const reactToChatMessage = useCallback((msgId: number, emoji: ReactionEmoji) => sendWs({ t: 'chat-react', msgId, emoji }), [sendWs]);
-  const sendTyping = useCallback((conversationId: string, value: boolean) => sendWs({ t: 'typing', conversationId, value }), [sendWs]);
-
-  const sendAttachments = useCallback(async (
-    conversationId: string, files: File[], caption: string, onProgress?: (fileIndex: number, fraction: number) => void
-  ): Promise<void> => {
-    if (!files.length) return;
-    const msgId = await uploadFileInChunks({ conversationId, file: files[0]!, caption, onProgress: (f) => onProgress?.(0, f) });
-    for (let i = 1; i < files.length; i++) {
-      try {
-        await uploadFileInChunks({ conversationId, file: files[i]!, caption: '', targetMsgId: msgId, onProgress: (f) => onProgress?.(i, f) });
-      } catch {
-        throw new PartialAttachmentError(i, files.length);
-      }
-    }
-  }, []);
-
-  const deleteUserAccount = useCallback((userId: string) => sendWs({ t: 'user-delete', userId }), [sendWs]);
-  const kickFromCall = useCallback((participantId: string) => sendWs({ t: 'call-kick', participantId }), [sendWs]);
+  // Domain hooks — each owns one slice of what used to all live directly in
+  // this component (see the module comment in each hooks/use*.ts file for
+  // why it's split this way). Construction order matters in a couple of
+  // spots: presence before chatMessages (chatMessages reads its allUsersRef),
+  // and the camera/screen-share/mic hooks before useCallLifecycle (it
+  // composes their leave/mute functions).
+  const conversationsList = useConversationsList(sendWs);
+  const presence = usePresence();
+  const typingIndicator = useTypingIndicator(sendWs, myUserIdRef);
+  const chatMessages = useChatMessages({
+    sendWs,
+    activeConversationIdRef: conversationsList.activeConversationIdRef,
+    setActiveConversation: conversationsList.setActiveConversation,
+    conversationsRef: conversationsList.conversationsRef,
+    allUsersRef: presence.allUsersRef,
+    myUserIdRef,
+    myUsernameRef,
+    activeViewRef,
+    clearTypingEntry: typingIndicator.clearTypingEntry,
+  });
+  const messageReactions = useMessageReactions(sendWs, myIdRef);
+  const messageSearch = useMessageSearch(sendWs);
+  const attachmentsUpload = useAttachmentsUpload();
 
   const { startSharing, stopSharing } = useScreenShare(livekitRoom, dispatch);
   const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch);
   const { activateMic, toggleMicMuted, setMicMuted, leaveMic } = useMicrophone(livekitRoom, dispatch);
 
-  const toggleDeafened = useCallback(() => {
-    const next = !deafened;
-    setDeafened(next);
-    if (next) setMicMuted(true);
-    playSound(next ? 'deafened' : 'undeafened');
-    sendWs({ t: 'deafened', value: next });
-  }, [deafened, setMicMuted, sendWs]);
+  const callLifecycle = useCallLifecycle({
+    livekitRoom, dispatch, sendWs, stopCamera, stopSharing, activateMic, setMicMuted, leaveMic,
+    cameraOn: state.me.cameraOn, sharing: state.me.sharing,
+  });
 
-  const leaveCall = useCallback(async () => {
-    if (state.me.cameraOn) stopCamera();
-    if (state.me.sharing) stopSharing();
-    await leaveMic();
-    livekitRoom.disconnect();
-    sendWs({ t: 'call-leave' });
-    pendingCallConversationIdRef.current = null;
-    setActiveCallConversationId(null);
-  }, [state.me.cameraOn, state.me.sharing, stopCamera, stopSharing, leaveMic, livekitRoom, sendWs, setActiveCallConversationId]);
+  /** The FULL "open a conversation" behavior — cursor move (conversationsList)
+   * plus resetting this conversation's unread/reply/editing state
+   * (chatMessages) plus telling the server. Composed here, not inside
+   * either hook, because it's the one operation that genuinely spans both
+   * of their state. */
+  const openConversation = useCallback((conversationId: string) => {
+    conversationsList.setActiveConversation(conversationId);
+    chatMessages.clearUnread(conversationId);
+    chatMessages.setReplyingTo(null);
+    chatMessages.setEditingMsgId(null);
+    sendWs({ t: 'conversation-open', conversationId });
+  }, [conversationsList.setActiveConversation, chatMessages.clearUnread, chatMessages.setReplyingTo, chatMessages.setEditingMsgId, sendWs]);
 
-  const joinCall = useCallback(async (conversationId: string) => {
-    if (activeCallConversationIdRef.current === conversationId) return;
-    if (activeCallConversationIdRef.current) await leaveCall();
-    pendingCallConversationIdRef.current = conversationId;
-    sendWs({ t: 'call-join', conversationId });
-  }, [sendWs, leaveCall]);
+  const closeConversation = useCallback((conversationId: string) => {
+    conversationsList.removeConversation(conversationId);
+    chatMessages.clearUnread(conversationId);
+    sendWs({ t: 'conversation-close', conversationId });
+  }, [conversationsList.removeConversation, chatMessages.clearUnread, sendWs]);
 
-  const leaveCallRef = useRef(leaveCall);
-  useEffect(() => { leaveCallRef.current = leaveCall; }, [leaveCall]);
-
-  useEffect(() => {
-    const onDisconnected = (reason?: DisconnectReason) => {
-      if (reason === DisconnectReason.CLIENT_INITIATED) return;
-      if (state.me.cameraOn) stopCamera();
-      if (state.me.sharing) stopSharing();
-      setActiveCallConversationId(null);
-    };
-    livekitRoom.on(RoomEvent.Disconnected, onDisconnected);
-    return () => { livekitRoom.off(RoomEvent.Disconnected, onDisconnected); };
-  }, [livekitRoom, stopCamera, stopSharing, setActiveCallConversationId, state.me.cameraOn, state.me.sharing]);
-
-  useEffect(() => {
-    const onLocalUnpublished = (pub: LocalTrackPublication) => {
-      if (pub.source === Track.Source.ScreenShare) dispatch({ type: 'SET_LOCAL_SHARING', sharing: false });
-      if (pub.source === Track.Source.Camera) dispatch({ type: 'SET_LOCAL_CAMERA', on: false });
-    };
-    livekitRoom.on(RoomEvent.LocalTrackUnpublished, onLocalUnpublished);
-    return () => { livekitRoom.off(RoomEvent.LocalTrackUnpublished, onLocalUnpublished); };
-  }, [livekitRoom, dispatch]);
-
-  useEffect(() => {
-    const onPublished = (pub: { source: Track.Source }) => {
-      if (pub.source === Track.Source.Microphone) playSound('incomingUser');
-      if (pub.source === Track.Source.ScreenShare) playSound('screenshare');
-      if (pub.source === Track.Source.Camera) playSound('camera');
-    };
-    const onLocalPublished = (pub: { source: Track.Source }) => {
-      onPublished(pub);
-      if (pub.source === Track.Source.Microphone) sendWs({ t: 'call-event', kind: 'joined' });
-      if (pub.source === Track.Source.ScreenShare) sendWs({ t: 'call-event', kind: 'screenshare' });
-    };
-    const onMicUnpublished = (pub: { source: Track.Source }) => {
-      if (pub.source === Track.Source.Microphone) playSound('userLeave');
-    };
-    livekitRoom.on(RoomEvent.TrackPublished, onPublished);
-    livekitRoom.on(RoomEvent.TrackUnpublished, onMicUnpublished);
-    livekitRoom.on(RoomEvent.LocalTrackPublished, onLocalPublished);
-    livekitRoom.on(RoomEvent.LocalTrackUnpublished, onMicUnpublished);
-    return () => {
-      livekitRoom.off(RoomEvent.TrackPublished, onPublished);
-      livekitRoom.off(RoomEvent.TrackUnpublished, onMicUnpublished);
-      livekitRoom.off(RoomEvent.LocalTrackPublished, onLocalPublished);
-      livekitRoom.off(RoomEvent.LocalTrackUnpublished, onMicUnpublished);
-    };
-  }, [livekitRoom, sendWs]);
-
-  const [localMic, setLocalMic] = useState<{ track: LKTrack | null; muted: boolean }>({ track: null, muted: true });
-  useEffect(() => {
-    function reportMic() {
-      const pub = livekitRoom.localParticipant.getTrackPublication(Track.Source.Microphone);
-      setLocalMic({ track: pub?.track ?? null, muted: pub ? pub.isMuted : true });
-      sendWs({ t: 'mic-state', activated: !!pub, muted: pub ? pub.isMuted : true });
-    }
-    function reportCamera() {
-      sendWs({ t: 'camera', on: !!livekitRoom.localParticipant.getTrackPublication(Track.Source.Camera) });
-    }
-    function reportSharing() {
-      sendWs({ t: 'screen-share', on: !!livekitRoom.localParticipant.getTrackPublication(Track.Source.ScreenShare) });
-    }
-    const onPublishChange = (pub: { source: Track.Source }) => {
-      if (pub.source === Track.Source.Microphone) reportMic();
-      if (pub.source === Track.Source.Camera) reportCamera();
-      if (pub.source === Track.Source.ScreenShare) reportSharing();
-    };
-    const onMuteChange = (pub: { source: Track.Source }, participant: { identity: string }) => {
-      if (participant.identity === livekitRoom.localParticipant.identity && pub.source === Track.Source.Microphone) reportMic();
-    };
-    livekitRoom.on(RoomEvent.LocalTrackPublished, onPublishChange);
-    livekitRoom.on(RoomEvent.LocalTrackUnpublished, onPublishChange);
-    livekitRoom.on(RoomEvent.TrackMuted, onMuteChange);
-    livekitRoom.on(RoomEvent.TrackUnmuted, onMuteChange);
-    return () => {
-      livekitRoom.off(RoomEvent.LocalTrackPublished, onPublishChange);
-      livekitRoom.off(RoomEvent.LocalTrackUnpublished, onPublishChange);
-      livekitRoom.off(RoomEvent.TrackMuted, onMuteChange);
-      livekitRoom.off(RoomEvent.TrackUnmuted, onMuteChange);
-    };
-  }, [livekitRoom, sendWs]);
-
-  const isSpeakingLocal = useTrackSpeaking(localMic.track, localMic.muted);
-  useEffect(() => {
-    sendWs({ t: 'speaking', value: isSpeakingLocal });
-  }, [isSpeakingLocal, sendWs]);
-
-  const [reactions, setReactions] = useState<ReactionEvent[]>([]);
-  const reactionKeyRef = useRef(0);
-
-  const pushReaction = useCallback((id: string, emoji: ReactionEmoji) => {
-    const key = reactionKeyRef.current++;
-    const left = 12 + Math.random() * 76;
-    setReactions((prev) => [...prev, { key, id, emoji, left }]);
-    setTimeout(() => setReactions((prev) => prev.filter((r) => r.key !== key)), REACTION_DURATION_MS);
-  }, []);
-
-  const sendReaction = useCallback((emoji: ReactionEmoji) => {
-    sendWs({ t: 'reaction', emoji });
-    if (myIdRef.current) pushReaction(myIdRef.current, emoji);
-  }, [pushReaction, sendWs]);
+  const deleteUserAccount = useCallback((userId: string) => sendWs({ t: 'user-delete', userId }), [sendWs]);
 
   const handleServerMessage = useCallback((m: ServerMessage) => {
     switch (m.t) {
@@ -518,239 +205,87 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           role: m.role,
           participants: m.participants,
         });
-        setConversations(m.conversations ?? []);
-        conversationsRef.current = m.conversations ?? [];
-        const usersMap = new Map(m.users.map((u) => [u.id, u]));
-        setAllUsers(usersMap);
-        setOnlineUserIds(new Set(m.onlineUserIds));
-        setStorageUsage(m.storageUsage);
+        conversationsList.setInitial(m.conversations ?? []);
+        presence.setInitial(m.users, m.onlineUserIds);
+        attachmentsUpload.setStorageUsage(m.storageUsage);
         {
           const firstConversation = (m.conversations ?? [])[0];
           if (firstConversation) openConversation(firstConversation.id);
         }
         break;
       }
-      case 'call-token': {
-        if (m.conversationId !== pendingCallConversationIdRef.current) break;
-        livekitRoom.connect(m.livekitUrl, m.livekitToken)
-          .then(() => activateMic())
-          .catch((err) => console.warn('LiveKit connect falhou', err));
-        setActiveCallConversationId(m.conversationId);
+      case 'call-token':
+        callLifecycle.onCallToken(m);
         break;
-      }
       case 'participant-joined':
         dispatch({ type: 'PARTICIPANT_JOINED', participant: m.participant });
-        setAllUsers((prev) => mergeUserFromParticipant(prev, m.participant));
+        presence.onParticipantJoined(m);
         break;
       case 'participant-updated':
         dispatch({ type: 'PARTICIPANT_UPDATED', participant: m.participant });
-        setAllUsers((prev) => mergeUserFromParticipant(prev, m.participant));
+        presence.onParticipantUpdated(m);
         break;
       case 'participant-left':
         dispatch({ type: 'PARTICIPANT_LEFT', id: m.id });
         break;
       case 'reaction':
-        pushReaction(m.id, m.emoji);
+        messageReactions.onReaction(m);
         break;
       case 'conversation-list':
-        setConversations(m.conversations);
-        conversationsRef.current = m.conversations;
+        conversationsList.onConversationList(m);
         break;
-      case 'conversation-opened': {
-        // An empty (or closed) direct conversation never shows up in
-        // conversation-list — the server sends its summary straight to the
-        // opener instead so it can still be rendered/typed into for this
-        // session; it becomes "real" history for everyone once a message
-        // is actually sent (touchConversation broadcasts the list then).
-        const idx = conversationsRef.current.findIndex((c) => c.id === m.conversation.id);
-        const nextConversations = idx === -1
-          ? [m.conversation, ...conversationsRef.current]
-          : conversationsRef.current.map((c) => (c.id === m.conversation.id ? m.conversation : c));
-        conversationsRef.current = nextConversations;
-        setConversations(nextConversations);
-        openConversation(m.conversationId);
+      case 'conversation-opened':
+        conversationsList.onConversationOpened(m, openConversation);
         break;
-      }
       case 'conversation-history':
-        setMessagesByConversation((prev) => new Map(prev).set(m.conversationId, m.messages));
-        setHasMoreByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMore));
-        setHasMoreAfterByConversation((prev) => new Map(prev).set(m.conversationId, false));
+        chatMessages.onConversationHistory(m);
         break;
-      case 'conversation-history-around': {
-        const pending = pendingJumpRef.current;
-        if (!pending || pending.conversationId !== m.conversationId || pending.msgId !== m.msgId) break;
-        pendingJumpRef.current = null;
-        setMessagesByConversation((prev) => new Map(prev).set(m.conversationId, m.messages));
-        setHasMoreByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMoreBefore));
-        setHasMoreAfterByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMoreAfter));
+      case 'conversation-history-around':
+        chatMessages.onConversationHistoryAround(m);
         break;
-      }
-      case 'message-search-results': {
-        const pending = pendingSearchRef.current;
-        if (!pending || pending.query !== m.query || pending.conversationId !== m.conversationId) break;
-        setSearchResults(m.results);
-        setSearchLoading(false);
+      case 'message-search-results':
+        messageSearch.onMessageSearchResults(m);
         break;
-      }
-      case 'conversation-history-more': {
-        const conversationId = m.conversationId;
-        loadingOlderRef.current.delete(conversationId);
-        setLoadingOlderByConversation((prev) => {
-          if (!prev.has(conversationId)) return prev;
-          const next = new Set(prev);
-          next.delete(conversationId);
-          return next;
-        });
-        setHasMoreByConversation((prev) => new Map(prev).set(conversationId, m.hasMore));
-        if (m.messages.length > 0) {
-          setMessagesByConversation((prev) => {
-            const existing = prev.get(conversationId) || [];
-            const existingIds = new Set(existing.map((msg) => msg.msgId));
-            const older = m.messages.filter((msg) => !existingIds.has(msg.msgId));
-            return new Map(prev).set(conversationId, [...older, ...existing]);
-          });
-        }
+      case 'conversation-history-more':
+        chatMessages.onConversationHistoryMore(m);
         break;
-      }
-      case 'chat': {
-        const conversationId = m.message.conversationId;
-        setMessagesByConversation((prev) => {
-          const existing = prev.get(conversationId) || [];
-          const next = [...existing, m.message];
-          return new Map(prev).set(conversationId, next.length > CHAT_CLIENT_LIMIT ? next.slice(next.length - CHAT_CLIENT_LIMIT) : next);
-        });
-        if (conversationId !== activeConversationIdRef.current) {
-          setUnreadByConversation((prev) => new Map(prev).set(conversationId, (prev.get(conversationId) || 0) + 1));
-        }
-        // The message itself is proof they stopped typing — don't wait for
-        // their typing:false (or the local expiry timer) to catch up.
-        if (m.message.id) clearTypingEntry(conversationId, m.message.id);
-        const amLookingAtIt = document.hasFocus() && activeViewRef.current === 'chat' && conversationId === activeConversationIdRef.current;
-        if (m.message.id !== myUserIdRef.current && !amLookingAtIt) {
-          playSound('newMessage');
-          notifyIncomingChatMessage({
-            conversationId,
-            conversationName: displayNameForConversation(conversationsRef.current.find((c) => c.id === conversationId), myUserIdRef.current, allUsersRef.current),
-            senderId: m.message.id,
-            senderName: (m.message.id ? allUsersRef.current.get(m.message.id)?.displayName : undefined) ?? m.message.name,
-            text: m.message.text,
-            mentioned: mentionsUsername(m.message.text, myUsernameRef.current),
-          });
-        }
+      case 'chat':
+        chatMessages.onChat(m);
         break;
-      }
-      case 'typing': {
-        if (m.userId === myUserIdRef.current) break; // never show yourself your own indicator
-        const key = `${m.conversationId}:${m.userId}`;
-        const existingTimer = typingTimersRef.current.get(key);
-        if (existingTimer) clearTimeout(existingTimer);
-        if (m.value) {
-          setTypingByConversation((prev) => {
-            const existing = prev.get(m.conversationId);
-            if (existing?.has(m.userId)) return prev; // already shown, just refreshing the expiry below
-            const nextSet = new Set(existing).add(m.userId);
-            return new Map(prev).set(m.conversationId, nextSet);
-          });
-          // Slightly longer than the composer's own 5s idle-timeout (see
-          // MessageComposer.tsx) so a normal in-flight refresh always beats
-          // this — only a genuinely lost typing:false (e.g. tab closed) ever
-          // lets this fire.
-          typingTimersRef.current.set(key, setTimeout(() => clearTypingEntry(m.conversationId, m.userId), 6000));
-        } else {
-          typingTimersRef.current.delete(key);
-          clearTypingEntry(m.conversationId, m.userId);
-        }
+      case 'typing':
+        typingIndicator.onTyping(m);
         break;
-      }
       case 'chat-deleted':
-        setMessagesByConversation((prev) => {
-          const existing = prev.get(m.conversationId);
-          if (!existing) return prev;
-          return new Map(prev).set(m.conversationId, existing.filter((msg) => msg.msgId !== m.msgId));
-        });
+        chatMessages.onChatDeleted(m);
         break;
-      case 'chat-edited': {
-        const conversationId = m.message.conversationId;
-        setMessagesByConversation((prev) => {
-          const existing = prev.get(conversationId);
-          if (!existing) return prev;
-          return new Map(prev).set(conversationId, existing.map((msg) => (msg.msgId === m.message.msgId ? m.message : msg)));
-        });
+      case 'chat-edited':
+        chatMessages.onChatEdited(m);
         break;
-      }
       case 'chat-attachment-added':
-        setMessagesByConversation((prev) => {
-          const existing = prev.get(m.conversationId);
-          if (!existing) return prev;
-          return new Map(prev).set(m.conversationId, existing.map((msg) => (
-            msg.msgId === m.msgId ? { ...msg, attachments: [...(msg.attachments || []), m.attachment] } : msg
-          )));
-        });
+        chatMessages.onChatAttachmentAdded(m);
         break;
       case 'chat-reaction-updated':
-        setMessagesByConversation((prev) => {
-          const existing = prev.get(m.conversationId);
-          if (!existing) return prev;
-          const next = existing.map((msg) => {
-            if (msg.msgId !== m.msgId) return msg;
-            const reactions = { ...msg.reactions };
-            if (m.userIds.length) reactions[m.emoji] = m.userIds; else delete reactions[m.emoji];
-            return { ...msg, reactions };
-          });
-          return new Map(prev).set(m.conversationId, next);
-        });
+        chatMessages.onChatReactionUpdated(m);
         break;
       case 'conversation-deleted':
-        setConversations((prev) => prev.filter((c) => c.id !== m.conversationId));
-        conversationsRef.current = conversationsRef.current.filter((c) => c.id !== m.conversationId);
-        setMessagesByConversation((prev) => {
-          if (!prev.has(m.conversationId)) return prev;
-          const next = new Map(prev);
-          next.delete(m.conversationId);
-          return next;
-        });
-        setUnreadByConversation((prev) => {
-          if (!prev.has(m.conversationId)) return prev;
-          const next = new Map(prev);
-          next.delete(m.conversationId);
-          return next;
-        });
-        if (m.conversationId === activeCallConversationIdRef.current) leaveCallRef.current();
-        if (m.conversationId === activeConversationIdRef.current) {
-          activeConversationIdRef.current = null;
-          setActiveConversationIdState(null);
-        }
+        conversationsList.onConversationDeleted(m);
+        chatMessages.onConversationDeleted(m);
+        callLifecycle.onConversationDeleted(m.conversationId);
         break;
       case 'user-online':
-        setOnlineUserIds((prev) => (prev.has(m.userId) ? prev : new Set(prev).add(m.userId)));
+        presence.onUserOnline(m);
         break;
       case 'user-offline':
-        setOnlineUserIds((prev) => {
-          if (!prev.has(m.userId)) return prev;
-          const next = new Set(prev);
-          next.delete(m.userId);
-          return next;
-        });
+        presence.onUserOffline(m);
         break;
       case 'user-registered':
-        setAllUsers((prev) => new Map(prev).set(m.user.id, m.user));
+        presence.onUserRegistered(m);
         break;
       case 'user-deleted':
-        setAllUsers((prev) => {
-          if (!prev.has(m.userId)) return prev;
-          const next = new Map(prev);
-          next.delete(m.userId);
-          return next;
-        });
-        setOnlineUserIds((prev) => {
-          if (!prev.has(m.userId)) return prev;
-          const next = new Set(prev);
-          next.delete(m.userId);
-          return next;
-        });
+        presence.onUserDeleted(m);
         break;
       case 'storage-usage':
-        setStorageUsage({ totalBytes: m.totalBytes, totalFiles: m.totalFiles, maxBytes: m.maxBytes });
+        attachmentsUpload.onStorageUsage(m);
         break;
       case 'error':
         if (m.code === 'full') {
@@ -760,18 +295,20 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         } else if (m.code === 'cannot-delete-self') {
           setModerationError(m.message);
         } else if (m.code === 'livekit-unavailable') {
-          pendingCallConversationIdRef.current = null;
+          callLifecycle.onLivekitUnavailable();
           dispatch({ type: 'SET_SHARE_ERROR', message: m.message });
         } else if (m.code === 'message-not-found') {
-          pendingJumpRef.current = null;
-          setPendingJumpTargetState(null);
-          setSearchError(m.message);
+          chatMessages.cancelPendingJump();
+          messageSearch.setSearchErrorMessage(m.message);
         } else {
           console.warn('[ws] erro nao tratado do servidor:', m.code, m.message);
         }
         break;
     }
-  }, [dispatch, pushReaction, livekitRoom, openConversation, activateMic, setActiveCallConversationId]);
+  }, [
+    dispatch, conversationsList, presence, attachmentsUpload, openConversation, callLifecycle,
+    messageReactions, messageSearch, chatMessages, typingIndicator,
+  ]);
 
   const handleServerMessageRef = useRef(handleServerMessage);
   useEffect(() => { handleServerMessageRef.current = handleServerMessage; }, [handleServerMessage]);
@@ -814,7 +351,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       bio: finalBio,
       profileLinks: finalProfileLinks,
     });
-    setAllUsers((prev) => {
+    presence.setAllUsers((prev) => {
       const userId = myUserIdRef.current;
       if (!userId) return prev;
       const existing = prev.get(userId);
@@ -844,7 +381,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       bio: finalBio,
       profileLinks: finalProfileLinks,
     });
-  }, [dispatch, sendWs, state.me.name]);
+  }, [dispatch, sendWs, state.me.name, presence.setAllUsers]);
 
   const updateAvatar = useCallback((avatar: string) => {
     updateProfile({
@@ -938,25 +475,37 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   return (
     <RoomContext.Provider
       value={{
-        state, dispatch, sendWs, tileDomRegistry, audioRegistry, audioUnlocked, deafened, toggleDeafened, livekitRoom, notifyActiveView,
+        state, dispatch, sendWs, tileDomRegistry, audioRegistry,
+        audioUnlocked: callLifecycle.audioUnlocked, deafened: callLifecycle.deafened, toggleDeafened: callLifecycle.toggleDeafened,
+        livekitRoom, notifyActiveView,
         registerRequestChatView, requestChatView,
-        activeCallConversationId, joinCall, leaveCall,
+        activeCallConversationId: callLifecycle.activeCallConversationId, joinCall: callLifecycle.joinCall, leaveCall: callLifecycle.leaveCall,
         startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted,
         updateAvatar, updateProfile, uploadProfileImage, menuTarget, openTileMenu, closeTileMenu,
-        reactions, sendReaction, showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
+        reactions: messageReactions.reactions, sendReaction: messageReactions.sendReaction,
+        showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
         hideAudioOnlyTiles, setHideAudioOnlyTiles, showTileBanners, setShowTileBanners,
         compressImagesDefault, setCompressImagesDefault,
-        conversations, activeConversationId, openConversation, openDirect, closeConversation, pinConversation, createGroup, deleteGroup,
-        updateGroupTitle, updateGroupAvatar, addGroupMembers, removeGroupMember,
-        messagesByConversation, hasMoreByConversation, loadingOlderByConversation, loadOlderMessages, unreadByConversation,
-        typingByConversation, sendTyping,
-        allUsers, onlineUserIds,
-        deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null), kickFromCall,
-        sendChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,
-        replyingTo, setReplyingTo, editingMsgId, setEditingMsgId,
-        hasMoreAfterByConversation, pendingJumpTarget, clearPendingJumpTarget, jumpToMessage,
-        searchResults, searchLoading, searchError, clearSearchError, searchMessages,
-        storageUsage, sendAttachments,
+        conversations: conversationsList.conversations, activeConversationId: conversationsList.activeConversationId,
+        openConversation, openDirect: conversationsList.openDirect, closeConversation, pinConversation: conversationsList.pinConversation,
+        createGroup: conversationsList.createGroup, deleteGroup: conversationsList.deleteGroup,
+        updateGroupTitle: conversationsList.updateGroupTitle, updateGroupAvatar: conversationsList.updateGroupAvatar,
+        addGroupMembers: conversationsList.addGroupMembers, removeGroupMember: conversationsList.removeGroupMember,
+        messagesByConversation: chatMessages.messagesByConversation, hasMoreByConversation: chatMessages.hasMoreByConversation,
+        loadingOlderByConversation: chatMessages.loadingOlderByConversation, loadOlderMessages: chatMessages.loadOlderMessages,
+        unreadByConversation: chatMessages.unreadByConversation,
+        typingByConversation: typingIndicator.typingByConversation, sendTyping: typingIndicator.sendTyping,
+        allUsers: presence.allUsers, onlineUserIds: presence.onlineUserIds,
+        deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null), kickFromCall: callLifecycle.kickFromCall,
+        sendChatMessage: chatMessages.sendChatMessage, deleteChatMessage: chatMessages.deleteChatMessage,
+        editChatMessage: chatMessages.editChatMessage, reactToChatMessage: chatMessages.reactToChatMessage,
+        replyingTo: chatMessages.replyingTo, setReplyingTo: chatMessages.setReplyingTo,
+        editingMsgId: chatMessages.editingMsgId, setEditingMsgId: chatMessages.setEditingMsgId,
+        hasMoreAfterByConversation: chatMessages.hasMoreAfterByConversation, pendingJumpTarget: chatMessages.pendingJumpTarget,
+        clearPendingJumpTarget: chatMessages.clearPendingJumpTarget, jumpToMessage: chatMessages.jumpToMessage,
+        searchResults: messageSearch.searchResults, searchLoading: messageSearch.searchLoading, searchError: messageSearch.searchError,
+        clearSearchError: messageSearch.clearSearchError, searchMessages: messageSearch.searchMessages,
+        storageUsage: attachmentsUpload.storageUsage, sendAttachments: attachmentsUpload.sendAttachments,
       }}
     >
       {children}
