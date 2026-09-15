@@ -42,6 +42,15 @@ describe('buildCommandItems', () => {
     expect(conversationItems.map((it) => it.label)).toEqual(['Ana', 'Squad']);
   });
 
+  it('todo item leva o avatar do usuário/grupo correspondente, não um ícone genérico', () => {
+    const items = buildCommandItems(conversations, allUsers, me, new Map(), null, noopActions);
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) {
+      expect(item.avatar).toBeTruthy();
+      expect(item.icon).toBeUndefined();
+    }
+  });
+
   it('"Pessoas" só lista quem ainda não tem uma DM na lista (evita duplicar com "Conversas")', () => {
     const items = buildCommandItems(conversations, allUsers, me, new Map(), null, noopActions);
     const peopleItems = items.filter((it) => it.group === 'Pessoas');

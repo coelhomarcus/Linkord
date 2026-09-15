@@ -1,12 +1,32 @@
-import { MessageCircle, Phone, PhoneCall, UsersRound } from 'lucide-react';
 import type { CommandItem } from '@/components/motion/command-palette';
+import { Avatar } from '@/shared/Avatar';
 import type { Conversation, Participant, PublicUser } from '@/types/protocol';
 import { conversationTitle, directUser } from './conversationUtils';
+import { GroupAvatar } from './GroupAvatar';
+
+const ROW_AVATAR_SIZE = 20;
 
 interface CommandPaletteActions {
   onOpenConversation: (conversationId: string) => void;
   onMessageUser: (userId: string) => void;
   onCall: (conversationId: string) => void;
+}
+
+/** The same visual identity shown everywhere else for this conversation
+ * (ConversationSidebar's rows, ConversationPanel's header) — a direct
+ * conversation shows the OTHER member's own avatar, a group shows its own
+ * (or its initials, via GroupAvatar). Sized down for a command-row instead
+ * of a sidebar row. */
+function conversationAvatar(conversation: Conversation, title: string, meUserId: string | null, allUsers: Map<string, PublicUser>) {
+  if (conversation.type === 'direct') {
+    const other = directUser(conversation, meUserId, allUsers);
+    if (other) return <Avatar id={other.id} name={other.displayName} avatar={other.avatar} avatarColor={other.avatarColor} size={ROW_AVATAR_SIZE} />;
+  }
+  return <GroupAvatar title={title} avatar={conversation.avatar} size={ROW_AVATAR_SIZE} />;
+}
+
+function userAvatar(user: PublicUser) {
+  return <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={ROW_AVATAR_SIZE} />;
 }
 
 /** Pure builder for the ⌘K command palette's item list — kept separate from
@@ -46,7 +66,7 @@ export function buildCommandItems(
       id: `conversation:${conversation.id}`,
       label: title,
       group: 'Conversas',
-      icon: conversation.type === 'group' ? UsersRound : MessageCircle,
+      avatar: conversationAvatar(conversation, title, meUserId, allUsers),
       onSelect: () => actions.onOpenConversation(conversation.id),
     });
   }
@@ -58,7 +78,7 @@ export function buildCommandItems(
       label: `Conversar com ${user.displayName}`,
       group: 'Pessoas',
       keywords: [user.username],
-      icon: UsersRound,
+      avatar: userAvatar(user),
       onSelect: () => actions.onMessageUser(user.id),
     });
   }
@@ -70,7 +90,7 @@ export function buildCommandItems(
       id: `join-call:${conversation.id}`,
       label: `Entrar na chamada em ${title}`,
       group: 'Chamadas em andamento',
-      icon: PhoneCall,
+      avatar: conversationAvatar(conversation, title, meUserId, allUsers),
       onSelect: () => actions.onCall(conversation.id),
     });
   }
@@ -82,7 +102,7 @@ export function buildCommandItems(
       id: `start-call:${conversation.id}`,
       label: `Iniciar chamada em ${title}`,
       group: 'Iniciar chamada',
-      icon: Phone,
+      avatar: conversationAvatar(conversation, title, meUserId, allUsers),
       onSelect: () => actions.onCall(conversation.id),
     });
   }
