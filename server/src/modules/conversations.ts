@@ -100,15 +100,32 @@ export async function listForUser(userId: string): Promise<ConversationSummary[]
   return rows.map((r) => rowToSummary(r.conversation, members.get(r.conversation.id) ?? [], r.pinnedAt));
 }
 
-export async function broadcastConversationListToUser(userId: string): Promise<void> {
-  const payload = await listForUser(userId);
-  for (const p of participants.values()) {
-    if (p.userId === userId) send(p.socket, { t: 'conversation-list', conversations: payload });
+/** Sends the CURRENT state of one conversation to every member who already
+ * has it, each seeing their OWN `pinnedAt` (a per-member column — a shared
+ * payload would incorrectly reset another member's pin state on their
+ * client, which does a wholesale replace-by-id, not a field merge). One
+ * query for the member list, reused both for `memberIds` and each
+ * recipient's pin — this is what replaced resending every OTHER
+ * conversation in the sidebar (the old `broadcastConversationListToUser(s)`
+ * + `listForUser`) just to reflect a change to ONE row. */
+async function sendConversationUpdateToMembers(t: 'conversation-created' | 'conversation-updated', row: Conversation): Promise<void> {
+  const memberRows = await db.select({ userId: conversationMembers.userId, pinnedAt: conversationMembers.pinnedAt })
+    .from(conversationMembers).where(eq(conversationMembers.conversationId, row.id));
+  const memberIds = memberRows.map((r) => r.userId);
+  for (const { userId, pinnedAt } of memberRows) {
+    for (const p of participants.values()) {
+      if (p.userId === userId) send(p.socket, { t, conversation: rowToSummary(row, memberIds, pinnedAt) });
+    }
   }
 }
 
-async function broadcastConversationListToUsers(userIds: string[]): Promise<void> {
-  await Promise.all([...new Set(userIds)].map((userId) => broadcastConversationListToUser(userId)));
+/** Sends `obj` to every currently-connected socket belonging to `userId` —
+ * multi-tab/device fan-out for events that are only ever visible to the
+ * acting user themselves (closing a DM, pinning, marking as read). */
+function sendToUser(userId: string, obj: { t: string; [key: string]: unknown }): void {
+  for (const p of participants.values()) {
+    if (p.userId === userId) send(p.socket, obj);
+  }
 }
 
 export async function broadcastToConversationMembers(conversationId: string, obj: { t: string; [key: string]: unknown }): Promise<void> {
@@ -134,9 +151,8 @@ export async function conversationExistsForUser(conversationId: string, userId: 
 }
 
 export async function touchConversation(conversationId: string, when = new Date()): Promise<void> {
-  await db.update(conversations).set({ lastMessageAt: when, updatedAt: when }).where(eq(conversations.id, conversationId));
-  const memberRows = await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
-  await broadcastConversationListToUsers(memberRows.map((row) => row.userId));
+  const [row] = await db.update(conversations).set({ lastMessageAt: when, updatedAt: when }).where(eq(conversations.id, conversationId)).returning();
+  if (row) await sendConversationUpdateToMembers('conversation-updated', row);
 }
 
 export async function conversationDisplayName(conversationId: string, viewerUserId: string): Promise<string> {
@@ -216,7 +232,10 @@ async function handleConversationClose(socket: AppSocket, msg: { conversationId?
   await db.update(conversationMembers)
     .set({ hiddenAt: new Date() })
     .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, p.userId)));
-  await broadcastConversationListToUser(p.userId);
+  // Same event the client already understands as "gone from my sidebar" —
+  // closing a DM only ever affects the closer's own view (other tabs
+  // included), never anyone else's.
+  sendToUser(p.userId, { t: 'conversation-deleted', conversationId });
 }
 
 /** Per-member pin (direct or group) — a personal sort-to-top on the
@@ -229,10 +248,11 @@ async function handleConversationPin(socket: AppSocket, msg: { conversationId?: 
   if (!conversationId) return;
   if (!(await conversationExistsForUser(conversationId, p.userId))) return;
 
-  await db.update(conversationMembers)
+  const [updated] = await db.update(conversationMembers)
     .set({ pinnedAt: msg.pinned ? new Date() : null })
-    .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, p.userId)));
-  await broadcastConversationListToUser(p.userId);
+    .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, p.userId)))
+    .returning({ pinnedAt: conversationMembers.pinnedAt });
+  sendToUser(p.userId, { t: 'conversation-pinned', conversationId, pinnedAt: updated?.pinnedAt ? updated.pinnedAt.getTime() : null });
 }
 
 async function handleGroupCreate(socket: AppSocket, msg: { title?: string; memberIds?: unknown }): Promise<void> {
@@ -261,8 +281,16 @@ async function handleGroupCreate(socket: AppSocket, msg: { title?: string; membe
     role: userId === p.userId ? 'owner' : 'member',
   })));
 
-  await broadcastConversationListToUsers(memberIds);
-  send(socket, { t: 'conversation-opened', conversationId: conversation!.id });
+  // Creator gets 'conversation-opened' (adds it AND switches to it, same as
+  // handleDirectOpen) with `conversation` populated — the other members
+  // just get 'conversation-created' (adds it, doesn't switch anyone's view).
+  // `pinnedAt: null` for everyone: a brand-new group can't already be pinned.
+  const summary = rowToSummary(conversation!, memberIds, null);
+  send(socket, { t: 'conversation-opened', conversationId: conversation!.id, conversation: summary });
+  for (const userId of memberIds) {
+    if (userId === p.userId) continue;
+    sendToUser(userId, { t: 'conversation-created', conversation: summary });
+  }
 }
 
 async function handleGroupDelete(socket: AppSocket, msg: { conversationId?: string }): Promise<void> {
@@ -283,7 +311,6 @@ async function handleGroupDelete(socket: AppSocket, msg: { conversationId?: stri
       if (participant.userId === member.userId) send(participant.socket, { t: 'conversation-deleted', conversationId });
     }
   }
-  await broadcastConversationListToUsers(memberRows.map((row) => row.userId));
 }
 
 /** Admin-only rename/re-avatar. `title` and `avatar` are each applied only
@@ -307,7 +334,7 @@ async function handleGroupUpdate(socket: AppSocket, msg: { conversationId?: stri
   if (msg.avatar !== undefined) updates.avatar = sanitizeAvatar(msg.avatar);
   if (updates.title === undefined && updates.avatar === undefined) return;
 
-  await db.update(conversations).set(updates).where(eq(conversations.id, conversationId));
+  const [updatedRow] = await db.update(conversations).set(updates).where(eq(conversations.id, conversationId)).returning();
 
   // the old file (if it was one of our uploads) is now orphaned — same
   // cleanup an account's own avatar change gets in handleProfile.
@@ -318,8 +345,7 @@ async function handleGroupUpdate(socket: AppSocket, msg: { conversationId?: stri
     });
   }
 
-  const memberRows = await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
-  await broadcastConversationListToUsers(memberRows.map((row) => row.userId));
+  await sendConversationUpdateToMembers('conversation-updated', updatedRow!);
 }
 
 /** Admin-only. Silently skips ids that don't exist or are already members —
@@ -343,19 +369,33 @@ async function handleGroupMembersAdd(socket: AppSocket, msg: { conversationId?: 
   if (!newIds.length) return;
 
   await db.insert(conversationMembers).values(newIds.map((userId) => ({ conversationId, userId, role: 'member' as const })));
-  await broadcastConversationListToUsers([...currentIds, ...newIds]);
+
+  // Brand-new members have never seen this conversation — they need the
+  // whole thing (pinnedAt: null, they can't have pinned it yet). Existing
+  // members just need to know who joined, one event per new member.
+  const allMemberIds = [...currentIds, ...newIds];
+  const summary = rowToSummary(conversation, allMemberIds, null);
+  for (const userId of newIds) sendToUser(userId, { t: 'conversation-created', conversation: summary });
+  for (const newUserId of newIds) {
+    for (const participant of participants.values()) {
+      if (currentIds.has(participant.userId)) send(participant.socket, { t: 'conversation-member-added', conversationId, userId: newUserId });
+    }
+  }
 }
 
 /** Purges a group once it has zero members left (an admin-account deletion
  * can do this too, not just handleGroupMembersRemove below — with no
  * group-discovery UI, a memberless group would otherwise become an
- * invisible, unmanageable row nobody's `conversation-list` query ever
- * surfaces again). Otherwise just refreshes whoever remains. Returns
- * whether the group was purged. */
-export async function reconcileGroupMembership(conversationId: string): Promise<boolean> {
+ * invisible, unmanageable row nobody's `listForUser` query ever surfaces
+ * again). Otherwise just notifies whoever remains that `removedUserId` left.
+ * Returns whether the group was purged. */
+export async function reconcileGroupMembership(conversationId: string, removedUserId: string): Promise<boolean> {
   const remainingRows = await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
   if (remainingRows.length > 0) {
-    await broadcastConversationListToUsers(remainingRows.map((row) => row.userId));
+    const remainingIds = new Set(remainingRows.map((row) => row.userId));
+    for (const p of participants.values()) {
+      if (remainingIds.has(p.userId)) send(p.socket, { t: 'conversation-member-removed', conversationId, userId: removedUserId });
+    }
     return false;
   }
   const [conversation] = await db.select({ type: conversations.type }).from(conversations).where(eq(conversations.id, conversationId)).limit(1);
@@ -393,7 +433,7 @@ async function handleGroupMembersRemove(socket: AppSocket, msg: { conversationId
     send(participant.socket, { t: 'conversation-deleted', conversationId });
   }
 
-  await reconcileGroupMembership(conversationId);
+  await reconcileGroupMembership(conversationId, targetUserId);
 }
 
 export const handlers: HandlerTable = {

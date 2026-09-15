@@ -1,6 +1,18 @@
 import { useCallback, useRef, useState } from 'react';
 import type { ClientMessage, Conversation, ServerMessage } from '../../types/protocol';
 
+/** Mirrors listForUser's own ORDER BY (server/src/modules/conversations.ts)
+ * — pinned first (most recently pinned first among those), then everyone
+ * else by recency. Used both for the optimistic pin re-sort and for
+ * re-sorting after any incremental update that could change ordering. */
+function sortConversations(list: Conversation[]): Conversation[] {
+  return [...list].sort((a, b) => (
+    Number(!!b.pinnedAt) - Number(!!a.pinnedAt)
+    || (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0)
+    || (b.lastMessageAt ?? b.updatedAt) - (a.lastMessageAt ?? a.updatedAt)
+  ));
+}
+
 /** The conversation list/sidebar + which one is currently open. Message
  * content itself (messagesByConversation, unread counts, reply/edit draft
  * state) lives in useChatMessages — this hook only owns the list of
@@ -46,16 +58,11 @@ export function useConversationsList(sendWs: (msg: ClientMessage) => void) {
   }, [clearActiveConversation]);
 
   const pinConversation = useCallback((conversationId: string, pinned: boolean) => {
-    // Optimistic re-sort — mirrors listForUser's ORDER BY (pinned first,
-    // then by recency) so the row jumps immediately instead of waiting on
-    // the round-trip; the real conversation-list broadcast settles it.
-    const next = conversationsRef.current
-      .map((c) => (c.id === conversationId ? { ...c, pinnedAt: pinned ? Date.now() : null } : c))
-      .sort((a, b) => (
-        Number(!!b.pinnedAt) - Number(!!a.pinnedAt)
-        || (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0)
-        || (b.lastMessageAt ?? b.updatedAt) - (a.lastMessageAt ?? a.updatedAt)
-      ));
+    // Optimistic re-sort so the row jumps immediately instead of waiting on
+    // the round-trip; the real 'conversation-pinned' broadcast (below)
+    // settles it — including for this same tab, since it's a no-op once
+    // the optimistic value already matches.
+    const next = sortConversations(conversationsRef.current.map((c) => (c.id === conversationId ? { ...c, pinnedAt: pinned ? Date.now() : null } : c)));
     conversationsRef.current = next;
     setConversations(next);
     sendWs({ t: 'conversation-pin', conversationId, pinned });
@@ -68,9 +75,51 @@ export function useConversationsList(sendWs: (msg: ClientMessage) => void) {
   const addGroupMembers = useCallback((conversationId: string, memberIds: string[]) => sendWs({ t: 'group-members-add', conversationId, memberIds }), [sendWs]);
   const removeGroupMember = useCallback((conversationId: string, userId: string) => sendWs({ t: 'group-members-remove', conversationId, userId }), [sendWs]);
 
-  const onConversationList = useCallback((m: Extract<ServerMessage, { t: 'conversation-list' }>) => {
-    setConversations(m.conversations);
-    conversationsRef.current = m.conversations;
+  /** A conversation now belongs on this client's sidebar for the first
+   * time (new group, or just added to an existing one) — upsert by id
+   * (same merge onConversationOpened does), but never switches the active
+   * conversation; that's what 'conversation-opened' is for. */
+  const onConversationCreated = useCallback((m: Extract<ServerMessage, { t: 'conversation-created' }>) => {
+    const idx = conversationsRef.current.findIndex((c) => c.id === m.conversation.id);
+    const next = idx === -1 ? [m.conversation, ...conversationsRef.current] : conversationsRef.current.map((c) => (c.id === m.conversation.id ? m.conversation : c));
+    conversationsRef.current = next;
+    setConversations(next);
+  }, []);
+
+  /** A conversation this client already has changed (rename, avatar, or
+   * message activity bumping lastMessageAt/updatedAt) — replace by id and
+   * re-sort, since activity/pin ordering could have changed. */
+  const onConversationUpdated = useCallback((m: Extract<ServerMessage, { t: 'conversation-updated' }>) => {
+    if (!conversationsRef.current.some((c) => c.id === m.conversation.id)) return;
+    const next = sortConversations(conversationsRef.current.map((c) => (c.id === m.conversation.id ? m.conversation : c)));
+    conversationsRef.current = next;
+    setConversations(next);
+  }, []);
+
+  const onConversationMemberAdded = useCallback((m: Extract<ServerMessage, { t: 'conversation-member-added' }>) => {
+    setConversations((prev) => {
+      const next = prev.map((c) => (c.id === m.conversationId && !c.memberIds.includes(m.userId) ? { ...c, memberIds: [...c.memberIds, m.userId] } : c));
+      conversationsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const onConversationMemberRemoved = useCallback((m: Extract<ServerMessage, { t: 'conversation-member-removed' }>) => {
+    setConversations((prev) => {
+      const next = prev.map((c) => (c.id === m.conversationId ? { ...c, memberIds: c.memberIds.filter((id) => id !== m.userId) } : c));
+      conversationsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  /** Syncs pin state pushed from ANOTHER of this user's own sessions/tabs —
+   * this tab's own pinConversation() already applied it optimistically, so
+   * this is a no-op for the tab that acted and a sync for the others. */
+  const onConversationPinned = useCallback((m: Extract<ServerMessage, { t: 'conversation-pinned' }>) => {
+    if (!conversationsRef.current.some((c) => c.id === m.conversationId)) return;
+    const next = sortConversations(conversationsRef.current.map((c) => (c.id === m.conversationId ? { ...c, pinnedAt: m.pinnedAt } : c)));
+    conversationsRef.current = next;
+    setConversations(next);
   }, []);
 
   /** `openConversationFull` is RoomProvider's composed openConversation
@@ -107,6 +156,7 @@ export function useConversationsList(sendWs: (msg: ClientMessage) => void) {
     setInitial, setActiveConversation, clearActiveConversation, removeConversation,
     openDirect, pinConversation,
     createGroup, deleteGroup, updateGroupTitle, updateGroupAvatar, addGroupMembers, removeGroupMember,
-    onConversationList, onConversationOpened, onConversationDeleted,
+    onConversationCreated, onConversationUpdated, onConversationMemberAdded, onConversationMemberRemoved,
+    onConversationPinned, onConversationOpened, onConversationDeleted,
   };
 }

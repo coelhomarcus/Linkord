@@ -231,11 +231,26 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'reaction':
         messageReactions.onReaction(m);
         break;
-      case 'conversation-list':
-        conversationsList.onConversationList(m);
-        break;
       case 'conversation-opened':
         conversationsList.onConversationOpened(m, openConversation);
+        break;
+      case 'conversation-created':
+        conversationsList.onConversationCreated(m);
+        break;
+      case 'conversation-updated':
+        conversationsList.onConversationUpdated(m);
+        break;
+      case 'conversation-member-added':
+        conversationsList.onConversationMemberAdded(m);
+        break;
+      case 'conversation-member-removed':
+        conversationsList.onConversationMemberRemoved(m);
+        break;
+      case 'conversation-pinned':
+        conversationsList.onConversationPinned(m);
+        break;
+      case 'conversation-read':
+        chatMessages.onConversationRead(m);
         break;
       case 'conversation-history':
         chatMessages.onConversationHistory(m);

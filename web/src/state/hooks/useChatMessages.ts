@@ -232,12 +232,20 @@ export function useChatMessages(deps: ChatMessagesDeps) {
     clearUnread(m.conversationId);
   }, [clearUnread]);
 
+  /** Another of this user's own sessions/tabs opened this conversation (or
+   * this same tab did, redundantly) — mirrors that read state here so the
+   * unread badge doesn't linger on a tab that wasn't the one used to read
+   * it. */
+  const onConversationRead = useCallback((m: Extract<ServerMessage, { t: 'conversation-read' }>) => {
+    clearUnread(m.conversationId);
+  }, [clearUnread]);
+
   return {
     messagesByConversation, hasMoreByConversation, hasMoreAfterByConversation, loadingOlderByConversation, unreadByConversation,
     clearUnread, loadOlderMessages, pendingJumpTarget, clearPendingJumpTarget, cancelPendingJump, jumpToMessage,
     sendChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,
     replyingTo, setReplyingTo, editingMsgId, setEditingMsgId,
     onConversationHistory, onConversationHistoryAround, onConversationHistoryMore,
-    onChat, onChatDeleted, onChatEdited, onChatAttachmentAdded, onChatReactionUpdated, onConversationDeleted,
+    onChat, onChatDeleted, onChatEdited, onChatAttachmentAdded, onChatReactionUpdated, onConversationDeleted, onConversationRead,
   };
 }

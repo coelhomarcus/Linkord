@@ -148,8 +148,13 @@ export type ServerMessage =
       livekitUrl: string;
     }
   | { t: 'call-token'; conversationId: string; livekitUrl: string; livekitToken: string }
-  | { t: 'conversation-list'; conversations: Conversation[] }
   | { t: 'conversation-opened'; conversationId: string; conversation: Conversation }
+  | { t: 'conversation-created'; conversation: Conversation }
+  | { t: 'conversation-updated'; conversation: Conversation }
+  | { t: 'conversation-member-added'; conversationId: string; userId: string }
+  | { t: 'conversation-member-removed'; conversationId: string; userId: string }
+  | { t: 'conversation-pinned'; conversationId: string; pinnedAt: number | null }
+  | { t: 'conversation-read'; conversationId: string; lastReadMessageId: number }
   | { t: 'conversation-history'; conversationId: string; messages: ChatMessage[]; hasMore: boolean }
   | { t: 'conversation-history-more'; conversationId: string; messages: ChatMessage[]; hasMore: boolean }
   | { t: 'conversation-history-around'; conversationId: string; msgId: number; messages: ChatMessage[]; hasMoreBefore: boolean; hasMoreAfter: boolean }

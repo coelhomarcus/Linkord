@@ -199,6 +199,21 @@ async function handleConversationOpen(socket: AppSocket, msg: { conversationId?:
     messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id), reactionsByMessageId.get(r.id))),
     hasMore: rows.length === config.CHAT_HISTORY_LIMIT,
   });
+
+  // Opening a conversation means "I've seen everything up to its newest
+  // message" — record that and let the user's OTHER tabs/devices know, so
+  // an unread badge doesn't linger somewhere just because it was cleared
+  // here. Not marked on load-more/jump-to-message: scrolling up or landing
+  // on an old search result isn't "read up to the latest".
+  const newest = rows[rows.length - 1];
+  if (newest) {
+    await db.update(conversationMembers)
+      .set({ lastReadMessageId: newest.id })
+      .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, p.userId)));
+    for (const participant of participants.values()) {
+      if (participant.userId === p.userId) send(participant.socket, { t: 'conversation-read', conversationId, lastReadMessageId: newest.id });
+    }
+  }
 }
 
 /** Client scrolled to the top of an already-open conversation — sends up to
