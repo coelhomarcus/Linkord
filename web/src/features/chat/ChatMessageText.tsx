@@ -4,6 +4,7 @@ import { ChatEmbed } from './ChatEmbed';
 import type { PublicUser } from '../../types/protocol';
 import { Avatar } from '@/shared/Avatar';
 import { cn } from '@/shared/lib/utils';
+import { isSingleEmoji } from '@/shared/lib/isSingleEmoji';
 
 const TOKEN_RE = /(https?:\/\/[^\s<>"']+)|@([A-Za-z0-9_.-]{1,20})/g;
 
@@ -64,9 +65,14 @@ interface ChatMessageTextProps {
 export function ChatMessageText({ text, mentionLookup, myUserId, onOpenProfile, edgeToEdge }: ChatMessageTextProps) {
   const embed = firstEmbed(text);
   const remaining = embed && text.trim() === embed.url ? '' : text;
+  const singleEmoji = isSingleEmoji(text);
   return (
     <>
-      {remaining && <p className="whitespace-pre-wrap wrap-break-word">{renderRich(remaining, mentionLookup, myUserId, onOpenProfile)}</p>}
+      {remaining && (
+        <p className={cn('whitespace-pre-wrap wrap-break-word', singleEmoji && 'text-[48px] leading-none')}>
+          {renderRich(remaining, mentionLookup, myUserId, onOpenProfile)}
+        </p>
+      )}
       {embed && <ChatEmbed embed={embed} edgeToEdge={!remaining && edgeToEdge} />}
     </>
   );

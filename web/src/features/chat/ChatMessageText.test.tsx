@@ -20,6 +20,16 @@ describe('ChatMessageText', () => {
     const { container } = render(<ChatMessageText text="" />);
     expect(container.querySelector('p')).toBeNull();
   });
+
+  it('renderiza um emoji único em tamanho ampliado', () => {
+    render(<ChatMessageText text={'  😀\n'} />);
+    expect(screen.getByRole('paragraph')).toHaveClass('text-[48px]', 'leading-none');
+  });
+
+  it('mantém mensagens com mais de um emoji no tamanho normal', () => {
+    render(<ChatMessageText text="😀😀" />);
+    expect(screen.getByRole('paragraph')).not.toHaveClass('text-[48px]');
+  });
 });
 
 describe('ChatMessageText — @mencoes', () => {
