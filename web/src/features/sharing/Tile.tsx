@@ -120,7 +120,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
   const bannerSrc = !isSpeaking && bannerPoster ? bannerPoster : banner;
   const bannerLayerStyle = banner
     ? {
-        backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.65)), url(${JSON.stringify(bannerSrc)})`,
+        backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.8)), url(${JSON.stringify(bannerSrc)})`,
         backgroundPosition: 'center',
         backgroundSize: 'cover',
       }
