@@ -52,12 +52,20 @@ interface AvatarProps {
   avatarColor?: string | null;
   size: number;
   className?: string;
+  // When both are given, shows `poster` (a static first-frame image) instead
+  // of the live `avatar` while `frozen` is true — lets an animated avatar
+  // freeze until the person actually speaks, like Discord (see Tile.tsx,
+  // the only caller that passes these — everywhere else an avatar just
+  // always shows its live `avatar`, same as before this existed).
+  poster?: string;
+  frozen?: boolean;
 }
 
-export function Avatar({ id, name, avatar, avatarColor, size, className }: AvatarProps) {
+export function Avatar({ id, name, avatar, avatarColor, size, className, poster, frozen }: AvatarProps) {
+  const src = frozen && poster ? poster : avatar;
   return (
     <AvatarRoot style={{ width: size, height: size }} className={className}>
-      {avatar && <AvatarImage src={avatar} alt="" />}
+      {src && <AvatarImage src={src} alt="" />}
       <AvatarFallback
         className="font-bold text-white"
         style={{ background: colorFor(id, avatarColor), fontSize: Math.round(size * 0.4) }}

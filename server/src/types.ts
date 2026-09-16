@@ -14,8 +14,10 @@ export interface SessionUser {
   // auth/session.ts), falling back to `username` when the account never set one.
   displayName: string;
   avatar: string;
+  avatarPoster: string;
   avatarColor: string;
   banner: string;
+  bannerPoster: string;
   bio: string;
   profileLinks: string[];
   role: Role;
@@ -34,8 +36,10 @@ export interface Participant {
   // `name`. Always non-empty (falls back to `name` — the username — server-side).
   displayName: string;
   avatar: string;
+  avatarPoster: string;
   avatarColor: string;
   banner: string;
+  bannerPoster: string;
   bio: string;
   profileLinks: string[];
   role: Role;
@@ -64,8 +68,10 @@ export interface PublicParticipant {
   name: string;
   displayName: string;
   avatar: string;
+  avatarPoster: string;
   avatarColor: string;
   banner: string;
+  bannerPoster: string;
   bio: string;
   profileLinks: string[];
   role: Role;

@@ -24,6 +24,8 @@ import { loadShowStats, saveShowStats, loadNotifyVolume, saveNotifyVolume } from
 import { loadHideAudioOnlyTiles, saveHideAudioOnlyTiles } from '../features/settings/useStageViewPreference';
 import { loadShowTileBanners, saveShowTileBanners } from '../features/settings/useTileBannerPreference';
 import { loadCompressImages, saveCompressImages } from '../features/settings/useCompressImagesPreference';
+import { loadNoiseSuppression, saveNoiseSuppression } from '../features/settings/useNoiseSuppressionPreference';
+import { loadBackgroundBlur, saveBackgroundBlur } from '../features/settings/useBackgroundBlurPreference';
 import { preloadSounds, setVolume } from '../shared/sounds';
 import {
   loadNotificationsEnabled, saveNotificationsEnabled, setNotificationsModuleEnabled, setNotificationClickHandler,
@@ -36,7 +38,7 @@ import { MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_
 
 export { PartialAttachmentError } from './hooks/useAttachmentsUpload';
 
-function sanitizeBanner(value: unknown): string {
+function sanitizeImageUrl(value: unknown): string {
   const url = String(value == null ? '' : value).trim().slice(0, MAX_BANNER_LEN);
   return /^https?:\/\/\S+$/i.test(url) || /^\/uploads\/[0-9a-f]{32}$/.test(url) ? url : '';
 }
@@ -154,8 +156,22 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const attachmentsUpload = useAttachmentsUpload();
 
   const { startSharing, stopSharing } = useScreenShare(livekitRoom, dispatch);
-  const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch);
-  const { activateMic, toggleMicMuted, setMicMuted, leaveMic } = useMicrophone(livekitRoom, dispatch);
+  const { startCamera, stopCamera, setBackgroundBlurEnabled: applyBackgroundBlur } = useCamera(livekitRoom, dispatch);
+  const { activateMic, toggleMicMuted, setMicMuted, leaveMic, setNoiseSuppressionEnabled: applyNoiseSuppression } = useMicrophone(livekitRoom, dispatch);
+
+  const [noiseSuppressionEnabled, setNoiseSuppressionEnabledState] = useState(loadNoiseSuppression);
+  const setNoiseSuppressionEnabled = useCallback((value: boolean) => {
+    setNoiseSuppressionEnabledState(value);
+    saveNoiseSuppression(value);
+    applyNoiseSuppression(value);
+  }, [applyNoiseSuppression]);
+
+  const [backgroundBlurEnabled, setBackgroundBlurEnabledState] = useState(loadBackgroundBlur);
+  const setBackgroundBlurEnabled = useCallback((value: boolean) => {
+    setBackgroundBlurEnabledState(value);
+    saveBackgroundBlur(value);
+    applyBackgroundBlur(value);
+  }, [applyBackgroundBlur]);
 
   const callLifecycle = useCallLifecycle({
     livekitRoom, dispatch, sendWs, stopCamera, stopSharing, activateMic, setMicMuted, leaveMic,
@@ -198,8 +214,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           name: m.name,
           displayName: m.displayName,
           avatar: m.avatar,
+          avatarPoster: m.avatarPoster,
           avatarColor: m.avatarColor,
           banner: m.banner,
+          bannerPoster: m.bannerPoster,
           bio: m.bio,
           profileLinks: m.profileLinks,
           role: m.role,
@@ -350,19 +368,23 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     });
   }, [sendWs, refreshAuth]);
 
-  const updateProfile = useCallback((profile: { avatar: string; avatarColor: string; displayName: string; banner: string; bio: string; profileLinks: string[] }) => {
+  const updateProfile = useCallback((profile: { avatar: string; avatarPoster: string; avatarColor: string; displayName: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[] }) => {
     const finalAvatar = profile.avatar.trim().slice(0, 500);
+    const finalAvatarPoster = sanitizeImageUrl(profile.avatarPoster);
     const finalAvatarColor = normalizeAvatarColor(profile.avatarColor) || DEFAULT_AVATAR_COLOR;
     const finalDisplayName = sanitizeDisplayName(profile.displayName) || state.me.name;
-    const finalBanner = sanitizeBanner(profile.banner);
+    const finalBanner = sanitizeImageUrl(profile.banner);
+    const finalBannerPoster = sanitizeImageUrl(profile.bannerPoster);
     const finalBio = sanitizeBio(profile.bio);
     const finalProfileLinks = sanitizeProfileLinks(profile.profileLinks);
     dispatch({
       type: 'SET_LOCAL_PROFILE',
       avatar: finalAvatar,
+      avatarPoster: finalAvatarPoster,
       avatarColor: finalAvatarColor,
       displayName: finalDisplayName,
       banner: finalBanner,
+      bannerPoster: finalBannerPoster,
       bio: finalBio,
       profileLinks: finalProfileLinks,
     });
@@ -390,9 +412,11 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     sendWs({
       t: 'profile',
       avatar: finalAvatar,
+      avatarPoster: finalAvatarPoster,
       avatarColor: finalAvatarColor,
       displayName: finalDisplayName,
       banner: finalBanner,
+      bannerPoster: finalBannerPoster,
       bio: finalBio,
       profileLinks: finalProfileLinks,
     });
@@ -401,13 +425,15 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const updateAvatar = useCallback((avatar: string) => {
     updateProfile({
       avatar,
+      avatarPoster: '', // a poster only exists for an animated avatar generated by our own upload pipeline — never known here
       avatarColor: state.me.avatarColor,
       displayName: state.me.displayName,
       banner: state.me.banner,
+      bannerPoster: state.me.bannerPoster,
       bio: state.me.bio,
       profileLinks: state.me.profileLinks,
     });
-  }, [state.me.avatarColor, state.me.banner, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
+  }, [state.me.avatarColor, state.me.banner, state.me.bannerPoster, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
 
   const uploadProfileImageBody = useCallback(async (
     field: 'avatar' | 'banner',
@@ -417,23 +443,26 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     onProgress?: (fraction: number) => void,
     profile?: { avatarColor?: string; displayName?: string; avatar?: string; banner?: string; bio?: string; profileLinks?: string[] }
   ) => {
-    const res = await uploadWithProgress<{ avatar: string }>({
+    const res = await uploadWithProgress<{ avatar: string; avatarPoster?: string }>({
       url: `/api/avatar?crop=${encodeURIComponent(JSON.stringify(crop))}`,
       file: body,
       headers,
       onProgress,
     });
     const url = res.avatar;
+    const posterUrl = res.avatarPoster ?? '';
     updateProfile({
       avatar: field === 'avatar' ? url : (profile?.avatar ?? state.me.avatar),
+      avatarPoster: field === 'avatar' ? posterUrl : state.me.avatarPoster,
       avatarColor: profile?.avatarColor ?? state.me.avatarColor,
       displayName: profile?.displayName ?? state.me.displayName,
       banner: field === 'banner' ? url : (profile?.banner ?? state.me.banner),
+      bannerPoster: field === 'banner' ? posterUrl : state.me.bannerPoster,
       bio: profile?.bio ?? state.me.bio,
       profileLinks: profile?.profileLinks ?? state.me.profileLinks,
     });
     return url;
-  }, [state.me.avatar, state.me.avatarColor, state.me.banner, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
+  }, [state.me.avatar, state.me.avatarPoster, state.me.avatarColor, state.me.banner, state.me.bannerPoster, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
 
   const uploadProfileImage = useCallback((
     field: 'avatar' | 'banner',
@@ -492,6 +521,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       value={{
         state, dispatch, sendWs, tileDomRegistry, audioRegistry,
         audioUnlocked: callLifecycle.audioUnlocked, deafened: callLifecycle.deafened, toggleDeafened: callLifecycle.toggleDeafened,
+        reconnecting: callLifecycle.reconnecting,
         livekitRoom, notifyActiveView,
         registerRequestChatView, requestChatView,
         activeCallConversationId: callLifecycle.activeCallConversationId, joinCall: callLifecycle.joinCall, leaveCall: callLifecycle.leaveCall,
@@ -501,6 +531,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
         hideAudioOnlyTiles, setHideAudioOnlyTiles, showTileBanners, setShowTileBanners,
         compressImagesDefault, setCompressImagesDefault,
+        noiseSuppressionEnabled, setNoiseSuppressionEnabled, backgroundBlurEnabled, setBackgroundBlurEnabled,
         conversations: conversationsList.conversations, activeConversationId: conversationsList.activeConversationId,
         openConversation, openDirect: conversationsList.openDirect, closeConversation, pinConversation: conversationsList.pinConversation,
         createGroup: conversationsList.createGroup, deleteGroup: conversationsList.deleteGroup,

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
-import { HeadphoneOff, MicOff, ScreenShare, Settings, Video, VolumeX } from 'lucide-react';
+import { ConnectionQuality } from 'livekit-client';
+import { HeadphoneOff, MicOff, ScreenShare, Settings, SignalLow, SignalZero, Video, VolumeX } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
-import { useParticipantMedia, useAttachTrack, useIsSpeaking } from './useLiveKitTrack';
+import { useParticipantMedia, useAttachTrack, useIsSpeaking, useConnectionQuality } from './useLiveKitTrack';
 import { useMuteForMe } from './useMuteForMe';
 import { tileKey } from './tileTypes';
 import type { TileKind } from './tileTypes';
@@ -29,12 +30,15 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
   const participant = isMine ? null : state.participants.get(participantId);
   const name = isMine ? state.me.displayName : (participant?.displayName ?? '');
   const avatar = isMine ? state.me.avatar : (participant?.avatar ?? '');
+  const avatarPoster = isMine ? state.me.avatarPoster : (participant?.avatarPoster ?? '');
   const avatarColor = isMine ? state.me.avatarColor : (participant?.avatarColor ?? '');
   const banner = showTileBanners ? (isMine ? state.me.banner : (participant?.banner ?? '')) : '';
+  const bannerPoster = showTileBanners ? (isMine ? state.me.bannerPoster : (participant?.bannerPoster ?? '')) : '';
   const isDeafened = isMine ? deafened : (participant?.deafened ?? false);
 
   const media = useParticipantMedia(participantId);
   const isSpeaking = useIsSpeaking(participantId);
+  const connectionQuality = useConnectionQuality(participantId);
   const { hasAudio: hasMutableAudio, muted: mutedForMe, toggleMute: toggleMuteForMe } = useMuteForMe(participantId, kind, isMine);
 
   const showsVideo = kind !== 'avatar';
@@ -109,9 +113,14 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
   const rootStyle = kind === 'screen' || banner
     ? undefined
     : { background: `color-mix(in srgb, ${tint} 22%, var(--color-bg-tertiary))` };
+  // Freezes on the static poster frame until the person actually speaks —
+  // same idea as Discord's animated-avatar-while-talking — falling back to
+  // the live banner itself when there's no poster (a non-animated banner,
+  // or one predating this feature).
+  const bannerSrc = !isSpeaking && bannerPoster ? bannerPoster : banner;
   const bannerLayerStyle = banner
     ? {
-        backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.15), rgba(0,0,0,0.45)), url(${JSON.stringify(banner)})`,
+        backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.65)), url(${JSON.stringify(bannerSrc)})`,
         backgroundPosition: 'center',
         backgroundSize: 'cover',
       }
@@ -136,7 +145,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
         <video ref={videoRef} autoPlay playsInline muted={isMine} className={`relative h-full w-full object-cover ${kind === 'screen' ? 'bg-black' : ''}`} />
       ) : (
         <div className="relative flex h-full w-full flex-col items-center justify-center gap-2.5">
-          <Avatar id={participantId} name={name} avatar={avatar} avatarColor={avatarColor} size={avatarSize} />
+          <Avatar id={participantId} name={name} avatar={avatar} poster={avatarPoster} frozen={!isSpeaking} avatarColor={avatarColor} size={avatarSize} />
         </div>
       )}
 
@@ -144,7 +153,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
         'absolute bottom-2 left-2 flex max-w-[calc(100%-16px)] items-center gap-1.5 rounded-full bg-bg-tertiary/85 py-1 pr-2.5',
         showsVideo ? 'pl-1' : 'pl-2.5'
       )}>
-        {showsVideo && <Avatar id={participantId} name={name} avatar={avatar} avatarColor={avatarColor} size={20} />}
+        {showsVideo && <Avatar id={participantId} name={name} avatar={avatar} poster={avatarPoster} frozen={!isSpeaking} avatarColor={avatarColor} size={20} />}
         <span className={cn('select-none truncate font-medium text-text-primary', nameSize === 'label' ? 'text-label' : 'text-body')}>{name}</span>
         {kind !== 'camera' && !!media.cameraTrack && <Video size={14} className="flex-none text-green" />}
         {kind !== 'screen' && !!media.screenTrack && <ScreenShare size={14} className="flex-none text-primary" />}
@@ -154,6 +163,12 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
           kind !== 'screen' && media.micActivated && media.micMuted && (
             <MicOff size={14} className="flex-none text-red" />
           )
+        )}
+        {kind !== 'screen' && connectionQuality === ConnectionQuality.Poor && (
+          <SignalLow size={14} className="flex-none text-yellow" />
+        )}
+        {kind !== 'screen' && connectionQuality === ConnectionQuality.Lost && (
+          <SignalZero size={14} className="flex-none text-red" />
         )}
       </div>
 

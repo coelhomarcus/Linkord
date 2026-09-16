@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { RefObject } from 'react';
-import { RoomEvent, Track } from 'livekit-client';
+import { ConnectionQuality, RoomEvent, Track } from 'livekit-client';
 import type { Participant, Room, Track as LKTrack } from 'livekit-client';
 
 import { useRoom } from '../../state/RoomContext';
@@ -124,6 +124,28 @@ export function useTrackSpeaking(track: LKTrack | null, muted: boolean): boolean
 export function useIsSpeaking(identity: string): boolean {
   const media = useParticipantMedia(identity);
   return useTrackSpeaking(media.micTrack, media.micMuted);
+}
+
+/** Tracks a participant's connection quality straight from the LiveKit room
+ * — everyone in a call is already in the same LiveKit room, so this needs no
+ * relay through the app's own WebSocket (unlike mic/camera/speaking state,
+ * which the server mirrors for participants who haven't joined LiveKit yet). */
+export function useConnectionQuality(identity: string): ConnectionQuality {
+  const { livekitRoom } = useRoom();
+  const [quality, setQuality] = useState<ConnectionQuality>(ConnectionQuality.Unknown);
+
+  useEffect(() => {
+    const participant = getParticipant(livekitRoom, identity);
+    setQuality(participant?.connectionQuality ?? ConnectionQuality.Unknown);
+
+    const onChanged = (q: ConnectionQuality, participant: Participant) => {
+      if (participant.identity === identity) setQuality(q);
+    };
+    livekitRoom.on(RoomEvent.ConnectionQualityChanged, onChanged);
+    return () => { livekitRoom.off(RoomEvent.ConnectionQualityChanged, onChanged); };
+  }, [livekitRoom, identity]);
+
+  return quality;
 }
 
 export function useAttachTrack(track: LKTrack | null, elRef: RefObject<HTMLMediaElement | null>): void {

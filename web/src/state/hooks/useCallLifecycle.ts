@@ -46,6 +46,23 @@ export function useCallLifecycle(deps: CallLifecycleDeps) {
 
   const [deafened, setDeafened] = useState(false);
 
+  // LiveKit retries the connection on its own on a network hiccup — this just
+  // surfaces that it's happening, distinct from RoomEvent.Disconnected below
+  // (which means the retry gave up, or we hung up on purpose).
+  const [reconnecting, setReconnecting] = useState(false);
+  useEffect(() => {
+    const onReconnecting = () => setReconnecting(true);
+    const onReconnected = () => setReconnecting(false);
+    livekitRoom.on(RoomEvent.Reconnecting, onReconnecting);
+    livekitRoom.on(RoomEvent.Reconnected, onReconnected);
+    livekitRoom.on(RoomEvent.Disconnected, onReconnected);
+    return () => {
+      livekitRoom.off(RoomEvent.Reconnecting, onReconnecting);
+      livekitRoom.off(RoomEvent.Reconnected, onReconnected);
+      livekitRoom.off(RoomEvent.Disconnected, onReconnected);
+    };
+  }, [livekitRoom]);
+
   const [activeCallConversationId, setActiveCallConversationIdState] = useState<string | null>(null);
   const activeCallConversationIdRef = useRef<string | null>(null);
   const pendingCallConversationIdRef = useRef<string | null>(null);
@@ -190,7 +207,7 @@ export function useCallLifecycle(deps: CallLifecycleDeps) {
   }, [isSpeakingLocal, sendWs]);
 
   return {
-    audioUnlocked, deafened, toggleDeafened,
+    audioUnlocked, deafened, toggleDeafened, reconnecting,
     activeCallConversationId, joinCall, leaveCall, kickFromCall,
     onCallToken, onConversationDeleted, onLivekitUnavailable,
   };

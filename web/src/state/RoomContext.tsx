@@ -46,6 +46,7 @@ export interface RoomContextValue {
   audioUnlocked: boolean;
   deafened: boolean;
   toggleDeafened: () => void;
+  reconnecting: boolean;
   livekitRoom: Room;
   notifyActiveView: (view: 'chat' | 'call') => void;
   registerRequestChatView: (fn: () => void) => void;
@@ -60,7 +61,7 @@ export interface RoomContextValue {
   activateMic: () => Promise<void>;
   toggleMicMuted: () => Promise<void>;
   updateAvatar: (avatar: string) => void;
-  updateProfile: (profile: { avatar: string; avatarColor: string; displayName: string; banner: string; bio: string; profileLinks: string[] }) => void;
+  updateProfile: (profile: { avatar: string; avatarPoster: string; avatarColor: string; displayName: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[] }) => void;
   uploadProfileImage: (
     field: 'avatar' | 'banner',
     file: Blob,
@@ -85,6 +86,10 @@ export interface RoomContextValue {
   setShowTileBanners: (value: boolean) => void;
   compressImagesDefault: boolean;
   setCompressImagesDefault: (value: boolean) => void;
+  noiseSuppressionEnabled: boolean;
+  setNoiseSuppressionEnabled: (value: boolean) => void;
+  backgroundBlurEnabled: boolean;
+  setBackgroundBlurEnabled: (value: boolean) => void;
   conversations: Conversation[];
   activeConversationId: string | null;
   openConversation: (conversationId: string) => void;

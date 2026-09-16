@@ -167,12 +167,15 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const {
     state, updateProfile, uploadProfileImage, showStats, setShowStats,
     notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled, showTileBanners, setShowTileBanners, livekitRoom, storageUsage,
+    noiseSuppressionEnabled, setNoiseSuppressionEnabled, backgroundBlurEnabled, setBackgroundBlurEnabled,
   } = useRoom();
   const { logout, user } = useAuth();
   const [avatar, setAvatar] = useState(state.me.avatar);
+  const [avatarPoster, setAvatarPoster] = useState(state.me.avatarPoster);
   const [avatarColor, setAvatarColor] = useState(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
   const [displayName, setDisplayName] = useState(state.me.displayName);
   const [banner, setBanner] = useState(state.me.banner);
+  const [bannerPoster, setBannerPoster] = useState(state.me.bannerPoster);
   const [bio, setBio] = useState(state.me.bio);
   const [profileLinks, setProfileLinks] = useState<string[]>(state.me.profileLinks.length ? state.me.profileLinks : ['']);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -192,13 +195,15 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     if (open) {
       setProfileSaved(false);
       setAvatar(state.me.avatar);
+      setAvatarPoster(state.me.avatarPoster);
       setAvatarColor(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
       setDisplayName(state.me.displayName);
       setBanner(state.me.banner);
+      setBannerPoster(state.me.bannerPoster);
       setBio(state.me.bio);
       setProfileLinks(state.me.profileLinks.length ? state.me.profileLinks : ['']);
     }
-  }, [open, state.me.avatar, state.me.avatarColor, state.me.banner, state.me.bio, state.me.displayName, state.me.profileLinks]);
+  }, [open, state.me.avatar, state.me.avatarPoster, state.me.avatarColor, state.me.banner, state.me.bannerPoster, state.me.bio, state.me.displayName, state.me.profileLinks]);
 
   useEffect(() => {
     if (!profileSaved) return;
@@ -236,7 +241,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   function handleProfileSubmit(e: FormEvent) {
     e.preventDefault();
-    updateProfile({ avatar, avatarColor, displayName, banner, bio, profileLinks: profileLinksForSubmit() });
+    updateProfile({ avatar, avatarPoster, avatarColor, displayName, banner, bannerPoster, bio, profileLinks: profileLinksForSubmit() });
     setProfileSaved(true);
   }
 
@@ -271,15 +276,20 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   function handleUrlPicked(field: 'avatar' | 'banner', url: string) {
     const setError = field === 'avatar' ? setAvatarError : setBannerError;
     setError(null);
+    // An externally-hosted URL never goes through our crop/animate-detect
+    // pipeline, so it never gets a poster — even if it happens to be an
+    // animated GIF, it just always plays (same as before this feature).
     const nextProfile = {
       avatar: field === 'avatar' ? url : avatar,
+      avatarPoster: field === 'avatar' ? '' : avatarPoster,
       avatarColor,
       displayName,
       banner: field === 'banner' ? url : banner,
+      bannerPoster: field === 'banner' ? '' : bannerPoster,
       bio,
       profileLinks: profileLinksForSubmit(),
     };
-    if (field === 'avatar') setAvatar(url); else setBanner(url);
+    if (field === 'avatar') { setAvatar(url); setAvatarPoster(''); } else { setBanner(url); setBannerPoster(''); }
     updateProfile(nextProfile);
     setUrlDialogField(null);
   }
@@ -313,12 +323,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   function handleRemoveAvatar() {
     setAvatar('');
-    updateProfile({ avatar: '', avatarColor, displayName, banner, bio, profileLinks: profileLinksForSubmit() });
+    setAvatarPoster('');
+    updateProfile({ avatar: '', avatarPoster: '', avatarColor, displayName, banner, bannerPoster, bio, profileLinks: profileLinksForSubmit() });
   }
 
   function handleRemoveBanner() {
     setBanner('');
-    updateProfile({ avatar, avatarColor, displayName, banner: '', bio, profileLinks: profileLinksForSubmit() });
+    setBannerPoster('');
+    updateProfile({ avatar, avatarPoster, avatarColor, displayName, banner: '', bannerPoster: '', bio, profileLinks: profileLinksForSubmit() });
   }
 
   return (
@@ -476,8 +488,34 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 <DevicePicker label="Microfone" room={livekitRoom} kind="audioinput" />
               </div>
 
+              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
+                <div className="min-w-0">
+                  <p className="select-none text-body font-medium text-text-primary">Supressão de ruído</p>
+                  <p className="select-none text-label text-text-muted">Usa um modelo de IA local pra reduzir ruído de fundo (teclado, ventilador, trânsito) no seu microfone.</p>
+                </div>
+                <Switch
+                  checked={noiseSuppressionEnabled}
+                  onCheckedChange={setNoiseSuppressionEnabled}
+                  aria-label="Supressão de ruído"
+                  className="mt-0.5 flex-none"
+                />
+              </div>
+
               <div className={settingsCardClass}>
                 <DevicePicker label="Câmera" room={livekitRoom} kind="videoinput" />
+              </div>
+
+              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
+                <div className="min-w-0">
+                  <p className="select-none text-body font-medium text-text-primary">Desfocar fundo</p>
+                  <p className="select-none text-label text-text-muted">Desfoca o que está atrás de você na câmera.</p>
+                </div>
+                <Switch
+                  checked={backgroundBlurEnabled}
+                  onCheckedChange={setBackgroundBlurEnabled}
+                  aria-label="Desfocar fundo"
+                  className="mt-0.5 flex-none"
+                />
               </div>
 
               <div className={settingsCardClass}>

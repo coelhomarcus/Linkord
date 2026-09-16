@@ -70,7 +70,8 @@ function sanitizeProfileLinks(value: unknown): string[] {
 export function publicParticipant(p: Participant): PublicParticipant {
   return {
     id: p.id, userId: p.userId, name: p.name, displayName: p.displayName,
-    avatar: p.avatar, avatarColor: p.avatarColor, banner: p.banner, bio: p.bio, profileLinks: p.profileLinks, role: p.role,
+    avatar: p.avatar, avatarPoster: p.avatarPoster, avatarColor: p.avatarColor,
+    banner: p.banner, bannerPoster: p.bannerPoster, bio: p.bio, profileLinks: p.profileLinks, role: p.role,
     deafened: p.deafened, callConversationId: p.callConversationId,
     micActivated: p.micActivated, micMuted: p.micMuted, cameraOn: p.cameraOn, sharing: p.sharing, speaking: p.speaking,
   };
@@ -192,8 +193,10 @@ export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
       // (same pattern as sanitizeAvatar/sanitizeAvatarColor above).
       displayName: sanitizeDisplayName(u.displayName) || u.username,
       avatar: sanitizeAvatar(u.avatar),
+      avatarPoster: sanitizeAvatar(u.avatarPoster),
       avatarColor: sanitizeAvatarColor(u.avatarColor),
       banner: sanitizeBanner(u.banner),
+      bannerPoster: sanitizeBanner(u.bannerPoster),
       bio: sanitizeBio(u.bio),
       profileLinks: sanitizeProfileLinks(u.profileLinks),
       role: u.role,
@@ -222,14 +225,18 @@ export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
  * displayName resets back to the username, same idea as avatarColor
  * falling back to the default on an invalid value. Persisted to survive
  * reconnects/other tabs. */
-function handleProfile(socket: AppSocket, msg: { avatar?: string; avatarColor?: string; displayName?: string; banner?: string; bio?: string; profileLinks?: string[] } | null | undefined): void {
+function handleProfile(socket: AppSocket, msg: { avatar?: string; avatarPoster?: string; avatarColor?: string; displayName?: string; banner?: string; bannerPoster?: string; bio?: string; profileLinks?: string[] } | null | undefined): void {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   const body = msg && typeof msg === 'object' ? msg : {};
   const oldAvatar = p.avatar;
+  const oldAvatarPoster = p.avatarPoster;
   const nextAvatar = Object.prototype.hasOwnProperty.call(body, 'avatar')
     ? sanitizeAvatar(body.avatar)
     : p.avatar;
+  const nextAvatarPoster = Object.prototype.hasOwnProperty.call(body, 'avatarPoster')
+    ? sanitizeAvatar(body.avatarPoster)
+    : p.avatarPoster;
   const nextAvatarColor = Object.prototype.hasOwnProperty.call(body, 'avatarColor')
     ? sanitizeAvatarColor(body.avatarColor)
     : p.avatarColor;
@@ -239,6 +246,9 @@ function handleProfile(socket: AppSocket, msg: { avatar?: string; avatarColor?: 
   const nextBanner = Object.prototype.hasOwnProperty.call(body, 'banner')
     ? sanitizeBanner(body.banner)
     : p.banner;
+  const nextBannerPoster = Object.prototype.hasOwnProperty.call(body, 'bannerPoster')
+    ? sanitizeBanner(body.bannerPoster)
+    : p.bannerPoster;
   const nextBio = Object.prototype.hasOwnProperty.call(body, 'bio')
     ? sanitizeBio(body.bio)
     : p.bio;
@@ -248,29 +258,36 @@ function handleProfile(socket: AppSocket, msg: { avatar?: string; avatarColor?: 
   for (const other of participants.values()) {
     if (other.userId !== p.userId) continue;
     other.avatar = nextAvatar;
+    other.avatarPoster = nextAvatarPoster;
     other.avatarColor = nextAvatarColor;
     other.displayName = nextDisplayName;
     other.banner = nextBanner;
+    other.bannerPoster = nextBannerPoster;
     other.bio = nextBio;
     other.profileLinks = nextProfileLinks;
     broadcast({ t: 'participant-updated', participant: publicParticipant(other) });
   }
   updateProfile(p.userId, {
     avatar: nextAvatar,
+    avatarPoster: nextAvatarPoster,
     avatarColor: nextAvatarColor,
     displayName: nextDisplayName,
     banner: nextBanner,
+    bannerPoster: nextBannerPoster,
     bio: nextBio,
     profileLinks: nextProfileLinks,
   })
     .catch((err) => console.error(`[${p.id}] falha ao salvar perfil:`, err instanceof Error ? err.stack : err));
-  // deletes the OLD photo file if it was one of our uploads and changed —
-  // otherwise each photo change would leave the previous one orphaned.
-  // Dynamic import to avoid a cycle: modules/attachments.ts already imports
-  // from this file.
-  if (oldAvatar && oldAvatar !== p.avatar) {
+  // deletes the OLD photo file(s) if they were one of our uploads and
+  // changed — otherwise each photo change would leave the previous one(s)
+  // orphaned. Dynamic import to avoid a cycle: modules/attachments.ts
+  // already imports from this file.
+  if ((oldAvatar && oldAvatar !== p.avatar) || (oldAvatarPoster && oldAvatarPoster !== p.avatarPoster)) {
     import('../modules/attachments.js')
-      .then(({ deleteAvatarFile }) => deleteAvatarFile(oldAvatar))
+      .then(({ deleteAvatarFile }) => {
+        if (oldAvatar && oldAvatar !== p.avatar) deleteAvatarFile(oldAvatar);
+        if (oldAvatarPoster && oldAvatarPoster !== p.avatarPoster) deleteAvatarFile(oldAvatarPoster);
+      })
       .catch((err) => console.error(`[${p.id}] falha ao apagar foto de perfil antiga:`, err instanceof Error ? err.stack : err));
   }
 }

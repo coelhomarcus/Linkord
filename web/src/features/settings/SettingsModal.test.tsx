@@ -44,9 +44,11 @@ describe('SettingsModal — perfil', () => {
 
     expect(updateProfile).toHaveBeenCalledWith({
       avatar: '',
+      avatarPoster: '',
       avatarColor: 'fuchsia',
       displayName: 'Fulana',
       banner: '',
+      bannerPoster: '',
       bio: '',
       profileLinks: [],
     });
@@ -77,9 +79,11 @@ describe('SettingsModal — perfil', () => {
 
     expect(updateProfile).toHaveBeenCalledWith({
       avatar: '',
+      avatarPoster: '',
       avatarColor: 'green',
       displayName: 'Apelido Legal',
       banner: '',
+      bannerPoster: '',
       bio: '',
       profileLinks: [],
     });
@@ -108,9 +112,11 @@ describe('SettingsModal — perfil', () => {
 
     expect(updateProfile).toHaveBeenCalledWith({
       avatar: '',
+      avatarPoster: '',
       avatarColor: '#a1b2c3',
       displayName: 'Fulana',
       banner: '',
+      bannerPoster: '',
       bio: '',
       profileLinks: [],
     });
@@ -141,9 +147,11 @@ describe('SettingsModal — perfil', () => {
 
     expect(updateProfile).toHaveBeenCalledWith({
       avatar: '',
+      avatarPoster: '',
       avatarColor: 'green',
       displayName: 'Fulana',
       banner: '',
+      bannerPoster: '',
       bio: 'Oi, eu sou a Fulana.',
       profileLinks: ['https://youtube.com/@fulana'],
     });

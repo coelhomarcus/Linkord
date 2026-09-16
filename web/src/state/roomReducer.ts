@@ -6,8 +6,10 @@ export interface Me {
   name: string;
   displayName: string;
   avatar: string;
+  avatarPoster: string;
   avatarColor: string;
   banner: string;
+  bannerPoster: string;
   bio: string;
   profileLinks: string[];
   role: 'user' | 'admin';
@@ -28,8 +30,8 @@ export interface RoomState {
 
 export const initialRoomState: RoomState = {
   me: {
-    id: null, userId: null, name: '', displayName: '', avatar: '', avatarColor: '',
-    banner: '', bio: '', profileLinks: [], role: 'user', sharing: false, cameraOn: false, sharingSince: null,
+    id: null, userId: null, name: '', displayName: '', avatar: '', avatarPoster: '', avatarColor: '',
+    banner: '', bannerPoster: '', bio: '', profileLinks: [], role: 'user', sharing: false, cameraOn: false, sharingSince: null,
   },
   participants: new Map(),
   focusedId: null,
@@ -42,7 +44,7 @@ export const initialRoomState: RoomState = {
 export type RoomAction =
   | {
       type: 'WELCOME'; id: string; userId: string; name: string; displayName: string;
-      avatar: string; avatarColor: string; banner: string; bio: string; profileLinks: string[];
+      avatar: string; avatarPoster: string; avatarColor: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[];
       role: 'user' | 'admin'; participants: Participant[];
     }
   | { type: 'PARTICIPANT_JOINED'; participant: Participant }
@@ -50,7 +52,7 @@ export type RoomAction =
   | { type: 'PARTICIPANT_LEFT'; id: string }
   | { type: 'SET_RECONNECTING'; value: boolean }
   | { type: 'SET_LOCAL_AVATAR'; avatar: string }
-  | { type: 'SET_LOCAL_PROFILE'; avatar: string; avatarColor: string; displayName: string; banner: string; bio: string; profileLinks: string[] }
+  | { type: 'SET_LOCAL_PROFILE'; avatar: string; avatarPoster: string; avatarColor: string; displayName: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[] }
   | { type: 'SET_ROOM_ERROR'; message: string | null }
   | { type: 'SET_LOCAL_SHARING'; sharing: boolean }
   | { type: 'SET_LOCAL_CAMERA'; on: boolean }
@@ -71,8 +73,10 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
           name: action.name,
           displayName: action.displayName,
           avatar: action.avatar,
+          avatarPoster: action.avatarPoster,
           avatarColor: action.avatarColor,
           banner: action.banner,
+          bannerPoster: action.bannerPoster,
           bio: action.bio,
           profileLinks: action.profileLinks,
           role: action.role,
@@ -114,9 +118,11 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
         me: {
           ...state.me,
           avatar: action.avatar,
+          avatarPoster: action.avatarPoster,
           avatarColor: action.avatarColor,
           displayName: action.displayName,
           banner: action.banner,
+          bannerPoster: action.bannerPoster,
           bio: action.bio,
           profileLinks: action.profileLinks,
         },

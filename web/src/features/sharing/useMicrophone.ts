@@ -1,19 +1,55 @@
 import { useCallback, useRef } from 'react';
 import type { Dispatch } from 'react';
 import { ConnectionState, RoomEvent, Track } from 'livekit-client';
-import type { Room } from 'livekit-client';
+import type { LocalAudioTrack, Room } from 'livekit-client';
 import type { RoomAction } from '../../state/roomReducer';
 import { playSound } from '../../shared/sounds';
 import { loadDevicePreference } from '../settings/useDevicePreference';
+import { loadNoiseSuppression } from '../settings/useNoiseSuppressionPreference';
+import { getRnnoiseProcessor } from './rnnoiseAudioProcessor';
 
 export interface MicrophoneApi {
   activateMic: () => Promise<void>;
   toggleMicMuted: () => Promise<void>;
   setMicMuted: (muted: boolean) => Promise<void>;
   leaveMic: () => Promise<void>;
+  setNoiseSuppressionEnabled: (enabled: boolean) => Promise<void>;
 }
 
 const CONNECT_TIMEOUT_MS = 15000;
+
+// RNNoise (rnnoiseAudioProcessor.ts) is the real AI-based denoiser — it runs
+// entirely on-device (no cloud entitlement needed, unlike Krisp, which was
+// tried first and pulled back out because it 404s on every self-hosted
+// LiveKit server). The browser's own noiseSuppression constraint is only
+// touched here as a fallback: it's turned off once RNNoise confirms it's
+// actually attached (running both would double-process the signal), and
+// re-asserted if RNNoise fails or gets turned off, so the mic is never left
+// with NEITHER — same discipline that had to be fixed for Krisp.
+async function applyNoiseSuppression(room: Room, enabled: boolean): Promise<void> {
+  const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+  const track = pub?.track as LocalAudioTrack | undefined;
+  if (!track) return;
+
+  if (enabled) {
+    try {
+      // Must attach the processor BEFORE touching the constraint: once
+      // attached, LocalTrack.mediaStreamTrack starts returning RNNoise's
+      // synthetic output instead of the raw capture, and applyConstraints
+      // (unlike that getter) is deliberately routed at the raw track
+      // internally, so this order is what keeps it targeting the real mic.
+      await track.setProcessor(getRnnoiseProcessor());
+      await track.applyConstraints({ noiseSuppression: false });
+    } catch (err) {
+      console.warn('Falha ao ativar supressão de ruído (RNNoise) — mantendo a supressão nativa do navegador', err);
+    }
+  } else {
+    if (track.getProcessor()) await track.stopProcessor().catch(() => {});
+    await track.applyConstraints({ noiseSuppression: true }).catch((err) => {
+      console.warn('Falha ao aplicar supressão de ruído', err);
+    });
+  }
+}
 
 function waitForConnection(room: Room): Promise<void> {
   if (room.state === ConnectionState.Connected) return Promise.resolve();
@@ -51,6 +87,7 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
       // so the choice looked like it "didn't stick".
       const savedDeviceId = loadDevicePreference('audioinput');
       await room.localParticipant.setMicrophoneEnabled(true, savedDeviceId ? { deviceId: savedDeviceId } : undefined);
+      if (loadNoiseSuppression()) await applyNoiseSuppression(room, true);
     } catch (err) {
       if (err instanceof Error && err.message === 'timeout') {
         dispatch({ type: 'SET_SHARE_ERROR', message: 'Não foi possível conectar ao servidor de vídeo. Verifique sua conexão e tente de novo.' });
@@ -80,8 +117,20 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
 
   const leaveMic = useCallback(async () => {
     const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
-    if (pub?.track) await room.localParticipant.unpublishTrack(pub.track, true);
+    const track = pub?.track as LocalAudioTrack | undefined;
+    if (!track) return;
+    // Without this, the RNNoise AudioWorkletNode + its WASM state leak on
+    // the Room's shared AudioContext every time someone leaves a call with
+    // noise suppression on — unpublishTrack() only stops the raw
+    // MediaStreamTrack, it doesn't know about attached processors.
+    if (track.getProcessor()) await track.stopProcessor().catch(() => {});
+    await room.localParticipant.unpublishTrack(track, true);
   }, [room]);
 
-  return { activateMic, toggleMicMuted, setMicMuted, leaveMic };
+  // Called when the "Supressão de ruído" switch in Settings changes while a
+  // mic track already exists — activateMic only reads the saved preference
+  // on (re)activation, so a live toggle needs to reach the running track too.
+  const setNoiseSuppressionEnabled = useCallback((enabled: boolean) => applyNoiseSuppression(room, enabled), [room]);
+
+  return { activateMic, toggleMicMuted, setMicMuted, leaveMic, setNoiseSuppressionEnabled };
 }
