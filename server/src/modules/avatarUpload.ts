@@ -80,6 +80,7 @@ export async function handleAvatarUpload(request: FastifyRequest, reply: Fastify
 
   let outBuffer: Buffer;
   let outMime: string;
+  let animated = false;
   try {
     const image = sharp(buffer, { animated: true });
     const meta = await image.metadata();
@@ -90,7 +91,8 @@ export async function handleAvatarUpload(request: FastifyRequest, reply: Fastify
       return sendError(reply, 400, 'invalid_crop', 'Recorte fora dos limites da imagem.');
     }
     const extracted = image.extract(cropRect);
-    if ((meta.pages ?? 1) > 1) {
+    animated = (meta.pages ?? 1) > 1;
+    if (animated) {
       // animated: keep WebP inputs as WebP (better quality than GIF's
       // 256-color palette); anything else animated (GIF today) stays GIF.
       if (meta.format === 'webp') {
@@ -117,5 +119,24 @@ export async function handleAvatarUpload(request: FastifyRequest, reply: Fastify
     await fs.unlink(filePathFor(id)).catch(() => {});
     throw err;
   }
-  sendJson(reply, 201, { avatar: `/uploads/${id}` });
+
+  // For an animated avatar/banner, also freeze the first frame as a JPEG
+  // "poster" — the call UI (Tile.tsx) shows this instead of the live
+  // animation until the person actually speaks, same idea as Discord.
+  // Best-effort: a failure here still leaves a perfectly good (animated)
+  // avatar/banner, it just won't freeze in calls.
+  let posterUrl: string | undefined;
+  if (animated) {
+    try {
+      const posterBuffer = await sharp(buffer, { animated: false }).extract(cropRect).jpeg({ quality: 88 }).toBuffer();
+      const posterId = newId();
+      await fs.writeFile(filePathFor(posterId), posterBuffer);
+      await db.insert(attachmentsTable).values({ id: posterId, messageId: null, fileName: 'avatar-poster', mimeType: 'image/jpeg', size: posterBuffer.length });
+      posterUrl = `/uploads/${posterId}`;
+    } catch (err) {
+      console.warn(`[attachments] falha ao gerar poster do avatar: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  sendJson(reply, 201, { avatar: `/uploads/${id}`, avatarPoster: posterUrl });
 }

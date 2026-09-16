@@ -5,8 +5,10 @@ export interface Participant {
   name: string;
   displayName: string;
   avatar: string;
+  avatarPoster: string;
   avatarColor: string;
   banner: string;
+  bannerPoster: string;
   bio: string;
   profileLinks: string[];
   role: 'user' | 'admin';
@@ -105,7 +107,7 @@ export interface PublicUser {
 
 export type ClientMessage =
   | { t: 'join'; id?: string; token?: string }
-  | { t: 'profile'; avatar: string; avatarColor: string; displayName: string; banner: string; bio: string; profileLinks: string[] }
+  | { t: 'profile'; avatar: string; avatarPoster: string; avatarColor: string; displayName: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[] }
   | { t: 'reaction'; emoji: ReactionEmoji }
   | { t: 'deafened'; value: boolean }
   | { t: 'mic-state'; activated: boolean; muted: boolean }
@@ -140,8 +142,8 @@ export type ClientMessage =
 export type ServerMessage =
   | {
       t: 'welcome'; id: string; token: string;
-      userId: string; name: string; displayName: string; avatar: string; avatarColor: string;
-      banner: string; bio: string; profileLinks: string[]; role: 'user' | 'admin';
+      userId: string; name: string; displayName: string; avatar: string; avatarPoster: string; avatarColor: string;
+      banner: string; bannerPoster: string; bio: string; profileLinks: string[]; role: 'user' | 'admin';
       maxParticipants: number; participants: Participant[];
       conversations: Conversation[]; users: PublicUser[]; onlineUserIds: string[];
       storageUsage: StorageUsage;

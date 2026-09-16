@@ -21,8 +21,14 @@ export const users = pgTable('users', {
   displayName: varchar('display_name', { length: 32 }).notNull().default(''),
   passwordHash: text('password_hash').notNull(),
   avatar: text('avatar').notNull().default(''),
+  // Static first-frame JPEG generated alongside an animated avatar/banner
+  // (GIF/animated WebP) — '' means the current avatar/banner isn't animated
+  // (or predates this column). Lets the call UI freeze on this instead of
+  // the live animation until the person actually speaks (see Tile.tsx).
+  avatarPoster: text('avatar_poster').notNull().default(''),
   avatarColor: varchar('avatar_color', { length: 32 }).notNull().default('blurple'),
   banner: text('banner').notNull().default(''),
+  bannerPoster: text('banner_poster').notNull().default(''),
   bio: text('bio').notNull().default(''),
   profileLinks: jsonb('profile_links').$type<string[]>().notNull().default([]),
   role: varchar('role', { length: 16 }).notNull().default('user'), // 'user' | 'admin'

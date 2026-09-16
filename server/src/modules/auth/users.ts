@@ -127,14 +127,16 @@ export async function updatePassword(id: string, passwordHash: string): Promise<
   return row || null;
 }
 
-export async function updateProfile(id: string, profile: { avatar: string; avatarColor: string; displayName: string; banner: string; bio: string; profileLinks: string[] }): Promise<User | null> {
+export async function updateProfile(id: string, profile: { avatar: string; avatarPoster: string; avatarColor: string; displayName: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[] }): Promise<User | null> {
   const [row] = await db
     .update(users)
     .set({
       avatar: profile.avatar,
+      avatarPoster: profile.avatarPoster,
       avatarColor: profile.avatarColor,
       displayName: profile.displayName,
       banner: profile.banner,
+      bannerPoster: profile.bannerPoster,
       bio: profile.bio,
       profileLinks: profile.profileLinks,
       updatedAt: new Date(),

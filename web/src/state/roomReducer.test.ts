@@ -4,8 +4,8 @@ import type { Participant } from '../types/protocol';
 
 function participant(overrides: Partial<Participant> = {}): Participant {
   return {
-    id: 'p1', userId: 'u1', name: 'Fulana', displayName: 'Fulana', avatar: '', avatarColor: 'green',
-    banner: '', bio: '', profileLinks: [], role: 'user', deafened: false, callConversationId: null,
+    id: 'p1', userId: 'u1', name: 'Fulana', displayName: 'Fulana', avatar: '', avatarPoster: '', avatarColor: 'green',
+    banner: '', bannerPoster: '', bio: '', profileLinks: [], role: 'user', deafened: false, callConversationId: null,
     micActivated: false, micMuted: true, cameraOn: false, sharing: false, speaking: false,
     ...overrides,
   };
@@ -21,8 +21,10 @@ describe('roomReducer', () => {
       name: 'Fulana',
       displayName: 'Apelido',
       avatar: 'a.png',
+      avatarPoster: 'a-poster.jpg',
       avatarColor: 'fuchsia',
       banner: 'https://example.com/banner.png',
+      bannerPoster: 'https://example.com/banner-poster.jpg',
       bio: 'Bio curta',
       profileLinks: ['https://youtube.com/@fulana'],
       role: 'admin',
@@ -35,8 +37,10 @@ describe('roomReducer', () => {
       name: 'Fulana',
       displayName: 'Apelido',
       avatar: 'a.png',
+      avatarPoster: 'a-poster.jpg',
       avatarColor: 'fuchsia',
       banner: 'https://example.com/banner.png',
+      bannerPoster: 'https://example.com/banner-poster.jpg',
       bio: 'Bio curta',
       profileLinks: ['https://youtube.com/@fulana'],
       role: 'admin',
@@ -111,16 +115,20 @@ describe('roomReducer', () => {
     const next = roomReducer(initialRoomState, {
       type: 'SET_LOCAL_PROFILE',
       avatar: 'novo.png',
+      avatarPoster: 'novo-poster.jpg',
       avatarColor: 'red',
       displayName: 'Apelido',
       banner: 'https://example.com/banner.png',
+      bannerPoster: 'https://example.com/banner-poster.jpg',
       bio: 'Bio curta',
       profileLinks: ['https://twitch.tv/fulana'],
     });
     expect(next.me.avatar).toBe('novo.png');
+    expect(next.me.avatarPoster).toBe('novo-poster.jpg');
     expect(next.me.avatarColor).toBe('red');
     expect(next.me.displayName).toBe('Apelido');
     expect(next.me.banner).toBe('https://example.com/banner.png');
+    expect(next.me.bannerPoster).toBe('https://example.com/banner-poster.jpg');
     expect(next.me.bio).toBe('Bio curta');
     expect(next.me.profileLinks).toEqual(['https://twitch.tv/fulana']);
   });

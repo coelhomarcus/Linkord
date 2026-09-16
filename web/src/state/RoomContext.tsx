@@ -61,7 +61,7 @@ export interface RoomContextValue {
   activateMic: () => Promise<void>;
   toggleMicMuted: () => Promise<void>;
   updateAvatar: (avatar: string) => void;
-  updateProfile: (profile: { avatar: string; avatarColor: string; displayName: string; banner: string; bio: string; profileLinks: string[] }) => void;
+  updateProfile: (profile: { avatar: string; avatarPoster: string; avatarColor: string; displayName: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[] }) => void;
   uploadProfileImage: (
     field: 'avatar' | 'banner',
     file: Blob,

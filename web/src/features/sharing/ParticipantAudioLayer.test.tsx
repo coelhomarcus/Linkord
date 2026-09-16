@@ -8,8 +8,8 @@ import type { Participant } from '../../types/protocol';
 
 function fakeParticipant(overrides: Partial<Participant> = {}): Participant {
   return {
-    id: 'p-2', userId: 'u-2', name: 'Fulana', displayName: 'Fulana', avatar: '', avatarColor: 'green',
-    banner: '', bio: '', profileLinks: [], role: 'user', deafened: false, callConversationId: 'conv-1',
+    id: 'p-2', userId: 'u-2', name: 'Fulana', displayName: 'Fulana', avatar: '', avatarPoster: '', avatarColor: 'green',
+    banner: '', bannerPoster: '', bio: '', profileLinks: [], role: 'user', deafened: false, callConversationId: 'conv-1',
     micActivated: true, micMuted: false, cameraOn: false, sharing: false, speaking: false,
     ...overrides,
   };

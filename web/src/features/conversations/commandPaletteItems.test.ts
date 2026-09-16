@@ -16,7 +16,7 @@ function fakeConversation(overrides: Partial<Conversation> & { id: string }): Co
 
 function fakeParticipant(overrides: Partial<Participant> & { id: string; userId: string }): Participant {
   return {
-    name: '', displayName: '', avatar: '', avatarColor: 'blurple', banner: '', bio: '', profileLinks: [],
+    name: '', displayName: '', avatar: '', avatarPoster: '', avatarColor: 'blurple', banner: '', bannerPoster: '', bio: '', profileLinks: [],
     role: 'user', deafened: false, callConversationId: null, micActivated: false, micMuted: true, cameraOn: false,
     sharing: false, speaking: false,
     ...overrides,
