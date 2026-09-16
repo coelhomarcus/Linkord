@@ -80,9 +80,21 @@ export async function fetchImageFromUrl(rawUrl: string, maxBytes: number, redire
   if (!ip) return { error: 'invalid_url', message: 'Essa URL não pode ser usada.' };
 
   const client = parsed.protocol === 'https:' ? https : http;
+  const family = net.isIPv6(ip) ? 6 : 4;
+  // Node's net.connect defaults to autoSelectFamily (Happy Eyeballs) since
+  // v20 — its internal lookupAndConnectMultiple path calls this with
+  // `options.all: true` and expects an ARRAY of {address, family} back, not
+  // the single (err, address, family) tuple dns.lookup's non-`all` form
+  // uses. Getting this wrong doesn't error where you'd expect — it throws a
+  // confusing "Invalid IP address: undefined" deep in node:net instead, and
+  // every fetch fails with 'fetch_failed' regardless of the URL being fine.
   const pinnedLookup: typeof dns.lookup = ((_hostname: string, options: unknown, callback: unknown) => {
-    const cb = (typeof options === 'function' ? options : callback) as (err: null, address: string, family: number) => void;
-    cb(null, ip, net.isIPv6(ip) ? 6 : 4);
+    const cb = (typeof options === 'function' ? options : callback) as (err: null, address: string | { address: string; family: number }[], family?: number) => void;
+    if (options && typeof options === 'object' && (options as { all?: boolean }).all) {
+      cb(null, [{ address: ip, family }]);
+    } else {
+      cb(null, ip, family);
+    }
   }) as typeof dns.lookup;
 
   return new Promise<FetchImageResult>((resolve) => {

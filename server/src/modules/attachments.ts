@@ -90,9 +90,18 @@ export function registerAttachmentRoutes(fastify: FastifyInstance): void {
 
   // raw Buffer body, not JSON — scoped plugin for just these 2 routes:
   // swapping addContentTypeParser on the root instance would break JSON
-  // parsing for every other /api/* route.
+  // parsing for every other /api/* route. The wildcard '*' alone does NOT
+  // cover this: Fastify's own built-in default parser for the EXACT type
+  // 'application/json' takes precedence over a wildcard parser, even one
+  // registered in a child scope — so /api/avatar's `{ url }` JSON body (see
+  // avatarUpload.ts) was arriving already parsed into an object, and that
+  // handler's `(request.body as Buffer).toString('utf8')` was silently
+  // producing "[object Object]" instead of the real JSON, always failing
+  // with 'invalid_body'. Registering 'application/json' explicitly (not
+  // just '*') here overrides the built-in default within this scope only.
   fastify.register(async (scoped) => {
     scoped.addContentTypeParser('*', { parseAs: 'buffer' }, (_req, payload, done) => done(null, payload));
+    scoped.addContentTypeParser('application/json', { parseAs: 'buffer' }, (_req, payload, done) => done(null, payload));
     scoped.post('/api/attachments/:id/chunk/:index', { bodyLimit: config.UPLOAD_CHUNK_BYTES }, handleAttachmentChunk);
     scoped.post('/api/avatar', { bodyLimit: config.MAX_AVATAR_BYTES }, handleAvatarUpload);
   });
