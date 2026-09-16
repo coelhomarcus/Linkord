@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useRoom } from '@/state/RoomContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ImageLightbox } from '@/shared/ImageLightbox';
+import { BANNER_ASPECT_RATIO } from '@/shared/profileLinks';
 import { ProfileCard } from './ProfileCard';
 
 interface ProfileModalProps {
@@ -9,10 +10,15 @@ interface ProfileModalProps {
   onClose: () => void;
 }
 
+type ProfileImageSelection = {
+  src: string;
+  kind: 'avatar' | 'banner';
+};
+
 export function ProfileModal({ userId, onClose }: ProfileModalProps) {
   const { allUsers, onlineUserIds } = useRoom();
   const user = userId ? allUsers.get(userId) : null;
-  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<ProfileImageSelection | null>(null);
 
   return (
     <Dialog open={!!user} onOpenChange={(next) => { if (!next) onClose(); }}>
@@ -25,18 +31,20 @@ export function ProfileModal({ userId, onClose }: ProfileModalProps) {
             <ProfileCard
               user={user}
               online={onlineUserIds.has(user.id)}
-              onBannerClick={user.banner ? () => setLightboxSrc(user.banner) : undefined}
-              onAvatarClick={user.avatar ? () => setLightboxSrc(user.avatar) : undefined}
+              onBannerClick={user.banner ? () => setLightboxImage({ src: user.banner, kind: 'banner' }) : undefined}
+              onAvatarClick={user.avatar ? () => setLightboxImage({ src: user.avatar, kind: 'avatar' }) : undefined}
             />
           </div>
         </DialogContent>
       )}
       {user && (
         <ImageLightbox
-          src={lightboxSrc ?? ''}
-          alt={lightboxSrc === user.banner ? 'Banner' : 'Foto de perfil'}
-          open={!!lightboxSrc}
-          onOpenChange={(open) => { if (!open) setLightboxSrc(null); }}
+          src={lightboxImage?.src ?? ''}
+          alt={lightboxImage?.kind === 'banner' ? 'Banner' : 'Foto de perfil'}
+          variant="profile"
+          aspectRatio={lightboxImage?.kind === 'banner' ? BANNER_ASPECT_RATIO : 1}
+          open={!!lightboxImage}
+          onOpenChange={(open) => { if (!open) setLightboxImage(null); }}
         />
       )}
     </Dialog>
