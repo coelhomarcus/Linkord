@@ -480,7 +480,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
                 <div className="min-w-0">
                   <p className="select-none text-body font-medium text-text-primary">Supressão de ruído</p>
-                  <p className="select-none text-label text-text-muted">Reduz ruído de fundo (teclado, ventilador, trânsito) no seu microfone.</p>
+                  <p className="select-none text-label text-text-muted">Usa um modelo de IA local pra reduzir ruído de fundo (teclado, ventilador, trânsito) no seu microfone.</p>
                 </div>
                 <Switch
                   checked={noiseSuppressionEnabled}

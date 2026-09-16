@@ -34,6 +34,15 @@ if (typeof globalThis.IntersectionObserver === 'undefined') {
     thresholds: ReadonlyArray<number> = [];
   } as unknown as typeof IntersectionObserver;
 }
+if (typeof globalThis.AudioWorkletNode === 'undefined') {
+  // @sapphi-red/web-noise-suppressor declares `class RnnoiseWorkletNode
+  // extends AudioWorkletNode` (and its Gtcrn/NoiseGate/Speex siblings, all
+  // from the same module) at module scope, so just importing it — which
+  // useMicrophone.ts does transitively via rnnoiseAudioProcessor.ts, even
+  // when noise suppression is never turned on — throws in jsdom (no Web
+  // Audio API at all) without this.
+  globalThis.AudioWorkletNode = class {} as unknown as typeof AudioWorkletNode;
+}
 if (typeof URL.createObjectURL === 'undefined') {
   URL.createObjectURL = () => 'blob:mock';
   URL.revokeObjectURL = () => {};
