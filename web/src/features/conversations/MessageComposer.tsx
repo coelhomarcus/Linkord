@@ -61,6 +61,7 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
   // right now (see getMentionQuery) — drives the autocomplete dropdown.
   const [mentionQuery, setMentionQuery] = useState<{ start: number; query: string } | null>(null);
   const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
+  const mentionOptionRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingFilesRef = useRef<PendingAttachment[]>([]);
@@ -70,6 +71,13 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
   const isTypingRef = useRef(false);
   const disabled = !state.joined || activeUploadId !== null;
   const canSubmit = !disabled && (text.trim().length > 0 || pendingFiles.length > 0);
+
+  // Keeps the arrow-key-highlighted mention option visible — without this,
+  // ArrowDown/ArrowUp move mentionSelectedIndex past the dropdown's visible
+  // rows (it's capped at max-h-56) with no compensating scroll.
+  useEffect(() => {
+    mentionOptionRefs.current[mentionSelectedIndex]?.scrollIntoView({ block: 'nearest' });
+  }, [mentionSelectedIndex, mentionQuery]);
 
   useEffect(() => { pendingFilesRef.current = pendingFiles; }, [pendingFiles]);
   useEffect(() => () => {
@@ -323,6 +331,7 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
             {mentionCandidates.map((user, i) => (
               <button
                 key={user.id}
+                ref={(el) => { mentionOptionRefs.current[i] = el; }}
                 type="button"
                 // onMouseDown (not onClick) fires BEFORE the textarea's blur
                 // — preventDefault stops that blur from happening at all, so
