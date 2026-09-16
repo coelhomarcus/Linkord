@@ -161,13 +161,21 @@ function EmailSettings({ currentEmail }: { currentEmail: string | null }) {
 }
 
 type ProfileCropTarget =
-  { field: 'avatar' | 'banner'; kind: 'file'; file: File; src: string };
+  | { field: 'avatar' | 'banner'; kind: 'file'; file: File; src: string }
+  // A URL picked via "Usar URL" — routed through this SAME crop dialog
+  // (instead of being applied directly) so it also goes through the
+  // server's crop/animate-detect pipeline (see uploadProfileImage below),
+  // which is what generates the freeze-until-speaking poster for an
+  // animated GIF/WebP. react-easy-crop only reports crop coordinates here,
+  // it never reads pixels into a <canvas>, so an external image never hits
+  // a CORS/tainted-canvas issue (see ImageCropDialog.tsx's own comment).
+  | { field: 'avatar' | 'banner'; kind: 'url'; url: string };
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const {
     state, updateProfile, uploadProfileImage, showStats, setShowStats,
     notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled, showTileBanners, setShowTileBanners, livekitRoom, storageUsage,
-    noiseSuppressionEnabled, setNoiseSuppressionEnabled, backgroundBlurEnabled, setBackgroundBlurEnabled,
+    noiseSuppressionEnabled, setNoiseSuppressionEnabled,
   } = useRoom();
   const { logout, user } = useAuth();
   const [avatar, setAvatar] = useState(state.me.avatar);
@@ -274,24 +282,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   }
 
   function handleUrlPicked(field: 'avatar' | 'banner', url: string) {
-    const setError = field === 'avatar' ? setAvatarError : setBannerError;
-    setError(null);
-    // An externally-hosted URL never goes through our crop/animate-detect
-    // pipeline, so it never gets a poster — even if it happens to be an
-    // animated GIF, it just always plays (same as before this feature).
-    const nextProfile = {
-      avatar: field === 'avatar' ? url : avatar,
-      avatarPoster: field === 'avatar' ? '' : avatarPoster,
-      avatarColor,
-      displayName,
-      banner: field === 'banner' ? url : banner,
-      bannerPoster: field === 'banner' ? '' : bannerPoster,
-      bio,
-      profileLinks: profileLinksForSubmit(),
-    };
-    if (field === 'avatar') { setAvatar(url); setAvatarPoster(''); } else { setBanner(url); setBannerPoster(''); }
-    updateProfile(nextProfile);
     setUrlDialogField(null);
+    // Routed through the crop dialog like a file upload (not applied
+    // directly) — see handleCropConfirm below for why.
+    setCropTarget({ field, kind: 'url', url });
   }
 
   function closeCropDialog() {
@@ -312,7 +306,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setUploading(true);
     closeCropDialog();
     try {
-      const url = await uploadProfileImage(field, target.file, crop, setProgress, profile);
+      // A picked URL is sent as a JSON body instead of raw file bytes —
+      // uploadProfileImage/the server (/api/avatar) already accepts either
+      // one identically, downloading the URL itself before the same
+      // crop/animate-detect/poster pipeline a file upload goes through.
+      const body = target.kind === 'file'
+        ? target.file
+        : new Blob([JSON.stringify({ url: target.url })], { type: 'application/json' });
+      const url = await uploadProfileImage(field, body, crop, setProgress, profile);
       if (field === 'avatar') setAvatar(url); else setBanner(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Falha ao enviar ${field === 'avatar' ? 'a foto' : 'o banner'}.`);
@@ -427,7 +428,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
               <ImageCropDialog
                 open={!!cropTarget}
-                imageSrc={cropTarget?.src ?? null}
+                imageSrc={cropTarget ? (cropTarget.kind === 'file' ? cropTarget.src : cropTarget.url) : null}
                 aspect={cropTarget?.field === 'banner' ? BANNER_ASPECT_RATIO : 1}
                 cropShape={cropTarget?.field === 'banner' ? 'rect' : 'round'}
                 title={cropTarget?.field === 'banner' ? 'Recortar banner' : 'Recortar foto de perfil'}
@@ -503,19 +504,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
               <div className={settingsCardClass}>
                 <DevicePicker label="Câmera" room={livekitRoom} kind="videoinput" />
-              </div>
-
-              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
-                <div className="min-w-0">
-                  <p className="select-none text-body font-medium text-text-primary">Desfocar fundo</p>
-                  <p className="select-none text-label text-text-muted">Desfoca o que está atrás de você na câmera.</p>
-                </div>
-                <Switch
-                  checked={backgroundBlurEnabled}
-                  onCheckedChange={setBackgroundBlurEnabled}
-                  aria-label="Desfocar fundo"
-                  className="mt-0.5 flex-none"
-                />
               </div>
 
               <div className={settingsCardClass}>

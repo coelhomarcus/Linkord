@@ -54,8 +54,6 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     setCompressImagesDefault: noop,
     noiseSuppressionEnabled: false,
     setNoiseSuppressionEnabled: noop,
-    backgroundBlurEnabled: false,
-    setBackgroundBlurEnabled: noop,
     conversations: [],
     activeConversationId: null,
     openConversation: noop,

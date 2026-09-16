@@ -43,6 +43,9 @@ if (typeof globalThis.AudioWorkletNode === 'undefined') {
   // Audio API at all) without this.
   globalThis.AudioWorkletNode = class {} as unknown as typeof AudioWorkletNode;
 }
+if (typeof Element.prototype.scrollIntoView === 'undefined') {
+  Element.prototype.scrollIntoView = () => {};
+}
 if (typeof URL.createObjectURL === 'undefined') {
   URL.createObjectURL = () => 'blob:mock';
   URL.revokeObjectURL = () => {};

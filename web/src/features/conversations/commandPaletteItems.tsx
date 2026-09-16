@@ -1,3 +1,4 @@
+import { MessageCirclePlus, Phone } from 'lucide-react';
 import type { CommandItem } from '@/components/motion/command-palette';
 import { Avatar } from '@/shared/Avatar';
 import type { Conversation, Participant, PublicUser } from '@/types/protocol';
@@ -32,7 +33,12 @@ function userAvatar(user: PublicUser) {
 /** Pure builder for the ⌘K command palette's item list — kept separate from
  * where it's assembled (App.tsx#Shell) so the grouping/dedup logic can be
  * tested without mocking the whole RoomContext. `actions` is the only
- * side-effecting part, injected by the caller. */
+ * side-effecting part, injected by the caller.
+ *
+ * The root list stays short on purpose: existing conversations, calls
+ * already happening, and two ACTIONS ("Ligar para…"/"Conversar com…") that
+ * drill into their own searchable sub-list instead of dumping every person
+ * in the room into the root list — see CommandItem.stage. */
 export function buildCommandItems(
   conversations: Conversation[],
   allUsers: Map<string, PublicUser>,
@@ -60,28 +66,49 @@ export function buildCommandItems(
     }
   }
 
+  // "Ligar para…" stage — one entry per conversation not already in a call
+  // (group or direct; excluding the one I'm already in). The stage's own
+  // header already says "Ligar para", so the label is just the title.
+  const callStageItems: CommandItem[] = [];
   for (const conversation of conversations) {
+    if (conversationsWithActiveCall.has(conversation.id) || conversation.id === activeCallConversationId) continue;
     const title = conversationTitle(conversation, meUserId, allUsers);
-    items.push({
-      id: `conversation:${conversation.id}`,
+    callStageItems.push({
+      id: `start-call:${conversation.id}`,
       label: title,
-      group: 'Conversas',
       avatar: conversationAvatar(conversation, title, meUserId, allUsers),
-      onSelect: () => actions.onOpenConversation(conversation.id),
+      onSelect: () => actions.onCall(conversation.id),
     });
   }
 
+  // "Conversar com…" stage — one entry per person who doesn't have a DM
+  // with me yet (same dedup as the old flat "Pessoas" group).
+  const messageStageItems: CommandItem[] = [];
   for (const user of allUsers.values()) {
     if (user.id === meUserId || directUserIds.has(user.id)) continue;
-    items.push({
+    messageStageItems.push({
       id: `person:${user.id}`,
-      label: `Conversar com ${user.displayName}`,
-      group: 'Pessoas',
+      label: user.displayName,
       keywords: [user.username],
       avatar: userAvatar(user),
       onSelect: () => actions.onMessageUser(user.id),
     });
   }
+
+  items.push({
+    id: 'action:call',
+    label: 'Ligar para…',
+    group: 'Ações',
+    icon: Phone,
+    stage: { items: callStageItems, placeholder: 'Ligar pra quem?' },
+  });
+  items.push({
+    id: 'action:message',
+    label: 'Conversar com…',
+    group: 'Ações',
+    icon: MessageCirclePlus,
+    stage: { items: messageStageItems, placeholder: 'Conversar com quem?' },
+  });
 
   for (const conversation of conversations) {
     if (!conversationsWithActiveCall.has(conversation.id)) continue;
@@ -96,14 +123,13 @@ export function buildCommandItems(
   }
 
   for (const conversation of conversations) {
-    if (conversationsWithActiveCall.has(conversation.id) || conversation.id === activeCallConversationId) continue;
     const title = conversationTitle(conversation, meUserId, allUsers);
     items.push({
-      id: `start-call:${conversation.id}`,
-      label: `Iniciar chamada em ${title}`,
-      group: 'Iniciar chamada',
+      id: `conversation:${conversation.id}`,
+      label: title,
+      group: 'Conversas',
       avatar: conversationAvatar(conversation, title, meUserId, allUsers),
-      onSelect: () => actions.onCall(conversation.id),
+      onSelect: () => actions.onOpenConversation(conversation.id),
     });
   }
 

@@ -237,7 +237,7 @@ function CommandPaletteMount({ open, onOpenChange, onCall, onMobileNavigated }: 
       items={commandItems}
       open={open}
       onOpenChange={onOpenChange}
-      placeholder="Buscar pessoas, conversas, chamadas…"
+      placeholder="Buscar conversas ou uma ação…"
       emptyMessage="Nada encontrado."
     />
   );

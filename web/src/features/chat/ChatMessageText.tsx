@@ -4,6 +4,7 @@ import { ChatEmbed } from './ChatEmbed';
 import type { PublicUser } from '../../types/protocol';
 import { Avatar } from '@/shared/Avatar';
 import { cn } from '@/shared/lib/utils';
+import { isSingleEmoji } from '@/shared/lib/isSingleEmoji';
 
 const TOKEN_RE = /(https?:\/\/[^\s<>"']+)|@([A-Za-z0-9_.-]{1,20})/g;
 
@@ -35,7 +36,13 @@ function renderRich(
         disabled={!onOpenProfile}
         onClick={() => onOpenProfile?.(user.id)}
         className={cn(
-          'inline-flex translate-y-0.75 items-center gap-1 rounded px-1 py-0.5 align-middle font-medium',
+          // h-6 (24px) matches the surrounding text's own line box exactly
+          // (text-body is 1rem/1.5 = 24px, set globally on html/body — see
+          // index.css) — a content-driven height here (padding + the 16px
+          // avatar) came out shorter than that, so the chip always sat a
+          // few px off the text baseline no matter how align-middle/a
+          // manual translate tried to compensate.
+          'inline-flex h-6 items-center gap-1 rounded px-1 align-middle font-medium',
           isMe ? 'bg-yellow/25 text-yellow' : 'bg-primary/15 text-primary',
           onOpenProfile && (isMe ? 'hover:bg-yellow/35' : 'hover:bg-primary/25')
         )}
@@ -64,9 +71,14 @@ interface ChatMessageTextProps {
 export function ChatMessageText({ text, mentionLookup, myUserId, onOpenProfile, edgeToEdge }: ChatMessageTextProps) {
   const embed = firstEmbed(text);
   const remaining = embed && text.trim() === embed.url ? '' : text;
+  const singleEmoji = isSingleEmoji(text);
   return (
     <>
-      {remaining && <p className="whitespace-pre-wrap wrap-break-word">{renderRich(remaining, mentionLookup, myUserId, onOpenProfile)}</p>}
+      {remaining && (
+        <p className={cn('whitespace-pre-wrap wrap-break-word', singleEmoji && 'text-[48px] leading-none')}>
+          {renderRich(remaining, mentionLookup, myUserId, onOpenProfile)}
+        </p>
+      )}
       {embed && <ChatEmbed embed={embed} edgeToEdge={!remaining && edgeToEdge} />}
     </>
   );

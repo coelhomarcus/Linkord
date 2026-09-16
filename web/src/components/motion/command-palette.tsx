@@ -2,7 +2,7 @@
 // beui.dev/components/blocks/command-palette
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Search, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ChevronRight, Search, type LucideIcon } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -33,7 +33,18 @@ export type CommandItem = {
    * the row (see the h-5 w-5 wrapper below); callers own their own shape/fit. */
   avatar?: ReactNode;
   badge?: ReactNode;
-  onSelect: () => void;
+  /** Terminal items call this and close the palette. Omit it (and set
+   * `stage` instead) for an item that drills into a sub-list rather than
+   * doing something itself — see `stage` below. */
+  onSelect?: () => void;
+  /** Turns this item into a step rather than a leaf: selecting it swaps the
+   * visible list to `stage.items` and resets the search box instead of
+   * running `onSelect`/closing. The user backs out with Backspace (on an
+   * empty query), Escape, or the back button — see the root keydown handler
+   * and the header back button below. Items inside a stage are ordinary
+   * `CommandItem`s (their own `onSelect` runs as normal), so nesting more
+   * than one level deep works too, it's just not used anywhere yet. */
+  stage?: { items: CommandItem[]; placeholder?: string };
 };
 
 export interface CommandPaletteProps {
@@ -75,6 +86,14 @@ export function CommandPalette({
   );
 
   const [query, setQuery] = useState("");
+  // Stack of entered stages (see CommandItem.stage) — empty means "at the
+  // root list". A plain array, not just a single optional stage, so nesting
+  // deeper than one level works for free if something ever needs it.
+  const [stagePath, setStagePath] = useState<CommandItem[]>([]);
+  const popStage = useCallback(() => {
+    setStagePath((path) => path.slice(0, -1));
+    setQuery("");
+  }, []);
   // Portal target only exists client-side; render nothing during SSR/hydration.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -96,12 +115,14 @@ export function CommandPalette({
       }
       if (e.key === "Escape" && open) {
         e.preventDefault();
-        setOpen(false);
+        // One Escape backs out of a stage; only closes once back at the root.
+        if (stagePath.length > 0) popStage();
+        else setOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, shortcut, setOpen]);
+  }, [open, shortcut, setOpen, stagePath, popStage]);
 
   useEffect(() => {
     if (!open) return;
@@ -116,11 +137,16 @@ export function CommandPalette({
     };
   }, [open]);
 
-  const filtered = useMemo(() => searchCommands(items, query), [items, query]);
+  // The list currently on screen — the root `items`, or whichever stage is
+  // on top of the stack.
+  const activeItems = stagePath.length > 0 ? stagePath[stagePath.length - 1]!.stage!.items : items;
+  const activeStage = stagePath[stagePath.length - 1];
+
+  const filtered = useMemo(() => searchCommands(activeItems, query), [activeItems, query]);
 
   // Reserve the icon column only when at least one item brings an icon or an
   // avatar, so icon-less lists don't render a dead gap before every label.
-  const hasIcons = useMemo(() => items.some((it) => it.icon || it.avatar), [items]);
+  const hasIcons = useMemo(() => activeItems.some((it) => it.icon || it.avatar), [activeItems]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, CommandItem[]>();
@@ -143,16 +169,23 @@ export function CommandPalette({
 
   // Clearing the query would drop the cursor on its own, but only if it had
   // changed; `moveTo(null)` covers reopening on an already-empty query.
+  // Every fresh open also starts back at the root stage.
   useOnOpen(open, () => {
     setQuery("");
     moveTo(null);
+    setStagePath([]);
   });
 
+  // Also refocuses on every stage change: entering/leaving a stage swaps out
+  // the row that was just clicked, so the DOM node holding focus unmounts and
+  // focus would otherwise fall back to the body — silently swallowing the
+  // next keystroke (e.g. Backspace-to-go-back) since it never reaches this
+  // panel's onKeyDown. Called directly (no rAF) since the input is already in
+  // the DOM by the time this effect runs.
   useEffect(() => {
     if (!open) return;
-    const frame = requestAnimationFrame(() => inputRef.current?.focus());
-    return () => cancelAnimationFrame(frame);
-  }, [open]);
+    inputRef.current?.focus();
+  }, [open, stagePath]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
@@ -164,10 +197,19 @@ export function CommandPalette({
     } else if (e.key === "Enter") {
       e.preventDefault();
       const it = rows[active];
-      if (it) {
-        it.onSelect();
+      if (!it) return;
+      if (it.stage) {
+        setStagePath((path) => [...path, it]);
+        setQuery("");
+        moveTo(null);
+      } else {
+        it.onSelect?.();
         setOpen(false);
       }
+    } else if (e.key === "Backspace" && query === "" && stagePath.length > 0) {
+      // Nothing to delete at an empty query — steps back a level instead.
+      e.preventDefault();
+      popStage();
     }
   };
 
@@ -242,12 +284,23 @@ export function CommandPalette({
                 className="pointer-events-auto w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl will-change-transform"
               >
                 <div className="flex items-center gap-3 border-b border-border px-4">
-                  <Search className="h-4 w-4 text-muted-foreground" />
+                  {stagePath.length > 0 ? (
+                    <button
+                      type="button"
+                      aria-label="Voltar"
+                      onClick={popStage}
+                      className="flex-none text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                    </button>
+                  ) : (
+                    <Search className="h-4 w-4 flex-none text-muted-foreground" />
+                  )}
                   <input
                     ref={inputRef}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder={placeholder}
+                    placeholder={activeStage?.stage?.placeholder ?? placeholder}
                     role="combobox"
                     // The field only exists while the palette is open.
                     aria-expanded="true"
@@ -305,8 +358,14 @@ export function CommandPalette({
                               data-index={idx}
                               onMouseEnter={() => moveTo(it.id)}
                               onClick={() => {
-                                it.onSelect();
-                                setOpen(false);
+                                if (it.stage) {
+                                  setStagePath((path) => [...path, it]);
+                                  setQuery("");
+                                  moveTo(null);
+                                } else {
+                                  it.onSelect?.();
+                                  setOpen(false);
+                                }
                               }}
                               className={cn(
                                 "relative isolate flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors",
@@ -349,7 +408,9 @@ export function CommandPalette({
                                   {it.badge}
                                 </span>
                               ) : null}
-                              {it.hint ? (
+                              {it.stage ? (
+                                <ChevronRight className="relative z-10 h-3.5 w-3.5 flex-none text-muted-foreground" />
+                              ) : it.hint ? (
                                 <kbd className="relative z-10 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
                                   {it.hint}
                                 </kbd>

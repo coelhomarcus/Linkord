@@ -88,8 +88,6 @@ export interface RoomContextValue {
   setCompressImagesDefault: (value: boolean) => void;
   noiseSuppressionEnabled: boolean;
   setNoiseSuppressionEnabled: (value: boolean) => void;
-  backgroundBlurEnabled: boolean;
-  setBackgroundBlurEnabled: (value: boolean) => void;
   conversations: Conversation[];
   activeConversationId: string | null;
   openConversation: (conversationId: string) => void;

@@ -25,7 +25,6 @@ import { loadHideAudioOnlyTiles, saveHideAudioOnlyTiles } from '../features/sett
 import { loadShowTileBanners, saveShowTileBanners } from '../features/settings/useTileBannerPreference';
 import { loadCompressImages, saveCompressImages } from '../features/settings/useCompressImagesPreference';
 import { loadNoiseSuppression, saveNoiseSuppression } from '../features/settings/useNoiseSuppressionPreference';
-import { loadBackgroundBlur, saveBackgroundBlur } from '../features/settings/useBackgroundBlurPreference';
 import { preloadSounds, setVolume } from '../shared/sounds';
 import {
   loadNotificationsEnabled, saveNotificationsEnabled, setNotificationsModuleEnabled, setNotificationClickHandler,
@@ -156,7 +155,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const attachmentsUpload = useAttachmentsUpload();
 
   const { startSharing, stopSharing } = useScreenShare(livekitRoom, dispatch);
-  const { startCamera, stopCamera, setBackgroundBlurEnabled: applyBackgroundBlur } = useCamera(livekitRoom, dispatch);
+  const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch);
   const { activateMic, toggleMicMuted, setMicMuted, leaveMic, setNoiseSuppressionEnabled: applyNoiseSuppression } = useMicrophone(livekitRoom, dispatch);
 
   const [noiseSuppressionEnabled, setNoiseSuppressionEnabledState] = useState(loadNoiseSuppression);
@@ -165,13 +164,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     saveNoiseSuppression(value);
     applyNoiseSuppression(value);
   }, [applyNoiseSuppression]);
-
-  const [backgroundBlurEnabled, setBackgroundBlurEnabledState] = useState(loadBackgroundBlur);
-  const setBackgroundBlurEnabled = useCallback((value: boolean) => {
-    setBackgroundBlurEnabledState(value);
-    saveBackgroundBlur(value);
-    applyBackgroundBlur(value);
-  }, [applyBackgroundBlur]);
 
   const callLifecycle = useCallLifecycle({
     livekitRoom, dispatch, sendWs, stopCamera, stopSharing, activateMic, setMicMuted, leaveMic,
@@ -531,7 +523,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
         hideAudioOnlyTiles, setHideAudioOnlyTiles, showTileBanners, setShowTileBanners,
         compressImagesDefault, setCompressImagesDefault,
-        noiseSuppressionEnabled, setNoiseSuppressionEnabled, backgroundBlurEnabled, setBackgroundBlurEnabled,
+        noiseSuppressionEnabled, setNoiseSuppressionEnabled,
         conversations: conversationsList.conversations, activeConversationId: conversationsList.activeConversationId,
         openConversation, openDirect: conversationsList.openDirect, closeConversation, pinConversation: conversationsList.pinConversation,
         createGroup: conversationsList.createGroup, deleteGroup: conversationsList.deleteGroup,

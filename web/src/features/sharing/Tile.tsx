@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { ConnectionQuality } from 'livekit-client';
-import { HeadphoneOff, MicOff, ScreenShare, Settings, SignalLow, SignalZero, Video, VolumeX } from 'lucide-react';
+import { HeadphoneOff, MicOff, Settings, SignalLow, SignalZero, VolumeX } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { useParticipantMedia, useAttachTrack, useIsSpeaking, useConnectionQuality } from './useLiveKitTrack';
 import { useMuteForMe } from './useMuteForMe';
@@ -120,7 +120,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
   const bannerSrc = !isSpeaking && bannerPoster ? bannerPoster : banner;
   const bannerLayerStyle = banner
     ? {
-        backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.65)), url(${JSON.stringify(bannerSrc)})`,
+        backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.8)), url(${JSON.stringify(bannerSrc)})`,
         backgroundPosition: 'center',
         backgroundSize: 'cover',
       }
@@ -155,8 +155,6 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
       )}>
         {showsVideo && <Avatar id={participantId} name={name} avatar={avatar} poster={avatarPoster} frozen={!isSpeaking} avatarColor={avatarColor} size={20} />}
         <span className={cn('select-none truncate font-medium text-text-primary', nameSize === 'label' ? 'text-label' : 'text-body')}>{name}</span>
-        {kind !== 'camera' && !!media.cameraTrack && <Video size={14} className="flex-none text-green" />}
-        {kind !== 'screen' && !!media.screenTrack && <ScreenShare size={14} className="flex-none text-primary" />}
         {isDeafened ? (
           <HeadphoneOff size={14} className="flex-none text-red" />
         ) : (
