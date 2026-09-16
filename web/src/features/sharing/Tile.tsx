@@ -113,7 +113,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
     : { background: `color-mix(in srgb, ${tint} 22%, var(--color-bg-tertiary))` };
   const bannerLayerStyle = banner
     ? {
-        backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.15), rgba(0,0,0,0.45)), url(${JSON.stringify(banner)})`,
+        backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.65)), url(${JSON.stringify(banner)})`,
         backgroundPosition: 'center',
         backgroundSize: 'cover',
       }
