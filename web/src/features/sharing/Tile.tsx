@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
-import { HeadphoneOff, MicOff, ScreenShare, Settings, Video, VolumeX } from 'lucide-react';
+import { ConnectionQuality } from 'livekit-client';
+import { HeadphoneOff, MicOff, ScreenShare, Settings, SignalLow, SignalZero, Video, VolumeX } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
-import { useParticipantMedia, useAttachTrack, useIsSpeaking } from './useLiveKitTrack';
+import { useParticipantMedia, useAttachTrack, useIsSpeaking, useConnectionQuality } from './useLiveKitTrack';
 import { useMuteForMe } from './useMuteForMe';
 import { tileKey } from './tileTypes';
 import type { TileKind } from './tileTypes';
@@ -35,6 +36,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
 
   const media = useParticipantMedia(participantId);
   const isSpeaking = useIsSpeaking(participantId);
+  const connectionQuality = useConnectionQuality(participantId);
   const { hasAudio: hasMutableAudio, muted: mutedForMe, toggleMute: toggleMuteForMe } = useMuteForMe(participantId, kind, isMine);
 
   const showsVideo = kind !== 'avatar';
@@ -154,6 +156,12 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
           kind !== 'screen' && media.micActivated && media.micMuted && (
             <MicOff size={14} className="flex-none text-red" />
           )
+        )}
+        {kind !== 'screen' && connectionQuality === ConnectionQuality.Poor && (
+          <SignalLow size={14} className="flex-none text-yellow" />
+        )}
+        {kind !== 'screen' && connectionQuality === ConnectionQuality.Lost && (
+          <SignalZero size={14} className="flex-none text-red" />
         )}
       </div>
 

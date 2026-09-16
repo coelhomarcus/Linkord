@@ -5,15 +5,32 @@ import type { Room } from 'livekit-client';
 import type { RoomAction } from '../../state/roomReducer';
 import { playSound } from '../../shared/sounds';
 import { loadDevicePreference } from '../settings/useDevicePreference';
+import { loadNoiseSuppression } from '../settings/useNoiseSuppressionPreference';
 
 export interface MicrophoneApi {
   activateMic: () => Promise<void>;
   toggleMicMuted: () => Promise<void>;
   setMicMuted: (muted: boolean) => Promise<void>;
   leaveMic: () => Promise<void>;
+  setNoiseSuppressionEnabled: (enabled: boolean) => Promise<void>;
 }
 
 const CONNECT_TIMEOUT_MS = 15000;
+
+// This is the browser/OS-level noiseSuppression constraint on the raw
+// capture device — not an AI model. (Krisp's AI-based filter was tried
+// first, but it only authorizes against LiveKit Cloud; it 404s on every
+// self-hosted LiveKit server, so it was pulled back out entirely.)
+async function applyNoiseSuppression(room: Room, enabled: boolean): Promise<void> {
+  const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+  const mediaStreamTrack = pub?.track?.mediaStreamTrack;
+  if (!mediaStreamTrack) return;
+  try {
+    await mediaStreamTrack.applyConstraints({ noiseSuppression: enabled });
+  } catch (err) {
+    console.warn('Falha ao aplicar supressão de ruído', err);
+  }
+}
 
 function waitForConnection(room: Room): Promise<void> {
   if (room.state === ConnectionState.Connected) return Promise.resolve();
@@ -50,7 +67,10 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
       // first (the common case — a call's mic button) never consulted it,
       // so the choice looked like it "didn't stick".
       const savedDeviceId = loadDevicePreference('audioinput');
-      await room.localParticipant.setMicrophoneEnabled(true, savedDeviceId ? { deviceId: savedDeviceId } : undefined);
+      await room.localParticipant.setMicrophoneEnabled(true, {
+        noiseSuppression: loadNoiseSuppression(),
+        ...(savedDeviceId ? { deviceId: savedDeviceId } : {}),
+      });
     } catch (err) {
       if (err instanceof Error && err.message === 'timeout') {
         dispatch({ type: 'SET_SHARE_ERROR', message: 'Não foi possível conectar ao servidor de vídeo. Verifique sua conexão e tente de novo.' });
@@ -83,5 +103,10 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
     if (pub?.track) await room.localParticipant.unpublishTrack(pub.track, true);
   }, [room]);
 
-  return { activateMic, toggleMicMuted, setMicMuted, leaveMic };
+  // Called when the "Supressão de ruído" switch in Settings changes while a
+  // mic track already exists — activateMic only reads the saved preference
+  // on (re)activation, so a live toggle needs to reach the running track too.
+  const setNoiseSuppressionEnabled = useCallback((enabled: boolean) => applyNoiseSuppression(room, enabled), [room]);
+
+  return { activateMic, toggleMicMuted, setMicMuted, leaveMic, setNoiseSuppressionEnabled };
 }

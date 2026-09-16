@@ -4,6 +4,7 @@ import { ConnectionState, Track } from 'livekit-client';
 import type { Room } from 'livekit-client';
 import { useMicrophone } from './useMicrophone';
 import { saveDevicePreference } from '../settings/useDevicePreference';
+import { saveNoiseSuppression } from '../settings/useNoiseSuppressionPreference';
 
 function fakeRoom(setMicrophoneEnabled = vi.fn(async () => undefined)) {
   return {
@@ -35,7 +36,7 @@ describe('useMicrophone — activateMic aplica o microfone salvo', () => {
 
     await result.current.activateMic();
 
-    expect(setMicrophoneEnabled).toHaveBeenCalledWith(true, { deviceId: 'mic-preferido' });
+    expect(setMicrophoneEnabled).toHaveBeenCalledWith(true, { noiseSuppression: false, deviceId: 'mic-preferido' });
   });
 
   it('sem preferencia salva, nao forca nenhum deviceId (deixa o navegador escolher)', async () => {
@@ -45,7 +46,18 @@ describe('useMicrophone — activateMic aplica o microfone salvo', () => {
 
     await result.current.activateMic();
 
-    expect(setMicrophoneEnabled).toHaveBeenCalledWith(true, undefined);
+    expect(setMicrophoneEnabled).toHaveBeenCalledWith(true, { noiseSuppression: false });
+  });
+
+  it('com supressao de ruido ligada em Configuracoes, ativa o mic com noiseSuppression: true', async () => {
+    saveNoiseSuppression(true);
+    const setMicrophoneEnabled = vi.fn(async () => undefined);
+    const room = fakeRoom(setMicrophoneEnabled);
+    const { result } = renderHook(() => useMicrophone(room, vi.fn()));
+
+    await result.current.activateMic();
+
+    expect(setMicrophoneEnabled).toHaveBeenCalledWith(true, { noiseSuppression: true });
   });
 
   it('nao ativa de novo se ja existe uma publicacao de microfone', async () => {

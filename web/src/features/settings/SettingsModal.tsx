@@ -167,6 +167,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const {
     state, updateProfile, uploadProfileImage, showStats, setShowStats,
     notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled, showTileBanners, setShowTileBanners, livekitRoom, storageUsage,
+    noiseSuppressionEnabled, setNoiseSuppressionEnabled, backgroundBlurEnabled, setBackgroundBlurEnabled,
   } = useRoom();
   const { logout, user } = useAuth();
   const [avatar, setAvatar] = useState(state.me.avatar);
@@ -476,8 +477,34 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 <DevicePicker label="Microfone" room={livekitRoom} kind="audioinput" />
               </div>
 
+              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
+                <div className="min-w-0">
+                  <p className="select-none text-body font-medium text-text-primary">Supressão de ruído</p>
+                  <p className="select-none text-label text-text-muted">Reduz ruído de fundo (teclado, ventilador, trânsito) no seu microfone.</p>
+                </div>
+                <Switch
+                  checked={noiseSuppressionEnabled}
+                  onCheckedChange={setNoiseSuppressionEnabled}
+                  aria-label="Supressão de ruído"
+                  className="mt-0.5 flex-none"
+                />
+              </div>
+
               <div className={settingsCardClass}>
                 <DevicePicker label="Câmera" room={livekitRoom} kind="videoinput" />
+              </div>
+
+              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
+                <div className="min-w-0">
+                  <p className="select-none text-body font-medium text-text-primary">Desfocar fundo</p>
+                  <p className="select-none text-label text-text-muted">Desfoca o que está atrás de você na câmera.</p>
+                </div>
+                <Switch
+                  checked={backgroundBlurEnabled}
+                  onCheckedChange={setBackgroundBlurEnabled}
+                  aria-label="Desfocar fundo"
+                  className="mt-0.5 flex-none"
+                />
               </div>
 
               <div className={settingsCardClass}>
