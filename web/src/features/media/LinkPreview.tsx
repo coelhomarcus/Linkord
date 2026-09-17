@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { ImageOff } from 'lucide-react';
-import type { DetectedEmbed } from './lib/chatEmbeds';
+import type { DetectedEmbed } from '@/shared/lib/chatEmbeds';
 import { ImageLightbox } from './ImageLightbox';
 import { GenericEmbed } from './GenericEmbed';
 import { AudioPlayer, VideoPlayer } from './MediaPlayers';
-import { availableAttachmentWidth, useChatSurfaceWidth } from './lib/chatSurfaceWidth';
+import { availableAttachmentWidth, useChatSurfaceWidth } from '@/shared/lib/chatSurfaceWidth';
 
 function EmbedFailedFallback({ url, className }: { url: string; className: string }) {
   return (

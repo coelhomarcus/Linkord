@@ -2,8 +2,8 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Download } from 'lucide-react';
 import type { ChatAttachment as ChatAttachmentData } from '@/shared/types/protocol';
 import { DocumentAttachmentCard } from './DocumentAttachmentCard';
-import { downloadFile } from './lib/download';
-import { highlightCode } from './lib/highlightCode';
+import { downloadFile } from '@/shared/lib/download';
+import { highlightCode } from '@/shared/lib/highlightCode';
 
 // react-markdown + remark-gfm + rehype-sanitize only load when a markdown
 // file is actually previewed, not as part of the main bundle.

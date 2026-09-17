@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Download } from 'lucide-react';
 import type { ChatAttachment as ChatAttachmentData } from '@/shared/types/protocol';
-import { DocumentAttachmentCard } from '../../shared/DocumentAttachmentCard';
-import { ImageLightbox } from '../../shared/ImageLightbox';
-import { AudioPlayer, VideoPlayer } from '../../shared/MediaPlayers';
-import { TextPreviewCard } from '../../shared/TextPreviewCard';
+import { DocumentAttachmentCard } from '@/features/media/DocumentAttachmentCard';
+import { ImageLightbox } from '@/features/media/ImageLightbox';
+import { AudioPlayer, VideoPlayer } from '@/features/media/MediaPlayers';
+import { TextPreviewCard } from '@/features/media/TextPreviewCard';
 import { availableAttachmentWidth, useChatSurfaceWidth } from '../../shared/lib/chatSurfaceWidth';
 import { cn } from '../../shared/lib/utils';
 

@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/primitives/
 import { Switch } from '@/shared/ui/primitives/switch';
 import { Textarea } from '@/shared/ui/primitives/textarea';
 import { Avatar } from '@/shared/Avatar';
-import { DocumentAttachmentCard } from '@/shared/DocumentAttachmentCard';
+import { DocumentAttachmentCard } from '@/features/media/DocumentAttachmentCard';
 import { UploadProgressBar } from '@/shared/UploadProgressBar';
 import { compressImageFile } from '@/shared/lib/compressImageFile';
 import { formatFileSize, formatSizeLimit } from '@/shared/lib/formatBytes';

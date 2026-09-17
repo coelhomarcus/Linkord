@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useRoom } from '@/state/RoomContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/ui/primitives/dialog';
-import { ImageLightbox } from '@/shared/ImageLightbox';
-import { BANNER_ASPECT_RATIO } from '@/shared/profileLinks';
+import { ImageLightbox } from '@/features/media/ImageLightbox';
+import { BANNER_ASPECT_RATIO } from '@/features/profile/profileLinks';
 import { ProfileCard } from './ProfileCard';
 
 interface ProfileModalProps {

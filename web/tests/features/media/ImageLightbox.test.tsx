@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { ImageLightbox } from '@/shared/ImageLightbox';
+import { ImageLightbox } from '@/features/media/ImageLightbox';
 
 describe('ImageLightbox', () => {
   it('usa a moldura padronizada de perfil e amplia a imagem sem distorcer', () => {

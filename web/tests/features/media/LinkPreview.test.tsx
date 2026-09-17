@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { LinkPreview } from '@/shared/LinkPreview';
+import { LinkPreview } from '@/features/media/LinkPreview';
 
 describe('LinkPreview', () => {
   afterEach(() => {

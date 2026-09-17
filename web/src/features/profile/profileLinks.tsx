@@ -6,7 +6,7 @@ import {
   SiThreads, SiTiktok, SiTwitch, SiVk, SiWhatsapp, SiX, SiYoutube,
 } from 'react-icons/si';
 import { FaLinkedin, FaXbox } from 'react-icons/fa6';
-import { colorFor } from './Avatar';
+import { colorFor } from '@/shared/Avatar';
 
 export type LinkKind =
   | 'youtube' | 'twitter' | 'twitch' | 'instagram' | 'github' | 'linkedin' | 'tiktok' | 'spotify' | 'discord'

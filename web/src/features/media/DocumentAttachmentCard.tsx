@@ -1,6 +1,6 @@
 import { File as FileIcon } from 'lucide-react';
-import { formatFileSize } from './lib/formatBytes';
-import { cn } from './lib/utils';
+import { formatFileSize } from '@/shared/lib/formatBytes';
+import { cn } from '@/shared/lib/utils';
 
 function fileTypeLabel(name: string, mime: string): string {
   const ext = name.includes('.') ? name.split('.').pop() ?? '' : '';

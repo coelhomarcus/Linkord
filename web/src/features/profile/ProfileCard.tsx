@@ -1,8 +1,8 @@
 import { useLayoutEffect, useRef } from 'react';
 import { AtSign, BadgeCheck, Camera, Check, ExternalLink, Link2, Loader2, Palette, Plus, Trash2, Upload, X } from 'lucide-react';
 import { Avatar, AVATAR_COLOR_OPTIONS } from '@/shared/Avatar';
-import { BANNER_ASPECT_RATIO, BrandIcon, bannerStyle, linkInfo } from '@/shared/profileLinks';
-import type { LinkInfo } from '@/shared/profileLinks';
+import { BANNER_ASPECT_RATIO, BrandIcon, bannerStyle, linkInfo } from '@/features/profile/profileLinks';
+import type { LinkInfo } from '@/features/profile/profileLinks';
 import { MAX_DISPLAY_NAME_LEN } from '@/shared/lib/displayName';
 import { MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '@/shared/types/protocol';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/primitives/tooltip';

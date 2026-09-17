@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { TextPreviewCard } from '@/shared/TextPreviewCard';
+import { TextPreviewCard } from '@/features/media/TextPreviewCard';
 
 vi.mock('@/shared/lib/highlightCode', () => ({ highlightCode: vi.fn(async () => null) }));
 

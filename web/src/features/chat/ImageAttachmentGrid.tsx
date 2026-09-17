@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ChatAttachment as ChatAttachmentData } from '@/shared/types/protocol';
-import { ImageLightbox } from '../../shared/ImageLightbox';
+import { ImageLightbox } from '@/features/media/ImageLightbox';
 import { availableAttachmentWidth, useChatSurfaceWidth } from '../../shared/lib/chatSurfaceWidth';
 
 /** WhatsApp-style 2x2 square grid for a message whose attachments are all
