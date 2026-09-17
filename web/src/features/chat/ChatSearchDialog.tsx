@@ -4,11 +4,11 @@ import { useRoom } from '../../state/RoomContext';
 import { Avatar } from '../../shared/Avatar';
 import { formatTime } from '../../shared/lib/formatChatTime';
 import { renderSearchSnippet } from '../../shared/lib/searchSnippet';
-import type { SearchResult } from '../../types/protocol';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
+import type { SearchResult } from '@/shared/types/protocol';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/ui/primitives/dialog';
+import { Input } from '@/shared/ui/primitives/input';
+import { Switch } from '@/shared/ui/primitives/switch';
+import { Label } from '@/shared/ui/primitives/label';
 
 const DEBOUNCE_MS = 300;
 

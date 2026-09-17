@@ -1,9 +1,9 @@
 import { createContext, useContext } from 'react';
 import type { Dispatch, MutableRefObject } from 'react';
 import type { Room } from 'livekit-client';
-import type { ChatMessage, ClientMessage, Conversation, PublicUser, ReactionEmoji, SearchResult, StorageUsage } from '../types/protocol';
+import type { ChatMessage, ClientMessage, Conversation, PublicUser, ReactionEmoji, SearchResult, StorageUsage } from '@/shared/types/protocol';
 import type { RoomAction, RoomState } from './roomReducer';
-import type { TileKind } from '../features/sharing/tileTypes';
+import type { TileKind } from '../features/calls/tileTypes';
 
 export interface ReactionEvent {
   key: number;

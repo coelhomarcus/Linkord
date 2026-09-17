@@ -59,8 +59,8 @@ O frontend sobe em `http://localhost:5173` (proxy pro backend em `:3000`).
 
 ## Testes
 
-- **Backend**: `node --test` (`server/src/**/*.test.ts`) — não precisa de Postgres nem LiveKit de verdade rodando.
-- **Frontend**: Vitest + React Testing Library (`web/src/**/*.test.tsx`).
+- **Backend**: `node --test` (`server/tests/**/*.test.ts`) — não precisa de Postgres nem LiveKit de verdade rodando.
+- **Frontend**: Vitest + React Testing Library (`web/tests/**/*.test.tsx`).
 
 ```bash
 npm test              # backend + frontend

@@ -34,7 +34,7 @@ export function useMediaDevices(room: LKRoom, kind: MediaDeviceKind): MediaDevic
         try {
           await room.switchActiveDevice(kind, saved);
         } catch (err) {
-          console.warn(`Falha ao aplicar ${kind} salvo`, err);
+          console.warn(`Failed to apply saved ${kind}`, err);
         }
       }
     }

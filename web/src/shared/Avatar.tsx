@@ -1,4 +1,4 @@
-import { Avatar as AvatarRoot, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar as AvatarRoot, AvatarFallback, AvatarImage } from '@/shared/ui/primitives/avatar';
 
 export const AVATAR_COLOR_OPTIONS = [
   { value: 'blurple', label: 'Índigo', css: 'var(--color-blurple)' },

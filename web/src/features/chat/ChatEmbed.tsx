@@ -1,4 +1,4 @@
-import { LinkPreview } from '../../shared/LinkPreview';
+import { LinkPreview } from '@/features/media/LinkPreview';
 import type { DetectedEmbed } from '../../shared/lib/chatEmbeds';
 
 export function ChatEmbed({ embed, edgeToEdge }: { embed: DetectedEmbed; edgeToEdge?: boolean }) {

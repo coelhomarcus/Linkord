@@ -6,11 +6,12 @@ import { sendJson, sendError, jsonBody } from '../../http/respond.js';
 import { parseCookies, serializeCookie, clearCookie, isSecureRequest } from '../../http/cookies.js';
 import { hashPassword, verifyPassword, needsRehash, DUMMY_HASH } from './password.js';
 import { createSession, resolveSession, destroyAllSessionsForUser, destroySession } from './session.js';
-import { findByEmailLower, findByUsernameLower, createUser, isAdminUsername, isValidEmail, normalizeEmail, privateUser, publicUser, updateEmail, updatePassword } from './users.js';
+import { findByEmailLower, findByUsernameLower, isValidEmail, normalizeEmail, privateUser, publicUser } from '../users/users.js';
+import { createUser, isAdminUsername, updateEmail, updatePassword } from './accounts.js';
 import type { User } from '../../db/schema.js';
 import { issueAuthCode, verifyAuthCode, type AuthCodePurpose } from './codes.js';
 import { sendAuthCodeEmail } from './email.js';
-import { broadcast } from '../../realtime/participants.js';
+import { broadcast } from '../presence/participants.js';
 import * as ratelimit from './ratelimit.js';
 import { db } from '../../db/client.js';
 import { users } from '../../db/schema.js';
@@ -203,7 +204,7 @@ async function issueAndSendCode(userId: string, email: string, username: string,
   try {
     await sendAuthCodeEmail({ to: email, code, purpose, username });
   } catch (err) {
-    console.error('[auth] falha ao enviar código:', err instanceof Error ? err.message : err);
+    console.error('[auth] failed to send code:', err instanceof Error ? err.message : err);
     throw err;
   }
 }

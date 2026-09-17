@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Play, X } from 'lucide-react';
-import { useAnimatedSidebar } from '@/components/motion/animated-sidebar';
-import { Drawer } from '@/components/motion/drawer';
-import { InfiniteMasonry } from '@/components/motion/infinite-masonry';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsIndicator, TabsTrigger } from '@/components/ui/tabs';
-import { DocumentAttachmentCard } from '@/shared/DocumentAttachmentCard';
-import { ImageLightbox } from '@/shared/ImageLightbox';
-import { LinkPreview } from '@/shared/LinkPreview';
-import { fetchMedia, ApiError } from '@/shared/lib/api';
-import type { MediaItem, MediaKind } from '@/shared/lib/api';
+import { useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
+import { Drawer } from '@/shared/ui/motion/drawer';
+import { InfiniteMasonry } from '@/shared/ui/motion/infinite-masonry';
+import { Button } from '@/shared/ui/primitives/button';
+import { Tabs, TabsList, TabsIndicator, TabsTrigger } from '@/shared/ui/primitives/tabs';
+import { DocumentAttachmentCard } from '@/features/media/DocumentAttachmentCard';
+import { ImageLightbox } from '@/features/media/ImageLightbox';
+import { LinkPreview } from '@/features/media/LinkPreview';
+import { fetchMedia, ApiError } from '@/shared/api/api';
+import type { MediaItem, MediaKind } from '@/shared/api/api';
 import { SPRING_LAYOUT } from '@/shared/lib/ease';
 import { IMAGE_MIME_TYPES, VIDEO_MIME_TYPES } from '../chat/ChatAttachment';
 

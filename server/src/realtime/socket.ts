@@ -4,16 +4,17 @@ import { config } from '../config/env.js';
 import {
   participants as participantsMap, join, send, broadcast, publicParticipant, handleClose, ipOf,
   listOnlineUserIds, setCallConversationId, handlers as participantHandlers,
-} from './participants.js';
-import * as livekit from './livekit.js';
-import * as reactions from './reactions.js';
+} from '../modules/presence/participants.js';
+import * as livekit from '../integrations/livekit/livekit.js';
+import * as reactions from '../modules/calls/reactions.js';
 import * as floodControl from './floodControl.js';
-import * as chat from '../modules/chat.js';
-import * as conversations from '../modules/conversations.js';
-import { getUsage } from '../modules/attachmentQuota.js';
-import * as discordWebhook from '../modules/discordWebhook.js';
-import * as moderation from '../modules/moderation.js';
-import { listAllUsers } from '../modules/auth/users.js';
+import * as chat from '../modules/messages/messages.js';
+import * as conversations from '../modules/conversations/conversations.js';
+import { listForUser, getConversationForUser } from '../modules/conversations/conversationsRepository.js';
+import { getUsage } from '../modules/attachments/attachmentQuota.js';
+import * as discordWebhook from '../integrations/discord/discordWebhook.js';
+import * as moderation from '../modules/moderation/moderation.js';
+import { listAllUsers } from '../modules/users/users.js';
 import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from '../modules/auth/session.js';
 import type { AppSocket, HandlerTable } from '../types.js';
@@ -88,14 +89,14 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
     role: p.role,
     maxParticipants: config.MAX_PARTICIPANTS,
     participants: [...participantsMap.values()].filter((o) => o.id !== p.id).map(publicParticipant),
-    conversations: await conversations.listForUser(p.userId),
+    conversations: await listForUser(p.userId),
     users: await listAllUsers(),
     onlineUserIds: listOnlineUserIds(),
     storageUsage: await getUsage(),
     livekitUrl: config.LIVEKIT_URL,
   });
   broadcast({ t: 'participant-joined', participant: publicParticipant(p) }, p.id);
-  console.log(`[${p.id}] entrou (${p.name}) de ${socket.ip}`);
+  console.log(`[${p.id}] joined (${p.name}) from ${socket.ip}`);
 }
 
 /** Actually joins a call (group or 1:1 direct): mints a LiveKit token for
@@ -107,7 +108,7 @@ async function handleCallJoin(socket: AppSocket, msg: { conversationId?: string 
   if (!p || p.socket !== socket) return;
   const conversationId = String(msg.conversationId || '');
   if (!conversationId) return;
-  const conversation = await conversations.getConversationForUser(conversationId, p.userId);
+  const conversation = await getConversationForUser(conversationId, p.userId);
   if (!conversation) {
     send(socket, { t: 'error', code: 'call-not-allowed', message: 'Você não tem acesso a essa conversa.' });
     return;
@@ -116,7 +117,7 @@ async function handleCallJoin(socket: AppSocket, msg: { conversationId?: string 
   try {
     livekitToken = await livekit.createToken(p, `${config.LIVEKIT_ROOM_NAME}-${conversationId}`);
   } catch (err) {
-    console.warn(`[${p.id}] falha ao gerar token do LiveKit: ${err instanceof Error ? err.message : err}`);
+    console.warn(`[${p.id}] failed to generate LiveKit token: ${err instanceof Error ? err.message : err}`);
     send(socket, { t: 'error', code: 'livekit-unavailable', message: 'Vídeo/voz indisponível no momento.' });
     return;
   }
@@ -139,11 +140,11 @@ function safeHandle(eventName: string, socket: AppSocket, payload: unknown, hand
     const result = handler(socket, payload);
     if (result && typeof (result as Promise<unknown>).catch === 'function') {
       (result as Promise<unknown>).catch((err: unknown) => {
-        console.error(`[ws] erro no handler '${eventName}' (participantId=${socket.participantId}): ${err instanceof Error ? err.stack : err}`);
+        console.error(`[ws] error in handler '${eventName}' (participantId=${socket.participantId}): ${err instanceof Error ? err.stack : err}`);
       });
     }
   } catch (err) {
-    console.error(`[ws] erro no handler '${eventName}' (participantId=${socket.participantId}): ${err instanceof Error ? err.stack : err}`);
+    console.error(`[ws] error in handler '${eventName}' (participantId=${socket.participantId}): ${err instanceof Error ? err.stack : err}`);
   }
 }
 

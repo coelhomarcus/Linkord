@@ -11,23 +11,23 @@ import { useAuth } from '../../state/AuthContext';
 import { useMediaDevices } from './useMediaDevices';
 import { requestNotificationPermission } from '../../shared/notifications';
 import { DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../../shared/Avatar';
-import { BANNER_ASPECT_RATIO } from '../../shared/profileLinks';
-import { UploadProgressBar } from '../../shared/UploadProgressBar';
-import { SectionLabel, sectionLabelClass } from '../../shared/SectionLabel';
+import { BANNER_ASPECT_RATIO } from '@/features/profile/profileLinks';
+import { UploadProgressModal } from '../../shared/UploadProgressModal';
+import { SectionLabel, sectionLabelClass } from './SectionLabel';
 import { cn } from '@/shared/lib/utils';
 import { formatMB } from '../../shared/lib/formatBytes';
-import { AVATAR_MIME_TYPES, MAX_AVATAR_BYTES, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '../../types/protocol';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Slider } from '@/components/ui/slider';
-import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsList, TabsIndicator, TabsPanel, TabsTrigger } from '@/components/ui/tabs';
-import { confirmEmailChange, requestEmailChange } from '@/shared/lib/api';
-import { ApiError } from '../../shared/lib/api';
-import { OTPInput, type OTPStatus } from '@/components/motion/otp-input';
+import { AVATAR_MIME_TYPES, MAX_AVATAR_BYTES, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '@/shared/types/protocol';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/ui/primitives/dialog';
+import { Label } from '@/shared/ui/primitives/label';
+import { Button } from '@/shared/ui/primitives/button';
+import { Input } from '@/shared/ui/primitives/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/primitives/select';
+import { Slider } from '@/shared/ui/primitives/slider';
+import { Switch } from '@/shared/ui/primitives/switch';
+import { Tabs, TabsList, TabsIndicator, TabsPanel, TabsTrigger } from '@/shared/ui/primitives/tabs';
+import { confirmEmailChange, requestEmailChange } from '@/shared/api/api';
+import { ApiError } from '@/shared/api/api';
+import { OTPInput, type OTPStatus } from '@/shared/ui/motion/otp-input';
 
 const settingsCardClass = 'flex flex-col gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-4';
 
@@ -198,6 +198,12 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
   const [cropTarget, setCropTarget] = useState<ProfileCropTarget | null>(null);
   const [urlDialogField, setUrlDialogField] = useState<'avatar' | 'banner' | null>(null);
+  // Set for the duration of the upload (cropTarget itself is cleared right
+  // away, see handleCropConfirm) — drives the blocking UploadProgressModal
+  // below so its title/description can tell a file upload (real byte
+  // progress) apart from a "usar URL" one (server downloads it, so the
+  // client-side progress stays indeterminate).
+  const [activeUpload, setActiveUpload] = useState<{ field: 'avatar' | 'banner'; kind: 'file' | 'url' } | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -304,6 +310,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setError(null);
     setProgress(0);
     setUploading(true);
+    setActiveUpload({ field, kind: target.kind });
     closeCropDialog();
     try {
       // A picked URL is sent as a JSON body instead of raw file bytes —
@@ -319,6 +326,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       setError(err instanceof Error ? err.message : `Falha ao enviar ${field === 'avatar' ? 'a foto' : 'o banner'}.`);
     } finally {
       setUploading(false);
+      setActiveUpload(null);
     }
   }
 
@@ -402,19 +410,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   hidden
                   onChange={(e) => handleFilePicked('banner', e)}
                 />
-                {uploadingAvatar && (
-                  <div className="flex items-center gap-2">
-                    <UploadProgressBar progress={avatarUploadProgress} />
-                    <span className="flex-none text-caption tabular-nums text-text-muted">Enviando foto: {Math.round(avatarUploadProgress * 100)}%</span>
-                  </div>
-                )}
                 {avatarError && <p className="text-label text-red">{avatarError}</p>}
-                {uploadingBanner && (
-                  <div className="flex items-center gap-2">
-                    <UploadProgressBar progress={bannerUploadProgress} />
-                    <span className="flex-none text-caption tabular-nums text-text-muted">Enviando banner: {Math.round(bannerUploadProgress * 100)}%</span>
-                  </div>
-                )}
                 {bannerError && <p className="text-label text-red">{bannerError}</p>}
 
                 <div className="flex items-center justify-between gap-2">
@@ -441,6 +437,17 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 title={urlDialogField === 'banner' ? 'URL do banner' : 'URL da foto de perfil'}
                 onOpenChange={(next) => { if (!next) setUrlDialogField(null); }}
                 onConfirm={(url) => handleUrlPicked(urlDialogField!, url)}
+              />
+
+              <UploadProgressModal
+                open={activeUpload !== null}
+                title={
+                  activeUpload?.kind === 'url'
+                    ? `Baixando ${activeUpload.field === 'banner' ? 'o banner' : 'a foto de perfil'}…`
+                    : `Enviando ${activeUpload?.field === 'banner' ? 'o banner' : 'a foto de perfil'}…`
+                }
+                description={activeUpload?.kind === 'url' ? 'Baixando e processando a imagem da URL — pode levar alguns segundos.' : undefined}
+                progress={activeUpload?.kind === 'file' ? (activeUpload.field === 'banner' ? bannerUploadProgress : avatarUploadProgress) : undefined}
               />
             </TabsPanel>
 

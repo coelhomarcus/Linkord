@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Check, Search, UsersRound } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Button } from '@/shared/ui/primitives/button';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/shared/ui/primitives/dialog';
+import { Input } from '@/shared/ui/primitives/input';
+import { Label } from '@/shared/ui/primitives/label';
 import { Avatar } from '@/shared/Avatar';
 import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';

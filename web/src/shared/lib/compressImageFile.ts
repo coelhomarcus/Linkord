@@ -26,10 +26,10 @@ async function encodeToWebp(bitmap: ImageBitmap, quality: number): Promise<Blob 
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', quality));
 }
 
-// Comprime e converte a imagem pra WebP no navegador, antes do upload. Nunca
-// rejeita — a compressao e uma otimizacao opcional, nao pode travar o envio,
-// entao qualquer falha (imagem corrompida, navegador sem suporte a WebP via
-// canvas) cai de volta pro arquivo original.
+// Compresses and converts the image to WebP in the browser, before upload.
+// Never rejects — compression is an optional optimization, it can't block
+// the send, so any failure (corrupted image, browser without canvas WebP
+// support) falls back to the original file.
 export async function compressImageFile(file: File, options?: CompressImageOptions): Promise<File> {
   const quality = options?.quality ?? 0.8;
 
@@ -39,10 +39,10 @@ export async function compressImageFile(file: File, options?: CompressImageOptio
   try {
     bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
     const blob = await encodeToWebp(bitmap, quality);
-    // O navegador cai pra PNG silenciosamente quando o tipo pedido nao e
-    // suportado — nesse caso, nao sobe um blob com extensao errada.
+    // The browser silently falls back to PNG when the requested type isn't
+    // supported — in that case, don't upload a blob with the wrong extension.
     if (!blob || blob.type !== 'image/webp') return file;
-    // Se o resultado nao ficou menor, comprimir nao trouxe beneficio nenhum.
+    // If the result isn't smaller, compressing brought no benefit.
     if (blob.size >= file.size) return file;
     return new File([blob], swapExtensionToWebp(file.name), { type: 'image/webp', lastModified: file.lastModified });
   } catch (err) {

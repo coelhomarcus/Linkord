@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { firstEmbed } from '../../shared/lib/chatEmbeds';
 import { ChatEmbed } from './ChatEmbed';
-import type { PublicUser } from '../../types/protocol';
+import type { PublicUser } from '@/shared/types/protocol';
 import { Avatar } from '@/shared/Avatar';
 import { cn } from '@/shared/lib/utils';
 import { isSingleEmoji } from '@/shared/lib/isSingleEmoji';

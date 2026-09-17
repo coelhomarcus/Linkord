@@ -1,0 +1,205 @@
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { db } from '../../db/client.js';
+import { conversationMembers, conversations, users, type Conversation } from '../../db/schema.js';
+import { participants, send } from '../presence/participants.js';
+import { resolveDisplayName } from '../users/users.js';
+import { deleteForConversation } from '../attachments/attachmentCleanup.js';
+
+// The conversations API other modules actually depend on (messages.ts,
+// moderation.ts, attachmentServing.ts, attachmentUploads.ts) — as opposed
+// to the socket handlers for conversation/group actions themselves
+// (direct-open, group-create, etc.), which live in conversations.ts and
+// are never imported individually, only dispatched as a block via
+// `handlers`. See conversations.ts's own module comment for the handler
+// half of this split.
+
+export type ConversationType = 'direct' | 'group';
+export type ConversationRole = 'owner' | 'admin' | 'member';
+
+export interface ConversationSummary {
+  id: string;
+  type: ConversationType;
+  title: string;
+  avatar: string;
+  createdBy: string | null;
+  memberIds: string[];
+  lastMessageAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+  pinnedAt: number | null;
+}
+
+export function sanitizeConversationTitle(name: unknown): string | null {
+  const s = String(name == null ? '' : name).replace(/[\r\n\t]+/g, ' ').trim().slice(0, 80);
+  return s || null;
+}
+
+function normalizeConversationType(type: string): ConversationType {
+  return type === 'group' ? 'group' : 'direct';
+}
+
+// Exported (not just used by listForUser below) because conversations.ts's
+// own handlers (handleDirectOpen, handleGroupCreate, handleGroupMembersAdd)
+// build the same summary shape for the conversation they just acted on.
+export function rowToSummary(row: Conversation, memberIds: string[], pinnedAt: Date | null = null): ConversationSummary {
+  return {
+    id: row.id,
+    type: normalizeConversationType(row.type),
+    title: row.title,
+    avatar: row.avatar,
+    createdBy: row.createdBy,
+    memberIds,
+    lastMessageAt: row.lastMessageAt ? row.lastMessageAt.getTime() : null,
+    createdAt: row.createdAt.getTime(),
+    updatedAt: row.updatedAt.getTime(),
+    pinnedAt: pinnedAt ? pinnedAt.getTime() : null,
+  };
+}
+
+export async function listForUser(userId: string): Promise<ConversationSummary[]> {
+  const rows = await db
+    .select({ conversation: conversations, pinnedAt: conversationMembers.pinnedAt })
+    .from(conversationMembers)
+    .innerJoin(conversations, eq(conversations.id, conversationMembers.conversationId))
+    .where(and(
+      eq(conversationMembers.userId, userId),
+      // groups always show. A direct conversation only counts as "history"
+      // once it has a message — opening a DM (handleDirectOpen) creates the
+      // row right away so both sides can chat, but that alone shouldn't
+      // plant it in anyone's sidebar. The same clause covers "closed"
+      // conversations (member.hiddenAt set): hidden until a message newer
+      // than the close time arrives, then it reappears on its own.
+      or(
+        eq(conversations.type, 'group'),
+        and(
+          sql`${conversations.lastMessageAt} is not null`,
+          or(
+            sql`${conversationMembers.hiddenAt} is null`,
+            sql`${conversations.lastMessageAt} > ${conversationMembers.hiddenAt}`
+          )
+        )
+      )
+    ))
+    // pinned conversations first (most recently pinned first among those),
+    // then everyone else by the usual recency rule. Deliberately
+    // lastMessageAt (not updatedAt/lastActivityAt) — a rename or a message
+    // edit/delete must not resort the sidebar, only a genuinely NEW message
+    // does (see schema.ts#conversations and touchConversation below).
+    .orderBy(
+      desc(sql`${conversationMembers.pinnedAt} is not null`),
+      desc(conversationMembers.pinnedAt),
+      desc(sql`coalesce(${conversations.lastMessageAt}, ${conversations.createdAt})`)
+    );
+
+  const ids = rows.map((r) => r.conversation.id);
+  const members = new Map<string, string[]>();
+  if (ids.length) {
+    const memberRows = await db.select().from(conversationMembers).where(inArray(conversationMembers.conversationId, ids));
+    for (const row of memberRows) {
+      const list = members.get(row.conversationId) ?? [];
+      list.push(row.userId);
+      members.set(row.conversationId, list);
+    }
+  }
+
+  return rows.map((r) => rowToSummary(r.conversation, members.get(r.conversation.id) ?? [], r.pinnedAt));
+}
+
+/** Sends the CURRENT state of one conversation to every member who already
+ * has it, each seeing their OWN `pinnedAt` (a per-member column — a shared
+ * payload would incorrectly reset another member's pin state on their
+ * client, which does a wholesale replace-by-id, not a field merge). One
+ * query for the member list, reused both for `memberIds` and each
+ * recipient's pin — this is what replaced resending every OTHER
+ * conversation in the sidebar (the old `broadcastConversationListToUser(s)`
+ * + `listForUser`) just to reflect a change to ONE row. Exported because
+ * conversations.ts's handleGroupUpdate calls this too, after renaming or
+ * re-avataring a group. */
+export async function sendConversationUpdateToMembers(t: 'conversation-created' | 'conversation-updated', row: Conversation): Promise<void> {
+  const memberRows = await db.select({ userId: conversationMembers.userId, pinnedAt: conversationMembers.pinnedAt })
+    .from(conversationMembers).where(eq(conversationMembers.conversationId, row.id));
+  const memberIds = memberRows.map((r) => r.userId);
+  for (const { userId, pinnedAt } of memberRows) {
+    for (const p of participants.values()) {
+      if (p.userId === userId) send(p.socket, { t, conversation: rowToSummary(row, memberIds, pinnedAt) });
+    }
+  }
+}
+
+export async function broadcastToConversationMembers(conversationId: string, obj: { t: string; [key: string]: unknown }): Promise<void> {
+  const memberRows = await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
+  const allowed = new Set(memberRows.map((row) => row.userId));
+  for (const p of participants.values()) {
+    if (allowed.has(p.userId)) send(p.socket, obj);
+  }
+}
+
+export async function getConversationForUser(conversationId: string, userId: string): Promise<Conversation | null> {
+  const [row] = await db
+    .select({ conversation: conversations })
+    .from(conversationMembers)
+    .innerJoin(conversations, eq(conversations.id, conversationMembers.conversationId))
+    .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, userId)))
+    .limit(1);
+  return row?.conversation ?? null;
+}
+
+export async function conversationExistsForUser(conversationId: string, userId: string): Promise<boolean> {
+  return !!(await getConversationForUser(conversationId, userId));
+}
+
+/** A genuinely NEW message was created (send, or a fresh attachment-only
+ * message) — the only thing that should move a conversation to the top of
+ * anyone's sidebar or make an otherwise-empty/closed direct conversation
+ * start showing (see listForUser's `lastMessageAt`-gated visibility rule
+ * above). Broadcasts, since `lastMessageAt` is part of what the client
+ * displays/sorts by. */
+export async function touchConversation(conversationId: string, when = new Date()): Promise<void> {
+  const [row] = await db.update(conversations).set({ lastMessageAt: when, lastActivityAt: when }).where(eq(conversations.id, conversationId)).returning();
+  if (row) await sendConversationUpdateToMembers('conversation-updated', row);
+}
+
+/** A message was edited or deleted, or a file was attached to a message
+ * that already exists — real chat activity, but NOT a new message, so
+ * `lastMessageAt` must stay untouched (see touchConversation above for
+ * why). Only bumps the bookkeeping-only `lastActivityAt` — nothing the
+ * client displays changes, so there's nothing worth broadcasting either. */
+export async function recordConversationActivity(conversationId: string, when = new Date()): Promise<void> {
+  await db.update(conversations).set({ lastActivityAt: when }).where(eq(conversations.id, conversationId));
+}
+
+export async function conversationDisplayName(conversationId: string, viewerUserId: string): Promise<string> {
+  const conversation = await getConversationForUser(conversationId, viewerUserId);
+  if (!conversation) return 'conversa';
+  if (conversation.type === 'group') return conversation.title || 'Grupo';
+
+  const [other] = await db
+    .select({ username: users.username, displayName: users.displayName })
+    .from(conversationMembers)
+    .innerJoin(users, eq(users.id, conversationMembers.userId))
+    .where(and(eq(conversationMembers.conversationId, conversationId), sql`${conversationMembers.userId} <> ${viewerUserId}`))
+    .limit(1);
+  return other ? resolveDisplayName(other.displayName, other.username) : 'Conversa direta';
+}
+
+/** Purges a group once it has zero members left (an admin-account deletion
+ * can do this too, not just handleGroupMembersRemove in conversations.ts —
+ * with no group-discovery UI, a memberless group would otherwise become an
+ * invisible, unmanageable row nobody's `listForUser` query ever surfaces
+ * again). Otherwise just notifies whoever remains that `removedUserId` left.
+ * Returns whether the group was purged. */
+export async function reconcileGroupMembership(conversationId: string, removedUserId: string): Promise<boolean> {
+  const remainingRows = await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
+  if (remainingRows.length > 0) {
+    const remainingIds = new Set(remainingRows.map((row) => row.userId));
+    for (const p of participants.values()) {
+      if (remainingIds.has(p.userId)) send(p.socket, { t: 'conversation-member-removed', conversationId, userId: removedUserId });
+    }
+    return false;
+  }
+  const [conversation] = await db.select({ type: conversations.type }).from(conversations).where(eq(conversations.id, conversationId)).limit(1);
+  if (conversation?.type !== 'group') return false;
+  await deleteForConversation(conversationId);
+  await db.delete(conversations).where(eq(conversations.id, conversationId));
+  return true;
+}

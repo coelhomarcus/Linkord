@@ -3,8 +3,8 @@ import { ShieldCheck, Trash2, X } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { Avatar } from '../../shared/Avatar';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
-import type { PublicUser } from '../../types/protocol';
-import { Button } from '@/components/ui/button';
+import type { PublicUser } from '@/shared/types/protocol';
+import { Button } from '@/shared/ui/primitives/button';
 
 function UserRow({ user, online, isMe, onDeleteRequest }: {
   user: PublicUser;

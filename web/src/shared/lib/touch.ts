@@ -79,9 +79,7 @@ export function releasePointer(element: Element, pointerId: number) {
  * tell, and it sends a pen tap down the same route a finger takes.
  *
  * This answers what an *enter* asks. A leave is the other half of a pair and
- * has to be read against the enter that started it — `useHoverGesture` in
- * `lib/hooks/use-hover-gesture` does that, and hover surfaces should use it
- * rather than asking this question twice.
+ * has to be read against the enter that started it.
  */
 export const isHoveringPointer = (event: {
   pointerType: string;

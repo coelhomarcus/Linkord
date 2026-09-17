@@ -1,4 +1,4 @@
-import type { Participant } from '../types/protocol';
+import type { Participant } from '@/shared/types/protocol';
 
 export interface Me {
   id: string | null;
