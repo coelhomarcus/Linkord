@@ -28,6 +28,12 @@ jobs:
       - name: Install dependencies (web)
         run: npm ci --prefix web
 
+      - name: Typecheck server tests (outside the production tsconfig)
+        run: npm run typecheck:server:tests
+
+      - name: Lint frontend
+        run: npm run lint --prefix web
+
       - name: Run server tests
         run: npm run test:server
 
