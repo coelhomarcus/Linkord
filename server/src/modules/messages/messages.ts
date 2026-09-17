@@ -13,6 +13,7 @@ import {
 } from '../conversations/conversationsRepository.js';
 import { resolveDisplayName } from '../users/users.js';
 import * as attachments from '../attachments/attachments.js';
+import { deleteForMessage } from '../attachments/attachmentCleanup.js';
 import * as reactions from './reactions.js';
 import type { AppSocket, HandlerTable, Participant } from '../../types.js';
 
@@ -434,8 +435,8 @@ async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Pr
   if (existing.authorId !== p.userId && p.role !== 'admin') return;
   // delete the file on disk before the row — after the delete below, the
   // attachments row disappears via CASCADE, but nothing would know which
-  // file to delete anymore (see modules/attachments.ts).
-  await attachments.deleteForMessage(msgId);
+  // file to delete anymore (see attachments/attachmentCleanup.ts).
+  await deleteForMessage(msgId);
   await db.delete(messages).where(eq(messages.id, msgId));
   await recordConversationActivity(existing.conversationId);
   await broadcastToConversationMembers(existing.conversationId, {

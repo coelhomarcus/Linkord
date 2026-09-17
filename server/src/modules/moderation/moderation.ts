@@ -6,7 +6,7 @@ import { findById } from '../users/users.js';
 import { invalidateSessionsForUser } from '../auth/session.js';
 import { participants, broadcast, send, removeParticipant, setCallConversationId } from '../presence/participants.js';
 import * as livekit from '../../integrations/livekit/livekit.js';
-import { deleteAvatarFile } from '../attachments/attachments.js';
+import { deleteAvatarFile } from '../attachments/attachmentCleanup.js';
 import { reconcileGroupMembership } from '../conversations/conversationsRepository.js';
 import type { AppSocket, HandlerTable, Participant } from '../../types.js';
 

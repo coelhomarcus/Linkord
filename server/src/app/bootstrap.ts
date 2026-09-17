@@ -4,7 +4,7 @@ import { createApp } from '../http/app.js';
 import { createWsServer } from '../realtime/socket.js';
 import { runMigrations } from '../db/migrate.js';
 import { sweepExpiredSessions } from '../modules/auth/session.js';
-import { ensureUploadDir, sweepStaleUploads } from '../modules/attachments/attachmentUploads.js';
+import { ensureUploadDir, sweepStaleUploads } from '../modules/attachments/uploadSession.js';
 
 // backstop behind the try/catch in each handler in realtime/socket.ts —
 // covers any async error escaping the normal message cycle (a timer, a

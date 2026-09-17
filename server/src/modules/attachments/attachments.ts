@@ -1,10 +1,8 @@
-import fs from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
-import { eq, and, asc, inArray, isNull } from 'drizzle-orm';
+import { eq, and, asc, inArray } from 'drizzle-orm';
 import { config } from '../../config/env.js';
 import { db } from '../../db/client.js';
-import { attachments as attachmentsTable, messages, type Attachment } from '../../db/schema.js';
-import { filePathFor } from './attachmentStorage.js';
+import { attachments as attachmentsTable, type Attachment } from '../../db/schema.js';
 import { handleAttachmentInit, handleAttachmentChunk, handleAttachmentComplete, handleAttachmentCancel } from './attachmentUploads.js';
 import { serveUpload, handleAttachmentPreview } from './attachmentServing.js';
 
@@ -12,13 +10,14 @@ import { serveUpload, handleAttachmentPreview } from './attachmentServing.js';
 // route wiring) — the upload lifecycle, file-serving/preview, and thumbnail
 // generation each moved to their own sibling module (attachmentUploads.ts,
 // attachmentServing.ts, attachmentThumbnails.ts) since none of those are
-// really about "the attachments table." Avatar upload and its SSRF-guarded
-// image fetch live in modules/profile/ instead — a different domain that
-// happens to share this table's storage (see deleteAvatarFile below).
-
-// only matches our own upload format (see attachmentStorage.ts#newId) — an
-// external URL just doesn't match, treated as "not ours," not an error.
-const AVATAR_URL_RE = /^\/uploads\/([0-9a-f]{32})$/;
+// really about "the attachments table." Deleting files when their owner
+// disappears (a message, a conversation, an avatar) lives in
+// attachmentCleanup.ts instead — messages.ts/conversations.ts/participants.ts/
+// moderation.ts all need it, and it has to stay a leaf module (no dependency
+// on this file or its attachmentUploads.js/attachmentServing.js imports) so
+// those 4 callers can import it statically without a cycle. Avatar upload
+// and its SSRF-guarded image fetch live in modules/profile/ instead — a
+// different domain that happens to share this table's storage.
 
 /** One query for all messages' attachments (avoids N+1). Up to
  * MAX_ATTACHMENTS_PER_MESSAGE rows per message now (see
@@ -40,41 +39,6 @@ export async function getByMessageIds(messageIds: number[]): Promise<Map<number,
     if (list) list.push(row); else map.set(row.messageId, [row]);
   }
   return map;
-}
-
-/** Deletes the on-disk file(s) only — the DB row(s) disappear via CASCADE
- * when the message is deleted right after (see modules/chat.ts). Postgres
- * doesn't know about the file, so that part has to happen separately. */
-export async function deleteForMessage(messageId: number): Promise<void> {
-  const rows = await db.select().from(attachmentsTable).where(eq(attachmentsTable.messageId, messageId));
-  await Promise.all(rows.map((row) => fs.unlink(filePathFor(row.id)).catch((err: NodeJS.ErrnoException) => { if (err.code !== 'ENOENT') throw err; })));
-}
-
-/** Same idea in bulk — deleting a conversation CASCADEs messages/attachments
- * in Postgres without going through deleteForMessage, so this exists purely
- * to avoid orphaned files. Called by modules/conversations.ts before the
- * delete. */
-export async function deleteForConversation(conversationId: string): Promise<void> {
-  const rows = await db
-    .select({ id: attachmentsTable.id })
-    .from(attachmentsTable)
-    .innerJoin(messages, eq(attachmentsTable.messageId, messages.id))
-    .where(eq(messages.conversationId, conversationId));
-  await Promise.all(rows.map((row) => fs.unlink(filePathFor(row.id)).catch((err: NodeJS.ErrnoException) => { if (err.code !== 'ENOENT') throw err; })));
-}
-
-/** Deletes the OLD avatar file+row when an account switches to a new one
- * (see realtime/participants.ts#handleProfile) — otherwise old avatars pile
- * up orphaned forever. No-ops for an external URL or empty value.
- * `isNull(messageId)` is a second guard so a manipulated value could never
- * delete a real chat attachment. */
-export async function deleteAvatarFile(avatarValue: unknown): Promise<void> {
-  const match = AVATAR_URL_RE.exec(String(avatarValue == null ? '' : avatarValue));
-  if (!match) return;
-  const id = match[1]!;
-  const deleted = await db.delete(attachmentsTable).where(and(eq(attachmentsTable.id, id), isNull(attachmentsTable.messageId))).returning({ id: attachmentsTable.id });
-  if (!deleted.length) return; // wasn't actually an avatar row — leave the file alone
-  await fs.unlink(filePathFor(id)).catch((err: NodeJS.ErrnoException) => { if (err.code !== 'ENOENT') throw err; });
 }
 
 export function registerAttachmentRoutes(fastify: FastifyInstance): void {

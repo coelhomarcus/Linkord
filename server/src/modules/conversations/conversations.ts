@@ -4,6 +4,7 @@ import { db } from '../../db/client.js';
 import { conversationMembers, conversations, users } from '../../db/schema.js';
 import { participants, send } from '../presence/participants.js';
 import { sanitizeAvatar } from '../profile/sanitize.js';
+import { deleteAvatarFile, deleteForConversation } from '../attachments/attachmentCleanup.js';
 import {
   conversationExistsForUser,
   getConversationForUser,
@@ -168,7 +169,6 @@ async function handleGroupDelete(socket: AppSocket, msg: { conversationId?: stri
   const [conversation] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
   if (!conversation || conversation.type !== 'group') return;
   const memberRows = await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
-  const { deleteForConversation } = await import('../attachments/attachments.js');
   await deleteForConversation(conversationId);
   await db.delete(conversations).where(eq(conversations.id, conversationId));
   for (const participant of participants.values()) {
@@ -207,7 +207,6 @@ async function handleGroupUpdate(socket: AppSocket, msg: { conversationId?: stri
   // the old file (if it was one of our uploads) is now orphaned — same
   // cleanup an account's own avatar change gets in handleProfile.
   if (updates.avatar !== undefined && conversation.avatar && conversation.avatar !== updates.avatar) {
-    const { deleteAvatarFile } = await import('../attachments/attachments.js');
     deleteAvatarFile(conversation.avatar).catch((err) => {
       console.error(`[conversations] falha ao apagar avatar antigo do grupo ${conversationId}:`, err instanceof Error ? err.stack : err);
     });

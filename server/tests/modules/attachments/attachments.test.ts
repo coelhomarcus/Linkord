@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { expectedChunkLength, sanitizeFileName } from '../../../src/modules/attachments/attachmentUploads.js';
+import { expectedChunkLength, sanitizeFileName } from '../../../src/modules/attachments/uploadSession.js';
 import { contentDispositionFor, extensionOf, isPreviewable, decodeUtf8Prefix } from '../../../src/modules/attachments/attachmentServing.js';
 import type { Attachment } from '../../../src/db/schema.js';
 

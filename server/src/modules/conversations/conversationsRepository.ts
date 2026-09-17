@@ -3,6 +3,7 @@ import { db } from '../../db/client.js';
 import { conversationMembers, conversations, users, type Conversation } from '../../db/schema.js';
 import { participants, send } from '../presence/participants.js';
 import { resolveDisplayName } from '../users/users.js';
+import { deleteForConversation } from '../attachments/attachmentCleanup.js';
 
 // The conversations API other modules actually depend on (messages.ts,
 // moderation.ts, attachmentServing.ts, attachmentUploads.ts) — as opposed
@@ -198,7 +199,6 @@ export async function reconcileGroupMembership(conversationId: string, removedUs
   }
   const [conversation] = await db.select({ type: conversations.type }).from(conversations).where(eq(conversations.id, conversationId)).limit(1);
   if (conversation?.type !== 'group') return false;
-  const { deleteForConversation } = await import('../attachments/attachments.js');
   await deleteForConversation(conversationId);
   await db.delete(conversations).where(eq(conversations.id, conversationId));
   return true;

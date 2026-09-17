@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { config } from '../../config/env.js';
 import { updateProfile } from '../profile/profileRepository.js';
 import { sanitizeAvatar, sanitizeBanner, sanitizeAvatarColor, sanitizeDisplayName, sanitizeBio, sanitizeProfileLinks } from '../profile/sanitize.js';
+import { deleteAvatarFile } from '../attachments/attachmentCleanup.js';
 import type { AppSocket, HandlerTable, Participant, PublicParticipant } from '../../types.js';
 
 // Presence for the single shared room. `id` is per-CONNECTION (used as the
@@ -226,15 +227,12 @@ function handleProfile(socket: AppSocket, msg: { avatar?: string; avatarPoster?:
     .catch((err) => console.error(`[${p.id}] falha ao salvar perfil:`, err instanceof Error ? err.stack : err));
   // deletes the OLD photo file(s) if they were one of our uploads and
   // changed — otherwise each photo change would leave the previous one(s)
-  // orphaned. Dynamic import to avoid a cycle: modules/attachments.ts
-  // already imports from this file.
-  if ((oldAvatar && oldAvatar !== p.avatar) || (oldAvatarPoster && oldAvatarPoster !== p.avatarPoster)) {
-    import('../attachments/attachments.js')
-      .then(({ deleteAvatarFile }) => {
-        if (oldAvatar && oldAvatar !== p.avatar) deleteAvatarFile(oldAvatar);
-        if (oldAvatarPoster && oldAvatarPoster !== p.avatarPoster) deleteAvatarFile(oldAvatarPoster);
-      })
-      .catch((err) => console.error(`[${p.id}] falha ao apagar foto de perfil antiga:`, err instanceof Error ? err.stack : err));
+  // orphaned.
+  if (oldAvatar && oldAvatar !== p.avatar) {
+    deleteAvatarFile(oldAvatar).catch((err) => console.error(`[${p.id}] falha ao apagar foto de perfil antiga:`, err instanceof Error ? err.stack : err));
+  }
+  if (oldAvatarPoster && oldAvatarPoster !== p.avatarPoster) {
+    deleteAvatarFile(oldAvatarPoster).catch((err) => console.error(`[${p.id}] falha ao apagar foto de perfil antiga:`, err instanceof Error ? err.stack : err));
   }
 }
 
