@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Participant, PublicUser, ServerMessage } from '../../types/protocol';
+import type { Participant, PublicUser, ServerMessage } from '@/shared/types/protocol';
 
 function mergeUserFromParticipant(prev: Map<string, PublicUser>, participant: Participant): Map<string, PublicUser> {
   const existing = prev.get(participant.userId);

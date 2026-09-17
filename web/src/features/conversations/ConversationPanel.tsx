@@ -1,21 +1,21 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
 import { ArrowLeft, ImageIcon, Info, Phone, Search, Upload } from 'lucide-react';
-import { useAnimatedSidebar } from '@/components/motion/animated-sidebar';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
+import { Button } from '@/shared/ui/primitives/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/primitives/tooltip';
 import { Avatar } from '@/shared/Avatar';
 import { ChatSurfaceWidthProvider, useMeasuredWidth } from '@/shared/lib/chatSurfaceWidth';
 import { formatDateHeading } from '@/shared/lib/formatChatTime';
 import { formatTypingLabel } from '@/shared/lib/formatTypingLabel';
 import { buildMentionLookup } from '@/shared/lib/mentions';
 import { useRoom } from '@/state/RoomContext';
-import type { ChatMessage } from '@/types/protocol';
+import type { ChatMessage } from '@/shared/types/protocol';
 import { conversationTitle, directUser, groupMembers } from './conversationUtils';
 import { GroupAvatar } from './GroupAvatar';
-import { MessageRow } from './MessageRow';
-import { MessageComposer } from './MessageComposer';
-import type { MessageComposerHandle } from './MessageComposer';
+import { MessageRow } from '@/features/chat/MessageRow';
+import { MessageComposer } from '@/features/chat/MessageComposer';
+import type { MessageComposerHandle } from '@/features/chat/MessageComposer';
 
 const GROUP_GAP_MS = 5 * 60 * 1000;
 const EMPTY_MESSAGES: ChatMessage[] = [];

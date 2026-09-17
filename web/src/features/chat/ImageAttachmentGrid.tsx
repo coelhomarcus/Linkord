@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { ChatAttachment as ChatAttachmentData } from '../../types/protocol';
+import type { ChatAttachment as ChatAttachmentData } from '@/shared/types/protocol';
 import { ImageLightbox } from '../../shared/ImageLightbox';
 import { availableAttachmentWidth, useChatSurfaceWidth } from '../../shared/lib/chatSurfaceWidth';
 

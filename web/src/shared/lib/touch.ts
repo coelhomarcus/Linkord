@@ -80,7 +80,7 @@ export function releasePointer(element: Element, pointerId: number) {
  *
  * This answers what an *enter* asks. A leave is the other half of a pair and
  * has to be read against the enter that started it — `useHoverGesture` in
- * `lib/hooks/use-hover-gesture` does that, and hover surfaces should use it
+ * `hooks/use-hover-gesture` does that, and hover surfaces should use it
  * rather than asking this question twice.
  */
 export const isHoveringPointer = (event: {

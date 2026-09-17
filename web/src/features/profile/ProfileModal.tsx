@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useRoom } from '@/state/RoomContext';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/ui/primitives/dialog';
 import { ImageLightbox } from '@/shared/ImageLightbox';
 import { BANNER_ASPECT_RATIO } from '@/shared/profileLinks';
 import { ProfileCard } from './ProfileCard';

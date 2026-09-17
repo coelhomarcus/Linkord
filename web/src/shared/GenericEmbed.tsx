@@ -4,7 +4,7 @@ import ReactPlayer from 'react-player';
 import { ExternalLink, Play } from 'lucide-react';
 import type { DetectedEmbed } from './lib/chatEmbeds';
 import { loadLinkPreview } from './lib/linkPreviewCache';
-import type { LinkPreviewData } from './lib/api';
+import type { LinkPreviewData } from '@/shared/api/api';
 import { availableAttachmentWidth, useChatSurfaceWidth } from './lib/chatSurfaceWidth';
 import { VideoPlayer } from './MediaPlayers';
 

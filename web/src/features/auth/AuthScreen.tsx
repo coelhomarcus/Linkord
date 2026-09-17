@@ -3,15 +3,15 @@ import type { FormEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, Lock, LogIn, Mail, User, UserPlus } from 'lucide-react';
 import { useAuth } from '../../state/AuthContext';
-import { ApiError, requestPasswordRecovery, resetPassword } from '../../shared/lib/api';
-import type { RecoveryIdentifier } from '../../shared/lib/api';
+import { ApiError, requestPasswordRecovery, resetPassword } from '@/shared/api/api';
+import type { RecoveryIdentifier } from '@/shared/api/api';
 import { ErrorBanner } from '../../shared/ErrorBanner';
-import { ShaderBackground } from '@/components/motion/shader-background';
-import { Input } from '@/components/motion/input';
-import { Button } from '@/components/motion/button';
-import { Tabs, TabsList, TabsTrigger } from '@/components/motion/tabs';
+import { ShaderBackground } from '@/shared/ui/motion/shader-background';
+import { Input } from '@/shared/ui/motion/input';
+import { Button } from '@/shared/ui/motion/button';
+import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/motion/tabs';
 import { EASE_OUT } from '@/shared/lib/ease';
-import { OTPInput, type OTPStatus } from '@/components/motion/otp-input';
+import { OTPInput, type OTPStatus } from '@/shared/ui/motion/otp-input';
 
 // A dark, on-brand mesh — background near-black, blurple/fuchsia/purple echo
 // the accent palette in index.css instead of arbitrary shader-demo colors.

@@ -2,10 +2,10 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Loader2, Mail, LogOut } from 'lucide-react';
 import { useAuth } from '../../state/AuthContext';
-import { ApiError } from '../../shared/lib/api';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ApiError } from '@/shared/api/api';
+import { Button } from '@/shared/ui/primitives/button';
+import { Input } from '@/shared/ui/primitives/input';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/shared/ui/primitives/dialog';
 
 export function EmailRequiredModal() {
   const { user, linkEmail, logout } = useAuth();

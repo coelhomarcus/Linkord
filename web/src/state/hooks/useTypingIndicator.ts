@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
-import type { ClientMessage, ServerMessage } from '../../types/protocol';
+import type { ClientMessage, ServerMessage } from '@/shared/types/protocol';
 
 /** "Fulano está digitando..." indicator — entirely ephemeral, no persisted/
  * server-held state to reconcile on reconnect (unlike speaking/deafened).

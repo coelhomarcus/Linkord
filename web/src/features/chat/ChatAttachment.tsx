@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Download } from 'lucide-react';
-import type { ChatAttachment as ChatAttachmentData } from '../../types/protocol';
+import type { ChatAttachment as ChatAttachmentData } from '@/shared/types/protocol';
 import { DocumentAttachmentCard } from '../../shared/DocumentAttachmentCard';
 import { ImageLightbox } from '../../shared/ImageLightbox';
 import { AudioPlayer, VideoPlayer } from '../../shared/MediaPlayers';

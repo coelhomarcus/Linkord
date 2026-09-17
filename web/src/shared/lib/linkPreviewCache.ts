@@ -1,4 +1,4 @@
-import { fetchLinkPreview, type LinkPreviewData } from './api';
+import { fetchLinkPreview, type LinkPreviewData } from '@/shared/api/api';
 
 const cache = new Map<string, LinkPreviewData>();
 const pending = new Map<string, Promise<LinkPreviewData>>();

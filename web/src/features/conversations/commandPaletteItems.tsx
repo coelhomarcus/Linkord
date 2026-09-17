@@ -1,7 +1,7 @@
 import { MessageCirclePlus, Phone } from 'lucide-react';
-import type { CommandItem } from '@/components/motion/command-palette';
+import type { CommandItem } from '@/shared/ui/motion/command-palette';
 import { Avatar } from '@/shared/Avatar';
-import type { Conversation, Participant, PublicUser } from '@/types/protocol';
+import type { Conversation, Participant, PublicUser } from '@/shared/types/protocol';
 import { conversationTitle, directUser } from './conversationUtils';
 import { GroupAvatar } from './GroupAvatar';
 
