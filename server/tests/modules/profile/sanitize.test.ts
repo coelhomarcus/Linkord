@@ -39,7 +39,7 @@ describe('sanitizeAvatarColor', () => {
 
   test('cai no padrao (blurple) pra qualquer outro valor', () => {
     assert.equal(sanitizeAvatarColor('nao-existe'), 'blurple');
-    assert.equal(sanitizeAvatarColor('#fff'), 'blurple'); // hex de 3 digitos nao conta
+    assert.equal(sanitizeAvatarColor('#fff'), 'blurple'); // 3-digit hex doesn't count
     assert.equal(sanitizeAvatarColor(null), 'blurple');
   });
 });

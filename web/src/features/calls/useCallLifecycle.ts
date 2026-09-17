@@ -105,7 +105,7 @@ export function useCallLifecycle(deps: CallLifecycleDeps) {
     if (m.conversationId !== pendingCallConversationIdRef.current) return;
     livekitRoom.connect(m.livekitUrl, m.livekitToken)
       .then(() => activateMic())
-      .catch((err) => console.warn('LiveKit connect falhou', err));
+      .catch((err) => console.warn('LiveKit connect failed', err));
     setActiveCallConversationId(m.conversationId);
   }, [livekitRoom, activateMic, setActiveCallConversationId]);
 

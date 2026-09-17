@@ -39,8 +39,8 @@ describe('hashPassword / verifyPassword', () => {
   });
 
   test('rejeita parametros N/r/p absurdos (protecao contra DoS via linha corrompida)', async () => {
-    // N acima do teto (2**20) — se nao fosse bloqueado, tentaria alocar
-    // memoria/CPU muito alem do razoavel so pra verificar uma senha.
+    // N above the ceiling (2**20) — if it weren't blocked, it would try to
+    // allocate memory/CPU far beyond reasonable just to verify one password.
     const forged = `scrypt$${2 ** 21}$8$1$${'a'.repeat(22)}$${'b'.repeat(86)}`;
     assert.equal(await verifyPassword('qualquer', forged), false);
   });

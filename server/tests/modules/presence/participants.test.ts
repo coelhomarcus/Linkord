@@ -6,8 +6,8 @@ import {
   participants, join, removeParticipant, handleClose, isUserOnline, setCallConversationId, publicParticipant, handlers,
 } from '../../../src/modules/presence/participants.js';
 
-/** Fake minimo de AppSocket — so os campos que participants.ts de fato le
- * (nunca uma Socket.IO de verdade, sem conexao nenhuma). */
+/** Minimal fake of AppSocket — only the fields participants.ts actually reads
+ * (never a real Socket.IO, with no connection at all). */
 function fakeSocket(
   userId: string,
   overrides: Partial<{
@@ -45,10 +45,10 @@ function fakeSocket(
   } as unknown as AppSocket;
 }
 
-// participants e um Map module-level compartilhado entre TODOS os testes
-// deste processo — cada teste guarda os ids que criou aqui e limpa no
-// afterEach (inclusive cancelando qualquer graceTimer pendente, que senao
-// seguraria o processo do `node --test` vivo ate o timeout de reconexao).
+// participants is a module-level Map shared across ALL tests in this
+// process — each test tracks the ids it created here and cleans them up in
+// afterEach (including canceling any pending graceTimer, which otherwise
+// would keep the `node --test` process alive until the reconnect timeout).
 let createdIds: string[] = [];
 afterEach(() => {
   for (const id of createdIds) {
@@ -140,8 +140,8 @@ describe('join', () => {
     createdIds.push(p1!.id);
     assert.equal(isUserOnline(userId), true);
 
-    // segunda aba, sem token de resume — cria um SEGUNDO participante (id de
-    // conexao diferente), mas a conta continua sendo so UMA "online".
+    // second tab, without a resume token — creates a SECOND participant (a
+    // different connection id), but the account is still only ONE "online".
     const p2 = join(fakeSocket(userId), {});
     createdIds.push(p2!.id);
     assert.notEqual(p1!.id, p2!.id);
@@ -169,14 +169,14 @@ describe('reconexao (handleClose + resume por id/token)', () => {
     const original = join(socket1, {});
     createdIds.push(original!.id);
 
-    handleClose(socket1); // "aba caiu" — entra na janela de graca
+    handleClose(socket1); // "tab closed" — enters the grace window
     assert.equal(original!.socket, null);
     assert.ok(original!.graceTimer);
 
     const socket2 = fakeSocket(userId);
     const resumed = join(socket2, { id: original!.id, token: original!.token });
 
-    assert.equal(resumed!.id, original!.id); // mesma identidade, nao um participante novo
+    assert.equal(resumed!.id, original!.id); // same identity, not a new participant
     assert.equal(resumed!.socket, socket2);
     assert.equal(resumed!.graceTimer, null);
   });
@@ -193,9 +193,9 @@ describe('reconexao (handleClose + resume por id/token)', () => {
     const fresh = join(socket2, { id: original!.id, token: 'token-errado' });
     createdIds.push(fresh!.id);
 
-    assert.notEqual(fresh!.id, original!.id); // NAO reaproveitou a identidade antiga
-    // o fantasma da conexao antiga (socket null) foi removido no processo —
-    // so sobra a nova identidade pra essa conta.
+    assert.notEqual(fresh!.id, original!.id); // did NOT reuse the old identity
+    // the ghost from the old connection (socket null) got removed in the
+    // process — only the new identity is left for this account.
     assert.equal(participants.has(original!.id), false);
   });
 });

@@ -22,20 +22,20 @@ describe('isBlockedIp — protecao contra SSRF', () => {
     test(`bloqueia ${ip}`, () => assert.equal(isBlockedIp(ip, 4), true));
   }
 
-  // regressao: o bug real que derrubou nasa.gov como falso positivo — a
-  // checagem de 192.0.0.0/24 e 192.0.2.0/24 (ambas /24) tinha sido escrita
-  // sem olhar o terceiro octeto, bloqueando o /16 inteiro (192.0.0.0-
-  // 192.0.255.255) por engano. O resto desse /16 e espaco publico de
-  // verdade — 192.0.66.0/24 e da propria NASA.
+  // regression: the real bug that flagged nasa.gov as a false positive — the
+  // check for 192.0.0.0/24 and 192.0.2.0/24 (both /24s) had been written
+  // without looking at the third octet, blocking the entire /16
+  // (192.0.0.0-192.0.255.255) by mistake. The rest of that /16 is genuinely
+  // public space — 192.0.66.0/24 belongs to NASA itself.
   const publicV4 = [
     '8.8.8.8',
     '1.1.1.1',
-    '172.32.0.1', // logo fora do /12 privado
-    '192.0.3.1', // dentro do /16 mas FORA dos dois /24 reservados
-    '192.0.66.47', // IP real usado por www.nasa.gov
-    '198.51.101.5', // fora do /24 reservado (198.51.100.0/24)
-    '203.0.114.5', // fora do /24 reservado (203.0.113.0/24)
-    '198.20.5.5', // logo fora do /15 de benchmark
+    '172.32.0.1', // just outside the private /12
+    '192.0.3.1', // inside the /16 but OUTSIDE both reserved /24s
+    '192.0.66.47', // real IP used by www.nasa.gov
+    '198.51.101.5', // outside the reserved /24 (198.51.100.0/24)
+    '203.0.114.5', // outside the reserved /24 (203.0.113.0/24)
+    '198.20.5.5', // just outside the benchmark /15
   ];
   for (const ip of publicV4) {
     test(`NAO bloqueia ${ip} (publico)`, () => assert.equal(isBlockedIp(ip, 4), false));
@@ -146,8 +146,8 @@ describe('isRateLimited', () => {
     const userA = `user-a-${Math.random()}`;
     const userB = `user-b-${Math.random()}`;
     for (let i = 0; i < RATE_LIMIT_MAX; i++) isRateLimited(userA);
-    assert.equal(isRateLimited(userA), true); // A estourou
-    assert.equal(isRateLimited(userB), false); // B nao foi afetado
+    assert.equal(isRateLimited(userA), true); // A tripped the limit
+    assert.equal(isRateLimited(userB), false); // B was unaffected
   });
 });
 

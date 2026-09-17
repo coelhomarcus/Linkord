@@ -224,15 +224,15 @@ function handleProfile(socket: AppSocket, msg: { avatar?: string; avatarPoster?:
     bio: nextBio,
     profileLinks: nextProfileLinks,
   })
-    .catch((err) => console.error(`[${p.id}] falha ao salvar perfil:`, err instanceof Error ? err.stack : err));
+    .catch((err) => console.error(`[${p.id}] failed to save profile:`, err instanceof Error ? err.stack : err));
   // deletes the OLD photo file(s) if they were one of our uploads and
   // changed — otherwise each photo change would leave the previous one(s)
   // orphaned.
   if (oldAvatar && oldAvatar !== p.avatar) {
-    deleteAvatarFile(oldAvatar).catch((err) => console.error(`[${p.id}] falha ao apagar foto de perfil antiga:`, err instanceof Error ? err.stack : err));
+    deleteAvatarFile(oldAvatar).catch((err) => console.error(`[${p.id}] failed to delete old profile photo:`, err instanceof Error ? err.stack : err));
   }
   if (oldAvatarPoster && oldAvatarPoster !== p.avatarPoster) {
-    deleteAvatarFile(oldAvatarPoster).catch((err) => console.error(`[${p.id}] falha ao apagar foto de perfil antiga:`, err instanceof Error ? err.stack : err));
+    deleteAvatarFile(oldAvatarPoster).catch((err) => console.error(`[${p.id}] failed to delete old profile photo:`, err instanceof Error ? err.stack : err));
   }
 }
 

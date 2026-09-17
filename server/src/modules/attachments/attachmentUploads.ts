@@ -205,7 +205,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
     // only deleted after a successful commit; a failed delete here just
     // logs — sweepStaleUploads cleans it up later.
     await fs.rm(tmpDirFor(uploadId), { recursive: true, force: true })
-      .catch((err) => console.error('[attachments] falha ao apagar chunks apos montagem:', err instanceof Error ? err.stack : err));
+      .catch((err) => console.error('[attachments] failed to delete chunks after assembly:', err instanceof Error ? err.stack : err));
     pendingUploadBytes.delete(uploadId);
 
     // Best-effort: a thumbnail that fails to generate/save just means this
@@ -224,7 +224,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
           await db.update(attachmentsTable).set({ thumbId: newThumbId }).where(eq(attachmentsTable.id, row.id));
           thumbId = newThumbId;
         } catch (err) {
-          console.warn('[attachments] falha ao salvar miniatura:', err instanceof Error ? err.message : err);
+          console.warn('[attachments] failed to save thumbnail:', err instanceof Error ? err.message : err);
           await fs.unlink(filePathFor(newThumbId)).catch(() => {});
         }
       }

@@ -204,7 +204,7 @@ async function issueAndSendCode(userId: string, email: string, username: string,
   try {
     await sendAuthCodeEmail({ to: email, code, purpose, username });
   } catch (err) {
-    console.error('[auth] falha ao enviar código:', err instanceof Error ? err.message : err);
+    console.error('[auth] failed to send code:', err instanceof Error ? err.message : err);
     throw err;
   }
 }

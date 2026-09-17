@@ -31,9 +31,9 @@ function fakeRoom(setMicrophoneEnabled = vi.fn(async () => undefined), track: Re
 
 describe('useMicrophone — activateMic aplica o microfone salvo', () => {
   beforeEach(() => {
-    // jsdom nao implementa mediaDevices — activateMic sai cedo (com um erro
-    // de "navegador nao suportado") sem isso, antes mesmo de checar o
-    // deviceId salvo.
+    // jsdom doesn't implement mediaDevices — without this, activateMic bails
+    // early (with an "unsupported browser" error) before even checking the
+    // saved deviceId.
     Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia: vi.fn() }, configurable: true });
   });
 

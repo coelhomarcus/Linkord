@@ -54,7 +54,7 @@ async function handleUserDelete(socket: AppSocket, msg: { userId?: string }): Pr
   // external/empty URL.
   if (target.avatar) {
     await deleteAvatarFile(target.avatar).catch((err) => {
-      console.error(`[moderation] falha ao apagar foto de perfil de ${targetId}:`, err instanceof Error ? err.stack : err);
+      console.error(`[moderation] failed to delete profile photo for ${targetId}:`, err instanceof Error ? err.stack : err);
     });
   }
 
@@ -108,7 +108,7 @@ async function handleCallKick(socket: AppSocket, msg: { participantId?: string }
   try {
     await livekit.kickParticipant(roomName, target.id);
   } catch (err) {
-    console.warn(`[moderation] falha ao kickar ${target.id} da call: ${err instanceof Error ? err.message : err}`);
+    console.warn(`[moderation] failed to kick ${target.id} from the call: ${err instanceof Error ? err.message : err}`);
     send(socket, { t: 'error', code: 'livekit-unavailable', message: 'Não foi possível remover da chamada agora.' });
     return;
   }

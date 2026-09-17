@@ -77,10 +77,10 @@ describe('MessageList — regruda no final quando bottomPadding muda', () => {
     Object.defineProperty(scrollEl, 'scrollHeight', { configurable: true, get: () => fakeScrollHeight });
     scrollEl.scrollTop = 0;
 
-    // O composer flutuante mede sua altura real depois do primeiro paint
-    // (bottomPadding vai de um chute pra altura de verdade) — isso aumenta
-    // o padding-bottom (e o scrollHeight) do PROPRIO scrollEl, sem mudar o
-    // tamanho do contentRef (o filho que o ResizeObserver observa).
+    // The floating composer measures its real height after the first paint
+    // (bottomPadding goes from a guess to the real height) — this increases
+    // the padding-bottom (and scrollHeight) of the scrollEl ITSELF, without
+    // changing the size of contentRef (the child the ResizeObserver watches).
     fakeScrollHeight = 380;
     rerender(
       <RoomContext.Provider value={value}>
@@ -121,27 +121,27 @@ describe('MessageList — corrida entre resize (imagem/video carregando) e o eve
     Object.defineProperty(scrollEl, 'scrollHeight', { configurable: true, get: () => fakeScrollHeight });
     Object.defineProperty(scrollEl, 'clientHeight', { configurable: true, get: () => 400 });
 
-    // Uma imagem termina de carregar -> ResizeObserver dispara -> gruda no
-    // final (scrollTop = 900). O snap marca programmaticScrollRef = true;
-    // como requestAnimationFrame nao roda de verdade num teste sincrono,
-    // ele continua true daqui pra frente, exatamente como no instante real
-    // entre a atribuicao de scrollTop e o evento 'scroll' assincrono que ela
-    // dispara no navegador.
+    // An image finishes loading -> ResizeObserver fires -> snaps to the
+    // bottom (scrollTop = 900). The snap sets programmaticScrollRef = true;
+    // since requestAnimationFrame doesn't actually run in a synchronous
+    // test, it stays true from here on, exactly like the real moment
+    // between the scrollTop assignment and the async 'scroll' event it
+    // triggers in the browser.
     resizeCallback([], {} as ResizeObserver);
     expect(scrollEl.scrollTop).toBe(900);
 
-    // Uma SEGUNDA imagem, maior, termina de carregar antes desse evento
-    // 'scroll' assincrono do primeiro snap chegar — scrollHeight cresce de
-    // novo, mas o 'scroll' que dispara agora ainda carrega o scrollTop
-    // antigo (900) relativo ao scrollHeight novo (2000): sem a guarda, isso
-    // pareceria "o usuario rolou pra cima" (gap bem maior que 80px).
+    // A SECOND, bigger image finishes loading before that async 'scroll'
+    // event from the first snap arrives — scrollHeight grows again, but the
+    // 'scroll' that fires now still carries the old scrollTop (900) relative
+    // to the new scrollHeight (2000): without the guard, this would look
+    // like "the user scrolled up" (gap much bigger than 80px).
     fakeScrollHeight = 2000;
     fireEvent.scroll(scrollEl);
 
-    // O ResizeObserver da segunda imagem dispara de verdade agora — se a
-    // guarda funcionou, ainda estamos "colados no final" e isso gruda no
-    // scrollHeight atual (2000). Sem a guarda, o evento scroll acima teria
-    // derrubado stickToBottomRef e essa chamada seria um no-op.
+    // The second image's ResizeObserver actually fires now — if the guard
+    // worked, we're still "stuck to the bottom" and this snaps to the
+    // current scrollHeight (2000). Without the guard, the scroll event above
+    // would have knocked down stickToBottomRef and this call would be a no-op.
     resizeCallback([], {} as ResizeObserver);
     expect(scrollEl.scrollTop).toBe(2000);
   });

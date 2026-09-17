@@ -109,8 +109,8 @@ describe('decodeUtf8Prefix', () => {
   });
 
   test('corte no meio de um caractere multi-byte ainda decodifica (tenta cortar ate 3 bytes)', () => {
-    const full = Buffer.from('café', 'utf8'); // 'é' e 2 bytes em UTF-8
-    const cutMidChar = full.subarray(0, full.length - 1); // corta o 2o byte de 'é'
+    const full = Buffer.from('café', 'utf8'); // 'é' is 2 bytes in UTF-8
+    const cutMidChar = full.subarray(0, full.length - 1); // cuts the 2nd byte of 'é'
     assert.equal(decodeUtf8Prefix(cutMidChar), 'caf');
   });
 

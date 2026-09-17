@@ -18,8 +18,8 @@ export async function sendAuthCodeEmail(
   const intro = isRecovery
     ? 'Use este código para redefinir a senha da sua conta Linkord:'
     : 'Use este código para confirmar o novo e-mail da sua conta Linkord:';
-  // Sempre repete usuário + e-mail da conta — se a pessoa esqueceu qual dos
-  // dois usou (ou tem mais de uma conta), o e-mail já entrega a resposta.
+  // Always repeats username + account email — if the person forgot which of
+  // the two they used (or has more than one account), the email itself gives the answer.
   const accountLine = isRecovery
     ? `Esse código é para a conta de usuário "${username}", associada a este e-mail (${to}).`
     : '';

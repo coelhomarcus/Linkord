@@ -208,7 +208,7 @@ async function handleGroupUpdate(socket: AppSocket, msg: { conversationId?: stri
   // cleanup an account's own avatar change gets in handleProfile.
   if (updates.avatar !== undefined && conversation.avatar && conversation.avatar !== updates.avatar) {
     deleteAvatarFile(conversation.avatar).catch((err) => {
-      console.error(`[conversations] falha ao apagar avatar antigo do grupo ${conversationId}:`, err instanceof Error ? err.stack : err);
+      console.error(`[conversations] failed to delete old avatar for group ${conversationId}:`, err instanceof Error ? err.stack : err);
     });
   }
 

@@ -33,7 +33,7 @@ export function createApp(): FastifyInstance {
   fastify.setErrorHandler((err: FastifyError, _request: FastifyRequest, reply: FastifyReply) => {
     const status = err.statusCode ?? 500;
     const code = err.code || 'internal_error';
-    if (status >= 500) console.error('[http] erro numa rota:', err.stack ?? err);
+    if (status >= 500) console.error('[http] error in a route:', err.stack ?? err);
     sendError(reply, status, code, err.message || 'Erro interno.');
   });
 

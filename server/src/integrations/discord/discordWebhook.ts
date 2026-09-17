@@ -20,10 +20,10 @@ async function notify(text: string): Promise<void> {
       body: JSON.stringify({ content: text }),
     });
     if (!res.ok) {
-      console.warn(`[discord-webhook] resposta ${res.status} ao notificar`);
+      console.warn(`[discord-webhook] response ${res.status} while notifying`);
     }
   } catch (err) {
-    console.warn('[discord-webhook] falha ao notificar:', err instanceof Error ? err.message : err);
+    console.warn('[discord-webhook] failed to notify:', err instanceof Error ? err.message : err);
   }
 }
 

@@ -30,7 +30,7 @@ export const pool = new Pool({
 // turns into an uncaughtException — taking down the whole room over one
 // stale connection.
 pool.on('error', (err) => {
-  console.error('[db] erro em conexao ociosa do pool:', err instanceof Error ? err.stack : err);
+  console.error('[db] error on an idle pool connection:', err instanceof Error ? err.stack : err);
 });
 
 export const db = drizzle(pool, { schema });

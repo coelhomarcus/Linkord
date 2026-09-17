@@ -39,9 +39,9 @@ describe('LinkPreview', () => {
 
       const img = container.querySelector('img');
       expect(img).toHaveAttribute('src', 'https://cdn.example.com/foto.png');
-      // inline max-width em px — sem isso a imagem não tem nenhum teto de
-      // largura confiável dentro do container flex do chat, que encolhe
-      // pro próprio conteúdo (ver o comentário em chatSurfaceWidth.tsx).
+      // inline max-width in px — without it the image has no reliable width
+      // ceiling inside the chat's flex container, which shrinks to fit its
+      // own content (see the comment in chatSurfaceWidth.tsx).
       expect(img?.style.maxWidth).not.toBe('');
       expect(img?.className.split(/\s+/)).not.toContain('w-full');
     });
@@ -50,10 +50,10 @@ describe('LinkPreview', () => {
       const { container } = render(<LinkPreview embed={{ kind: 'image', url: 'https://cdn.example.com/foto.png' }} fitContainer />);
 
       const img = container.querySelector('img');
-      // sem isso, o cap de largura pensado pra mensagem de chat "vencia" o
-      // max-w-full da classe (mesma propriedade CSS, inline sempre ganha),
-      // deixando a imagem mais larga que a coluna da masonry e
-      // sobrepondo o card vizinho — exatamente o bug relatado.
+      // without this, the width cap meant for chat messages would win over
+      // the class's max-w-full (same CSS property, inline always wins),
+      // making the image wider than the masonry column and overlapping the
+      // neighboring card — exactly the reported bug.
       expect(img?.style.maxWidth).toBe('');
       expect(img?.className.split(/\s+/)).toContain('w-full');
     });

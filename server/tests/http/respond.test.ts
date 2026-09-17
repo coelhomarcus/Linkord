@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { sendJson, sendError, jsonBody } from '../../src/http/respond.js';
 import type { FastifyReply } from 'fastify';
 
-/** Fake minimo de FastifyReply — so os 3 metodos encadeaveis que sendJson/
- * sendError de fato chamam, gravando tudo pra inspecionar depois. */
+/** Minimal fake of FastifyReply — only the 3 chainable methods sendJson/
+ * sendError actually call, recording everything for later inspection. */
 function fakeReply() {
   const calls: { headers: Record<string, unknown>; status?: number; body?: unknown } = { headers: {} };
   const reply = {
@@ -39,10 +39,10 @@ describe('jsonBody', () => {
     assert.deepEqual(jsonBody({ a: 1 }), { a: 1 });
   });
 
-  // o parser padrao do Fastify aceita qualquer JSON valido (array/null/
-  // numero/string) — nenhuma rota daqui espera receber isso, precisa
-  // continuar rejeitando pra manter o mesmo comportamento do antigo
-  // readJsonBody (que so aceitava objeto).
+  // Fastify's default parser accepts any valid JSON (array/null/
+  // number/string) — no route here expects to receive that, so it needs to
+  // keep rejecting it to preserve the old readJsonBody's behavior (which
+  // only accepted an object).
   for (const bad of [null, undefined, [], [1, 2], 'texto', 42, true]) {
     test(`rejeita corpo que nao e objeto: ${JSON.stringify(bad)}`, () => {
       assert.throws(() => jsonBody(bad), /Corpo deve ser um objeto JSON/);

@@ -34,7 +34,7 @@ export async function generateThumbnail(srcPath: string): Promise<{ buffer: Buff
     if (meta.hasAlpha) return { buffer: await resized.webp({ quality: 82 }).toBuffer(), mime: 'image/webp' };
     return { buffer: await resized.jpeg({ quality: 82 }).toBuffer(), mime: 'image/jpeg' };
   } catch (err) {
-    console.warn(`[attachments] falha ao gerar miniatura: ${err instanceof Error ? err.message : err}`);
+    console.warn(`[attachments] failed to generate thumbnail: ${err instanceof Error ? err.message : err}`);
     return null;
   }
 }

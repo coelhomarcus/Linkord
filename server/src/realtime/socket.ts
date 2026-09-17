@@ -96,7 +96,7 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
     livekitUrl: config.LIVEKIT_URL,
   });
   broadcast({ t: 'participant-joined', participant: publicParticipant(p) }, p.id);
-  console.log(`[${p.id}] entrou (${p.name}) de ${socket.ip}`);
+  console.log(`[${p.id}] joined (${p.name}) from ${socket.ip}`);
 }
 
 /** Actually joins a call (group or 1:1 direct): mints a LiveKit token for
@@ -117,7 +117,7 @@ async function handleCallJoin(socket: AppSocket, msg: { conversationId?: string 
   try {
     livekitToken = await livekit.createToken(p, `${config.LIVEKIT_ROOM_NAME}-${conversationId}`);
   } catch (err) {
-    console.warn(`[${p.id}] falha ao gerar token do LiveKit: ${err instanceof Error ? err.message : err}`);
+    console.warn(`[${p.id}] failed to generate LiveKit token: ${err instanceof Error ? err.message : err}`);
     send(socket, { t: 'error', code: 'livekit-unavailable', message: 'Vídeo/voz indisponível no momento.' });
     return;
   }
@@ -140,11 +140,11 @@ function safeHandle(eventName: string, socket: AppSocket, payload: unknown, hand
     const result = handler(socket, payload);
     if (result && typeof (result as Promise<unknown>).catch === 'function') {
       (result as Promise<unknown>).catch((err: unknown) => {
-        console.error(`[ws] erro no handler '${eventName}' (participantId=${socket.participantId}): ${err instanceof Error ? err.stack : err}`);
+        console.error(`[ws] error in handler '${eventName}' (participantId=${socket.participantId}): ${err instanceof Error ? err.stack : err}`);
       });
     }
   } catch (err) {
-    console.error(`[ws] erro no handler '${eventName}' (participantId=${socket.participantId}): ${err instanceof Error ? err.stack : err}`);
+    console.error(`[ws] error in handler '${eventName}' (participantId=${socket.participantId}): ${err instanceof Error ? err.stack : err}`);
   }
 }
 

@@ -19,7 +19,7 @@ describe('ParticipantAudioLayer — aplica a saida de audio (alto-falante) salva
   afterEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
-    // @ts-expect-error -- jsdom nao tem setSinkId; removida a versao fake do teste.
+    // @ts-expect-error -- jsdom doesn't have setSinkId; remove the test's fake version.
     delete HTMLMediaElement.prototype.setSinkId;
   });
 

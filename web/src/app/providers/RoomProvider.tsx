@@ -266,7 +266,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           chatMessages.cancelPendingJump();
           messageSearch.setSearchErrorMessage(m.message);
         } else {
-          console.warn('[ws] erro nao tratado do servidor:', m.code, m.message);
+          console.warn('[ws] unhandled server error:', m.code, m.message);
         }
         break;
     }

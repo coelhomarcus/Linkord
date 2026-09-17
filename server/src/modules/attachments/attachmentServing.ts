@@ -91,7 +91,7 @@ async function tryCacheFromRemote(id: string, cookieHeader: string): Promise<boo
     await fs.rename(tmpPath, filePathFor(id));
     return true;
   } catch (err) {
-    console.warn(`[attachments] falha ao buscar ${id} de UPLOADS_REMOTE_URL: ${err instanceof Error ? err.message : err}`);
+    console.warn(`[attachments] failed to fetch ${id} from UPLOADS_REMOTE_URL: ${err instanceof Error ? err.message : err}`);
     await fs.unlink(tmpPath).catch(() => {});
     return false;
   }

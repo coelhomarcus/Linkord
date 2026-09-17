@@ -20,10 +20,10 @@ export { MIGRATIONS_FOLDER };
 // run directly from the command line: applies and exits the process.
 if (process.argv[1] === import.meta.filename) {
   runMigrations()
-    .then(() => { console.log('Migrations aplicadas.'); return pool.end(); })
+    .then(() => { console.log('Migrations applied.'); return pool.end(); })
     .then(() => process.exit(0))
     .catch((err) => {
-      console.error('Falha ao aplicar migrations:', err instanceof Error ? err.stack : err);
+      console.error('Failed to apply migrations:', err instanceof Error ? err.stack : err);
       process.exit(1);
     });
 }

@@ -41,12 +41,12 @@ async function applyNoiseSuppression(room: Room, enabled: boolean): Promise<void
       await track.setProcessor(getRnnoiseProcessor());
       await track.applyConstraints({ noiseSuppression: false });
     } catch (err) {
-      console.warn('Falha ao ativar supressão de ruído (RNNoise) — mantendo a supressão nativa do navegador', err);
+      console.warn('Failed to enable noise suppression (RNNoise) — keeping the browser\'s native suppression', err);
     }
   } else {
     if (track.getProcessor()) await track.stopProcessor().catch(() => {});
     await track.applyConstraints({ noiseSuppression: true }).catch((err) => {
-      console.warn('Falha ao aplicar supressão de ruído', err);
+      console.warn('Failed to apply noise suppression', err);
     });
   }
 }

@@ -71,10 +71,11 @@ describe('isSecureRequest', () => {
     assert.equal(isSecureRequest(fakeReq()), false);
   });
 
-  // config.TRUST_PROXY vem do ambiente de teste (.env.test), que nao liga
-  // TRUST_PROXY — entao X-Forwarded-Proto:https sozinho, sem TRUST_PROXY=1,
-  // NAO deveria bastar (senao qualquer cliente forjaria esse header e
-  // ganharia cookie Secure atras de um proxy que nao existe de verdade).
+  // config.TRUST_PROXY comes from the test environment (.env.test), which
+  // doesn't set TRUST_PROXY — so X-Forwarded-Proto:https alone, without
+  // TRUST_PROXY=1, should NOT be enough (otherwise any client could forge
+  // that header and earn a Secure cookie behind a proxy that doesn't
+  // actually exist).
   test('X-Forwarded-Proto sozinho nao basta sem TRUST_PROXY ligado', () => {
     assert.equal(isSecureRequest(fakeReq({ forwardedProto: 'https' })), false);
   });

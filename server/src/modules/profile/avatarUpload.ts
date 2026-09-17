@@ -110,7 +110,7 @@ export async function encodeAndStoreProfileImage(
         throw err;
       }
     } catch (err) {
-      console.warn(`[attachments] falha ao gerar poster do avatar: ${err instanceof Error ? err.message : err}`);
+      console.warn(`[attachments] failed to generate avatar poster: ${err instanceof Error ? err.message : err}`);
     }
   }
 
@@ -174,10 +174,10 @@ export async function handleAvatarUpload(request: FastifyRequest, reply: Fastify
     return sendJson(reply, 201, result);
   } catch (err) {
     if (err instanceof ProfileImageProcessingError) {
-      console.warn(`[attachments] falha ao recortar avatar: ${err.message}`);
+      console.warn(`[attachments] failed to crop avatar: ${err.message}`);
       return sendError(reply, 400, err.code, err.message);
     }
-    console.warn(`[attachments] falha ao recortar avatar: ${err instanceof Error ? err.message : err}`);
+    console.warn(`[attachments] failed to crop avatar: ${err instanceof Error ? err.message : err}`);
     throw err;
   }
 }

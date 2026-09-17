@@ -2,9 +2,9 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { checkBlocked, recordFailure, reset } from '../../../src/modules/auth/ratelimit.js';
 
-// chave unica por teste (Math.random) — failuresByKey e um Map module-level
-// compartilhado entre todos os testes deste processo, mesmo padrao ja usado
-// pelos testes de isRateLimited em link-preview.test.ts.
+// unique key per test (Math.random) — failuresByKey is a module-level Map
+// shared across all tests in this process, the same pattern already used by
+// the isRateLimited tests in link-preview.test.ts.
 function uniqueKey(): string {
   return `k-${Math.random()}`;
 }

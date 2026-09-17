@@ -8,7 +8,7 @@ describe('CallControlBar', () => {
   it('renderiza reacoes e os controles da chamada (mic/ouvir/camera/tela) e sair', () => {
     renderWithRoom(<CallControlBar />);
     expect(screen.getByLabelText('Reagir')).toBeInTheDocument();
-    // sem publicacao de mic ainda (estado inicial), entao o botao mostra "Desmutar".
+    // no mic publication yet (initial state), so the button shows "Desmutar".
     expect(screen.getByLabelText('Desmutar')).toBeInTheDocument();
     expect(screen.getByLabelText('Parar de ouvir')).toBeInTheDocument();
     expect(screen.getByLabelText('Ligar câmera')).toBeInTheDocument();

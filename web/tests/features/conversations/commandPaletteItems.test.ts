@@ -73,8 +73,8 @@ describe('buildCommandItems', () => {
   it('a etapa "Conversar com…" só lista quem ainda não tem uma DM (evita duplicar com "Conversas")', () => {
     const items = buildCommandItems(conversations, allUsers, me, new Map(), null, noopActions);
     const peopleItems = messageStage(items);
-    // Ana já tem DM (dmWithAna) — não aparece aqui. Bruno é só membro de
-    // grupo, não tem DM — aparece. Carla não tem nenhuma conversa — aparece.
+    // Ana already has a DM (dmWithAna) — doesn't show up here. Bruno is only
+    // a group member, no DM — shows up. Carla has no conversation at all — shows up.
     expect(peopleItems.map((it) => it.label).sort()).toEqual(['Bruno', 'Carla']);
   });
 
@@ -107,7 +107,7 @@ describe('buildCommandItems', () => {
 
     const joinItems = items.filter((it) => it.group === 'Chamadas em andamento');
     expect(joinItems.map((it) => it.label)).toEqual(['Entrar na chamada em Squad']);
-    // dmWithAna não tem ninguém em chamada — continua na etapa "Ligar para…".
+    // dmWithAna has no one on the call — stays in the "Ligar para…" stage.
     expect(callStage(items).map((it) => it.label)).toEqual(['Ana']);
   });
 

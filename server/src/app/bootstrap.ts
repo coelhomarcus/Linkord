@@ -25,9 +25,9 @@ export async function bootstrap(): Promise<void> {
   if (config.MIGRATE_ON_BOOT) {
     try {
       await runMigrations();
-      console.log('[db] migrations em dia.');
+      console.log('[db] migrations up to date.');
     } catch (err) {
-      console.error('[db] falha ao aplicar migrations:', err instanceof Error ? err.stack : err);
+      console.error('[db] failed to apply migrations:', err instanceof Error ? err.stack : err);
       process.exit(1);
     }
   }
@@ -40,7 +40,7 @@ export async function bootstrap(): Promise<void> {
     await ensureUploadDir();
     await sweepStaleUploads();
   } catch (err) {
-    console.error('[attachments] falha ao preparar a pasta de uploads:', err instanceof Error ? err.stack : err);
+    console.error('[attachments] failed to prepare the uploads folder:', err instanceof Error ? err.stack : err);
     process.exit(1);
   }
 
@@ -52,31 +52,31 @@ export async function bootstrap(): Promise<void> {
   const io = createWsServer(fastify.server);
 
   await fastify.listen({ port: config.PORT, host: config.HOST_BIND });
-  console.log(`Linkord ouvindo em http://${config.HOST_BIND}:${config.PORT}`);
-  console.log('Sala unica, qualquer participante pode compartilhar. Camera/tela via WebRTC (LiveKit).');
+  console.log(`Linkord listening on http://${config.HOST_BIND}:${config.PORT}`);
+  console.log('Single room, any participant can share. Camera/screen via WebRTC (LiveKit).');
   if (!config.LIVEKIT_URL || !config.LIVEKIT_API_KEY || !config.LIVEKIT_API_SECRET) {
-    console.warn('Aviso: LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET nao configurados — compartilhar tela/camera vai falhar.');
+    console.warn('Warning: LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET not configured — screen/camera sharing will fail.');
   }
 
   // periodic cleanup of expired sessions — doesn't need to run per
   // request, just enough to keep the table from growing forever.
   const sessionSweepTimer = setInterval(() => {
-    sweepExpiredSessions().catch((err) => console.error('[auth] falha ao limpar sessoes vencidas:', err instanceof Error ? err.stack : err));
+    sweepExpiredSessions().catch((err) => console.error('[auth] failed to clean up expired sessions:', err instanceof Error ? err.stack : err));
   }, 60 * 60 * 1000);
   sessionSweepTimer.unref();
 
   // same cadence — upload session TTL is 24h (config.UPLOAD_SESSION_TTL_MS),
   // checking hourly is enough to avoid orphaned chunks piling up on disk.
   const uploadSweepTimer = setInterval(() => {
-    sweepStaleUploads().catch((err) => console.error('[attachments] falha ao limpar uploads abandonados:', err instanceof Error ? err.stack : err));
+    sweepStaleUploads().catch((err) => console.error('[attachments] failed to clean up abandoned uploads:', err instanceof Error ? err.stack : err));
   }, 60 * 60 * 1000);
   uploadSweepTimer.unref();
 
   for (const sig of ['SIGINT', 'SIGTERM'] as const) {
     process.on(sig, () => {
-      console.log(`\n${sig} recebido, encerrando...`);
+      console.log(`\n${sig} received, shutting down...`);
       broadcast({ t: 'server-restart' });
-      for (const p of participantsMap.values()) { try { p.socket && p.socket.disconnect(true); } catch { /* socket ja morrendo */ } }
+      for (const p of participantsMap.values()) { try { p.socket && p.socket.disconnect(true); } catch { /* socket already dying */ } }
       io.close();
       fastify.close().then(() => process.exit(0)).catch(() => process.exit(1));
       setTimeout(() => process.exit(0), 3000).unref();
