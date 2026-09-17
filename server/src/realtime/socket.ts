@@ -4,16 +4,16 @@ import { config } from '../config/env.js';
 import {
   participants as participantsMap, join, send, broadcast, publicParticipant, handleClose, ipOf,
   listOnlineUserIds, setCallConversationId, handlers as participantHandlers,
-} from './participants.js';
-import * as livekit from './livekit.js';
-import * as reactions from './reactions.js';
+} from '../modules/presence/participants.js';
+import * as livekit from '../integrations/livekit/livekit.js';
+import * as reactions from '../modules/calls/reactions.js';
 import * as floodControl from './floodControl.js';
-import * as chat from '../modules/chat.js';
-import * as conversations from '../modules/conversations.js';
-import { getUsage } from '../modules/attachmentQuota.js';
-import * as discordWebhook from '../modules/discordWebhook.js';
-import * as moderation from '../modules/moderation.js';
-import { listAllUsers } from '../modules/auth/users.js';
+import * as chat from '../modules/messages/messages.js';
+import * as conversations from '../modules/conversations/conversations.js';
+import { getUsage } from '../modules/attachments/attachmentQuota.js';
+import * as discordWebhook from '../integrations/discord/discordWebhook.js';
+import * as moderation from '../modules/moderation/moderation.js';
+import { listAllUsers } from '../modules/users/users.js';
 import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from '../modules/auth/session.js';
 import type { AppSocket, HandlerTable } from '../types.js';

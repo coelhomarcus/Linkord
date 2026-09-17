@@ -3,11 +3,11 @@ import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply, ty
 import fastifyStatic from '@fastify/static';
 import fastifyCompress from '@fastify/compress';
 import { config } from '../config/env.js';
-import { participants } from '../realtime/participants.js';
+import { participants } from '../modules/presence/participants.js';
 import { sendError } from './respond.js';
 import { registerAuthRoutes } from '../modules/auth/routes.js';
-import { registerAttachmentRoutes } from '../modules/attachments.js';
-import { registerMediaRoutes } from '../modules/media.js';
+import { registerAttachmentRoutes } from '../modules/attachments/attachments.js';
+import { registerMediaRoutes } from '../modules/attachments/media.js';
 import { registerLinkPreviewRoutes } from '../modules/link-preview/linkPreview.js';
 
 // compiled, this file becomes server/dist/http/app.js, hence the three

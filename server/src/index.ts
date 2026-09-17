@@ -1,10 +1,10 @@
 import { config } from './config/env.js';
-import { participants as participantsMap, broadcast } from './realtime/participants.js';
+import { participants as participantsMap, broadcast } from './modules/presence/participants.js';
 import { createApp } from './http/app.js';
 import { createWsServer } from './realtime/socket.js';
 import { runMigrations } from './db/migrate.js';
 import { sweepExpiredSessions } from './modules/auth/session.js';
-import { ensureUploadDir, sweepStaleUploads } from './modules/attachmentUploads.js';
+import { ensureUploadDir, sweepStaleUploads } from './modules/attachments/attachmentUploads.js';
 
 // backstop behind the try/catch in each handler in realtime/socket.ts —
 // covers any async error escaping the normal message cycle (a timer, a

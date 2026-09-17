@@ -3,7 +3,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { authCodes } from '../../db/schema.js';
 import { config } from '../../config/env.js';
-import { normalizeEmail } from './users.js';
+import { normalizeEmail } from '../users/users.js';
 
 export type AuthCodePurpose = 'password_reset' | 'email_change';
 
