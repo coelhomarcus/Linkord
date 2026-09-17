@@ -5,6 +5,7 @@ import { createWsServer } from './realtime/socket.js';
 import { runMigrations } from './db/migrate.js';
 import { sweepExpiredSessions } from './modules/auth/session.js';
 import { ensureUploadDir, sweepStaleUploads } from './modules/attachmentUploads.js';
+import { migrateLegacyProfileImages } from './modules/legacyProfileImageMigration.js';
 
 // backstop behind the try/catch in each handler in realtime/socket.ts —
 // covers any async error escaping the normal message cycle (a timer, a
@@ -56,6 +57,12 @@ async function bootstrap(): Promise<void> {
   console.log('Sala unica, qualquer participante pode compartilhar. Camera/tela via WebRTC (LiveKit).');
   if (!config.LIVEKIT_URL || !config.LIVEKIT_API_KEY || !config.LIVEKIT_API_SECRET) {
     console.warn('Aviso: LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET nao configurados — compartilhar tela/camera vai falhar.');
+  }
+
+  if (config.MIGRATE_ON_BOOT) {
+    migrateLegacyProfileImages().catch((err) => {
+      console.error('[avatar] falha ao migrar imagens legadas:', err instanceof Error ? err.stack : err);
+    });
   }
 
   // periodic cleanup of expired sessions — doesn't need to run per

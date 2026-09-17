@@ -12,9 +12,21 @@ import { fetchImageFromUrl, AVATAR_MIME_TYPES } from './imageFetch.js';
 
 const MAX_CROP_DIMENSION = 4096; // sane ceiling, well under sharp's own decompression-bomb guard
 
+export type CropRect = { left: number; top: number; width: number; height: number };
+
+export class ProfileImageProcessingError extends Error {
+  readonly code: 'invalid_crop' | 'crop_failed';
+
+  constructor(code: 'invalid_crop' | 'crop_failed', message: string) {
+    super(message);
+    this.name = 'ProfileImageProcessingError';
+    this.code = code;
+  }
+}
+
 /** Parses the `?crop=` query param (JSON `{x,y,width,height}`, same shape as
  * react-easy-crop's `Area`) into the rect handleAvatarUpload extracts. */
-export function parseCropRect(raw: string | undefined): { left: number; top: number; width: number; height: number } | null {
+export function parseCropRect(raw: string | undefined): CropRect | null {
   if (!raw) return null;
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { return null; }
@@ -24,6 +36,89 @@ export function parseCropRect(raw: string | undefined): { left: number; top: num
     || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) return null;
   if (width <= 0 || height <= 0 || x < 0 || y < 0 || width > MAX_CROP_DIMENSION || height > MAX_CROP_DIMENSION) return null;
   return { left: Math.round(x), top: Math.round(y), width: Math.round(width), height: Math.round(height) };
+}
+
+/** Encodes and stores a profile image using the same pipeline for both the
+ * interactive upload and the legacy URL migration. A null crop means the
+ * complete image is preserved before encoding. */
+export async function encodeAndStoreProfileImage(
+  buffer: Buffer,
+  cropRect: CropRect | null,
+): Promise<{ avatar: string; avatarPoster: string | undefined }> {
+  let outBuffer: Buffer;
+  let outMime: string;
+  let animated = false;
+  try {
+    const image = sharp(buffer, { animated: true });
+    const meta = await image.metadata();
+    if (cropRect) {
+      const frameHeight = meta.pageHeight ?? meta.height ?? 0;
+      if (!meta.width || !frameHeight
+        || cropRect.left + cropRect.width > meta.width
+        || cropRect.top + cropRect.height > frameHeight) {
+        throw new ProfileImageProcessingError('invalid_crop', 'Recorte fora dos limites da imagem.');
+      }
+    }
+
+    const extracted = cropRect ? image.extract(cropRect) : image;
+    animated = (meta.pages ?? 1) > 1;
+    if (animated) {
+      // animated: keep WebP inputs as WebP (better quality than GIF's
+      // 256-color palette); anything else animated (GIF today) stays GIF.
+      if (meta.format === 'webp') {
+        outBuffer = await extracted.webp({ quality: 90 }).toBuffer();
+        outMime = 'image/webp';
+      } else {
+        outBuffer = await extracted.gif().toBuffer();
+        outMime = 'image/gif';
+      }
+    } else {
+      outBuffer = await extracted.jpeg({ quality: 92 }).toBuffer();
+      outMime = 'image/jpeg';
+    }
+  } catch (err) {
+    if (err instanceof ProfileImageProcessingError) throw err;
+    throw new ProfileImageProcessingError(
+      'crop_failed',
+      'Não foi possível processar a imagem.',
+    );
+  }
+
+  const id = newId();
+  await fs.writeFile(filePathFor(id), outBuffer);
+  try {
+    await db.insert(attachmentsTable).values({ id, messageId: null, fileName: 'avatar', mimeType: outMime, size: outBuffer.length });
+  } catch (err) {
+    await fs.unlink(filePathFor(id)).catch(() => {});
+    throw err;
+  }
+
+  // For an animated avatar/banner, also freeze the first frame as a JPEG
+  // "poster" — the call UI (Tile.tsx) shows this instead of the live
+  // animation until the person actually speaks, same idea as Discord.
+  // Best-effort: a failure here still leaves a perfectly good (animated)
+  // avatar/banner, it just won't freeze in calls.
+  let posterUrl: string | undefined;
+  if (animated) {
+    const posterId = newId();
+    try {
+      const posterImage = sharp(buffer, { animated: false });
+      const posterSource = cropRect ? posterImage.extract(cropRect) : posterImage;
+      const posterBuffer = await posterSource.jpeg({ quality: 88 }).toBuffer();
+      await fs.writeFile(filePathFor(posterId), posterBuffer);
+      try {
+        await db.insert(attachmentsTable).values({ id: posterId, messageId: null, fileName: 'avatar-poster', mimeType: 'image/jpeg', size: posterBuffer.length });
+        posterUrl = `/uploads/${posterId}`;
+      } catch (err) {
+        await fs.unlink(filePathFor(posterId)).catch(() => {});
+        throw err;
+      }
+    } catch (err) {
+      console.warn(`[attachments] falha ao gerar poster do avatar: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  return { avatar: `/uploads/${id}`, avatarPoster: posterUrl };
 }
 
 /** Avatar upload — same storage/serving route as chat attachments
@@ -78,65 +173,15 @@ export async function handleAvatarUpload(request: FastifyRequest, reply: Fastify
   const cropRect = parseCropRect((request.query as Record<string, string | undefined>).crop);
   if (!cropRect) return sendError(reply, 400, 'invalid_crop', 'Recorte inválido.');
 
-  let outBuffer: Buffer;
-  let outMime: string;
-  let animated = false;
   try {
-    const image = sharp(buffer, { animated: true });
-    const meta = await image.metadata();
-    const frameHeight = meta.pageHeight ?? meta.height ?? 0;
-    if (!meta.width || !frameHeight
-      || cropRect.left + cropRect.width > meta.width
-      || cropRect.top + cropRect.height > frameHeight) {
-      return sendError(reply, 400, 'invalid_crop', 'Recorte fora dos limites da imagem.');
-    }
-    const extracted = image.extract(cropRect);
-    animated = (meta.pages ?? 1) > 1;
-    if (animated) {
-      // animated: keep WebP inputs as WebP (better quality than GIF's
-      // 256-color palette); anything else animated (GIF today) stays GIF.
-      if (meta.format === 'webp') {
-        outBuffer = await extracted.webp({ quality: 90 }).toBuffer();
-        outMime = 'image/webp';
-      } else {
-        outBuffer = await extracted.gif().toBuffer();
-        outMime = 'image/gif';
-      }
-    } else {
-      outBuffer = await extracted.jpeg({ quality: 92 }).toBuffer();
-      outMime = 'image/jpeg';
-    }
+    const result = await encodeAndStoreProfileImage(buffer, cropRect);
+    return sendJson(reply, 201, result);
   } catch (err) {
+    if (err instanceof ProfileImageProcessingError) {
+      console.warn(`[attachments] falha ao recortar avatar: ${err.message}`);
+      return sendError(reply, 400, err.code, err.message);
+    }
     console.warn(`[attachments] falha ao recortar avatar: ${err instanceof Error ? err.message : err}`);
-    return sendError(reply, 400, 'crop_failed', 'Não foi possível processar a imagem.');
-  }
-
-  const id = newId();
-  await fs.writeFile(filePathFor(id), outBuffer);
-  try {
-    await db.insert(attachmentsTable).values({ id, messageId: null, fileName: 'avatar', mimeType: outMime, size: outBuffer.length });
-  } catch (err) {
-    await fs.unlink(filePathFor(id)).catch(() => {});
     throw err;
   }
-
-  // For an animated avatar/banner, also freeze the first frame as a JPEG
-  // "poster" — the call UI (Tile.tsx) shows this instead of the live
-  // animation until the person actually speaks, same idea as Discord.
-  // Best-effort: a failure here still leaves a perfectly good (animated)
-  // avatar/banner, it just won't freeze in calls.
-  let posterUrl: string | undefined;
-  if (animated) {
-    try {
-      const posterBuffer = await sharp(buffer, { animated: false }).extract(cropRect).jpeg({ quality: 88 }).toBuffer();
-      const posterId = newId();
-      await fs.writeFile(filePathFor(posterId), posterBuffer);
-      await db.insert(attachmentsTable).values({ id: posterId, messageId: null, fileName: 'avatar-poster', mimeType: 'image/jpeg', size: posterBuffer.length });
-      posterUrl = `/uploads/${posterId}`;
-    } catch (err) {
-      console.warn(`[attachments] falha ao gerar poster do avatar: ${err instanceof Error ? err.message : err}`);
-    }
-  }
-
-  sendJson(reply, 201, { avatar: `/uploads/${id}`, avatarPoster: posterUrl });
 }
