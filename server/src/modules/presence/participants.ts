@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { config } from '../../config/env.js';
-import { updateProfile } from '../users/users.js';
+import { updateProfile } from '../profile/profileRepository.js';
 import { sanitizeAvatar, sanitizeBanner, sanitizeAvatarColor, sanitizeDisplayName, sanitizeBio, sanitizeProfileLinks } from '../profile/sanitize.js';
 import type { AppSocket, HandlerTable, Participant, PublicParticipant } from '../../types.js';
 
