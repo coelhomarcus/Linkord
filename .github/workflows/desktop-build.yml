@@ -1,11 +1,17 @@
 name: Desktop Build (Pake)
 
 # Manual only — Pake packages the live production URL, not a local build,
-# so there's no reason to run this on every push. Reproduces the exact
-# command already validated locally on macOS:
-#   pake https://linkord.marcuscoelho.com --name Linkord --camera --microphone
+# so there's no reason to run this on every push. Builds on the command
+# already validated locally on macOS (pake ... --name Linkord --camera
+# --microphone), plus --show-system-tray/--hide-on-close so the packaged
+# app lives in the tray instead of quitting when the window closes.
 # --camera/--microphone are macOS-only entitlements; Pake silently ignores
 # them on Windows/Linux, so the same command works unchanged on all 3 OSes.
+# Native desktop notifications already work with zero extra flags — Pake
+# polyfills the page's own `Notification` API to the OS notification center.
+# "Start on login" isn't included: Pake has no autostart support (no CLI
+# flag, no bundled Tauri plugin) — would need a source fork to add
+# tauri-plugin-autostart, out of scope for now.
 on:
   workflow_dispatch:
     inputs:
@@ -106,13 +112,13 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          pake "$PAKE_URL" --name "$PAKE_NAME" --camera --microphone --app-version "${{ inputs.app_version }}"
+          pake "$PAKE_URL" --name "$PAKE_NAME" --camera --microphone --show-system-tray --hide-on-close --app-version "${{ inputs.app_version }}"
 
       - name: Build app (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          pake $env:PAKE_URL --name $env:PAKE_NAME --camera --microphone --app-version "${{ inputs.app_version }}"
+          pake $env:PAKE_URL --name $env:PAKE_NAME --camera --microphone --show-system-tray --hide-on-close --app-version "${{ inputs.app_version }}"
 
       - name: Upload DMG (macOS)
         if: runner.os == 'macOS'
