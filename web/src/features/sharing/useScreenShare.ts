@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import type { Dispatch } from 'react';
-import { ConnectionState, ScreenSharePresets, Track } from 'livekit-client';
+import { ConnectionState, ScreenSharePresets } from 'livekit-client';
 import type { Room } from 'livekit-client';
 import type { RoomAction } from '../../state/roomReducer';
 
@@ -50,22 +50,6 @@ export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): Scre
 
     dispatch({ type: 'SET_LOCAL_SHARING', sharing: true });
     dispatch({ type: 'SET_SHARE_ERROR', message: null });
-
-    const videoTrack = room.localParticipant.getTrackPublication(Track.Source.ScreenShare)?.track;
-    const displaySurface = videoTrack?.mediaStreamTrack.getSettings().displaySurface;
-    const gotAudio = !!room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio);
-
-    if (!gotAudio) {
-      let reason: string;
-      if (displaySurface === 'window') {
-        reason = 'compartilhar uma JANELA nunca inclui áudio, em nenhum navegador.';
-      } else if (displaySurface === 'monitor') {
-        reason = 'tela inteira só vem com áudio se a caixa "Também compartilhar áudio do sistema" estiver marcada (não existe essa opção no macOS).';
-      } else {
-        reason = 'a pessoa desmarcou a opção de áudio, ou o navegador não suporta áudio de tela (ex.: Firefox).';
-      }
-      console.log(`[screen-share] compartilhado sem audio (displaySurface=${displaySurface ?? 'desconhecido'}): ${reason}`);
-    }
   }, [dispatch, room]);
 
   const stopSharing = useCallback(() => {

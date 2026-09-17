@@ -57,8 +57,8 @@ function Shell() {
   useEffect(() => { notifyActiveView(activeView); }, [activeView, notifyActiveView]);
 
   // The first conversation auto-selected right after connecting shouldn't
-  // drill in on mobile (the sidebar list is the intended landing screen —
-  // see REDESIGN_PLAN.md). Every LATER change to activeConversationId is a
+  // drill in on mobile (the sidebar list is the intended landing screen).
+  // Every LATER change to activeConversationId is a
   // real navigation the user should actually see: a group they just
   // created, a notification click, or anything else that opens a
   // conversation without going through the sidebar row's own onClick (which
