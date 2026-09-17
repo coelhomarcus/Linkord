@@ -10,7 +10,7 @@ import {
   conversationExistsForUser,
   touchConversation,
   recordConversationActivity,
-} from '../conversations/conversations.js';
+} from '../conversations/conversationsRepository.js';
 import { resolveDisplayName } from '../users/users.js';
 import * as attachments from '../attachments/attachments.js';
 import * as reactions from './reactions.js';

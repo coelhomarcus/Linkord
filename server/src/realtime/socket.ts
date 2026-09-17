@@ -10,6 +10,7 @@ import * as reactions from '../modules/calls/reactions.js';
 import * as floodControl from './floodControl.js';
 import * as chat from '../modules/messages/messages.js';
 import * as conversations from '../modules/conversations/conversations.js';
+import { listForUser, getConversationForUser } from '../modules/conversations/conversationsRepository.js';
 import { getUsage } from '../modules/attachments/attachmentQuota.js';
 import * as discordWebhook from '../integrations/discord/discordWebhook.js';
 import * as moderation from '../modules/moderation/moderation.js';
@@ -88,7 +89,7 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
     role: p.role,
     maxParticipants: config.MAX_PARTICIPANTS,
     participants: [...participantsMap.values()].filter((o) => o.id !== p.id).map(publicParticipant),
-    conversations: await conversations.listForUser(p.userId),
+    conversations: await listForUser(p.userId),
     users: await listAllUsers(),
     onlineUserIds: listOnlineUserIds(),
     storageUsage: await getUsage(),
@@ -107,7 +108,7 @@ async function handleCallJoin(socket: AppSocket, msg: { conversationId?: string 
   if (!p || p.socket !== socket) return;
   const conversationId = String(msg.conversationId || '');
   if (!conversationId) return;
-  const conversation = await conversations.getConversationForUser(conversationId, p.userId);
+  const conversation = await getConversationForUser(conversationId, p.userId);
   if (!conversation) {
     send(socket, { t: 'error', code: 'call-not-allowed', message: 'Você não tem acesso a essa conversa.' });
     return;

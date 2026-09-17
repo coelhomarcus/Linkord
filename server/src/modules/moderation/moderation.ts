@@ -7,7 +7,7 @@ import { invalidateSessionsForUser } from '../auth/session.js';
 import { participants, broadcast, send, removeParticipant, setCallConversationId } from '../presence/participants.js';
 import * as livekit from '../../integrations/livekit/livekit.js';
 import { deleteAvatarFile } from '../attachments/attachments.js';
-import { reconcileGroupMembership } from '../conversations/conversations.js';
+import { reconcileGroupMembership } from '../conversations/conversationsRepository.js';
 import type { AppSocket, HandlerTable, Participant } from '../../types.js';
 
 // Admin-only moderation actions — account deletion (Settings "Moderation"

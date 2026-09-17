@@ -9,7 +9,7 @@ import { attachments as attachmentsTable, messages, type Attachment } from '../.
 import { sendJson, sendError, jsonBody } from '../../http/respond.js';
 import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
-import { broadcastToConversationMembers, conversationExistsForUser, touchConversation, recordConversationActivity } from '../conversations/conversations.js';
+import { broadcastToConversationMembers, conversationExistsForUser, touchConversation, recordConversationActivity } from '../conversations/conversationsRepository.js';
 import { newId, filePathFor } from './attachmentStorage.js';
 import { generateThumbnail, THUMBNAIL_SOURCE_MIME_TYPES } from './attachmentThumbnails.js';
 import { getUsage, broadcastUsage } from './attachmentQuota.js';

@@ -9,7 +9,7 @@ import { attachments as attachmentsTable, messages, type Attachment } from '../.
 import { sendJson, sendError } from '../../http/respond.js';
 import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
-import { conversationExistsForUser } from '../conversations/conversations.js';
+import { conversationExistsForUser } from '../conversations/conversationsRepository.js';
 import { filePathFor } from './attachmentStorage.js';
 
 // Chat attachments are served (and previewed) from disk keyed by a uuid (no
