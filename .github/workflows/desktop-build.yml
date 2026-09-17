@@ -1,0 +1,148 @@
+name: Desktop Build (Pake)
+
+# Manual only — Pake packages the live production URL, not a local build,
+# so there's no reason to run this on every push. Reproduces the exact
+# command already validated locally on macOS:
+#   pake https://linkord.marcuscoelho.com --name Linkord --camera --microphone
+# --camera/--microphone are macOS-only entitlements; Pake silently ignores
+# them on Windows/Linux, so the same command works unchanged on all 3 OSes.
+on:
+  workflow_dispatch:
+    inputs:
+      app_version:
+        description: "App version (maps to --app-version)"
+        required: false
+        default: "1.0.0"
+
+env:
+  PAKE_URL: "https://linkord.marcuscoelho.com"
+  PAKE_NAME: "Linkord"
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-24.04, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust (Windows)
+        if: runner.os == 'Windows'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable-x86_64-msvc
+          target: x86_64-pc-windows-msvc
+
+      - name: Setup Rust (macOS/Linux)
+        if: runner.os != 'Windows'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      # Tauri's Linux bundler (webkit2gtk, appindicator, etc.) — not present
+      # on a bare ubuntu-24.04 runner.
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libdbus-1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libwebkit2gtk-4.1-dev \
+            build-essential curl wget file libxdo-dev libssl-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev gnome-video-effects \
+            libglib2.0-dev libgirepository1.0-dev pkg-config
+
+      # Tauri's Windows bundler needs WiX to produce the .msi — not
+      # preinstalled on the runner.
+      - name: Cache WiX Toolset
+        if: runner.os == 'Windows'
+        id: wix-cache
+        uses: actions/cache@v4.2.0
+        with:
+          path: C:\Program Files (x86)\WiX Toolset v3.11
+          key: windows-wix-3.11.2
+
+      - name: Install WiX Toolset
+        if: runner.os == 'Windows' && steps.wix-cache.outputs.cache-hit != 'true'
+        shell: powershell
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/wixtoolset/wix3/releases/download/wix3112rtm/wix311.exe" -OutFile "wix311.exe"
+          Start-Process -FilePath "wix311.exe" -ArgumentList "/quiet" -Wait
+
+      - name: Add WiX to PATH
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $wixPath = "${env:ProgramFiles(x86)}\WiX Toolset v3.11\bin"
+          if (Test-Path $wixPath) {
+            echo $wixPath >> $env:GITHUB_PATH
+          }
+
+      # No lockfile to key off (pake-cli isn't a project dependency, just a
+      # global install) — one static key per OS. actions/cache only writes a
+      # new cache when the key doesn't already have one, so this can go
+      # stale if pake-cli's own Rust deps change; acceptable for a manual,
+      # infrequent workflow, and worth revisiting if that ever bites.
+      - name: Cache Cargo registry
+        uses: actions/cache@v4.2.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-pake-cli
+
+      - name: Install Pake CLI
+        run: npm install -g pake-cli
+
+      - name: Build app (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          pake "$PAKE_URL" --name "$PAKE_NAME" --camera --microphone --app-version "${{ inputs.app_version }}"
+
+      - name: Build app (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          pake $env:PAKE_URL --name $env:PAKE_NAME --camera --microphone --app-version "${{ inputs.app_version }}"
+
+      - name: Upload DMG (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v6
+        with:
+          name: Linkord-macOS
+          path: Linkord.dmg
+
+      # Debian/Ubuntu's default --targets already produces both deb and
+      # appimage in one run (see docs/cli-usage.md#targets) — nothing extra
+      # requested here, just capturing what Pake already builds by default.
+      - name: Upload DEB (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v6
+        with:
+          name: Linkord-Linux-deb
+          path: Linkord.deb
+          if-no-files-found: warn
+
+      - name: Upload AppImage (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v6
+        with:
+          name: Linkord-Linux-AppImage
+          path: Linkord.AppImage
+          if-no-files-found: warn
+
+      - name: Upload MSI (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: Linkord-Windows
+          path: Linkord.msi
