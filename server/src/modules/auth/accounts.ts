@@ -11,13 +11,6 @@ import { normalizeEmail } from '../users/users.js';
 // (email, password). `modules/users/users.ts` owns looking a user up and
 // shaping it for a response — this file owns mutating the account itself.
 
-// Not read anywhere — createUser's throw does a plain duck-type check
-// (`err.code === 'account_identity_taken'`) instead of importing this.
-// Kept alongside createUser since that's the only place the shape matters.
-export interface AccountIdentityTakenError extends Error {
-  code: 'account_identity_taken';
-}
-
 /** Throws with `.code = 'account_identity_taken'` if a race loses to either
  * identity unique index despite the earlier checks. */
 export async function createUser({ username, email, passwordHash, role }: { username: string; email: string; passwordHash: string; role: Role }): Promise<User> {

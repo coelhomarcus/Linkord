@@ -2,7 +2,6 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { users, type User } from '../../db/schema.js';
 import type { Role } from '../../types.js';
-import { invalidateSessionsForUser } from '../auth/session.js';
 
 // Account CRUD. Username uniqueness is case-insensitive (index on
 // lower(username) in the schema) — every username lookup must use the
@@ -75,14 +74,4 @@ export async function findById(id: string): Promise<User | null> {
 export async function listAllUsers(): Promise<PublicUser[]> {
   const rows = await db.select().from(users).orderBy(sql`lower(${users.username})`);
   return rows.map(publicUser);
-}
-
-// Not called anywhere (checked server/src and server/tests) — the /api/avatar
-// upload flow updates avatar via updateProfile (modules/profile/
-// profileRepository.ts) instead. Left here rather than deleted; removing
-// dead code is a separate decision from where live code lives.
-export async function updateAvatar(id: string, avatar: string): Promise<User | null> {
-  const [row] = await db.update(users).set({ avatar, updatedAt: new Date() }).where(eq(users.id, id)).returning();
-  invalidateSessionsForUser(id);
-  return row || null;
 }
