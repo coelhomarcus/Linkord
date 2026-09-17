@@ -32,3 +32,5 @@ npm-debug.log*
 .claude
 
 bun.lock
+
+PLAN.md
