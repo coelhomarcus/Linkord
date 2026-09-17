@@ -24,9 +24,8 @@ function mergeUserFromParticipant(prev: Map<string, PublicUser>, participant: Pa
 /** The room's account directory (`allUsers`, keyed by userId — distinct
  * from the reducer's own `participants` map, which is only who's actually
  * connected right now) plus who's online. `setAllUsers` is returned raw (not
- * just wrapped actions) because RoomProvider's own updateProfile still needs
- * to patch the local user's entry directly when a profile edit is applied
- * optimistically. */
+ * just wrapped actions) because `useProfileUpdate` still needs to patch the
+ * local user's entry directly when a profile edit is applied optimistically. */
 export function usePresence() {
   const [allUsers, setAllUsers] = useState<Map<string, PublicUser>>(new Map());
   const allUsersRef = useRef<Map<string, PublicUser>>(new Map());

@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useRef, useState, useReducer } from 'react';
 import type { ReactNode } from 'react';
-import { io } from 'socket.io-client';
-import type { Socket } from 'socket.io-client';
 import { Room } from 'livekit-client';
+import type { Socket } from 'socket.io-client';
 import { RoomContext } from '@/state/RoomContext';
-import type { AnchorRect, AudioHandle, CropRect, TileDomHandle } from '@/state/RoomContext';
+import type { AudioHandle, TileDomHandle } from '@/state/RoomContext';
 import { roomReducer, initialRoomState } from '@/state/roomReducer';
 import { useAuth } from '@/state/AuthContext';
-import { loadIdentity, saveIdentity } from './useIdentitySession';
+import { saveIdentity } from '@/shared/lib/identitySession';
+import { useSocketConnection } from '@/state/hooks/useSocketConnection';
 import { useScreenShare } from '@/features/calls/useScreenShare';
 import { useCamera } from '@/features/calls/useCamera';
 import { useMicrophone } from '@/features/calls/useMicrophone';
-import type { TileKind } from '@/features/calls/tileTypes';
+import { useTileMenu } from '@/features/calls/useTileMenu';
 import { useConversationsList } from '@/features/conversations/useConversationsList';
 import { useChatMessages } from '@/features/chat/useChatMessages';
 import { useTypingIndicator } from '@/state/hooks/useTypingIndicator';
@@ -20,103 +20,34 @@ import { useMessageSearch } from '@/features/chat/useMessageSearch';
 import { useAttachmentsUpload } from '@/features/chat/useAttachmentsUpload';
 import { usePresence } from '@/state/hooks/usePresence';
 import { useCallLifecycle } from '@/features/calls/useCallLifecycle';
-import { loadShowStats, saveShowStats, loadNotifyVolume, saveNotifyVolume } from '@/features/settings/useSettingsPreference';
-import { loadHideAudioOnlyTiles, saveHideAudioOnlyTiles } from '@/features/settings/useStageViewPreference';
-import { loadShowTileBanners, saveShowTileBanners } from '@/features/settings/useTileBannerPreference';
-import { loadCompressImages, saveCompressImages } from '@/features/settings/useCompressImagesPreference';
-import { loadNoiseSuppression, saveNoiseSuppression } from '@/features/settings/useNoiseSuppressionPreference';
-import { preloadSounds, setVolume } from '@/shared/sounds';
-import {
-  loadNotificationsEnabled, saveNotificationsEnabled, setNotificationsModuleEnabled, setNotificationClickHandler,
-} from '@/shared/notifications';
-import { uploadWithProgress } from '@/shared/lib/uploadWithProgress';
-import { DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '@/shared/Avatar';
-import { sanitizeDisplayName } from '@/shared/lib/displayName';
+import { useRoomSettings } from '@/features/settings/useRoomSettings';
+import { useProfileUpdate } from '@/features/profile/useProfileUpdate';
+import { preloadSounds } from '@/shared/sounds';
+import { setNotificationClickHandler } from '@/shared/notifications';
 import type { ClientMessage, ServerMessage } from '@/shared/types/protocol';
-import { MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '@/shared/types/protocol';
 
 export { PartialAttachmentError } from '@/features/chat/useAttachmentsUpload';
-
-function sanitizeImageUrl(value: unknown): string {
-  const url = String(value == null ? '' : value).trim().slice(0, MAX_BANNER_LEN);
-  return /^https?:\/\/\S+$/i.test(url) || /^\/uploads\/[0-9a-f]{32}$/.test(url) ? url : '';
-}
-
-function sanitizeBio(value: unknown): string {
-  return String(value == null ? '' : value).replace(/\r\n?/g, '\n').trim().slice(0, MAX_PROFILE_BIO_LEN);
-}
-
-function sanitizeProfileLinks(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  const links: string[] = [];
-  const seen = new Set<string>();
-  for (const item of value) {
-    const url = String(item == null ? '' : item).trim().slice(0, MAX_PROFILE_LINK_LEN);
-    if (!/^https?:\/\/\S+$/i.test(url)) continue;
-    const key = url.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    links.push(url);
-    if (links.length >= MAX_PROFILE_LINKS) break;
-  }
-  return links;
-}
 
 export function RoomProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(roomReducer, initialRoomState);
   const { refresh: refreshAuth } = useAuth();
 
-  const socketRef = useRef<Socket | null>(null);
   const myIdRef = useRef<string | null>(null);
   const myUserIdRef = useRef<string | null>(null);
   const myUsernameRef = useRef<string | null>(null);
   const tokenRef = useRef<string | null>(null);
-  const intentionalCloseRef = useRef(false);
   const tileDomRegistry = useRef<Map<string, TileDomHandle>>(new Map());
   const audioRegistry = useRef<Map<string, AudioHandle>>(new Map());
+  // owned here (not inside useSocketConnection) because sendWs needs to
+  // read it and is constructed before that hook runs — nearly every domain
+  // hook below needs sendWs too.
+  const socketRef = useRef<Socket | null>(null);
+  const intentionalCloseRef = useRef(false);
 
   const [livekitRoom] = useState(() => new Room({
     adaptiveStream: true,
     dynacast: true,
   }));
-
-  const [showStats, setShowStatsState] = useState(loadShowStats);
-  const setShowStats = useCallback((value: boolean) => {
-    setShowStatsState(value);
-    saveShowStats(value);
-  }, []);
-
-  const [notifyVolume, setNotifyVolumeState] = useState(loadNotifyVolume);
-  const setNotifyVolume = useCallback((value: number) => {
-    setNotifyVolumeState(value);
-    saveNotifyVolume(value);
-    setVolume(value);
-  }, []);
-
-  const [notificationsEnabled, setNotificationsEnabledState] = useState(loadNotificationsEnabled);
-  const setNotificationsEnabled = useCallback((value: boolean) => {
-    setNotificationsEnabledState(value);
-    saveNotificationsEnabled(value);
-    setNotificationsModuleEnabled(value);
-  }, []);
-
-  const [hideAudioOnlyTiles, setHideAudioOnlyTilesState] = useState(loadHideAudioOnlyTiles);
-  const setHideAudioOnlyTiles = useCallback((value: boolean) => {
-    setHideAudioOnlyTilesState(value);
-    saveHideAudioOnlyTiles(value);
-  }, []);
-
-  const [showTileBanners, setShowTileBannersState] = useState(loadShowTileBanners);
-  const setShowTileBanners = useCallback((value: boolean) => {
-    setShowTileBannersState(value);
-    saveShowTileBanners(value);
-  }, []);
-
-  const [compressImagesDefault, setCompressImagesDefaultState] = useState(loadCompressImages);
-  const setCompressImagesDefault = useCallback((value: boolean) => {
-    setCompressImagesDefaultState(value);
-    saveCompressImages(value);
-  }, []);
 
   const sendWs = useCallback((msg: ClientMessage) => {
     if (socketRef.current?.connected) socketRef.current.emit(msg.t, msg);
@@ -135,7 +66,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   // why it's split this way). Construction order matters in a couple of
   // spots: presence before chatMessages (chatMessages reads its allUsersRef),
   // and the camera/screen-share/mic hooks before useCallLifecycle (it
-  // composes their leave/mute functions).
+  // composes their leave/mute functions) and before useRoomSettings (it
+  // needs useMicrophone's setNoiseSuppressionEnabled).
   const conversationsList = useConversationsList(sendWs);
   const presence = usePresence();
   const typingIndicator = useTypingIndicator(sendWs, myUserIdRef);
@@ -158,17 +90,21 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch);
   const { activateMic, toggleMicMuted, setMicMuted, leaveMic, setNoiseSuppressionEnabled: applyNoiseSuppression } = useMicrophone(livekitRoom, dispatch);
 
-  const [noiseSuppressionEnabled, setNoiseSuppressionEnabledState] = useState(loadNoiseSuppression);
-  const setNoiseSuppressionEnabled = useCallback((value: boolean) => {
-    setNoiseSuppressionEnabledState(value);
-    saveNoiseSuppression(value);
-    applyNoiseSuppression(value);
-  }, [applyNoiseSuppression]);
+  const roomSettings = useRoomSettings(applyNoiseSuppression);
 
   const callLifecycle = useCallLifecycle({
     livekitRoom, dispatch, sendWs, stopCamera, stopSharing, activateMic, setMicMuted, leaveMic,
     cameraOn: state.me.cameraOn, sharing: state.me.sharing,
   });
+
+  const profileUpdate = useProfileUpdate({
+    dispatch, sendWs, myUserIdRef, setAllUsers: presence.setAllUsers,
+    name: state.me.name, avatar: state.me.avatar, avatarPoster: state.me.avatarPoster, avatarColor: state.me.avatarColor,
+    banner: state.me.banner, bannerPoster: state.me.bannerPoster, bio: state.me.bio,
+    displayName: state.me.displayName, profileLinks: state.me.profileLinks,
+  });
+
+  const tileMenu = useTileMenu();
 
   /** The FULL "open a conversation" behavior — cursor move (conversationsList)
    * plus resetting this conversation's unread/reply/editing state
@@ -190,6 +126,11 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   }, [conversationsList.removeConversation, chatMessages.clearUnread, sendWs]);
 
   const deleteUserAccount = useCallback((userId: string) => sendWs({ t: 'user-delete', userId }), [sendWs]);
+
+  const disconnectIntentionally = useCallback(() => {
+    intentionalCloseRef.current = true;
+    try { socketRef.current?.disconnect(); } catch { /* socket ja morrendo */ }
+  }, []);
 
   const handleServerMessage = useCallback((m: ServerMessage) => {
     switch (m.t) {
@@ -314,8 +255,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         break;
       case 'error':
         if (m.code === 'full') {
-          intentionalCloseRef.current = true;
-          try { socketRef.current?.disconnect(); } catch {  }
+          disconnectIntentionally();
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Sala cheia, tente mais tarde.' });
         } else if (m.code === 'cannot-delete-self') {
           setModerationError(m.message);
@@ -332,164 +272,14 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     }
   }, [
     dispatch, conversationsList, presence, attachmentsUpload, openConversation, callLifecycle,
-    messageReactions, messageSearch, chatMessages, typingIndicator,
+    messageReactions, messageSearch, chatMessages, typingIndicator, disconnectIntentionally,
   ]);
 
-  const handleServerMessageRef = useRef(handleServerMessage);
-  useEffect(() => { handleServerMessageRef.current = handleServerMessage; }, [handleServerMessage]);
-
-  const connect = useCallback(() => {
-    intentionalCloseRef.current = false;
-    const socket = io(location.origin, { path: '/ws', transports: ['websocket'], withCredentials: true });
-    socketRef.current = socket;
-
-    socket.on('connect', () => {
-      const saved = loadIdentity();
-      sendWs({ t: 'join', id: saved?.id, token: saved?.token });
-    });
-
-    socket.onAny((_eventName: string, payload: ServerMessage) => handleServerMessageRef.current(payload));
-
-    socket.on('disconnect', () => {
-      if (intentionalCloseRef.current) return;
-      dispatch({ type: 'SET_RECONNECTING', value: true });
-    });
-
-    socket.on('connect_error', () => {
-      if (!socket.active) refreshAuth();
-    });
-  }, [sendWs, refreshAuth]);
-
-  const updateProfile = useCallback((profile: { avatar: string; avatarPoster: string; avatarColor: string; displayName: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[] }) => {
-    const finalAvatar = profile.avatar.trim().slice(0, 500);
-    const finalAvatarPoster = sanitizeImageUrl(profile.avatarPoster);
-    const finalAvatarColor = normalizeAvatarColor(profile.avatarColor) || DEFAULT_AVATAR_COLOR;
-    const finalDisplayName = sanitizeDisplayName(profile.displayName) || state.me.name;
-    const finalBanner = sanitizeImageUrl(profile.banner);
-    const finalBannerPoster = sanitizeImageUrl(profile.bannerPoster);
-    const finalBio = sanitizeBio(profile.bio);
-    const finalProfileLinks = sanitizeProfileLinks(profile.profileLinks);
-    dispatch({
-      type: 'SET_LOCAL_PROFILE',
-      avatar: finalAvatar,
-      avatarPoster: finalAvatarPoster,
-      avatarColor: finalAvatarColor,
-      displayName: finalDisplayName,
-      banner: finalBanner,
-      bannerPoster: finalBannerPoster,
-      bio: finalBio,
-      profileLinks: finalProfileLinks,
-    });
-    presence.setAllUsers((prev) => {
-      const userId = myUserIdRef.current;
-      if (!userId) return prev;
-      const existing = prev.get(userId);
-      if (!existing || (
-        existing.avatar === finalAvatar && existing.avatarColor === finalAvatarColor && existing.displayName === finalDisplayName
-        && existing.banner === finalBanner && existing.bio === finalBio
-        && JSON.stringify(existing.profileLinks) === JSON.stringify(finalProfileLinks)
-      )) return prev;
-      const next = new Map(prev);
-      next.set(userId, {
-        ...existing,
-        avatar: finalAvatar,
-        avatarColor: finalAvatarColor,
-        displayName: finalDisplayName,
-        banner: finalBanner,
-        bio: finalBio,
-        profileLinks: finalProfileLinks,
-      });
-      return next;
-    });
-    sendWs({
-      t: 'profile',
-      avatar: finalAvatar,
-      avatarPoster: finalAvatarPoster,
-      avatarColor: finalAvatarColor,
-      displayName: finalDisplayName,
-      banner: finalBanner,
-      bannerPoster: finalBannerPoster,
-      bio: finalBio,
-      profileLinks: finalProfileLinks,
-    });
-  }, [dispatch, sendWs, state.me.name, presence.setAllUsers]);
-
-  const updateAvatar = useCallback((avatar: string) => {
-    updateProfile({
-      avatar,
-      avatarPoster: '', // a poster only exists for an animated avatar generated by our own upload pipeline — never known here
-      avatarColor: state.me.avatarColor,
-      displayName: state.me.displayName,
-      banner: state.me.banner,
-      bannerPoster: state.me.bannerPoster,
-      bio: state.me.bio,
-      profileLinks: state.me.profileLinks,
-    });
-  }, [state.me.avatarColor, state.me.banner, state.me.bannerPoster, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
-
-  const uploadProfileImageBody = useCallback(async (
-    field: 'avatar' | 'banner',
-    body: Blob,
-    headers: Record<string, string>,
-    crop: CropRect,
-    onProgress?: (fraction: number) => void,
-    profile?: { avatarColor?: string; displayName?: string; avatar?: string; banner?: string; bio?: string; profileLinks?: string[] }
-  ) => {
-    const res = await uploadWithProgress<{ avatar: string; avatarPoster?: string }>({
-      url: `/api/avatar?crop=${encodeURIComponent(JSON.stringify(crop))}`,
-      file: body,
-      headers,
-      onProgress,
-    });
-    const url = res.avatar;
-    const posterUrl = res.avatarPoster ?? '';
-    updateProfile({
-      avatar: field === 'avatar' ? url : (profile?.avatar ?? state.me.avatar),
-      avatarPoster: field === 'avatar' ? posterUrl : state.me.avatarPoster,
-      avatarColor: profile?.avatarColor ?? state.me.avatarColor,
-      displayName: profile?.displayName ?? state.me.displayName,
-      banner: field === 'banner' ? url : (profile?.banner ?? state.me.banner),
-      bannerPoster: field === 'banner' ? posterUrl : state.me.bannerPoster,
-      bio: profile?.bio ?? state.me.bio,
-      profileLinks: profile?.profileLinks ?? state.me.profileLinks,
-    });
-    return url;
-  }, [state.me.avatar, state.me.avatarPoster, state.me.avatarColor, state.me.banner, state.me.bannerPoster, state.me.bio, state.me.displayName, state.me.profileLinks, updateProfile]);
-
-  const uploadProfileImage = useCallback((
-    field: 'avatar' | 'banner',
-    file: Blob,
-    crop: CropRect,
-    onProgress?: (fraction: number) => void,
-    profile?: { avatarColor?: string; displayName?: string; avatar?: string; banner?: string; bio?: string; profileLinks?: string[] }
-  ) => uploadProfileImageBody(field, file, { 'Content-Type': file.type || 'application/octet-stream' }, crop, onProgress, profile),
-  [uploadProfileImageBody]);
-
-  const [menuTarget, setMenuTarget] = useState<{ key: string; participantId: string; kind: TileKind; rect: AnchorRect } | null>(null);
-  const menuOpenRef = useRef(false);
-
-  const openTileMenu = useCallback((key: string, participantId: string, kind: TileKind, rect: AnchorRect) => {
-    menuOpenRef.current = true;
-    setMenuTarget({ key, participantId, kind, rect });
-  }, []);
-  const closeTileMenu = useCallback(() => {
-    if (!menuOpenRef.current) return false;
-    menuOpenRef.current = false;
-    setMenuTarget(null);
-    return true;
-  }, []);
+  useSocketConnection({ socketRef, intentionalCloseRef, sendWs, dispatch, refreshAuth, onMessage: handleServerMessage });
 
   useEffect(() => {
     preloadSounds();
   }, []);
-
-  useEffect(() => {
-    setVolume(notifyVolume);
-  }, [notifyVolume]);
-
-  useEffect(() => {
-    setNotificationsModuleEnabled(notificationsEnabled);
-  }, [notificationsEnabled]);
 
   useEffect(() => {
     setNotificationClickHandler((conversationId) => {
@@ -499,14 +289,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     return () => setNotificationClickHandler(null);
   }, [openConversation]);
 
-  useEffect(() => {
-    connect();
-    return () => {
-      intentionalCloseRef.current = true;
-      socketRef.current?.disconnect();
-      livekitRoom.disconnect();
-    };
-  }, [connect, livekitRoom]);
+  useEffect(() => () => {
+    livekitRoom.disconnect();
+  }, [livekitRoom]);
 
   return (
     <RoomContext.Provider
@@ -518,12 +303,16 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         registerRequestChatView, requestChatView,
         activeCallConversationId: callLifecycle.activeCallConversationId, joinCall: callLifecycle.joinCall, leaveCall: callLifecycle.leaveCall,
         startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted,
-        updateAvatar, updateProfile, uploadProfileImage, menuTarget, openTileMenu, closeTileMenu,
+        updateAvatar: profileUpdate.updateAvatar, updateProfile: profileUpdate.updateProfile, uploadProfileImage: profileUpdate.uploadProfileImage,
+        menuTarget: tileMenu.menuTarget, openTileMenu: tileMenu.openTileMenu, closeTileMenu: tileMenu.closeTileMenu,
         reactions: messageReactions.reactions, sendReaction: messageReactions.sendReaction,
-        showStats, setShowStats, notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled,
-        hideAudioOnlyTiles, setHideAudioOnlyTiles, showTileBanners, setShowTileBanners,
-        compressImagesDefault, setCompressImagesDefault,
-        noiseSuppressionEnabled, setNoiseSuppressionEnabled,
+        showStats: roomSettings.showStats, setShowStats: roomSettings.setShowStats,
+        notifyVolume: roomSettings.notifyVolume, setNotifyVolume: roomSettings.setNotifyVolume,
+        notificationsEnabled: roomSettings.notificationsEnabled, setNotificationsEnabled: roomSettings.setNotificationsEnabled,
+        hideAudioOnlyTiles: roomSettings.hideAudioOnlyTiles, setHideAudioOnlyTiles: roomSettings.setHideAudioOnlyTiles,
+        showTileBanners: roomSettings.showTileBanners, setShowTileBanners: roomSettings.setShowTileBanners,
+        compressImagesDefault: roomSettings.compressImagesDefault, setCompressImagesDefault: roomSettings.setCompressImagesDefault,
+        noiseSuppressionEnabled: roomSettings.noiseSuppressionEnabled, setNoiseSuppressionEnabled: roomSettings.setNoiseSuppressionEnabled,
         conversations: conversationsList.conversations, activeConversationId: conversationsList.activeConversationId,
         openConversation, openDirect: conversationsList.openDirect, closeConversation, pinConversation: conversationsList.pinConversation,
         createGroup: conversationsList.createGroup, deleteGroup: conversationsList.deleteGroup,
