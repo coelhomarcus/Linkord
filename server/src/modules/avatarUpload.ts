@@ -38,12 +38,12 @@ export function parseCropRect(raw: string | undefined): CropRect | null {
   return { left: Math.round(x), top: Math.round(y), width: Math.round(width), height: Math.round(height) };
 }
 
-/** Encodes and stores a profile image using the same pipeline for both the
- * interactive upload and the legacy URL migration. A null crop means the
- * complete image is preserved before encoding. */
+/** Encodes and stores a profile image, extracted out of handleAvatarUpload
+ * so the sharp pipeline itself (crop bounds, animation detection, poster
+ * generation) is unit-testable without going through Fastify. */
 export async function encodeAndStoreProfileImage(
   buffer: Buffer,
-  cropRect: CropRect | null,
+  cropRect: CropRect,
 ): Promise<{ avatar: string; avatarPoster: string | undefined }> {
   let outBuffer: Buffer;
   let outMime: string;
@@ -51,16 +51,14 @@ export async function encodeAndStoreProfileImage(
   try {
     const image = sharp(buffer, { animated: true });
     const meta = await image.metadata();
-    if (cropRect) {
-      const frameHeight = meta.pageHeight ?? meta.height ?? 0;
-      if (!meta.width || !frameHeight
-        || cropRect.left + cropRect.width > meta.width
-        || cropRect.top + cropRect.height > frameHeight) {
-        throw new ProfileImageProcessingError('invalid_crop', 'Recorte fora dos limites da imagem.');
-      }
+    const frameHeight = meta.pageHeight ?? meta.height ?? 0;
+    if (!meta.width || !frameHeight
+      || cropRect.left + cropRect.width > meta.width
+      || cropRect.top + cropRect.height > frameHeight) {
+      throw new ProfileImageProcessingError('invalid_crop', 'Recorte fora dos limites da imagem.');
     }
 
-    const extracted = cropRect ? image.extract(cropRect) : image;
+    const extracted = image.extract(cropRect);
     animated = (meta.pages ?? 1) > 1;
     if (animated) {
       // animated: keep WebP inputs as WebP (better quality than GIF's
@@ -102,9 +100,7 @@ export async function encodeAndStoreProfileImage(
   if (animated) {
     const posterId = newId();
     try {
-      const posterImage = sharp(buffer, { animated: false });
-      const posterSource = cropRect ? posterImage.extract(cropRect) : posterImage;
-      const posterBuffer = await posterSource.jpeg({ quality: 88 }).toBuffer();
+      const posterBuffer = await sharp(buffer, { animated: false }).extract(cropRect).jpeg({ quality: 88 }).toBuffer();
       await fs.writeFile(filePathFor(posterId), posterBuffer);
       try {
         await db.insert(attachmentsTable).values({ id: posterId, messageId: null, fileName: 'avatar-poster', mimeType: 'image/jpeg', size: posterBuffer.length });
