@@ -7,18 +7,14 @@ import { attachments as attachmentsTable, messages, type Attachment } from '../.
 import { filePathFor } from './attachmentStorage.js';
 import { handleAttachmentInit, handleAttachmentChunk, handleAttachmentComplete, handleAttachmentCancel } from './attachmentUploads.js';
 import { serveUpload, handleAttachmentPreview } from './attachmentServing.js';
-import { handleAvatarUpload } from './avatarUpload.js';
 
 // This module is now just the DB-persistence core for attachments (CRUD +
-// route wiring) — the upload lifecycle, file-serving/preview, thumbnail
-// generation, avatar upload, and SSRF-guarded image fetch each moved to
-// their own sibling module (attachmentUploads.ts, attachmentServing.ts,
-// attachmentThumbnails.ts, avatarUpload.ts, imageFetch.ts) since none of
-// those are really about "the attachments table," and mixing them here made
-// this file the single largest in the server. Nothing outside this file
-// needs to know about the split — every external import
-// (chat.ts/socket.ts/http/app.ts/moderation.ts/index.ts) keeps working
-// unchanged, either against this file or the sibling it actually needs.
+// route wiring) — the upload lifecycle, file-serving/preview, and thumbnail
+// generation each moved to their own sibling module (attachmentUploads.ts,
+// attachmentServing.ts, attachmentThumbnails.ts) since none of those are
+// really about "the attachments table." Avatar upload and its SSRF-guarded
+// image fetch live in modules/profile/ instead — a different domain that
+// happens to share this table's storage (see deleteAvatarFile below).
 
 // only matches our own upload format (see attachmentStorage.ts#newId) — an
 // external URL just doesn't match, treated as "not ours," not an error.
@@ -88,21 +84,14 @@ export function registerAttachmentRoutes(fastify: FastifyInstance): void {
   fastify.get('/uploads/:id', serveUpload);
   fastify.get('/api/attachments/:id/preview', handleAttachmentPreview);
 
-  // raw Buffer body, not JSON — scoped plugin for just these 2 routes:
-  // swapping addContentTypeParser on the root instance would break JSON
-  // parsing for every other /api/* route. The wildcard '*' alone does NOT
-  // cover this: Fastify's own built-in default parser for the EXACT type
-  // 'application/json' takes precedence over a wildcard parser, even one
-  // registered in a child scope — so /api/avatar's `{ url }` JSON body (see
-  // avatarUpload.ts) was arriving already parsed into an object, and that
-  // handler's `(request.body as Buffer).toString('utf8')` was silently
-  // producing "[object Object]" instead of the real JSON, always failing
-  // with 'invalid_body'. Registering 'application/json' explicitly (not
-  // just '*') here overrides the built-in default within this scope only.
+  // raw Buffer body, not JSON — scoped plugin for just this route: swapping
+  // addContentTypeParser on the root instance would break JSON parsing for
+  // every other /api/* route. Chunk uploads are always binary, never
+  // application/json, so the wildcard '*' alone is enough here (contrast
+  // modules/profile/profile.ts's /api/avatar, which also needs a JSON
+  // override for its "usar URL" flow).
   fastify.register(async (scoped) => {
     scoped.addContentTypeParser('*', { parseAs: 'buffer' }, (_req, payload, done) => done(null, payload));
-    scoped.addContentTypeParser('application/json', { parseAs: 'buffer' }, (_req, payload, done) => done(null, payload));
     scoped.post('/api/attachments/:id/chunk/:index', { bodyLimit: config.UPLOAD_CHUNK_BYTES }, handleAttachmentChunk);
-    scoped.post('/api/avatar', { bodyLimit: config.MAX_AVATAR_BYTES }, handleAvatarUpload);
   });
 }

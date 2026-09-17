@@ -7,7 +7,7 @@ import { attachments as attachmentsTable } from '../../db/schema.js';
 import { sendJson, sendError } from '../../http/respond.js';
 import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
-import { newId, filePathFor } from './attachmentStorage.js';
+import { newId, filePathFor } from '../attachments/attachmentStorage.js';
 import { fetchImageFromUrl, AVATAR_MIME_TYPES } from './imageFetch.js';
 
 const MAX_CROP_DIMENSION = 4096; // sane ceiling, well under sharp's own decompression-bomb guard

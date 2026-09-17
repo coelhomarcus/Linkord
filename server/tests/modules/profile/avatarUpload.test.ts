@@ -7,7 +7,7 @@ import sharp from 'sharp';
 import { config } from '../../../src/config/env.js';
 import { db } from '../../../src/db/client.js';
 import { filePathFor } from '../../../src/modules/attachments/attachmentStorage.js';
-import { encodeAndStoreProfileImage } from '../../../src/modules/attachments/avatarUpload.js';
+import { encodeAndStoreProfileImage } from '../../../src/modules/profile/avatarUpload.js';
 
 let uploadDir: string;
 let previousUploadDir: string;
