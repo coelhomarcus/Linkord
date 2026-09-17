@@ -2,7 +2,8 @@ import crypto from 'node:crypto';
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { conversationMembers, conversations, users, type Conversation } from '../../db/schema.js';
-import { participants, sanitizeAvatar, send } from '../presence/participants.js';
+import { participants, send } from '../presence/participants.js';
+import { sanitizeAvatar } from '../profile/sanitize.js';
 import { resolveDisplayName } from '../users/users.js';
 import type { AppSocket, HandlerTable, Participant } from '../../types.js';
 
@@ -334,7 +335,7 @@ async function handleGroupDelete(socket: AppSocket, msg: { conversationId?: stri
 /** Admin-only rename/re-avatar. `title` and `avatar` are each applied only
  * when present in the message, so one can change without touching the
  * other. Title validation mirrors handleGroupCreate; avatar validation
- * mirrors an account's own (see realtime/participants.ts#sanitizeAvatar) —
+ * mirrors an account's own (see modules/profile/sanitize.ts#sanitizeAvatar) —
  * `avatar: ''` is a valid, deliberate "remove the photo". */
 async function handleGroupUpdate(socket: AppSocket, msg: { conversationId?: string; title?: string; avatar?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
