@@ -130,12 +130,14 @@ jobs:
       # Debian/Ubuntu's default --targets already produces both deb and
       # appimage in one run (see docs/cli-usage.md#targets) — nothing extra
       # requested here, just capturing what Pake already builds by default.
+      # Pake lowercases --name on Linux only (see cli-usage.md#name), so the
+      # output here is linkord.deb/linkord.AppImage, not Linkord.*.
       - name: Upload DEB (Linux)
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v6
         with:
           name: Linkord-Linux-deb
-          path: Linkord.deb
+          path: linkord.deb
           if-no-files-found: warn
 
       - name: Upload AppImage (Linux)
@@ -143,7 +145,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: Linkord-Linux-AppImage
-          path: Linkord.AppImage
+          path: linkord.AppImage
           if-no-files-found: warn
 
       - name: Upload MSI (Windows)
