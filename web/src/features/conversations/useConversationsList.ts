@@ -77,6 +77,7 @@ export function useConversationsList(sendWs: (msg: ClientMessage) => void) {
   const updateGroupAvatar = useCallback((conversationId: string, avatar: string) => sendWs({ t: 'group-update', conversationId, avatar }), [sendWs]);
   const addGroupMembers = useCallback((conversationId: string, memberIds: string[]) => sendWs({ t: 'group-members-add', conversationId, memberIds }), [sendWs]);
   const removeGroupMember = useCallback((conversationId: string, userId: string) => sendWs({ t: 'group-members-remove', conversationId, userId }), [sendWs]);
+  const transferGroupOwnership = useCallback((conversationId: string, userId: string) => sendWs({ t: 'group-transfer-owner', conversationId, userId }), [sendWs]);
 
   /** A conversation now belongs on this client's sidebar for the first
    * time (new group, or just added to an existing one) — upsert by id
@@ -158,7 +159,7 @@ export function useConversationsList(sendWs: (msg: ClientMessage) => void) {
     conversations, conversationsRef, activeConversationId, activeConversationIdRef,
     setInitial, setActiveConversation, clearActiveConversation, removeConversation,
     openDirect, pinConversation,
-    createGroup, deleteGroup, updateGroupTitle, updateGroupAvatar, addGroupMembers, removeGroupMember,
+    createGroup, deleteGroup, updateGroupTitle, updateGroupAvatar, addGroupMembers, removeGroupMember, transferGroupOwnership,
     onConversationCreated, onConversationUpdated, onConversationMemberAdded, onConversationMemberRemoved,
     onConversationPinned, onConversationOpened, onConversationDeleted,
   };

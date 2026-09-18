@@ -6,10 +6,12 @@ import { participants, send } from '../presence/participants.js';
 import { sanitizeAvatar } from '../profile/sanitize.js';
 import { deleteAvatarFile, deleteForConversation } from '../attachments/attachmentCleanup.js';
 import { ERROR_CODES } from '../../http/errors.js';
+import { config } from '../../config/env.js';
 import {
   canManageGroup,
   conversationExistsForUser,
   getConversationForUser,
+  getMemberRole,
   reconcileGroupMembership,
   rowToSummary,
   sanitizeConversationTitle,
@@ -128,7 +130,14 @@ async function handleConversationPin(socket: AppSocket, msg: { conversationId?: 
 
 async function handleGroupCreate(socket: AppSocket, msg: { title?: string; memberIds?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
-  if (!p || p.socket !== socket || !isAdmin(p)) return;
+  if (!p || p.socket !== socket) return;
+  // admin-only until config.ALLOW_USER_GROUP_CREATION is turned on — see
+  // config/env.ts. Managing an EXISTING group is already real per-group
+  // ownership (canManageGroup) regardless of this flag.
+  if (!isAdmin(p) && !config.ALLOW_USER_GROUP_CREATION) {
+    send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Criação de grupos está desabilitada no momento.' });
+    return;
+  }
   const title = sanitizeConversationTitle(msg.title);
   if (!title) return;
 
@@ -139,18 +148,24 @@ async function handleGroupCreate(socket: AppSocket, msg: { title?: string; membe
   if (!memberIds.includes(p.userId)) memberIds.push(p.userId);
 
   const now = new Date();
-  const [conversation] = await db.insert(conversations).values({
-    id: crypto.randomUUID(),
-    type: 'group',
-    title,
-    createdBy: p.userId,
-    updatedAt: now,
-  }).returning();
-  await db.insert(conversationMembers).values(memberIds.map((userId) => ({
-    conversationId: conversation!.id,
-    userId,
-    role: userId === p.userId ? 'owner' : 'member',
-  })));
+  // atomic: a failure between the two inserts used to be able to leave a
+  // conversation row with NO members at all (never surfaced to anyone,
+  // never cleaned up).
+  const conversation = await db.transaction(async (tx) => {
+    const [inserted] = await tx.insert(conversations).values({
+      id: crypto.randomUUID(),
+      type: 'group',
+      title,
+      createdBy: p.userId,
+      updatedAt: now,
+    }).returning();
+    await tx.insert(conversationMembers).values(memberIds.map((userId) => ({
+      conversationId: inserted!.id,
+      userId,
+      role: userId === p.userId ? 'owner' : 'member',
+    })));
+    return inserted!;
+  });
 
   // Creator gets 'conversation-opened' (adds it AND switches to it, same as
   // handleDirectOpen) with `conversation` populated — the other members
@@ -158,9 +173,9 @@ async function handleGroupCreate(socket: AppSocket, msg: { title?: string; membe
   // `pinnedAt: null` for everyone: a brand-new group can't already be pinned.
   // Two summaries, not one shared object: the creator's `myRole` is 'owner',
   // everyone else's is 'member' — see rowToSummary/ConversationSummary.
-  const ownerSummary = rowToSummary(conversation!, memberIds, null, 'owner');
-  const memberSummary = rowToSummary(conversation!, memberIds, null, 'member');
-  send(socket, { t: 'conversation-opened', conversationId: conversation!.id, conversation: ownerSummary });
+  const ownerSummary = rowToSummary(conversation, memberIds, null, 'owner');
+  const memberSummary = rowToSummary(conversation, memberIds, null, 'member');
+  send(socket, { t: 'conversation-opened', conversationId: conversation.id, conversation: ownerSummary });
   for (const userId of memberIds) {
     if (userId === p.userId) continue;
     sendToUser(userId, { t: 'conversation-created', conversation: memberSummary });
@@ -267,8 +282,44 @@ async function handleGroupMembersAdd(socket: AppSocket, msg: { conversationId?: 
   }
 }
 
+/** Owner-only. Hands the group to an existing member and demotes the
+ * caller in the same transaction — the partial unique index on `role =
+ * 'owner'` (see schema.ts#conversationMembers) means there's never a
+ * moment with zero or two owners visible to a concurrent reader. Reuses
+ * sendConversationUpdateToMembers so every recipient gets their own
+ * correct `myRole` (the new owner's flips to 'owner', everyone else's
+ * summary is unaffected but resent for consistency). */
+async function handleGroupTransferOwner(socket: AppSocket, msg: { conversationId?: string; userId?: string }): Promise<void> {
+  const p = participants.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  const conversationId = String(msg.conversationId || '');
+  const newOwnerId = String(msg.userId || '');
+  if (!conversationId || !newOwnerId || newOwnerId === p.userId) return;
+  if (!(await canManageGroup(conversationId, p.userId))) {
+    send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Você não tem permissão para gerenciar esse grupo.' });
+    return;
+  }
+  const [conversation] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
+  if (!conversation || conversation.type !== 'group') return;
+  if ((await getMemberRole(conversationId, newOwnerId)) !== 'member') {
+    send(socket, { t: 'error', code: ERROR_CODES.notFound, message: 'Essa pessoa não é membro do grupo.' });
+    return;
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.update(conversationMembers).set({ role: 'member' })
+      .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, p.userId)));
+    await tx.update(conversationMembers).set({ role: 'owner' })
+      .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, newOwnerId)));
+  });
+
+  await sendConversationUpdateToMembers('conversation-updated', conversation);
+}
+
 /** The group's owner removes anyone; a member can only remove THEMSELVES
- * (leave). */
+ * (leave). The owner leaving is only allowed once they're the LAST member —
+ * otherwise they'd orphan the group. Transferring ownership first (see
+ * handleGroupTransferOwner) clears the way. */
 async function handleGroupMembersRemove(socket: AppSocket, msg: { conversationId?: string; userId?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
@@ -283,6 +334,14 @@ async function handleGroupMembersRemove(socket: AppSocket, msg: { conversationId
 
   const [conversation] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
   if (!conversation || conversation.type !== 'group') return;
+
+  if (isSelf && (await getMemberRole(conversationId, p.userId)) === 'owner') {
+    const memberCount = (await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId))).length;
+    if (memberCount > 1) {
+      send(socket, { t: 'error', code: ERROR_CODES.conflict, message: 'Transfira a propriedade do grupo antes de sair.' });
+      return;
+    }
+  }
 
   const deleted = await db.delete(conversationMembers)
     .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, targetUserId)))
@@ -310,4 +369,5 @@ export const handlers: HandlerTable = {
   'group-update': handleGroupUpdate,
   'group-members-add': handleGroupMembersAdd,
   'group-members-remove': handleGroupMembersRemove,
+  'group-transfer-owner': handleGroupTransferOwner,
 };

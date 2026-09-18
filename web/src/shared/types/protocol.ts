@@ -126,6 +126,7 @@ export type ClientMessage =
   | { t: 'group-update'; conversationId: string; title?: string; avatar?: string }
   | { t: 'group-members-add'; conversationId: string; memberIds: string[] }
   | { t: 'group-members-remove'; conversationId: string; userId: string }
+  | { t: 'group-transfer-owner'; conversationId: string; userId: string }
   | { t: 'load-more-messages'; conversationId: string; beforeMsgId: number }
   | { t: 'load-messages-around'; conversationId: string; msgId: number }
   | { t: 'message-search'; query: string; conversationId?: string }
@@ -147,6 +148,7 @@ export type ServerMessage =
       t: 'welcome'; id: string; token: string;
       userId: string; name: string; displayName: string; avatar: string; avatarPoster: string; avatarColor: string;
       banner: string; bannerPoster: string; bio: string; profileLinks: string[]; role: 'user' | 'admin';
+      allowGroupCreation: boolean;
       maxParticipants: number; participants: Participant[];
       conversations: Conversation[]; users: PublicUser[]; onlineUserIds: string[];
       storageUsage: StorageUsage;

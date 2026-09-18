@@ -60,6 +60,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const requestChatView = useCallback(() => { requestChatViewRef.current?.(); }, []);
 
   const [moderationError, setModerationError] = useState<string | null>(null);
+  // 'forbidden'/'conflict'/'not_found' over the socket are, today, only
+  // ever group-action denials (conversations.ts) — rename/delete/members/
+  // transfer/leave. If another domain starts using these same codes over
+  // the socket later, this needs to get more specific (e.g. carry which
+  // action it was about) instead of assuming "group action" like it does now.
+  const [groupActionError, setGroupActionError] = useState<string | null>(null);
 
   // Domain hooks — each owns one slice of what used to all live directly in
   // this component (see the module comment in each hooks/use*.ts file for
@@ -154,6 +160,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           bio: m.bio,
           profileLinks: m.profileLinks,
           role: m.role,
+          allowGroupCreation: m.allowGroupCreation,
           participants: m.participants,
         });
         conversationsList.setInitial(m.conversations ?? []);
@@ -259,6 +266,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Sala cheia, tente mais tarde.' });
         } else if (m.code === 'cannot-delete-self') {
           setModerationError(m.message);
+        } else if (m.code === 'forbidden' || m.code === 'conflict' || m.code === 'not_found') {
+          setGroupActionError(m.message);
         } else if (m.code === 'livekit-unavailable') {
           callLifecycle.onLivekitUnavailable();
           dispatch({ type: 'SET_SHARE_ERROR', message: m.message });
@@ -318,12 +327,14 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         createGroup: conversationsList.createGroup, deleteGroup: conversationsList.deleteGroup,
         updateGroupTitle: conversationsList.updateGroupTitle, updateGroupAvatar: conversationsList.updateGroupAvatar,
         addGroupMembers: conversationsList.addGroupMembers, removeGroupMember: conversationsList.removeGroupMember,
+        transferGroupOwnership: conversationsList.transferGroupOwnership,
         messagesByConversation: chatMessages.messagesByConversation, hasMoreByConversation: chatMessages.hasMoreByConversation,
         loadingOlderByConversation: chatMessages.loadingOlderByConversation, loadOlderMessages: chatMessages.loadOlderMessages,
         unreadByConversation: chatMessages.unreadByConversation,
         typingByConversation: typingIndicator.typingByConversation, sendTyping: typingIndicator.sendTyping,
         allUsers: presence.allUsers, onlineUserIds: presence.onlineUserIds,
         deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null), kickFromCall: callLifecycle.kickFromCall,
+        groupActionError, clearGroupActionError: () => setGroupActionError(null),
         sendChatMessage: chatMessages.sendChatMessage, deleteChatMessage: chatMessages.deleteChatMessage,
         editChatMessage: chatMessages.editChatMessage, reactToChatMessage: chatMessages.reactToChatMessage,
         replyingTo: chatMessages.replyingTo, setReplyingTo: chatMessages.setReplyingTo,

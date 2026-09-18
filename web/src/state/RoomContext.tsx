@@ -100,6 +100,7 @@ export interface RoomContextValue {
   updateGroupAvatar: (conversationId: string, avatar: string) => void;
   addGroupMembers: (conversationId: string, memberIds: string[]) => void;
   removeGroupMember: (conversationId: string, userId: string) => void;
+  transferGroupOwnership: (conversationId: string, userId: string) => void;
   messagesByConversation: Map<string, ChatMessage[]>;
   hasMoreByConversation: Map<string, boolean>;
   loadingOlderByConversation: Set<string>;
@@ -113,6 +114,8 @@ export interface RoomContextValue {
   kickFromCall: (participantId: string) => void;
   moderationError: string | null;
   clearModerationError: () => void;
+  groupActionError: string | null;
+  clearGroupActionError: () => void;
   sendChatMessage: (conversationId: string, text: string, replyTo?: number) => void;
   deleteChatMessage: (msgId: number) => void;
   editChatMessage: (msgId: number, text: string) => void;

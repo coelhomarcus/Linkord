@@ -28,6 +28,7 @@ describe('roomReducer', () => {
       bio: 'Bio curta',
       profileLinks: ['https://youtube.com/@fulana'],
       role: 'admin',
+      allowGroupCreation: true,
       participants: [participant({ id: 'p2', userId: 'u2' })],
     });
     expect(next.me).toEqual({
@@ -44,6 +45,7 @@ describe('roomReducer', () => {
       bio: 'Bio curta',
       profileLinks: ['https://youtube.com/@fulana'],
       role: 'admin',
+      allowGroupCreation: true,
     });
     expect(next.participants.get('p2')?.userId).toBe('u2');
     expect(next.joined).toBe(true);

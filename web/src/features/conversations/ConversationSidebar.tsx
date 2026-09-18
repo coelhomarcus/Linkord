@@ -179,7 +179,9 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
   const [query, setQuery] = useState('');
   const [groupOpen, setGroupOpen] = useState(false);
   const normalized = query.trim().toLowerCase();
-  const isAdmin = state.me.role === 'admin';
+  // capability from `welcome` (admin, or config.ALLOW_USER_GROUP_CREATION on
+  // the server) — the server re-checks this on every 'group-create' too.
+  const canCreateGroups = state.me.allowGroupCreation;
 
   const filteredConversations = useMemo(() => (
     conversations.filter((conversation) => conversationTitle(conversation, state.me.userId, allUsers).toLowerCase().includes(normalized))
@@ -240,7 +242,7 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
             </div>
 
             <div className="flex flex-none flex-col gap-1.5">
-              {isAdmin && (
+              {canCreateGroups && (
                 <Tooltip>
                   <TooltipTrigger
                     onClick={() => setGroupOpen(true)}
@@ -287,7 +289,7 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
                   <p className="min-w-0 truncate text-caption text-text-muted">{state.me.displayName}</p>
                 </div>
               </button>
-              {isAdmin && (
+              {canCreateGroups && (
                 <Button type="button" size="icon-sm" aria-label="Criar grupo" onClick={() => setGroupOpen(true)} className="flex-none">
                   <Plus size={16} />
                 </Button>

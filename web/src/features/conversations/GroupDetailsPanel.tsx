@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react';
 import type { Area } from 'react-easy-crop';
 import { motion } from 'motion/react';
-import { Camera, Check, Link2, LogOut, Pencil, Search, Trash2, Upload, UserPlus, X } from 'lucide-react';
+import { Camera, Check, Crown, Link2, LogOut, Pencil, Search, Trash2, Upload, UserPlus, X } from 'lucide-react';
 import { useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { Drawer } from '@/shared/ui/motion/drawer';
 import { Button } from '@/shared/ui/primitives/button';
@@ -35,7 +35,8 @@ interface GroupDetailsPanelProps {
 export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenProfile }: GroupDetailsPanelProps) {
   const {
     state, conversations, allUsers, onlineUserIds,
-    updateGroupTitle, updateGroupAvatar, addGroupMembers, removeGroupMember, deleteGroup,
+    updateGroupTitle, updateGroupAvatar, addGroupMembers, removeGroupMember, deleteGroup, transferGroupOwnership,
+    groupActionError, clearGroupActionError,
   } = useRoom();
   const { isMobile } = useAnimatedSidebar();
   const conversation = conversationId ? conversations.find((c) => c.id === conversationId) ?? null : null;
@@ -53,6 +54,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<PublicUser | null>(null);
+  const [transferTarget, setTransferTarget] = useState<PublicUser | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const [cropTarget, setCropTarget] = useState<{ kind: 'file'; file: File; src: string } | null>(null);
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
@@ -74,11 +76,13 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
     setAddSelected(new Set());
     setAvatarError(null);
     setUrlDialogOpen(false);
+    setTransferTarget(null);
+    clearGroupActionError();
     setCropTarget((prev) => {
       if (prev?.kind === 'file') URL.revokeObjectURL(prev.src);
       return null;
     });
-  }, [open]);
+  }, [open, clearGroupActionError]);
 
   const addCandidates = useMemo(() => {
     const normalized = addQuery.trim().toLowerCase();
@@ -125,7 +129,11 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
   function handleLeave() {
     if (!conversation || !state.me.userId) return;
     removeGroupMember(conversation.id, state.me.userId);
-    onOpenChange(false);
+    // Don't close here — the owner leaving a group with other members gets
+    // rejected (conflict, see groupActionError above) and needs the panel
+    // to stay open to see why. On a successful leave, the conversation
+    // disappears from `conversations` and the effect above closes this
+    // panel on its own.
   }
 
   function handleDelete() {
@@ -138,6 +146,12 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
     if (!conversation || !removeTarget) return;
     removeGroupMember(conversation.id, removeTarget.id);
     setRemoveTarget(null);
+  }
+
+  function handleTransferOwnership() {
+    if (!conversation || !transferTarget) return;
+    transferGroupOwnership(conversation.id, transferTarget.id);
+    setTransferTarget(null);
   }
 
   function handleAvatarFilePicked(event: ChangeEvent<HTMLInputElement>) {
@@ -199,6 +213,19 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-5">
+        {groupActionError && (
+          <div className="flex items-center gap-2 rounded-md bg-red/12 px-2.5 py-1.5 text-label text-red-text">
+            <span className="min-w-0 flex-1">{groupActionError}</span>
+            <button
+              type="button"
+              onClick={clearGroupActionError}
+              aria-label="Dispensar"
+              className="flex-none text-red-text/70 transition-colors hover:text-red-text focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="relative">
             <GroupAvatar title={conversation.title || 'Grupo'} avatar={conversation.avatar} size={64} />
@@ -349,16 +376,28 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
                     </span>
                   </button>
                   {isOwner && !isMe && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label={`Remover ${member.displayName}`}
-                      onClick={() => setRemoveTarget(member)}
-                      className="flex-none text-text-muted opacity-0 transition-opacity hover:text-red-text group-hover:opacity-100"
-                    >
-                      <X size={14} />
-                    </Button>
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={`Transferir propriedade para ${member.displayName}`}
+                        onClick={() => setTransferTarget(member)}
+                        className="flex-none text-text-muted opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
+                      >
+                        <Crown size={14} />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={`Remover ${member.displayName}`}
+                        onClick={() => setRemoveTarget(member)}
+                        className="flex-none text-text-muted opacity-0 transition-opacity hover:text-red-text group-hover:opacity-100"
+                      >
+                        <X size={14} />
+                      </Button>
+                    </>
                   )}
                 </div>
               );
@@ -451,6 +490,15 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
         confirmLabel="Remover"
         destructive
         onConfirm={handleRemoveMember}
+      />
+      <ConfirmDialog
+        open={!!transferTarget}
+        onOpenChange={(next) => { if (!next) setTransferTarget(null); }}
+        title="Transferir propriedade"
+        description={`${transferTarget?.displayName ?? ''} passa a ser o dono de "${conversation?.title || 'grupo'}" — você perde os controles de gestão do grupo.`}
+        confirmLabel="Transferir"
+        destructive
+        onConfirm={handleTransferOwnership}
       />
     </>
   );
