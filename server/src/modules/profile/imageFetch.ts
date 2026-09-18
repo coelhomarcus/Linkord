@@ -2,37 +2,15 @@ import dns from 'node:dns';
 import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
+import { isBlockedIp } from '../../net/ssrfGuard.js';
 
 // SSRF-guarded image download — today only used by the avatar/banner "usar
 // URL" flow (avatarUpload.ts), kept in its own module since it's pure
-// network infra with no attachment-storage/DB concerns of its own.
+// network infra with no attachment-storage/DB concerns of its own. The
+// actual IP-safety check (isBlockedIp) lives in net/ssrfGuard.ts, shared
+// with link-preview.ts — same SSRF concern, same rules.
 
 export const AVATAR_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
-
-/** Whether `address` (a resolved, dotted/colon-form IP — never a hostname)
- * falls in a loopback/private/link-local/reserved range. Used to keep
- * fetchImageFromUrl from being used as an SSRF pivot into the local network
- * or cloud metadata endpoints (169.254.169.254) — see there. */
-export function isDisallowedIp(address: string): boolean {
-  if (net.isIPv4(address)) {
-    const parts = address.split('.').map(Number);
-    const [a, b] = parts as [number, number, number, number];
-    if (a === 0 || a === 127 || a === 10 || a >= 224) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 169 && b === 254) return true; // link-local, incl. cloud metadata
-    return false;
-  }
-  if (net.isIPv6(address)) {
-    const lower = address.toLowerCase();
-    if (lower === '::1' || lower === '::') return true;
-    if (lower.startsWith('fe80:') || lower.startsWith('fc') || lower.startsWith('fd')) return true;
-    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(lower);
-    if (mapped) return isDisallowedIp(mapped[1]!);
-    return false;
-  }
-  return true; // not a recognizable literal IP — reject rather than guess
-}
 
 /** Resolves `hostname` and returns one of its IPs, but only if EVERY address
  * it resolves to is a public one — a domain that answers with even one
@@ -42,8 +20,8 @@ function resolveSafePublicIp(hostname: string): Promise<string | null> {
   return new Promise((resolve) => {
     dns.lookup(hostname, { all: true, verbatim: true }, (err, addresses) => {
       if (err || !addresses || addresses.length === 0) return resolve(null);
-      for (const { address } of addresses) {
-        if (isDisallowedIp(address)) return resolve(null);
+      for (const { address, family } of addresses) {
+        if (isBlockedIp(address, family)) return resolve(null);
       }
       resolve(addresses[0]!.address);
     });
