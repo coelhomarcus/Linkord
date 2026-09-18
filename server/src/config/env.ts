@@ -67,11 +67,6 @@ const REGISTRATION_CODE = process.env.REGISTRATION_CODE || '';
 // registering with this username becomes admin; a unique index makes it a
 // one-time claim.
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'lune';
-// off by default — group creation stays admin-only until this is turned on
-// (docs/plano-rede-social.md §"Etapa 4"). Group MANAGEMENT (rename,
-// members, delete) is already real per-group ownership regardless of this
-// flag; this only gates who can create a NEW group in the first place.
-const ALLOW_USER_GROUP_CREATION = process.env.ALLOW_USER_GROUP_CREATION === '1';
 // 'auto' reads X-Forwarded-Proto (set by Caddy/nginx); '1'/'0' force it —
 // otherwise the Secure cookie attribute breaks local http:// dev.
 const COOKIE_SECURE = process.env.COOKIE_SECURE || 'auto';
@@ -117,7 +112,7 @@ export const config = {
   UPLOAD_DIR, MAX_ATTACHMENT_BYTES, MAX_STORAGE_BYTES, MAX_AVATAR_BYTES,
   UPLOAD_CHUNK_BYTES, UPLOAD_SESSION_TTL_MS,
   DATABASE_URL, DATABASE_SSL, DATABASE_SSL_CA, MIGRATE_ON_BOOT,
-  SESSION_COOKIE, SESSION_TTL_DAYS, REGISTRATION_CODE, ADMIN_USERNAME, ALLOW_USER_GROUP_CREATION,
+  SESSION_COOKIE, SESSION_TTL_DAYS, REGISTRATION_CODE, ADMIN_USERNAME,
   COOKIE_SECURE, MAX_BODY_BYTES,
   MIN_USERNAME_LEN, MAX_USERNAME_LEN, MAX_DISPLAY_NAME_LEN, MIN_PASSWORD_LEN, MAX_PASSWORD_LEN,
   RESEND_API_KEY, RESEND_FROM_EMAIL, APP_URL, AUTH_CODE_TTL_MS, AUTH_CODE_MAX_ATTEMPTS,

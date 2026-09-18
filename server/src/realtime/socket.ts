@@ -87,10 +87,6 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
     bio: p.bio,
     profileLinks: p.profileLinks,
     role: p.role,
-    // capability, not authorization — handleGroupCreate (conversations.ts)
-    // re-checks this server-side on every 'group-create', this just tells
-    // the client whether to show the button at all.
-    allowGroupCreation: p.role === 'admin' || config.ALLOW_USER_GROUP_CREATION,
     maxParticipants: config.MAX_PARTICIPANTS,
     participants: [...participantsMap.values()].filter((o) => o.id !== p.id).map(publicParticipant),
     conversations: await listForUser(p.userId),

@@ -148,7 +148,6 @@ export type ServerMessage =
       t: 'welcome'; id: string; token: string;
       userId: string; name: string; displayName: string; avatar: string; avatarPoster: string; avatarColor: string;
       banner: string; bannerPoster: string; bio: string; profileLinks: string[]; role: 'user' | 'admin';
-      allowGroupCreation: boolean;
       maxParticipants: number; participants: Participant[];
       conversations: Conversation[]; users: PublicUser[]; onlineUserIds: string[];
       storageUsage: StorageUsage;

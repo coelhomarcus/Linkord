@@ -6,7 +6,6 @@ import { participants, send } from '../presence/participants.js';
 import { sanitizeAvatar } from '../profile/sanitize.js';
 import { deleteAvatarFile, deleteForConversation } from '../attachments/attachmentCleanup.js';
 import { ERROR_CODES } from '../../http/errors.js';
-import { config } from '../../config/env.js';
 import {
   canManageGroup,
   conversationExistsForUser,
@@ -17,17 +16,13 @@ import {
   sanitizeConversationTitle,
   sendConversationUpdateToMembers,
 } from './conversationsRepository.js';
-import type { AppSocket, HandlerTable, Participant } from '../../types.js';
+import type { AppSocket, HandlerTable } from '../../types.js';
 
 // The socket handlers for conversation/group actions (open a DM, create a
 // group, rename it, add/remove members...) — never imported individually,
 // only dispatched as a block via `handlers`. The repository API other
 // modules actually depend on (listForUser, touchConversation, etc.) lives
 // in conversationsRepository.ts; see that file's own module comment.
-
-function isAdmin(p: Participant | undefined): boolean {
-  return !!p && p.role === 'admin';
-}
 
 function dmKeyFor(a: string, b: string): string {
   return [a, b].sort().join(':');
@@ -128,16 +123,12 @@ async function handleConversationPin(socket: AppSocket, msg: { conversationId?: 
   sendToUser(p.userId, { t: 'conversation-pinned', conversationId, pinnedAt: updated?.pinnedAt ? updated.pinnedAt.getTime() : null });
 }
 
+// Any active account can create a group — creating one makes you its
+// owner (canManageGroup, conversationsRepository.ts), same as everyone
+// else's groups. No instance-role gate here at all.
 async function handleGroupCreate(socket: AppSocket, msg: { title?: string; memberIds?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
-  // admin-only until config.ALLOW_USER_GROUP_CREATION is turned on — see
-  // config/env.ts. Managing an EXISTING group is already real per-group
-  // ownership (canManageGroup) regardless of this flag.
-  if (!isAdmin(p) && !config.ALLOW_USER_GROUP_CREATION) {
-    send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Criação de grupos está desabilitada no momento.' });
-    return;
-  }
   const title = sanitizeConversationTitle(msg.title);
   if (!title) return;
 

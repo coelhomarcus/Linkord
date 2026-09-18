@@ -13,11 +13,6 @@ export interface Me {
   bio: string;
   profileLinks: string[];
   role: 'user' | 'admin';
-  // capability from `welcome` — whether the account can create a group at
-  // all right now (admin, or config.ALLOW_USER_GROUP_CREATION is on). The
-  // server still re-checks this on every 'group-create'; this only decides
-  // whether to show the button.
-  allowGroupCreation: boolean;
   sharing: boolean;
   cameraOn: boolean;
   sharingSince: number | null;
@@ -36,7 +31,7 @@ export interface RoomState {
 export const initialRoomState: RoomState = {
   me: {
     id: null, userId: null, name: '', displayName: '', avatar: '', avatarPoster: '', avatarColor: '',
-    banner: '', bannerPoster: '', bio: '', profileLinks: [], role: 'user', allowGroupCreation: false,
+    banner: '', bannerPoster: '', bio: '', profileLinks: [], role: 'user',
     sharing: false, cameraOn: false, sharingSince: null,
   },
   participants: new Map(),
@@ -51,7 +46,7 @@ export type RoomAction =
   | {
       type: 'WELCOME'; id: string; userId: string; name: string; displayName: string;
       avatar: string; avatarPoster: string; avatarColor: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[];
-      role: 'user' | 'admin'; allowGroupCreation: boolean; participants: Participant[];
+      role: 'user' | 'admin'; participants: Participant[];
     }
   | { type: 'PARTICIPANT_JOINED'; participant: Participant }
   | { type: 'PARTICIPANT_UPDATED'; participant: Participant }
@@ -86,7 +81,6 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
           bio: action.bio,
           profileLinks: action.profileLinks,
           role: action.role,
-          allowGroupCreation: action.allowGroupCreation,
         },
         participants,
         reconnecting: false,

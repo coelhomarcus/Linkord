@@ -160,7 +160,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           bio: m.bio,
           profileLinks: m.profileLinks,
           role: m.role,
-          allowGroupCreation: m.allowGroupCreation,
           participants: m.participants,
         });
         conversationsList.setInitial(m.conversations ?? []);

@@ -179,9 +179,6 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
   const [query, setQuery] = useState('');
   const [groupOpen, setGroupOpen] = useState(false);
   const normalized = query.trim().toLowerCase();
-  // capability from `welcome` (admin, or config.ALLOW_USER_GROUP_CREATION on
-  // the server) — the server re-checks this on every 'group-create' too.
-  const canCreateGroups = state.me.allowGroupCreation;
 
   const filteredConversations = useMemo(() => (
     conversations.filter((conversation) => conversationTitle(conversation, state.me.userId, allUsers).toLowerCase().includes(normalized))
@@ -242,18 +239,16 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
             </div>
 
             <div className="flex flex-none flex-col gap-1.5">
-              {canCreateGroups && (
-                <Tooltip>
-                  <TooltipTrigger
-                    onClick={() => setGroupOpen(true)}
-                    aria-label="Criar grupo"
-                    className={cn(buttonVariants({ size: 'icon-sm' }), 'size-11 rounded-xl')}
-                  >
-                    <Plus size={18} />
-                  </TooltipTrigger>
-                  <TooltipContent side="right">Criar grupo</TooltipContent>
-                </Tooltip>
-              )}
+              <Tooltip>
+                <TooltipTrigger
+                  onClick={() => setGroupOpen(true)}
+                  aria-label="Criar grupo"
+                  className={cn(buttonVariants({ size: 'icon-sm' }), 'size-11 rounded-xl')}
+                >
+                  <Plus size={18} />
+                </TooltipTrigger>
+                <TooltipContent side="right">Criar grupo</TooltipContent>
+              </Tooltip>
               <Tooltip>
                 <TooltipTrigger
                   onClick={onOpenSettings}
@@ -289,11 +284,9 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
                   <p className="min-w-0 truncate text-caption text-text-muted">{state.me.displayName}</p>
                 </div>
               </button>
-              {canCreateGroups && (
-                <Button type="button" size="icon-sm" aria-label="Criar grupo" onClick={() => setGroupOpen(true)} className="flex-none">
-                  <Plus size={16} />
-                </Button>
-              )}
+              <Button type="button" size="icon-sm" aria-label="Criar grupo" onClick={() => setGroupOpen(true)} className="flex-none">
+                <Plus size={16} />
+              </Button>
               <Button type="button" variant="ghost" size="icon-sm" aria-label="Ajustes" onClick={onOpenSettings} className="flex-none text-text-muted hover:text-text-primary">
                 <Settings size={16} />
               </Button>
