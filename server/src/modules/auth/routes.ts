@@ -6,12 +6,11 @@ import { sendJson, sendError, jsonBody } from '../../http/respond.js';
 import { parseCookies, serializeCookie, clearCookie, isSecureRequest } from '../../http/cookies.js';
 import { hashPassword, verifyPassword, needsRehash, DUMMY_HASH } from './password.js';
 import { createSession, resolveSession, destroyAllSessionsForUser, destroySession } from './session.js';
-import { findByEmailLower, findByUsernameLower, isValidEmail, normalizeEmail, privateUser, publicUser } from '../users/users.js';
+import { findByEmailLower, findByUsernameLower, isValidEmail, normalizeEmail, privateUser } from '../users/users.js';
 import { createUser, isAdminUsername, updateEmail, updatePassword } from './accounts.js';
 import type { User } from '../../db/schema.js';
 import { issueAuthCode, verifyAuthCode, type AuthCodePurpose } from './codes.js';
 import { sendAuthCodeEmail } from './email.js';
-import { broadcast } from '../presence/participants.js';
 import * as ratelimit from './ratelimit.js';
 import { db } from '../../db/client.js';
 import { users } from '../../db/schema.js';
@@ -106,10 +105,10 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
 
   const { rawToken } = await createSession(user.id);
   setSessionCookie(request, reply, rawToken);
-  // the user directory (right sidebar) for anyone already connected gets
-  // the new account without reloading — plain broadcast over already-open
-  // sockets, no coupling of this HTTP route to socket.io itself.
-  broadcast({ t: 'user-registered', user: publicUser(user) });
+  // Etapa 7: no more global 'user-registered' broadcast — a brand-new
+  // account has zero friends and zero shared conversations by definition,
+  // so its knownPeerIds is empty on every side; the event would reach
+  // nobody anyway (see participants.ts#broadcastToKnownPeers).
   sendJson(reply, 201, { user: privateUser(user) });
 }
 

@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, or, sql } from 'drizzle-orm';
 import { config } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { friendships, notifications, outboxEvents, type Friendship } from '../../db/schema.js';
@@ -32,6 +32,19 @@ export async function getFriendship(a: string, b: string, executor: Tx | typeof 
 export async function areFriends(a: string, b: string): Promise<boolean> {
   const row = await getFriendship(a, b);
   return row?.status === 'accepted';
+}
+
+/** Every accepted friend's id, either side of the pair — used to compute
+ * the "known peers" presence-scoping set (realtime/socket.ts) and profile
+ * visibility (usersRoutes.ts). */
+export async function listFriendIds(userId: string): Promise<string[]> {
+  const rows = await db.select({ userLowId: friendships.userLowId, userHighId: friendships.userHighId })
+    .from(friendships)
+    .where(and(
+      eq(friendships.status, 'accepted'),
+      or(eq(friendships.userLowId, userId), eq(friendships.userHighId, userId)),
+    ));
+  return rows.map((r) => (r.userLowId === userId ? r.userHighId : r.userLowId));
 }
 
 /** The one policy op messages.ts/socket.ts/attachmentUploads.ts actually

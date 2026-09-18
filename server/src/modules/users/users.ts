@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { users, type User } from '../../db/schema.js';
 import type { Role } from '../../types.js';
@@ -68,10 +68,21 @@ export async function findById(id: string): Promise<User | null> {
   return row || null;
 }
 
-/** Account directory (right sidebar, online/offline) — small private
- * room, sorting by name and fetching everyone at once is enough, no
- * pagination. */
+/** Every account on the instance — no longer sent to ordinary clients (see
+ * realtime/socket.ts's `welcome.knownUsers`, Etapa 7); only
+ * `GET /api/admin/users` (usersRoutes.ts) still calls this. */
 export async function listAllUsers(): Promise<PublicUser[]> {
   const rows = await db.select().from(users).orderBy(sql`lower(${users.username})`);
+  return rows.map(publicUser);
+}
+
+/** The "known users" projection sent in `welcome` — bounded to a specific
+ * set of ids (friends ∪ conversation members), not everyone. Empty input
+ * short-circuits: `inArray` with an empty array is a Drizzle footgun (some
+ * versions render invalid SQL), and a brand-new account's known-peer set is
+ * legitimately empty. */
+export async function listUsersByIds(ids: string[]): Promise<PublicUser[]> {
+  if (!ids.length) return [];
+  const rows = await db.select().from(users).where(inArray(users.id, ids));
   return rows.map(publicUser);
 }

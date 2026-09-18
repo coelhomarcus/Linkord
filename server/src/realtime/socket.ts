@@ -2,7 +2,7 @@ import type { Server as HttpServer } from 'node:http';
 import { Server, type Socket } from 'socket.io';
 import { config } from '../config/env.js';
 import {
-  participants as participantsMap, join, send, broadcast, publicParticipant, handleClose, ipOf,
+  participants as participantsMap, join, send, broadcastToKnownPeers, publicParticipant, handleClose, ipOf,
   listOnlineUserIds, setCallConversationId, handlers as participantHandlers,
 } from '../modules/presence/participants.js';
 import * as livekit from '../integrations/livekit/livekit.js';
@@ -10,13 +10,13 @@ import * as reactions from '../modules/calls/reactions.js';
 import * as floodControl from './floodControl.js';
 import * as chat from '../modules/messages/messages.js';
 import * as conversations from '../modules/conversations/conversations.js';
-import { listForUser, getConversationForUser, getDirectPeerId } from '../modules/conversations/conversationsRepository.js';
-import { canSendDirectMessage } from '../modules/friendships/friendshipsRepository.js';
+import { listForUser, getConversationForUser, getDirectPeerId, listConversationMemberIds } from '../modules/conversations/conversationsRepository.js';
+import { canSendDirectMessage, listFriendIds } from '../modules/friendships/friendshipsRepository.js';
 import { ERROR_CODES } from '../http/errors.js';
 import { getUsage } from '../modules/attachments/attachmentQuota.js';
 import * as discordWebhook from '../integrations/discord/discordWebhook.js';
 import * as moderation from '../modules/moderation/moderation.js';
-import { listAllUsers } from '../modules/users/users.js';
+import { listUsersByIds } from '../modules/users/users.js';
 import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from '../modules/auth/session.js';
 import type { AppSocket, HandlerTable } from '../types.js';
@@ -64,13 +64,28 @@ const ACTION_LIMITS: Record<string, { windowMs: number; max: number }> = {
   'message-search': { windowMs: 10_000, max: 20 },
 };
 
+/** Friends ∪ members of every conversation this account is in — the
+ * "known peers" set that scopes every presence broadcast for this
+ * connection (see participants.ts#broadcastToKnownPeers). Computed once
+ * per join/reconnect, not per presence event — see the field's own comment
+ * on Participant (types.ts) for why. */
+async function computeKnownPeerIds(userId: string): Promise<Set<string>> {
+  const [friendIds, memberIds] = await Promise.all([
+    listFriendIds(userId),
+    listConversationMemberIds(userId),
+  ]);
+  return new Set([...friendIds, ...memberIds]);
+}
+
 /** 'join' is the one special case in the dispatch: only participants.ts
  * creates/finds the participant, but the `welcome` reply also carries chat
  * history and the LiveKit token — data from other features. Lives here
  * (the composition root) so no feature depends on another. */
 async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
-  const p = join(socket, msg);
-  if (!p) return;
+  const joined = join(socket, msg);
+  if (!joined) return;
+  const { participant: p, justCameOnline } = joined;
+  p.knownPeerIds = await computeKnownPeerIds(p.userId);
   // LiveKit token is NOT minted here anymore — just having the tab open/
   // logged in shouldn't open a real call session. That now only happens
   // in handleCallJoin, when someone joins a group call.
@@ -90,14 +105,19 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
     profileLinks: p.profileLinks,
     role: p.role,
     maxParticipants: config.MAX_PARTICIPANTS,
-    participants: [...participantsMap.values()].filter((o) => o.id !== p.id).map(publicParticipant),
+    // Etapa 7: all three of these used to be global (every OTHER live
+    // connection / every account ever registered / every online userId,
+    // full stop) — now scoped to knownPeerIds so an isolated account
+    // (no friends, no shared conversation) receives none of it.
+    participants: [...participantsMap.values()].filter((o) => o.id !== p.id && p.knownPeerIds.has(o.userId)).map(publicParticipant),
     conversations: await listForUser(p.userId),
-    users: await listAllUsers(),
-    onlineUserIds: listOnlineUserIds(),
+    knownUsers: await listUsersByIds([...p.knownPeerIds]),
+    onlineUserIds: listOnlineUserIds().filter((id) => p.knownPeerIds.has(id)),
     storageUsage: await getUsage(),
     livekitUrl: config.LIVEKIT_URL,
   });
-  broadcast({ t: 'participant-joined', participant: publicParticipant(p) }, p.id);
+  broadcastToKnownPeers(p.userId, { t: 'participant-joined', participant: publicParticipant(p) }, p.id);
+  if (justCameOnline) broadcastToKnownPeers(p.userId, { t: 'user-online', userId: p.userId });
   console.log(`[${p.id}] joined (${p.name}) from ${socket.ip}`);
 }
 

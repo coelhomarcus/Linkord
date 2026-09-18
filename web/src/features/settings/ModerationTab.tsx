@@ -1,13 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ShieldCheck, Trash2, X } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { Avatar } from '../../shared/Avatar';
 import { ConfirmDialog } from '../../shared/ConfirmDialog';
-import type { PublicUser } from '@/shared/types/protocol';
+import { fetchAdminUsers, type AdminUserRow } from '@/shared/api/api';
 import { Button } from '@/shared/ui/primitives/button';
 
 function UserRow({ user, online, isMe, onDeleteRequest }: {
-  user: PublicUser;
+  user: AdminUserRow;
   online: boolean;
   isMe: boolean;
   onDeleteRequest: () => void;
@@ -45,16 +45,30 @@ function UserRow({ user, online, isMe, onDeleteRequest }: {
 }
 
 export function ModerationTab() {
-  const { state, allUsers, onlineUserIds, deleteUserAccount, moderationError, clearModerationError } = useRoom();
-  const [confirmTarget, setConfirmTarget] = useState<PublicUser | null>(null);
+  const { state, deleteUserAccount, moderationError, clearModerationError } = useRoom();
+  const [confirmTarget, setConfirmTarget] = useState<AdminUserRow | null>(null);
+  const [users, setUsers] = useState<AdminUserRow[]>([]);
+  const [status, setStatus] = useState<'loading' | 'error' | 'ready'>('loading');
 
-  const users = useMemo(
-    () => [...allUsers.values()].sort((a, b) => a.displayName.localeCompare(b.displayName) || a.username.localeCompare(b.username)),
-    [allUsers]
-  );
+  // Etapa 7: the socket welcome no longer ships a global directory, so this
+  // admin-only listing (needed just to pick who to delete) has its own
+  // fetch now instead of reading the room's known-users cache.
+  const load = useCallback(() => {
+    setStatus('loading');
+    fetchAdminUsers()
+      .then(({ users: rows }) => {
+        setUsers([...rows].sort((a, b) => a.displayName.localeCompare(b.displayName) || a.username.localeCompare(b.username)));
+        setStatus('ready');
+      })
+      .catch(() => setStatus('error'));
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   function handleConfirm() {
-    if (confirmTarget) deleteUserAccount(confirmTarget.id);
+    if (confirmTarget) {
+      deleteUserAccount(confirmTarget.id);
+      setUsers((prev) => prev.filter((u) => u.id !== confirmTarget.id));
+    }
     setConfirmTarget(null);
   }
 
@@ -63,6 +77,19 @@ export function ModerationTab() {
       <p className="select-none text-label text-text-muted">
         Apagar uma conta é definitivo. A pessoa não consegue mais entrar. As mensagens que ela já mandou continuam no histórico do chat.
       </p>
+
+      {status === 'error' && (
+        <div className="flex items-center gap-2 rounded-md bg-red/12 px-2.5 py-1.5 text-label text-red-text">
+          <span className="min-w-0 flex-1">Não foi possível carregar as contas.</span>
+          <button
+            type="button"
+            onClick={load}
+            className="flex-none font-medium text-red-text underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            Tentar de novo
+          </button>
+        </div>
+      )}
 
       {moderationError && (
         <div className="flex items-center gap-2 rounded-md bg-red/12 px-2.5 py-1.5 text-label text-red-text">
@@ -78,12 +105,14 @@ export function ModerationTab() {
         </div>
       )}
 
+      {status === 'loading' && <p className="py-4 text-center text-label text-text-muted">Carregando contas…</p>}
+
       <div className="flex flex-col gap-0.5">
         {users.map((u) => (
           <UserRow
             key={u.id}
             user={u}
-            online={onlineUserIds.has(u.id)}
+            online={u.online}
             isMe={u.id === state.me.userId}
             onDeleteRequest={() => setConfirmTarget(u)}
           />

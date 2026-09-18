@@ -163,7 +163,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           participants: m.participants,
         });
         conversationsList.setInitial(m.conversations ?? []);
-        presence.setInitial(m.users, m.onlineUserIds);
+        presence.setInitial(m.knownUsers, m.onlineUserIds);
         attachmentsUpload.setStorageUsage(m.storageUsage);
         {
           const firstConversation = (m.conversations ?? [])[0];
@@ -249,9 +249,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         break;
       case 'user-offline':
         presence.onUserOffline(m);
-        break;
-      case 'user-registered':
-        presence.onUserRegistered(m);
         break;
       case 'user-deleted':
         presence.onUserDeleted(m);

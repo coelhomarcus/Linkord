@@ -171,6 +171,39 @@ export async function getDirectPeerId(conversationId: string, userId: string): P
   return other?.userId ?? null;
 }
 
+/** Every OTHER account this user shares at least one conversation with
+ * (DM or group), deduplicated — used to compute the "known peers"
+ * presence-scoping set (realtime/socket.ts). */
+export async function listConversationMemberIds(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ userId: conversationMembers.userId })
+    .from(conversationMembers)
+    .where(and(
+      sql`${conversationMembers.conversationId} IN (
+        select ${conversationMembers.conversationId} from ${conversationMembers} where ${conversationMembers.userId} = ${userId}
+      )`,
+      sql`${conversationMembers.userId} <> ${userId}`,
+    ));
+  return [...new Set(rows.map((r) => r.userId))];
+}
+
+/** Whether `a` and `b` are both members of at least one conversation —
+ * used only by usersRoutes.ts's profile-visibility check (a pairwise
+ * question, unlike listConversationMemberIds' bulk one above). */
+export async function shareAnyConversation(a: string, b: string): Promise<boolean> {
+  const [row] = await db
+    .select({ conversationId: conversationMembers.conversationId })
+    .from(conversationMembers)
+    .where(and(
+      eq(conversationMembers.userId, a),
+      sql`${conversationMembers.conversationId} IN (
+        select ${conversationMembers.conversationId} from ${conversationMembers} where ${conversationMembers.userId} = ${b}
+      )`,
+    ))
+    .limit(1);
+  return !!row;
+}
+
 export async function getMemberRole(conversationId: string, userId: string): Promise<ConversationRole | null> {
   const [row] = await db.select({ role: conversationMembers.role })
     .from(conversationMembers)

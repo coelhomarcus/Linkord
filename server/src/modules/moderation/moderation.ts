@@ -4,7 +4,7 @@ import { db } from '../../db/client.js';
 import { conversationMembers, conversations, users } from '../../db/schema.js';
 import { findById } from '../users/users.js';
 import { invalidateSessionsForUser } from '../auth/session.js';
-import { participants, broadcast, send, removeParticipant, setCallConversationId } from '../presence/participants.js';
+import { participants, broadcastToKnownPeers, send, removeParticipant, setCallConversationId } from '../presence/participants.js';
 import * as livekit from '../../integrations/livekit/livekit.js';
 import { deleteAvatarFile } from '../attachments/attachmentCleanup.js';
 import { reconcileGroupMembership } from '../conversations/conversationsRepository.js';
@@ -77,7 +77,10 @@ async function handleUserDelete(socket: AppSocket, msg: { userId?: string }): Pr
     try { otherSocket?.disconnect(true); } catch { /* socket dying */ }
   }
 
-  broadcast({ t: 'user-deleted', userId: targetId });
+  // scoped, not global (Etapa 7) — reaches whoever already has targetId in
+  // their OWN knownPeerIds (friend or shared conversation), works even
+  // though the target's own connections were just disconnected above.
+  broadcastToKnownPeers(targetId, { t: 'user-deleted', userId: targetId });
 
   // a deleted account can't stay a member of anything — reuse the same
   // "did this empty the group" cleanup a normal group-members-remove does.

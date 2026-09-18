@@ -59,6 +59,15 @@ export interface Participant {
   sharing: boolean;
   speaking: boolean;
   graceTimer: ReturnType<typeof setTimeout> | null;
+  // Friends ∪ members of every conversation this account is in — computed
+  // ONCE per connection (handleJoin, realtime/socket.ts), not on every
+  // presence event (mic/speaking toggles fire too often for a DB round trip
+  // each time). Used to scope presence broadcasts (broadcastToKnownPeers)
+  // so an unrelated account never sees this connection's mic/camera/
+  // online state. Deliberately stale until the next reconnect — a brand
+  // new friend's live presence only starts showing up after either side
+  // reconnects, not immediately.
+  knownPeerIds: Set<string>;
 }
 
 /** Public shape of a Participant — what goes to the client (never `token`). */

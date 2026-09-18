@@ -1,5 +1,5 @@
 
-import type { ChatAttachment } from '@/shared/types/protocol';
+import type { ChatAttachment, PublicUser } from '@/shared/types/protocol';
 import type { DetectedEmbed } from '@/shared/lib/chatEmbeds';
 
 export interface ApiUser {
@@ -130,4 +130,22 @@ export interface LinkPreviewData {
 
 export function fetchLinkPreview(url: string): Promise<LinkPreviewData> {
   return apiFetch(`/api/link-preview?url=${encodeURIComponent(url)}`);
+}
+
+/** On-demand profile fetch (Etapa 7) — for when a profile isn't already in
+ * the known-users cache (usePresence.ts's `allUsers`), e.g. the author of
+ * an old message who has since left the conversation. 404 covers both
+ * "doesn't exist" and "not authorized to view" — same posture as the rest
+ * of the social endpoints, never confirms/denies a relationship. */
+export function fetchUserProfile(userId: string): Promise<{ user: PublicUser }> {
+  return apiFetch(`/api/users/${userId}/profile`);
+}
+
+export interface AdminUserRow extends PublicUser { online: boolean }
+
+/** Admin-only, minimal stopgap for ModerationTab — the socket welcome no
+ * longer ships a global directory, so the "list every account to delete
+ * one" admin view needs its own fetch now. */
+export function fetchAdminUsers(): Promise<{ users: AdminUserRow[] }> {
+  return apiFetch('/api/admin/users');
 }

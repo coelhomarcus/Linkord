@@ -149,7 +149,7 @@ export type ServerMessage =
       userId: string; name: string; displayName: string; avatar: string; avatarPoster: string; avatarColor: string;
       banner: string; bannerPoster: string; bio: string; profileLinks: string[]; role: 'user' | 'admin';
       maxParticipants: number; participants: Participant[];
-      conversations: Conversation[]; users: PublicUser[]; onlineUserIds: string[];
+      conversations: Conversation[]; knownUsers: PublicUser[]; onlineUserIds: string[];
       storageUsage: StorageUsage;
       livekitUrl: string;
     }
@@ -178,7 +178,6 @@ export type ServerMessage =
   | { t: 'chat-attachment-added'; conversationId: string; msgId: number; attachment: ChatAttachment }
   | { t: 'user-online'; userId: string }
   | { t: 'user-offline'; userId: string }
-  | { t: 'user-registered'; user: PublicUser }
   | { t: 'user-deleted'; userId: string }
   | ({ t: 'storage-usage' } & StorageUsage)
   | { t: 'error'; code: string; message: string }

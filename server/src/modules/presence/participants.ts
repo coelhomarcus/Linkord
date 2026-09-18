@@ -34,7 +34,7 @@ export function setCallConversationId(p: Participant, conversationId: string | n
   p.cameraOn = false;
   p.sharing = false;
   p.speaking = false;
-  broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
+  broadcastToKnownPeers(p.userId, { t: 'participant-updated', participant: publicParticipant(p) });
 }
 
 /** Address of who connected — used for logging only. */
@@ -55,6 +55,21 @@ export function send(socket: AppSocket | null | undefined, obj: { t: string; [ke
 export function broadcast(obj: { t: string; [key: string]: unknown }, exceptId?: string): void {
   for (const p of participants.values()) {
     if (p.id === exceptId) continue;
+    if (p.socket && p.socket.connected) { try { p.socket.emit(obj.t, obj); } catch { /* socket dying */ } }
+  }
+}
+
+/** Scoped presence broadcast (Etapa 7) — delivers to whoever has
+ * `subjectUserId` in their OWN `knownPeerIds` (computed at THEIR join
+ * time, see realtime/socket.ts), plus always to the subject's own other
+ * tabs/devices (multi-tab profile/mic-state sync). Checking the
+ * RECEIVER's cached set (not the subject's) is what makes this work even
+ * when the subject has no live connection at all — e.g. notifying a
+ * friend that an account got deleted. */
+export function broadcastToKnownPeers(subjectUserId: string, obj: { t: string; [key: string]: unknown }, exceptId?: string): void {
+  for (const p of participants.values()) {
+    if (p.id === exceptId) continue;
+    if (p.userId !== subjectUserId && !p.knownPeerIds.has(subjectUserId)) continue;
     if (p.socket && p.socket.connected) { try { p.socket.emit(obj.t, obj); } catch { /* socket dying */ } }
   }
 }
@@ -80,10 +95,10 @@ export function removeParticipant(p: Participant): void {
   if (participants.get(p.id) !== p) return; // already replaced by a reconnect
   if (p.graceTimer) clearTimeout(p.graceTimer);
   participants.delete(p.id);
-  broadcast({ t: 'participant-left', id: p.id });
+  broadcastToKnownPeers(p.userId, { t: 'participant-left', id: p.id });
   // only here (not handleClose) to respect the same grace window as
   // 'participant-left' — a brief network drop shouldn't flicker offline.
-  if (!isUserOnline(p.userId)) broadcast({ t: 'user-offline', userId: p.userId });
+  if (!isUserOnline(p.userId)) broadcastToKnownPeers(p.userId, { t: 'user-offline', userId: p.userId });
 }
 
 /** Removes ghosts (socket=null, stuck in the reconnect grace window) for
@@ -105,7 +120,7 @@ interface JoinMessage {
  * The `welcome` message itself is assembled by realtime/socket.ts (which
  * also touches chat/other features) to avoid a cycle. Sends the room-full
  * error and returns null when applicable. */
-export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
+export function join(socket: AppSocket, msg: JoinMessage): { participant: Participant; justCameOnline: boolean } | null {
   if (socket.participantId) return null;
   const u = socket.user; // guaranteed by io.use — no socket exists without a valid session
   // computed BEFORE touching the Map — if this is the account's only
@@ -158,12 +173,14 @@ export function join(socket: AppSocket, msg: JoinMessage): Participant | null {
       sharing: false,
       speaking: false,
       graceTimer: null,
+      knownPeerIds: new Set(),
     };
     participants.set(p.id, p);
   }
   socket.participantId = p.id;
-  if (!wasOnline) broadcast({ t: 'user-online', userId: u.userId });
-  return p;
+  // caller (handleJoin, realtime/socket.ts) computes p.knownPeerIds and
+  // broadcasts 'user-online' itself — that field doesn't exist yet here.
+  return { participant: p, justCameOnline: !wasOnline };
 }
 
 /** Avatar, avatar background color, and displayName are all editable —
@@ -212,7 +229,7 @@ function handleProfile(socket: AppSocket, msg: { avatar?: string; avatarPoster?:
     other.bannerPoster = nextBannerPoster;
     other.bio = nextBio;
     other.profileLinks = nextProfileLinks;
-    broadcast({ t: 'participant-updated', participant: publicParticipant(other) });
+    broadcastToKnownPeers(other.userId, { t: 'participant-updated', participant: publicParticipant(other) });
   }
   updateProfile(p.userId, {
     avatar: nextAvatar,
@@ -242,7 +259,7 @@ function handleDeafened(socket: AppSocket, msg: { value?: unknown }): void {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   p.deafened = !!msg.value;
-  broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
+  broadcastToKnownPeers(p.userId, { t: 'participant-updated', participant: publicParticipant(p) });
 }
 
 /** Self-reported mic state (see ClientMessage 'mic-state') — the server
@@ -254,21 +271,21 @@ function handleMicState(socket: AppSocket, msg: { activated?: unknown; muted?: u
   if (!p || p.socket !== socket) return;
   p.micActivated = !!msg.activated;
   p.micMuted = !!msg.muted;
-  broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
+  broadcastToKnownPeers(p.userId, { t: 'participant-updated', participant: publicParticipant(p) });
 }
 
 function handleCamera(socket: AppSocket, msg: { on?: unknown }): void {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   p.cameraOn = !!msg.on;
-  broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
+  broadcastToKnownPeers(p.userId, { t: 'participant-updated', participant: publicParticipant(p) });
 }
 
 function handleScreenShare(socket: AppSocket, msg: { on?: unknown }): void {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   p.sharing = !!msg.on;
-  broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
+  broadcastToKnownPeers(p.userId, { t: 'participant-updated', participant: publicParticipant(p) });
 }
 
 /** Detected 100% client-side (real audio level via Web Audio, see
@@ -278,7 +295,7 @@ function handleSpeaking(socket: AppSocket, msg: { value?: unknown }): void {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   p.speaking = !!msg.value;
-  broadcast({ t: 'participant-updated', participant: publicParticipant(p) });
+  broadcastToKnownPeers(p.userId, { t: 'participant-updated', participant: publicParticipant(p) });
 }
 
 // tab closing/reloading: leaves the room immediately, without the reconnect
