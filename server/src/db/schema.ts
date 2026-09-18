@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, integer, bigint, jsonb, serial, boolean, uniqueIndex, index, primaryKey, customType } from 'drizzle-orm/pg-core';
+import { pgTable, text, varchar, timestamp, integer, bigint, jsonb, serial, boolean, uniqueIndex, index, primaryKey, check, customType } from 'drizzle-orm/pg-core';
 import { sql, type SQL } from 'drizzle-orm';
 
 // Postgres tsvector has no first-class drizzle column type — customType
@@ -136,6 +136,77 @@ export const conversationMembers = pgTable('conversation_members', {
   uniqueIndex('conversation_members_one_owner_idx').on(t.conversationId).where(sql`${t.role} = 'owner'`),
 ]);
 
+/** A friend relationship between two accounts — one row per canonical pair
+ * (`userLowId < userHighId`, a deterministic ordering of the ids so the
+ * same pair can never get two rows regardless of who requested). Consent is
+ * two-sided: `requestedBy` is whichever side is still waiting on the other
+ * while `status = 'pending'`. `version` guards against a stale accept
+ * racing a newer request (see modules/friendships in a later etapa) — the
+ * column exists now so the DB invariant is there before any handler writes
+ * to it. */
+export const friendships = pgTable('friendships', {
+  id: text('id').primaryKey(),
+  userLowId: text('user_low_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userHighId: text('user_high_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  requestedBy: text('requested_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: varchar('status', { length: 16 }).notNull().default('pending'), // 'pending' | 'accepted' | 'declined' | 'cancelled' | 'removed'
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  respondedAt: timestamp('responded_at', { withTimezone: true }),
+  retryAfter: timestamp('retry_after', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('friendships_pair_key').on(t.userLowId, t.userHighId),
+  index('friendships_user_high_id_idx').on(t.userHighId),
+  index('friendships_status_idx').on(t.status),
+  check('friendships_pair_order_check', sql`${t.userLowId} < ${t.userHighId}`),
+  check('friendships_requester_in_pair_check', sql`${t.requestedBy} = ${t.userLowId} OR ${t.requestedBy} = ${t.userHighId}`),
+  check('friendships_status_check', sql`${t.status} IN ('pending','accepted','declined','cancelled','removed')`),
+]);
+
+/** Directional block — no surrogate id, same reasoning as
+ * `messageReactions`: nothing ever references a single block row on its
+ * own. The two sides are independent: `blockerId` unblocking doesn't touch
+ * whatever `blockedId` may have done on their own row. */
+export const userBlocks = pgTable('user_blocks', {
+  blockerId: text('blocker_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  blockedId: text('blocked_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.blockerId, t.blockedId] }),
+  index('user_blocks_blocked_id_idx').on(t.blockedId), // "who blocked me"
+  check('user_blocks_different_users_check', sql`${t.blockerId} <> ${t.blockedId}`),
+]);
+
+/** A pending/resolved invitation to a group — a pending invite is NOT
+ * membership (no history, call access, search, or mentions until accepted).
+ * `conversationId` always points at a `group` conversation, never a DM.
+ * Cascades when the group itself is deleted — an invite to a group that no
+ * longer exists is meaningless, and `messages.groupInvitationId` (below)
+ * is what keeps the DM card alive as a tombstone instead of disappearing. */
+export const groupInvitations = pgTable('group_invitations', {
+  id: text('id').primaryKey(),
+  conversationId: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+  inviterId: text('inviter_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  inviteeId: text('invitee_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: varchar('status', { length: 16 }).notNull().default('pending'), // 'pending' | 'accepted' | 'declined' | 'revoked' | 'expired'
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  respondedAt: timestamp('responded_at', { withTimezone: true }),
+}, (t) => [
+  // at most one PENDING invite per (group, invitee) — a re-invite after
+  // decline/expiry resolves the old row first, doesn't get blocked here.
+  uniqueIndex('group_invitations_pending_unique').on(t.conversationId, t.inviteeId).where(sql`${t.status} = 'pending'`),
+  index('group_invitations_invitee_status_idx').on(t.inviteeId, t.status),
+  index('group_invitations_conversation_id_idx').on(t.conversationId),
+  // expiry sweep — deliberately NOT `where(expiresAt > now())`: that's not
+  // a stable index predicate, validity is checked at read/accept time.
+  index('group_invitations_expires_at_idx').on(t.expiresAt),
+  check('group_invitations_status_check', sql`${t.status} IN ('pending','accepted','declined','revoked','expired')`),
+]);
+
 /** Chat message, now persisted (used to live only in memory, lost on
  * every restart). `authorId` is SET NULL if the account is later deleted.
  * Mutable profile data (display name/avatar/color) intentionally lives only
@@ -149,6 +220,12 @@ export const messages = pgTable('messages', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   editedAt: timestamp('edited_at', { withTimezone: true }),
   replyTo: jsonb('reply_to'),
+  kind: varchar('kind', { length: 16 }).notNull().default('text'), // 'text' | 'group_invite'
+  // Points at the invitation this card represents. SET NULL (not cascade):
+  // if the invitation row is gone (e.g. the group got deleted, cascading
+  // down to group_invitations), the card stays in the DM as a tombstone —
+  // "Convite indisponível" — instead of vanishing.
+  groupInvitationId: text('group_invitation_id').references(() => groupInvitations.id, { onDelete: 'set null' }),
   // Postgres computes/maintains this itself (GENERATED ALWAYS AS ... STORED)
   // on every insert/update of `text` — never set from the app. 'portuguese'
   // config for stemming (a search for "mensagem" should also find
@@ -158,6 +235,8 @@ export const messages = pgTable('messages', {
 }, (t) => [
   index('messages_conversation_id_idx').on(t.conversationId),
   index('messages_search_vector_idx').using('gin', t.searchVector),
+  index('messages_group_invitation_id_idx').on(t.groupInvitationId),
+  check('messages_kind_reference_check', sql`(${t.kind} = 'text' AND ${t.groupInvitationId} IS NULL) OR (${t.kind} = 'group_invite')`),
 ]);
 
 /** One row per (message, user, emoji) — a user can react to the same
@@ -223,6 +302,53 @@ export const attachments = pgTable('attachments', {
   index('attachments_message_id_idx').on(t.messageId),
 ]);
 
+/** The recipient's inbox/read-state for a social event — scoped for now to
+ * the resources that exist this etapa (friend requests, group invitations).
+ * Typed FKs, not a generic JSON blob, so referential integrity is real.
+ * `dedupeKey` is deterministic per event (e.g.
+ * `friend_request:<friendshipId>:<version>`) so a retried outbox write
+ * can't create a duplicate notification. "Read" only means seen — it does
+ * NOT mean accepted; the friendship/invitation row is the actual source of
+ * truth for that. */
+export const notifications = pgTable('notifications', {
+  id: text('id').primaryKey(),
+  recipientId: text('recipient_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  kind: varchar('kind', { length: 32 }).notNull(), // 'friend_request' | 'friend_accepted' | 'group_invitation'
+  friendshipId: text('friendship_id').references(() => friendships.id, { onDelete: 'cascade' }),
+  groupInvitationId: text('group_invitation_id').references(() => groupInvitations.id, { onDelete: 'cascade' }),
+  dedupeKey: text('dedupe_key').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  readAt: timestamp('read_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('notifications_dedupe_key_unique').on(t.dedupeKey),
+  index('notifications_recipient_created_idx').on(t.recipientId, t.createdAt),
+  index('notifications_recipient_unread_idx').on(t.recipientId).where(sql`${t.readAt} IS NULL`),
+  check('notifications_kind_reference_check', sql`
+    (${t.kind} IN ('friend_request','friend_accepted') AND ${t.friendshipId} IS NOT NULL AND ${t.groupInvitationId} IS NULL)
+    OR (${t.kind} = 'group_invitation' AND ${t.groupInvitationId} IS NOT NULL AND ${t.friendshipId} IS NULL)
+  `),
+]);
+
+/** Transactional outbox: the same commit that changes durable state (e.g.
+ * accepts a friend request) writes the event to deliver here, instead of
+ * emitting directly and risking a commit that succeeds while the socket
+ * emit is lost. A worker (introduced in a later etapa) delivers with
+ * dedup/retry. `payload` is a minimal reference (ids only) — it must never
+ * freeze a permission snapshot; the worker re-validates audience/authorization
+ * at delivery time, not at write time. */
+export const outboxEvents = pgTable('outbox_events', {
+  id: text('id').primaryKey(),
+  type: varchar('type', { length: 64 }).notNull(), // e.g. 'friend_request_created', 'group_invitation_created'
+  audienceUserId: text('audience_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  payload: jsonb('payload').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+  attempts: integer('attempts').notNull().default(0),
+}, (t) => [
+  index('outbox_events_unprocessed_idx').on(t.createdAt).where(sql`${t.processedAt} IS NULL`),
+  index('outbox_events_audience_user_id_idx').on(t.audienceUserId),
+]);
+
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type AuthCode = typeof authCodes.$inferSelect;
@@ -231,3 +357,8 @@ export type ConversationMember = typeof conversationMembers.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;
 export type MessageReaction = typeof messageReactions.$inferSelect;
+export type Friendship = typeof friendships.$inferSelect;
+export type UserBlock = typeof userBlocks.$inferSelect;
+export type GroupInvitation = typeof groupInvitations.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;
+export type OutboxEvent = typeof outboxEvents.$inferSelect;
