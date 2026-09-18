@@ -17,7 +17,7 @@ function fakeParticipant(overrides: Partial<Participant> = {}): Participant {
 function fakeConversation(overrides: Partial<Conversation> = {}): Conversation {
   return {
     id: 'conv-1', type: 'group', title: 'Grupo', avatar: '', createdBy: 'u-1', memberIds: ['u-1', 'u-2'],
-    lastMessageAt: null, createdAt: Date.now(), updatedAt: Date.now(), pinnedAt: null,
+    lastMessageAt: null, createdAt: Date.now(), updatedAt: Date.now(), pinnedAt: null, myRole: 'member',
     ...overrides,
   };
 }

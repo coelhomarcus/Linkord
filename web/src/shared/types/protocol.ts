@@ -91,6 +91,9 @@ export interface Conversation {
   createdAt: number;
   updatedAt: number;
   pinnedAt: number | null;
+  // the viewer's own role in this conversation — 'member' for every DM (DMs
+  // have no owner). Real per-group authority, not the account's global role.
+  myRole: 'owner' | 'member';
 }
 
 export interface PublicUser {

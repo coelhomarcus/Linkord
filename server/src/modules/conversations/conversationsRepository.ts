@@ -14,7 +14,9 @@ import { deleteForConversation } from '../attachments/attachmentCleanup.js';
 // half of this split.
 
 export type ConversationType = 'direct' | 'group';
-export type ConversationRole = 'owner' | 'admin' | 'member';
+// 'admin' was never actually assigned anywhere in practice — dropped from
+// the type along with the DB comment (see schema.ts#conversationMembers).
+export type ConversationRole = 'owner' | 'member';
 
 export interface ConversationSummary {
   id: string;
@@ -27,6 +29,10 @@ export interface ConversationSummary {
   createdAt: number;
   updatedAt: number;
   pinnedAt: number | null;
+  // the VIEWER's own role in this conversation — always 'member' for a DM
+  // (DMs have no owner). Lets the frontend gate group-management UI on real
+  // per-group ownership instead of the account's global instance role.
+  myRole: ConversationRole;
 }
 
 export function sanitizeConversationTitle(name: unknown): string | null {
@@ -41,7 +47,7 @@ function normalizeConversationType(type: string): ConversationType {
 // Exported (not just used by listForUser below) because conversations.ts's
 // own handlers (handleDirectOpen, handleGroupCreate, handleGroupMembersAdd)
 // build the same summary shape for the conversation they just acted on.
-export function rowToSummary(row: Conversation, memberIds: string[], pinnedAt: Date | null = null): ConversationSummary {
+export function rowToSummary(row: Conversation, memberIds: string[], pinnedAt: Date | null, myRole: ConversationRole): ConversationSummary {
   return {
     id: row.id,
     type: normalizeConversationType(row.type),
@@ -53,12 +59,13 @@ export function rowToSummary(row: Conversation, memberIds: string[], pinnedAt: D
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
     pinnedAt: pinnedAt ? pinnedAt.getTime() : null,
+    myRole,
   };
 }
 
 export async function listForUser(userId: string): Promise<ConversationSummary[]> {
   const rows = await db
-    .select({ conversation: conversations, pinnedAt: conversationMembers.pinnedAt })
+    .select({ conversation: conversations, pinnedAt: conversationMembers.pinnedAt, role: conversationMembers.role })
     .from(conversationMembers)
     .innerJoin(conversations, eq(conversations.id, conversationMembers.conversationId))
     .where(and(
@@ -102,7 +109,7 @@ export async function listForUser(userId: string): Promise<ConversationSummary[]
     }
   }
 
-  return rows.map((r) => rowToSummary(r.conversation, members.get(r.conversation.id) ?? [], r.pinnedAt));
+  return rows.map((r) => rowToSummary(r.conversation, members.get(r.conversation.id) ?? [], r.pinnedAt, r.role as ConversationRole));
 }
 
 /** Sends the CURRENT state of one conversation to every member who already
@@ -116,12 +123,12 @@ export async function listForUser(userId: string): Promise<ConversationSummary[]
  * conversations.ts's handleGroupUpdate calls this too, after renaming or
  * re-avataring a group. */
 export async function sendConversationUpdateToMembers(t: 'conversation-created' | 'conversation-updated', row: Conversation): Promise<void> {
-  const memberRows = await db.select({ userId: conversationMembers.userId, pinnedAt: conversationMembers.pinnedAt })
+  const memberRows = await db.select({ userId: conversationMembers.userId, pinnedAt: conversationMembers.pinnedAt, role: conversationMembers.role })
     .from(conversationMembers).where(eq(conversationMembers.conversationId, row.id));
   const memberIds = memberRows.map((r) => r.userId);
-  for (const { userId, pinnedAt } of memberRows) {
+  for (const { userId, pinnedAt, role } of memberRows) {
     for (const p of participants.values()) {
-      if (p.userId === userId) send(p.socket, { t, conversation: rowToSummary(row, memberIds, pinnedAt) });
+      if (p.userId === userId) send(p.socket, { t, conversation: rowToSummary(row, memberIds, pinnedAt, role as ConversationRole) });
     }
   }
 }
@@ -146,6 +153,22 @@ export async function getConversationForUser(conversationId: string, userId: str
 
 export async function conversationExistsForUser(conversationId: string, userId: string): Promise<boolean> {
   return !!(await getConversationForUser(conversationId, userId));
+}
+
+export async function getMemberRole(conversationId: string, userId: string): Promise<ConversationRole | null> {
+  const [row] = await db.select({ role: conversationMembers.role })
+    .from(conversationMembers)
+    .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, userId)))
+    .limit(1);
+  return row ? (row.role as ConversationRole) : null;
+}
+
+/** Real per-group authority to manage a group (rename, re-avatar, add/remove
+ * members, delete) — the group's actual `owner`, not the account's global
+ * instance role. Replaces the old `isAdmin(p)` gate in conversations.ts,
+ * which let ANY instance admin manage ANY group regardless of membership. */
+export async function canManageGroup(conversationId: string, userId: string): Promise<boolean> {
+  return (await getMemberRole(conversationId, userId)) === 'owner';
 }
 
 /** A genuinely NEW message was created (send, or a fresh attachment-only

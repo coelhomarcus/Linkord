@@ -9,7 +9,7 @@ function fakeUser(id: string, username: string, displayName: string): PublicUser
 function fakeConversation(overrides: Partial<Conversation> & { id: string }): Conversation {
   return {
     type: 'direct', title: '', avatar: '', createdBy: null, memberIds: [],
-    lastMessageAt: null, createdAt: 1, updatedAt: 1, pinnedAt: null,
+    lastMessageAt: null, createdAt: 1, updatedAt: 1, pinnedAt: null, myRole: 'member',
     ...overrides,
   };
 }

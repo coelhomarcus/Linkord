@@ -5,7 +5,9 @@ import { conversationMembers, conversations, users } from '../../db/schema.js';
 import { participants, send } from '../presence/participants.js';
 import { sanitizeAvatar } from '../profile/sanitize.js';
 import { deleteAvatarFile, deleteForConversation } from '../attachments/attachmentCleanup.js';
+import { ERROR_CODES } from '../../http/errors.js';
 import {
+  canManageGroup,
   conversationExistsForUser,
   getConversationForUser,
   reconcileGroupMembership,
@@ -81,7 +83,7 @@ async function handleDirectOpen(socket: AppSocket, msg: { userId?: string }): Pr
   send(socket, {
     t: 'conversation-opened',
     conversationId: conversation.id,
-    conversation: rowToSummary(conversation, [p.userId, otherUserId]),
+    conversation: rowToSummary(conversation, [p.userId, otherUserId], null, 'member'),
   });
 }
 
@@ -154,18 +156,25 @@ async function handleGroupCreate(socket: AppSocket, msg: { title?: string; membe
   // handleDirectOpen) with `conversation` populated — the other members
   // just get 'conversation-created' (adds it, doesn't switch anyone's view).
   // `pinnedAt: null` for everyone: a brand-new group can't already be pinned.
-  const summary = rowToSummary(conversation!, memberIds, null);
-  send(socket, { t: 'conversation-opened', conversationId: conversation!.id, conversation: summary });
+  // Two summaries, not one shared object: the creator's `myRole` is 'owner',
+  // everyone else's is 'member' — see rowToSummary/ConversationSummary.
+  const ownerSummary = rowToSummary(conversation!, memberIds, null, 'owner');
+  const memberSummary = rowToSummary(conversation!, memberIds, null, 'member');
+  send(socket, { t: 'conversation-opened', conversationId: conversation!.id, conversation: ownerSummary });
   for (const userId of memberIds) {
     if (userId === p.userId) continue;
-    sendToUser(userId, { t: 'conversation-created', conversation: summary });
+    sendToUser(userId, { t: 'conversation-created', conversation: memberSummary });
   }
 }
 
 async function handleGroupDelete(socket: AppSocket, msg: { conversationId?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
-  if (!p || p.socket !== socket || !isAdmin(p)) return;
+  if (!p || p.socket !== socket) return;
   const conversationId = String(msg.conversationId || '');
+  if (!(await canManageGroup(conversationId, p.userId))) {
+    send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Você não tem permissão para gerenciar esse grupo.' });
+    return;
+  }
   const [conversation] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
   if (!conversation || conversation.type !== 'group') return;
   const memberRows = await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
@@ -181,16 +190,20 @@ async function handleGroupDelete(socket: AppSocket, msg: { conversationId?: stri
   }
 }
 
-/** Admin-only rename/re-avatar. `title` and `avatar` are each applied only
+/** Owner-only rename/re-avatar. `title` and `avatar` are each applied only
  * when present in the message, so one can change without touching the
  * other. Title validation mirrors handleGroupCreate; avatar validation
  * mirrors an account's own (see modules/profile/sanitize.ts#sanitizeAvatar) —
  * `avatar: ''` is a valid, deliberate "remove the photo". */
 async function handleGroupUpdate(socket: AppSocket, msg: { conversationId?: string; title?: string; avatar?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
-  if (!p || p.socket !== socket || !isAdmin(p)) return;
+  if (!p || p.socket !== socket) return;
   const conversationId = String(msg.conversationId || '');
   if (!conversationId) return;
+  if (!(await canManageGroup(conversationId, p.userId))) {
+    send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Você não tem permissão para gerenciar esse grupo.' });
+    return;
+  }
   const [conversation] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
   if (!conversation || conversation.type !== 'group') return;
 
@@ -215,13 +228,17 @@ async function handleGroupUpdate(socket: AppSocket, msg: { conversationId?: stri
   await sendConversationUpdateToMembers('conversation-updated', updatedRow!);
 }
 
-/** Admin-only. Silently skips ids that don't exist or are already members —
+/** Owner-only. Silently skips ids that don't exist or are already members —
  * matches handleGroupCreate's "just filter, don't error" approach. */
 async function handleGroupMembersAdd(socket: AppSocket, msg: { conversationId?: string; memberIds?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
-  if (!p || p.socket !== socket || !isAdmin(p)) return;
+  if (!p || p.socket !== socket) return;
   const conversationId = String(msg.conversationId || '');
   if (!conversationId) return;
+  if (!(await canManageGroup(conversationId, p.userId))) {
+    send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Você não tem permissão para gerenciar esse grupo.' });
+    return;
+  }
   const [conversation] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
   if (!conversation || conversation.type !== 'group') return;
 
@@ -241,7 +258,7 @@ async function handleGroupMembersAdd(socket: AppSocket, msg: { conversationId?: 
   // whole thing (pinnedAt: null, they can't have pinned it yet). Existing
   // members just need to know who joined, one event per new member.
   const allMemberIds = [...currentIds, ...newIds];
-  const summary = rowToSummary(conversation, allMemberIds, null);
+  const summary = rowToSummary(conversation, allMemberIds, null, 'member');
   for (const userId of newIds) sendToUser(userId, { t: 'conversation-created', conversation: summary });
   for (const newUserId of newIds) {
     for (const participant of participants.values()) {
@@ -250,7 +267,8 @@ async function handleGroupMembersAdd(socket: AppSocket, msg: { conversationId?: 
   }
 }
 
-/** Admin removes anyone; a member can only remove THEMSELVES (leave). */
+/** The group's owner removes anyone; a member can only remove THEMSELVES
+ * (leave). */
 async function handleGroupMembersRemove(socket: AppSocket, msg: { conversationId?: string; userId?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
@@ -258,7 +276,10 @@ async function handleGroupMembersRemove(socket: AppSocket, msg: { conversationId
   const targetUserId = String(msg.userId || '');
   if (!conversationId || !targetUserId) return;
   const isSelf = targetUserId === p.userId;
-  if (!isSelf && !isAdmin(p)) return;
+  if (!isSelf && !(await canManageGroup(conversationId, p.userId))) {
+    send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Você não tem permissão para remover esse membro.' });
+    return;
+  }
 
   const [conversation] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
   if (!conversation || conversation.type !== 'group') return;

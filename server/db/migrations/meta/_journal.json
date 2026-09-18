@@ -141,6 +141,13 @@
       "when": 1789589161481,
       "tag": "0019_outstanding_xorn",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789702052592,
+      "tag": "0020_slimy_red_ghost",
+      "breakpoints": true
     }
   ]
 }

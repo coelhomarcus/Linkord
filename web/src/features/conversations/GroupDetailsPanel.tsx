@@ -39,7 +39,9 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
   } = useRoom();
   const { isMobile } = useAnimatedSidebar();
   const conversation = conversationId ? conversations.find((c) => c.id === conversationId) ?? null : null;
-  const isAdmin = state.me.role === 'admin';
+  // real per-group ownership, not the account's global instance role — see
+  // conversationsRepository.ts#canManageGroup on the server.
+  const isOwner = conversation?.myRole === 'owner';
   const members = useMemo(() => groupMembers(conversation, allUsers), [conversation, allUsers]);
   const memberIds = useMemo(() => new Set(members.map((m) => m.id)), [members]);
 
@@ -200,7 +202,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="relative">
             <GroupAvatar title={conversation.title || 'Grupo'} avatar={conversation.avatar} size={64} />
-            {isAdmin && (
+            {isOwner && (
               <DropdownMenu>
                 <DropdownMenuTrigger
                   disabled={uploadingAvatar}
@@ -227,7 +229,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
               </DropdownMenu>
             )}
           </div>
-          {isAdmin && (
+          {isOwner && (
             <input
               ref={avatarFileInputRef}
               type="file"
@@ -261,14 +263,14 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
           ) : (
             <button
               type="button"
-              onClick={isAdmin ? startEditTitle : undefined}
+              onClick={isOwner ? startEditTitle : undefined}
               className={cn(
                 'flex items-center gap-1.5 text-title font-semibold',
-                isAdmin && 'transition-colors hover:text-primary'
+                isOwner && 'transition-colors hover:text-primary'
               )}
             >
               {conversation.title || 'Grupo'}
-              {isAdmin && <Pencil size={13} className="text-text-muted" />}
+              {isOwner && <Pencil size={13} className="text-text-muted" />}
             </button>
           )}
           <p className="text-caption text-text-muted">{members.length} membros</p>
@@ -277,7 +279,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <h3 className="text-label font-medium text-text-secondary">Membros</h3>
-            {isAdmin && (
+            {isOwner && (
               <Button type="button" variant="ghost" size="sm" onClick={() => setAddOpen((v) => !v)} className="gap-1.5 text-text-muted hover:text-text-primary">
                 <UserPlus size={14} />
                 Adicionar
@@ -346,7 +348,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
                       <span className="block truncate text-caption text-text-muted">@{member.username}</span>
                     </span>
                   </button>
-                  {isAdmin && !isMe && (
+                  {isOwner && !isMe && (
                     <Button
                       type="button"
                       variant="ghost"
@@ -370,7 +372,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
           <LogOut size={15} />
           Sair do grupo
         </Button>
-        {isAdmin && (
+        {isOwner && (
           <Button type="button" variant="ghost" onClick={() => setConfirmDelete(true)} className="justify-start gap-2 text-red-text hover:bg-red/10 hover:text-red-text">
             <Trash2 size={15} />
             Excluir grupo

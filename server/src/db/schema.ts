@@ -105,12 +105,14 @@ export const conversations = pgTable('conversations', {
   index('conversations_type_idx').on(t.type),
 ]);
 
-/** Membership for both DMs and groups. DMs always have two rows; groups have
- * the admin creator as `owner` and selected users as `member`. */
+/** Membership for both DMs and groups. DMs always have two rows, both
+ * `member` (a DM has no owner). Groups have the creator as `owner` and
+ * everyone else as `member` — `'admin'` was never actually assigned
+ * anywhere and has been dropped from the type. */
 export const conversationMembers = pgTable('conversation_members', {
   conversationId: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  role: varchar('role', { length: 16 }).notNull().default('member'), // 'owner' | 'admin' | 'member'
+  role: varchar('role', { length: 16 }).notNull().default('member'), // 'owner' | 'member'
   lastReadMessageId: integer('last_read_message_id'),
   // set when this member "closes" a direct conversation (Discord-style —
   // leaves their own history list without deleting anything). listForUser
@@ -126,6 +128,12 @@ export const conversationMembers = pgTable('conversation_members', {
   uniqueIndex('conversation_members_conversation_user_key').on(t.conversationId, t.userId),
   index('conversation_members_user_id_idx').on(t.userId),
   index('conversation_members_conversation_id_idx').on(t.conversationId),
+  // at most one owner per conversation — DMs never set role='owner' at all,
+  // so this only ever constrains groups. Application logic (conversations.ts)
+  // already only ever assigns exactly one owner at creation, but the real
+  // guarantee needs to live in the database, not just in code that could
+  // have a bug later.
+  uniqueIndex('conversation_members_one_owner_idx').on(t.conversationId).where(sql`${t.role} = 'owner'`),
 ]);
 
 /** Chat message, now persisted (used to live only in memory, lost on
