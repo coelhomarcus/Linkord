@@ -1,0 +1,25 @@
+# Local dev Postgres only — separate from docker-compose.yml (the
+# production app service, deployed via Dokploy against an external managed
+# Postgres) so running this never touches anything production sees. Run
+# with `docker compose -f docker-compose.dev.yml up -d`; the app itself
+# still runs via `npm run dev`, not through Docker.
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: linkord
+      POSTGRES_PASSWORD: linkord
+      POSTGRES_DB: linkord
+    ports:
+      - "5432:5432"
+    volumes:
+      - linkord_dev_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U linkord -d linkord"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  linkord_dev_pg_data:

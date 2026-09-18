@@ -35,7 +35,13 @@ Linkord é uma plataforma de comunicação em tempo real com chamadas de voz, v�
 
 ## Rodando localmente
 
-Requer Node.js 22+ e um Postgres acessível (`DATABASE_URL`).
+Requer Node.js 22+ e um Postgres acessível (`DATABASE_URL`). Pra um Postgres local via Docker, sem depender de nada externo:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d   # só o Postgres, isolado de produção
+```
+
+Isso sobe em `localhost:5432` com usuário/senha/banco `linkord`/`linkord`/`linkord` — bate com o `DATABASE_URL` de exemplo do `.env.example`.
 
 ```bash
 npm install
@@ -78,11 +84,11 @@ Veja [`.env.example`](.env.example) — cobre servidor, banco, contas/sessão, L
 
 A imagem é construída pelo [`Dockerfile`](Dockerfile) (multi-stage: builda o frontend, compila o backend TypeScript, e monta um runtime enxuto sem devDependencies nem código-fonte). Produção roda via [Dokploy](https://dokploy.com) a partir desse `Dockerfile` — sem proxy reverso nem systemd no repositório, o Dokploy já cuida de domínio, HTTPS e do proxy na frente.
 
-Pra rodar localmente com Docker:
+Pra rodar localmente com Docker (app + Postgres, tudo em container):
 
 ```bash
 cp .env.example .env
-docker compose up -d
+docker compose -f docker-compose.dev.yml -f docker-compose.yml up -d
 ```
 
 ## Nota sobre áudios
