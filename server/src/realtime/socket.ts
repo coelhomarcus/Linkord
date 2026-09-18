@@ -10,7 +10,9 @@ import * as reactions from '../modules/calls/reactions.js';
 import * as floodControl from './floodControl.js';
 import * as chat from '../modules/messages/messages.js';
 import * as conversations from '../modules/conversations/conversations.js';
-import { listForUser, getConversationForUser } from '../modules/conversations/conversationsRepository.js';
+import { listForUser, getConversationForUser, getDirectPeerId } from '../modules/conversations/conversationsRepository.js';
+import { canSendDirectMessage } from '../modules/friendships/friendshipsRepository.js';
+import { ERROR_CODES } from '../http/errors.js';
 import { getUsage } from '../modules/attachments/attachmentQuota.js';
 import * as discordWebhook from '../integrations/discord/discordWebhook.js';
 import * as moderation from '../modules/moderation/moderation.js';
@@ -111,6 +113,15 @@ async function handleCallJoin(socket: AppSocket, msg: { conversationId?: string 
   const conversation = await getConversationForUser(conversationId, p.userId);
   if (!conversation) {
     send(socket, { t: 'error', code: 'call-not-allowed', message: 'Você não tem acesso a essa conversa.' });
+    return;
+  }
+  // §4.3: "iniciar chamada privada" is explicitly in the restricted-contact
+  // list — a private call token is just another way to reach someone who
+  // isn't (or is no longer) a friend. No-ops for groups (getDirectPeerId
+  // returns null there).
+  const peerId = await getDirectPeerId(conversationId, p.userId);
+  if (peerId && !(await canSendDirectMessage(p.userId, peerId))) {
+    send(socket, { t: 'error', code: ERROR_CODES.relationshipRequired, message: 'Vocês precisam ser amigos pra iniciar essa chamada.' });
     return;
   }
   let livekitToken: string;

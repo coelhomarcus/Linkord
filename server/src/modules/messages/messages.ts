@@ -8,14 +8,32 @@ import {
   broadcastToConversationMembers,
   conversationDisplayName,
   conversationExistsForUser,
+  getDirectPeerId,
   touchConversation,
   recordConversationActivity,
 } from '../conversations/conversationsRepository.js';
+import { canSendDirectMessage } from '../friendships/friendshipsRepository.js';
 import { resolveDisplayName } from '../users/users.js';
 import * as attachments from '../attachments/attachments.js';
 import { deleteForMessage } from '../attachments/attachmentCleanup.js';
 import * as reactions from './reactions.js';
+import { ERROR_CODES } from '../../http/errors.js';
 import type { AppSocket, HandlerTable, Participant } from '../../types.js';
+
+// Etapa 6 (docs/plano-rede-social.md §4.3): "não enviar, reagir, anexar,
+// digitar" while contact is restricted (not friends, or blocked) — this is
+// the shared gate every one of those write paths calls. `getDirectPeerId`
+// returns null for a group conversation, so the check no-ops there on its
+// own; reading history (open/load-more/around/search) is NEVER gated —
+// only these write actions are.
+async function assertCanWriteToConversation(socket: AppSocket, conversationId: string, userId: string): Promise<boolean> {
+  const peerId = await getDirectPeerId(conversationId, userId);
+  if (peerId && !(await canSendDirectMessage(userId, peerId))) {
+    send(socket, { t: 'error', code: ERROR_CODES.relationshipRequired, message: 'Vocês precisam ser amigos pra conversar por aqui.' });
+    return false;
+  }
+  return true;
+}
 
 // Deleting a conversation CASCADEs here.
 //
@@ -363,6 +381,7 @@ async function handleChat(socket: AppSocket, msg: { conversationId?: string; tex
   const conversationId = conversationIdFrom(msg);
   const text = sanitizeChatText(msg.text);
   if (!conversationId || !text || !(await conversationExistsForUser(conversationId, p.userId))) return;
+  if (!(await assertCanWriteToConversation(socket, conversationId, p.userId))) return;
   const replyTo = await buildReplyRef(conversationId, msg.replyTo);
   const [row] = await db.insert(messages).values({
     conversationId, authorId: p.userId, text,
@@ -384,6 +403,10 @@ async function handleChatEdit(socket: AppSocket, msg: { msgId?: unknown; text?: 
   const [existing] = await db.select().from(messages).where(eq(messages.id, msgId)).limit(1);
   if (!existing || existing.authorId !== p.userId) return;
   if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return;
+  // §4.3: editing an old message while contact is restricted would be a
+  // backdoor around the send-gate above — closing that is the specific
+  // reason edit (not delete) is restricted here.
+  if (!(await assertCanWriteToConversation(socket, existing.conversationId, p.userId))) return;
   const [updated] = await db.update(messages).set({ text, editedAt: new Date() }).where(eq(messages.id, msgId)).returning();
   // without these, editing a caption on a message WITH an attachment or a
   // reaction made it disappear for everyone (the client replaces the whole
@@ -407,6 +430,7 @@ async function handleChatReact(socket: AppSocket, msg: { msgId?: unknown; emoji?
   const [existing] = await db.select({ conversationId: messages.conversationId }).from(messages).where(eq(messages.id, msgId)).limit(1);
   if (!existing) return;
   if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return;
+  if (!(await assertCanWriteToConversation(socket, existing.conversationId, p.userId))) return;
   const userIds = await reactions.toggle(msgId, p.userId, emoji);
   await broadcastToConversationMembers(existing.conversationId, {
     t: 'chat-reaction-updated',
@@ -454,6 +478,7 @@ async function handleTyping(socket: AppSocket, msg: { conversationId?: string; v
   if (!p || p.socket !== socket) return;
   const conversationId = conversationIdFrom(msg);
   if (!conversationId || !(await conversationExistsForUser(conversationId, p.userId))) return;
+  if (!(await assertCanWriteToConversation(socket, conversationId, p.userId))) return;
   await broadcastToConversationMembers(conversationId, {
     t: 'typing',
     conversationId,

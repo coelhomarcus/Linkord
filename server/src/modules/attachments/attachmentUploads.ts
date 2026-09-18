@@ -7,7 +7,8 @@ import { attachments as attachmentsTable, messages, type Attachment } from '../.
 import { sendJson, sendError, jsonBody } from '../../http/respond.js';
 import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
-import { broadcastToConversationMembers, conversationExistsForUser, touchConversation, recordConversationActivity } from '../conversations/conversationsRepository.js';
+import { broadcastToConversationMembers, conversationExistsForUser, getDirectPeerId, touchConversation, recordConversationActivity } from '../conversations/conversationsRepository.js';
+import { canSendDirectMessage } from '../friendships/friendshipsRepository.js';
 import { newId, filePathFor } from './attachmentStorage.js';
 import { generateThumbnail, THUMBNAIL_SOURCE_MIME_TYPES } from './attachmentThumbnails.js';
 import { getUsage, broadcastUsage } from './attachmentQuota.js';
@@ -34,6 +35,13 @@ export async function handleAttachmentInit(request: FastifyRequest, reply: Fasti
   const conversationId = String(body.conversationId || '');
   if (!conversationId || !(await conversationExistsForUser(conversationId, sess.userId))) {
     return sendError(reply, 404, 'conversation_not_found', 'Conversa não encontrada.');
+  }
+  // §4.3: "anexar" is on the restricted-contact list — same gate as
+  // messages.ts's chat/react/typing. No-ops for a group (getDirectPeerId
+  // returns null there).
+  const peerId = await getDirectPeerId(conversationId, sess.userId);
+  if (peerId && !(await canSendDirectMessage(sess.userId, peerId))) {
+    return sendError(reply, 403, 'relationship_required', 'Vocês precisam ser amigos pra enviar arquivos por aqui.');
   }
 
   const fileName = sanitizeFileName(body.fileName);

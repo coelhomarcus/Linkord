@@ -25,6 +25,12 @@ const MAX_ATTACHMENTS_PER_MESSAGE = 4;
 // to it (2nd-4th attachment) — without this, `targetMsgId` would let someone
 // inject media into an arbitrarily old message of theirs at any time.
 const ATTACH_TO_MESSAGE_WINDOW_MS = 5 * 60 * 1000;
+// after a friend request is declined/cancelled/removed, how long the SAME
+// requester has to wait before requesting that account again — an initial
+// guess (docs/plano-rede-social.md §10.2.8: "valores iniciais precisam de
+// teste"), not a validated product decision. Doesn't gate the other side
+// requesting back right away, only a repeat from whoever just got turned down.
+const FRIEND_REQUEST_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 // anchored to the repo root (not cwd) — inside Docker this is /app/uploads
 // (matches the external bind mount); in `npm run dev` it's <repo>/uploads.
@@ -109,6 +115,7 @@ export const config = {
   PORT, HOST_BIND, MAX_PARTICIPANTS, TRUST_PROXY, MAX_MSG_BYTES, RECONNECT_GRACE_MS,
   MAX_AVATAR_LEN, MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINKS, MAX_PROFILE_LINK_LEN,
   MAX_CHAT_LEN, CHAT_HISTORY_LIMIT, SEARCH_RESULT_LIMIT, MAX_SEARCH_QUERY_LEN, MAX_ATTACHMENTS_PER_MESSAGE, ATTACH_TO_MESSAGE_WINDOW_MS,
+  FRIEND_REQUEST_COOLDOWN_MS,
   UPLOAD_DIR, MAX_ATTACHMENT_BYTES, MAX_STORAGE_BYTES, MAX_AVATAR_BYTES,
   UPLOAD_CHUNK_BYTES, UPLOAD_SESSION_TTL_MS,
   DATABASE_URL, DATABASE_SSL, DATABASE_SSL_CA, MIGRATE_ON_BOOT,

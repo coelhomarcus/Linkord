@@ -155,6 +155,22 @@ export async function conversationExistsForUser(conversationId: string, userId: 
   return !!(await getConversationForUser(conversationId, userId));
 }
 
+/** The other member of a DIRECT conversation — null if `userId` isn't a
+ * member, or the conversation is a group (a group has no single "peer",
+ * and contact restrictions never apply to it — membership already governs
+ * that). Used by the direct-message write-path gates (canSendDirectMessage)
+ * in messages.ts/socket.ts/attachmentUploads.ts. */
+export async function getDirectPeerId(conversationId: string, userId: string): Promise<string | null> {
+  const conversation = await getConversationForUser(conversationId, userId);
+  if (!conversation || conversation.type !== 'direct') return null;
+  const [other] = await db
+    .select({ userId: conversationMembers.userId })
+    .from(conversationMembers)
+    .where(and(eq(conversationMembers.conversationId, conversationId), sql`${conversationMembers.userId} <> ${userId}`))
+    .limit(1);
+  return other?.userId ?? null;
+}
+
 export async function getMemberRole(conversationId: string, userId: string): Promise<ConversationRole | null> {
   const [row] = await db.select({ role: conversationMembers.role })
     .from(conversationMembers)
