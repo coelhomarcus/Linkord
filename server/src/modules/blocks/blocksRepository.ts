@@ -1,7 +1,9 @@
-import { and, eq, or, sql } from 'drizzle-orm';
+import { and, desc, eq, or, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { userBlocks, friendships } from '../../db/schema.js';
+import { userBlocks, friendships, users } from '../../db/schema.js';
 import { withUserPairLock } from '../users/userPairLock.js';
+import { toSocialUser, type SocialUser } from '../users/users.js';
+import { SOCIAL_PAGE_SIZE, decodeTimeCursor, encodeTimeCursor } from '../friendships/cursor.js';
 
 export async function isBlocked(blockerId: string, blockedId: string): Promise<boolean> {
   const [row] = await db.select({ blockerId: userBlocks.blockerId }).from(userBlocks)
@@ -39,6 +41,33 @@ export async function blockUser(blockerId: string, blockedId: string): Promise<v
         sql`${friendships.status} IN ('pending', 'accepted')`,
       ));
   });
+}
+
+export interface BlockEntry { user: SocialUser; at: string }
+
+/** Accounts THIS user blocked, newest first (keyset pagination — see
+ * friendships/cursor.ts). Only the blocker's own list: who blocked you is
+ * never exposed. */
+export async function listBlocks(blockerId: string, cursorRaw?: string): Promise<{ items: BlockEntry[]; nextCursor: string | null } | 'invalid_cursor'> {
+  const cursor = cursorRaw ? decodeTimeCursor(cursorRaw) : null;
+  if (cursorRaw && !cursor) return 'invalid_cursor';
+  const ts = sql<string>`to_char(${userBlocks.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+  const rows = await db
+    .select({ user: users, ts, id: userBlocks.blockedId })
+    .from(userBlocks)
+    .innerJoin(users, eq(users.id, userBlocks.blockedId))
+    .where(and(
+      eq(userBlocks.blockerId, blockerId),
+      cursor ? sql`(${userBlocks.createdAt}, ${userBlocks.blockedId}) < (${cursor.ts}::timestamptz, ${cursor.id})` : undefined,
+    ))
+    .orderBy(desc(userBlocks.createdAt), desc(userBlocks.blockedId))
+    .limit(SOCIAL_PAGE_SIZE + 1);
+  const page = rows.slice(0, SOCIAL_PAGE_SIZE);
+  const last = page[page.length - 1];
+  return {
+    items: page.map((r) => ({ user: toSocialUser(r.user), at: r.ts })),
+    nextCursor: rows.length > SOCIAL_PAGE_SIZE && last ? encodeTimeCursor(last.ts, last.id) : null,
+  };
 }
 
 /** Unblocking never restores the friendship, invitations, or calls on its

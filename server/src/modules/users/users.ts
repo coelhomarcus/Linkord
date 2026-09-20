@@ -43,6 +43,25 @@ export function privateUser(u: User): PrivateUser {
   return { ...publicUser(u), email: u.email };
 }
 
+/** The minimum needed to render a row in a friends/requests/blocks list —
+ * deliberately no banner/bio/links (docs/plano-rede-social.md §5.3: show a
+ * minimal result, never a full profile, to someone who isn't authorized to
+ * see one yet). */
+export interface SocialUser {
+  id: string;
+  username: string;
+  displayName: string;
+  avatar: string;
+  avatarColor: string;
+}
+
+export function toSocialUser(u: User): SocialUser {
+  return {
+    id: u.id, username: u.username, displayName: resolveDisplayName(u.displayName, u.username),
+    avatar: u.avatar, avatarColor: u.avatarColor,
+  };
+}
+
 export async function findByUsernameLower(username: string): Promise<User | null> {
   const lower = username.trim().toLowerCase();
   const [row] = await db.select().from(users).where(sql`lower(${users.username}) = ${lower}`).limit(1);

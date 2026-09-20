@@ -6,8 +6,12 @@ import { resolveSession } from '../auth/session.js';
 import * as floodControl from '../../realtime/floodControl.js';
 import {
   requestFriendship, acceptFriendRequest, declineFriendRequest, cancelFriendRequest, removeFriendship,
+  listFriends, listFriendRequests, countIncomingRequests, getRelationship,
   type FriendshipResult,
 } from './friendshipsRepository.js';
+import { normalizeSearchQuery } from './cursor.js';
+import { onSocialChange } from '../presence/knownPeers.js';
+import type { Friendship } from '../../db/schema.js';
 
 type Params = { userId: string };
 
@@ -43,6 +47,17 @@ function respond(reply: FastifyReply, result: FriendshipResult): void {
   }
 }
 
+const STATE_CHANGING = new Set<FriendshipResult['code']>(['created', 'accepted', 'declined', 'cancelled', 'removed']);
+
+/** Fire-and-forget on purpose: the mutation already committed, and
+ * onSocialChange never throws — the caller shouldn't wait on a push to other
+ * tabs/accounts to get its own HTTP answer. */
+function afterMutation(me: string, other: string, result: FriendshipResult): void {
+  if (STATE_CHANGING.has(result.code)) void onSocialChange(me, other);
+}
+
+const otherSideOf = (f: Friendship, me: string): string => (f.userLowId === me ? f.userHighId : f.userLowId);
+
 async function handleCreate(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const sess = await requireSession(request, reply);
   if (!sess) return;
@@ -52,34 +67,84 @@ async function handleCreate(request: FastifyRequest, reply: FastifyReply): Promi
   const body = jsonBody(request.body);
   const username = String(body.username || '').trim();
   if (!username) return sendError(reply, 400, 'invalid_username', 'Informe um nome de usuário.');
-  respond(reply, await requestFriendship(sess.userId, username));
+  const result = await requestFriendship(sess.userId, username);
+  respond(reply, result);
+  if (result.code === 'created') afterMutation(sess.userId, otherSideOf(result.friendship, sess.userId), result);
 }
 
 async function handleAccept(request: FastifyRequest<{ Params: Params }>, reply: FastifyReply): Promise<void> {
   const sess = await requireSession(request, reply);
   if (!sess) return;
-  respond(reply, await acceptFriendRequest(sess.userId, String(request.params.userId || '')));
+  const otherId = String(request.params.userId || '');
+  const result = await acceptFriendRequest(sess.userId, otherId);
+  respond(reply, result);
+  afterMutation(sess.userId, otherId, result);
 }
 
 async function handleDecline(request: FastifyRequest<{ Params: Params }>, reply: FastifyReply): Promise<void> {
   const sess = await requireSession(request, reply);
   if (!sess) return;
-  respond(reply, await declineFriendRequest(sess.userId, String(request.params.userId || '')));
+  const otherId = String(request.params.userId || '');
+  const result = await declineFriendRequest(sess.userId, otherId);
+  respond(reply, result);
+  afterMutation(sess.userId, otherId, result);
 }
 
 async function handleCancel(request: FastifyRequest<{ Params: Params }>, reply: FastifyReply): Promise<void> {
   const sess = await requireSession(request, reply);
   if (!sess) return;
-  respond(reply, await cancelFriendRequest(sess.userId, String(request.params.userId || '')));
+  const otherId = String(request.params.userId || '');
+  const result = await cancelFriendRequest(sess.userId, otherId);
+  respond(reply, result);
+  afterMutation(sess.userId, otherId, result);
 }
 
 async function handleRemove(request: FastifyRequest<{ Params: Params }>, reply: FastifyReply): Promise<void> {
   const sess = await requireSession(request, reply);
   if (!sess) return;
-  respond(reply, await removeFriendship(sess.userId, String(request.params.userId || '')));
+  const otherId = String(request.params.userId || '');
+  const result = await removeFriendship(sess.userId, otherId);
+  respond(reply, result);
+  afterMutation(sess.userId, otherId, result);
+}
+
+async function handleListFriends(request: FastifyRequest<{ Querystring: { cursor?: string; q?: string } }>, reply: FastifyReply): Promise<void> {
+  const sess = await requireSession(request, reply);
+  if (!sess) return;
+  const page = await listFriends(sess.userId, { cursor: request.query.cursor, q: normalizeSearchQuery(request.query.q) || undefined });
+  if (page === 'invalid_cursor') return sendError(reply, 400, 'invalid_cursor', 'Cursor inválido.');
+  sendJson(reply, 200, page);
+}
+
+async function handleListRequests(request: FastifyRequest<{ Querystring: { direction?: string; cursor?: string } }>, reply: FastifyReply): Promise<void> {
+  const sess = await requireSession(request, reply);
+  if (!sess) return;
+  const { direction, cursor } = request.query;
+  if (direction !== 'incoming' && direction !== 'outgoing') {
+    return sendError(reply, 400, 'invalid_direction', 'Direção inválida.');
+  }
+  const page = await listFriendRequests(sess.userId, direction, cursor);
+  if (page === 'invalid_cursor') return sendError(reply, 400, 'invalid_cursor', 'Cursor inválido.');
+  sendJson(reply, 200, page);
+}
+
+async function handleRequestSummary(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const sess = await requireSession(request, reply);
+  if (!sess) return;
+  sendJson(reply, 200, { incoming: await countIncomingRequests(sess.userId) });
+}
+
+async function handleRelationship(request: FastifyRequest<{ Params: Params }>, reply: FastifyReply): Promise<void> {
+  const sess = await requireSession(request, reply);
+  if (!sess) return;
+  sendJson(reply, 200, await getRelationship(sess.userId, String(request.params.userId || '')));
 }
 
 export function registerFriendshipRoutes(fastify: FastifyInstance): void {
+  fastify.get('/api/friends', handleListFriends);
+  fastify.get('/api/friend-requests', handleListRequests);
+  fastify.get('/api/friend-requests/summary', handleRequestSummary);
+  fastify.get('/api/relationships/:userId', handleRelationship);
   fastify.post('/api/friend-requests', handleCreate);
   fastify.post('/api/friend-requests/:userId/accept', handleAccept);
   fastify.post('/api/friend-requests/:userId/decline', handleDecline);

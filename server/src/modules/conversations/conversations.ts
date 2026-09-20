@@ -3,6 +3,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { conversationMembers, conversations, users } from '../../db/schema.js';
 import { participants, send } from '../presence/participants.js';
+import { refreshKnownPeers } from '../presence/knownPeers.js';
 import { sanitizeAvatar } from '../profile/sanitize.js';
 import { deleteAvatarFile, deleteForConversation } from '../attachments/attachmentCleanup.js';
 import { ERROR_CODES } from '../../http/errors.js';
@@ -82,6 +83,11 @@ async function handleDirectOpen(socket: AppSocket, msg: { userId?: string }): Pr
     conversationId: conversation.id,
     conversation: rowToSummary(conversation, [p.userId, otherUserId], null, 'member'),
   });
+  // a peer this connection has never had in its known set (a brand-new DM,
+  // or one that predates the connection) — without this the client gets a
+  // conversation with a member whose profile it was never sent. Conditioned
+  // on the set rather than on "was just created" so it also self-heals.
+  if (!p.knownPeerIds.has(otherUserId)) await refreshKnownPeers([p.userId, otherUserId]);
 }
 
 /** Discord-style "Close DM" — drops it from the caller's OWN sidebar
@@ -171,6 +177,7 @@ async function handleGroupCreate(socket: AppSocket, msg: { title?: string; membe
     if (userId === p.userId) continue;
     sendToUser(userId, { t: 'conversation-created', conversation: memberSummary });
   }
+  await refreshKnownPeers(memberIds);
 }
 
 async function handleGroupDelete(socket: AppSocket, msg: { conversationId?: string }): Promise<void> {
@@ -194,6 +201,7 @@ async function handleGroupDelete(socket: AppSocket, msg: { conversationId?: stri
       if (participant.userId === member.userId) send(participant.socket, { t: 'conversation-deleted', conversationId });
     }
   }
+  await refreshKnownPeers(memberRows.map((row) => row.userId));
 }
 
 /** Owner-only rename/re-avatar. `title` and `avatar` are each applied only
@@ -271,6 +279,7 @@ async function handleGroupMembersAdd(socket: AppSocket, msg: { conversationId?: 
       if (currentIds.has(participant.userId)) send(participant.socket, { t: 'conversation-member-added', conversationId, userId: newUserId });
     }
   }
+  await refreshKnownPeers(allMemberIds);
 }
 
 /** Owner-only. Hands the group to an existing member and demotes the
@@ -348,7 +357,9 @@ async function handleGroupMembersRemove(socket: AppSocket, msg: { conversationId
     send(participant.socket, { t: 'conversation-deleted', conversationId });
   }
 
+  const remainingIds = (await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId))).map((row) => row.userId);
   await reconcileGroupMembership(conversationId, targetUserId);
+  await refreshKnownPeers([targetUserId, ...remainingIds]);
 }
 
 export const handlers: HandlerTable = {

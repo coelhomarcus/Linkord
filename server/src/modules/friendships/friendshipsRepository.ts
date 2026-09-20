@@ -1,11 +1,12 @@
 import crypto from 'node:crypto';
-import { and, eq, or, sql } from 'drizzle-orm';
+import { and, desc, eq, or, sql } from 'drizzle-orm';
 import { config } from '../../config/env.js';
 import { db } from '../../db/client.js';
-import { friendships, notifications, outboxEvents, type Friendship } from '../../db/schema.js';
-import { findByUsernameLower } from '../users/users.js';
+import { friendships, notifications, outboxEvents, users, type Friendship } from '../../db/schema.js';
+import { findByUsernameLower, toSocialUser, type SocialUser } from '../users/users.js';
 import { canonicalUserPair, withUserPairLock, type Tx } from '../users/userPairLock.js';
-import { isBlockedEitherWay } from '../blocks/blocksRepository.js';
+import { isBlocked, isBlockedEitherWay } from '../blocks/blocksRepository.js';
+import { SOCIAL_PAGE_SIZE, decodeTimeCursor, decodeUsernameCursor, encodeTimeCursor, escapeLike } from './cursor.js';
 
 export type FriendshipResult =
   | { code: 'created'; friendship: Friendship }
@@ -45,6 +46,101 @@ export async function listFriendIds(userId: string): Promise<string[]> {
       or(eq(friendships.userLowId, userId), eq(friendships.userHighId, userId)),
     ));
   return rows.map((r) => (r.userLowId === userId ? r.userHighId : r.userLowId));
+}
+
+export interface SocialEntry { user: SocialUser; at: string }
+export interface SocialPage { items: SocialEntry[]; nextCursor: string | null }
+export type Relation = 'self' | 'none' | 'friends' | 'outgoing' | 'incoming' | 'blocked';
+
+// the "other side" of a friendship row, relative to `userId` — lets one
+// join hydrate the counterpart without a second query per row
+const otherSideOf = (userId: string) =>
+  sql`case when ${friendships.userLowId} = ${userId} then ${friendships.userHighId} else ${friendships.userLowId} end`;
+
+const microsecondIso = (col: typeof friendships.updatedAt) =>
+  sql<string>`to_char(${col} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+
+/** The caller's accepted friends, alphabetical by username (keyset
+ * pagination — see cursor.ts). `q` narrows to username/displayName matches
+ * within THIS user's friends only, never a global search. */
+export async function listFriends(userId: string, opts: { cursor?: string; q?: string }): Promise<SocialPage | 'invalid_cursor'> {
+  let after: string | null = null;
+  if (opts.cursor) {
+    after = decodeUsernameCursor(opts.cursor);
+    if (!after) return 'invalid_cursor';
+  }
+  const pattern = opts.q ? `%${escapeLike(opts.q)}%` : null;
+  const rows = await db
+    .select({ user: users, acceptedAt: friendships.acceptedAt, updatedAt: friendships.updatedAt })
+    .from(friendships)
+    .innerJoin(users, sql`${users.id} = ${otherSideOf(userId)}`)
+    .where(and(
+      eq(friendships.status, 'accepted'),
+      or(eq(friendships.userLowId, userId), eq(friendships.userHighId, userId)),
+      after ? sql`lower(${users.username}) > ${after}` : undefined,
+      pattern ? sql`(lower(${users.username}) like ${pattern} or lower(${users.displayName}) like ${pattern})` : undefined,
+    ))
+    .orderBy(sql`lower(${users.username})`)
+    .limit(SOCIAL_PAGE_SIZE + 1);
+  const page = rows.slice(0, SOCIAL_PAGE_SIZE);
+  return {
+    items: page.map((r) => ({ user: toSocialUser(r.user), at: (r.acceptedAt ?? r.updatedAt).toISOString() })),
+    nextCursor: rows.length > SOCIAL_PAGE_SIZE ? page[page.length - 1]!.user.username.toLowerCase() : null,
+  };
+}
+
+/** Pending requests, newest first. `incoming` = someone else asked the
+ * caller; `outgoing` = the caller asked someone else. */
+export async function listFriendRequests(userId: string, direction: 'incoming' | 'outgoing', cursorRaw?: string): Promise<SocialPage | 'invalid_cursor'> {
+  const cursor = cursorRaw ? decodeTimeCursor(cursorRaw) : null;
+  if (cursorRaw && !cursor) return 'invalid_cursor';
+  const ts = microsecondIso(friendships.updatedAt);
+  const rows = await db
+    .select({ user: users, ts, id: friendships.id })
+    .from(friendships)
+    .innerJoin(users, sql`${users.id} = ${otherSideOf(userId)}`)
+    .where(and(
+      eq(friendships.status, 'pending'),
+      or(eq(friendships.userLowId, userId), eq(friendships.userHighId, userId)),
+      direction === 'outgoing' ? eq(friendships.requestedBy, userId) : sql`${friendships.requestedBy} <> ${userId}`,
+      cursor ? sql`(${friendships.updatedAt}, ${friendships.id}) < (${cursor.ts}::timestamptz, ${cursor.id})` : undefined,
+    ))
+    .orderBy(desc(friendships.updatedAt), desc(friendships.id))
+    .limit(SOCIAL_PAGE_SIZE + 1);
+  const page = rows.slice(0, SOCIAL_PAGE_SIZE);
+  const last = page[page.length - 1];
+  return {
+    items: page.map((r) => ({ user: toSocialUser(r.user), at: r.ts })),
+    nextCursor: rows.length > SOCIAL_PAGE_SIZE && last ? encodeTimeCursor(last.ts, last.id) : null,
+  };
+}
+
+export async function countIncomingRequests(userId: string): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(friendships)
+    .where(and(
+      eq(friendships.status, 'pending'),
+      or(eq(friendships.userLowId, userId), eq(friendships.userHighId, userId)),
+      sql`${friendships.requestedBy} <> ${userId}`,
+    ));
+  return row?.n ?? 0;
+}
+
+/** The viewer's relation to `targetId`, as shown on a profile or a DM. A
+ * block by the TARGET is reported as plain `none` — never reveal a reverse
+ * block (docs/plano-rede-social.md §5.4). */
+export async function getRelationship(viewerId: string, targetId: string): Promise<{ relation: Relation; retryAfter: string | null }> {
+  if (viewerId === targetId) return { relation: 'self', retryAfter: null };
+  if (await isBlocked(viewerId, targetId)) return { relation: 'blocked', retryAfter: null };
+  if (await isBlocked(targetId, viewerId)) return { relation: 'none', retryAfter: null };
+  const row = await getFriendship(viewerId, targetId);
+  if (!row) return { relation: 'none', retryAfter: null };
+  if (row.status === 'accepted') return { relation: 'friends', retryAfter: null };
+  if (row.status === 'pending') {
+    return { relation: row.requestedBy === viewerId ? 'outgoing' : 'incoming', retryAfter: null };
+  }
+  return { relation: 'none', retryAfter: isWithinCooldown(row.retryAfter) ? row.retryAfter!.toISOString() : null };
 }
 
 /** The one policy op messages.ts/socket.ts/attachmentUploads.ts actually
