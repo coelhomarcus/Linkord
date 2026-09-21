@@ -76,5 +76,13 @@ A change that touches a real flow (upload, call, conversations, auth) deserves l
 No Portuguese comments in any source. Comments and identifiers in English; follow the existing language of surrounding prose.
 
 - Comments always explain the *why* (a non-obvious decision, an invariant, a workaround) — never the *what* (the code already says that). Prefer no comment at all when the name is already clear.
-- UI strings and commit messages are in Portuguese (the product itself is Portuguese-language). Code identifiers (variables, functions, types) and all comments are in English regardless.
-- Commits follow `type: description` (`refactor:`, `feat:`, `fix:`, `chore:`) in Portuguese, focused on the *why* of the change.
+- UI strings are in Portuguese (the product itself is Portuguese-language). Code identifiers (variables, functions, types), comments and commit messages are in English.
+
+## Commits
+
+Always in English, as short as possible, and always typed.
+
+- Format: `type: imperative summary` — lowercase, no trailing period, ideally under 60 characters. One line; add a body only when the *why* is not obvious from the subject, and keep it to a sentence or two.
+- Types: `feat` (new behavior), `fix` (bug), `refactor` (no behavior change), `perf`, `test`, `docs`, `chore` (tooling, deps, cleanup), `build`, `ci`. Optional scope when it helps: `feat(settings): use the full page width`.
+- Describe the change, not the process: `fix: revoke pending invite when its card is deleted`, not `fix: some changes to invitations`. No stage or ticket numbers, no filler ("update", "improve stuff").
+- One logical change per commit; don't mix a feature with an unrelated fix.
