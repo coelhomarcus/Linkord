@@ -25,6 +25,9 @@ import { useProfileUpdate } from '@/features/profile/useProfileUpdate';
 import { preloadSounds } from '@/shared/sounds';
 import { setNotificationClickHandler } from '@/shared/notifications';
 import type { ClientMessage, ServerMessage } from '@/shared/types/protocol';
+import { logger } from '@/shared/lib/logger';
+
+const log = logger.child({ component: 'room' });
 
 export { PartialAttachmentError } from '@/features/chat/useAttachmentsUpload';
 
@@ -59,7 +62,17 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const registerRequestChatView = useCallback((fn: () => void) => { requestChatViewRef.current = fn; }, []);
   const requestChatView = useCallback(() => { requestChatViewRef.current?.(); }, []);
 
-  const [moderationError, setModerationError] = useState<string | null>(null);
+  // 'forbidden'/'conflict'/'not_found' over the socket are, today, only
+  // ever group-action denials (conversations.ts) — rename/delete/members/
+  // transfer/leave. If another domain starts using these same codes over
+  // the socket later, this needs to get more specific (e.g. carry which
+  // action it was about) instead of assuming "group action" like it does now.
+  const [groupActionError, setGroupActionError] = useState<string | null>(null);
+  const [accessNotice, setAccessNotice] = useState<string | null>(null);
+  // bumped whenever the server says friends/requests/blocks changed — the
+  // friends feature refetches its own lists off this, so social state never
+  // has to live inside the room reducer
+  const [socialRevision, setSocialRevision] = useState(0);
 
   // Domain hooks — each owns one slice of what used to all live directly in
   // this component (see the module comment in each hooks/use*.ts file for
@@ -125,7 +138,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     sendWs({ t: 'conversation-close', conversationId });
   }, [conversationsList.removeConversation, chatMessages.clearUnread, sendWs]);
 
-  const deleteUserAccount = useCallback((userId: string) => sendWs({ t: 'user-delete', userId }), [sendWs]);
 
   const disconnectIntentionally = useCallback(() => {
     intentionalCloseRef.current = true;
@@ -157,7 +169,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           participants: m.participants,
         });
         conversationsList.setInitial(m.conversations ?? []);
-        presence.setInitial(m.users, m.onlineUserIds);
+        presence.setInitial(m.knownUsers, m.onlineUserIds);
         attachmentsUpload.setStorageUsage(m.storageUsage);
         {
           const firstConversation = (m.conversations ?? [])[0];
@@ -227,25 +239,43 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'chat-edited':
         chatMessages.onChatEdited(m);
         break;
+      case 'role-updated':
+        // an administrator granted or removed this account's admin role while it is connected
+        dispatch({ type: 'SET_ROLE', role: m.role });
+        break;
+      case 'invitation-updated':
+        chatMessages.onInvitationUpdated(m);
+        break;
       case 'chat-attachment-added':
         chatMessages.onChatAttachmentAdded(m);
         break;
       case 'chat-reaction-updated':
         chatMessages.onChatReactionUpdated(m);
         break;
-      case 'conversation-deleted':
+      case 'conversation-deleted': {
+        // read the title BEFORE the list drops it; a voluntary leave carries no reason
+        const gone = conversationsList.conversationsRef.current.find((c) => c.id === m.conversationId);
+        if (gone?.type === 'group' && m.reason) {
+          const name = gone.title || 'grupo';
+          setAccessNotice(m.reason === 'removed' ? `Você foi removido do grupo "${name}".` : `O grupo "${name}" foi excluído.`);
+        }
         conversationsList.onConversationDeleted(m);
         chatMessages.onConversationDeleted(m);
         callLifecycle.onConversationDeleted(m.conversationId);
+        break;
+      }
+      case 'social-changed':
+        setSocialRevision((n) => n + 1);
+        break;
+      case 'presence-sync':
+        dispatch({ type: 'PARTICIPANTS_SYNC', participants: m.participants });
+        presence.setInitial(m.knownUsers, m.onlineUserIds);
         break;
       case 'user-online':
         presence.onUserOnline(m);
         break;
       case 'user-offline':
         presence.onUserOffline(m);
-        break;
-      case 'user-registered':
-        presence.onUserRegistered(m);
         break;
       case 'user-deleted':
         presence.onUserDeleted(m);
@@ -257,8 +287,18 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         if (m.code === 'full') {
           disconnectIntentionally();
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Sala cheia, tente mais tarde.' });
-        } else if (m.code === 'cannot-delete-self') {
-          setModerationError(m.message);
+        } else if (m.code === 'client_outdated') {
+          log.warn('server refused this build (client_outdated)');
+          // stop retrying: every reconnect would get the same answer
+          disconnectIntentionally();
+          dispatch({ type: 'SET_CLIENT_OUTDATED' });
+        } else if (m.code === 'too_many_connections') {
+          disconnectIntentionally();
+          dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Você já tem conexões demais abertas. Feche alguma aba.' });
+        } else if (m.code === 'quota_exceeded') {
+          setGroupActionError(m.message);
+        } else if (m.code === 'forbidden' || m.code === 'conflict' || m.code === 'not_found') {
+          setGroupActionError(m.message);
         } else if (m.code === 'livekit-unavailable') {
           callLifecycle.onLivekitUnavailable();
           dispatch({ type: 'SET_SHARE_ERROR', message: m.message });
@@ -266,7 +306,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           chatMessages.cancelPendingJump();
           messageSearch.setSearchErrorMessage(m.message);
         } else {
-          console.warn('[ws] unhandled server error:', m.code, m.message);
+          log.warn('unhandled server error', { code: m.code, message: m.message, report: true });
         }
         break;
     }
@@ -315,15 +355,19 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         noiseSuppressionEnabled: roomSettings.noiseSuppressionEnabled, setNoiseSuppressionEnabled: roomSettings.setNoiseSuppressionEnabled,
         conversations: conversationsList.conversations, activeConversationId: conversationsList.activeConversationId,
         openConversation, openDirect: conversationsList.openDirect, closeConversation, pinConversation: conversationsList.pinConversation,
-        createGroup: conversationsList.createGroup, deleteGroup: conversationsList.deleteGroup,
+        deleteGroup: conversationsList.deleteGroup,
         updateGroupTitle: conversationsList.updateGroupTitle, updateGroupAvatar: conversationsList.updateGroupAvatar,
-        addGroupMembers: conversationsList.addGroupMembers, removeGroupMember: conversationsList.removeGroupMember,
+        removeGroupMember: conversationsList.removeGroupMember,
+        transferGroupOwnership: conversationsList.transferGroupOwnership,
         messagesByConversation: chatMessages.messagesByConversation, hasMoreByConversation: chatMessages.hasMoreByConversation,
         loadingOlderByConversation: chatMessages.loadingOlderByConversation, loadOlderMessages: chatMessages.loadOlderMessages,
         unreadByConversation: chatMessages.unreadByConversation,
         typingByConversation: typingIndicator.typingByConversation, sendTyping: typingIndicator.sendTyping,
         allUsers: presence.allUsers, onlineUserIds: presence.onlineUserIds,
-        deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null), kickFromCall: callLifecycle.kickFromCall,
+        kickFromCall: callLifecycle.kickFromCall,
+        groupActionError, clearGroupActionError: () => setGroupActionError(null),
+        accessNotice, clearAccessNotice: () => setAccessNotice(null),
+        socialRevision,
         sendChatMessage: chatMessages.sendChatMessage, deleteChatMessage: chatMessages.deleteChatMessage,
         editChatMessage: chatMessages.editChatMessage, reactToChatMessage: chatMessages.reactToChatMessage,
         replyingTo: chatMessages.replyingTo, setReplyingTo: chatMessages.setReplyingTo,

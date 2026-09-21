@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "conversation_members_one_owner_idx" ON "conversation_members" USING btree ("conversation_id") WHERE "conversation_members"."role" = 'owner';

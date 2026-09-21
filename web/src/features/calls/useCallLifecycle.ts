@@ -7,6 +7,9 @@ import { playSound } from '@/shared/sounds';
 import { useTrackSpeaking } from '@/features/calls/useLiveKitTrack';
 import type { RoomAction } from '@/state/roomReducer';
 import type { ClientMessage } from '@/shared/types/protocol';
+import { logger } from '@/shared/lib/logger';
+
+const log = logger.child({ component: 'call' });
 
 interface CallLifecycleDeps {
   livekitRoom: Room;
@@ -105,7 +108,7 @@ export function useCallLifecycle(deps: CallLifecycleDeps) {
     if (m.conversationId !== pendingCallConversationIdRef.current) return;
     livekitRoom.connect(m.livekitUrl, m.livekitToken)
       .then(() => activateMic())
-      .catch((err) => console.warn('LiveKit connect failed', err));
+      .catch((err) => log.error('LiveKit connect failed', err, { conversationId: m.conversationId }));
     setActiveCallConversationId(m.conversationId);
   }, [livekitRoom, activateMic, setActiveCallConversationId]);
 
@@ -148,22 +151,17 @@ export function useCallLifecycle(deps: CallLifecycleDeps) {
       if (pub.source === Track.Source.ScreenShare) playSound('screenshare');
       if (pub.source === Track.Source.Camera) playSound('camera');
     };
-    const onLocalPublished = (pub: { source: Track.Source }) => {
-      onPublished(pub);
-      if (pub.source === Track.Source.Microphone) sendWs({ t: 'call-event', kind: 'joined' });
-      if (pub.source === Track.Source.ScreenShare) sendWs({ t: 'call-event', kind: 'screenshare' });
-    };
     const onMicUnpublished = (pub: { source: Track.Source }) => {
       if (pub.source === Track.Source.Microphone) playSound('userLeave');
     };
     livekitRoom.on(RoomEvent.TrackPublished, onPublished);
     livekitRoom.on(RoomEvent.TrackUnpublished, onMicUnpublished);
-    livekitRoom.on(RoomEvent.LocalTrackPublished, onLocalPublished);
+    livekitRoom.on(RoomEvent.LocalTrackPublished, onPublished);
     livekitRoom.on(RoomEvent.LocalTrackUnpublished, onMicUnpublished);
     return () => {
       livekitRoom.off(RoomEvent.TrackPublished, onPublished);
       livekitRoom.off(RoomEvent.TrackUnpublished, onMicUnpublished);
-      livekitRoom.off(RoomEvent.LocalTrackPublished, onLocalPublished);
+      livekitRoom.off(RoomEvent.LocalTrackPublished, onPublished);
       livekitRoom.off(RoomEvent.LocalTrackUnpublished, onMicUnpublished);
     };
   }, [livekitRoom, sendWs]);

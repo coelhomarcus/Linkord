@@ -23,11 +23,31 @@ export interface Participant {
 
 export type ReactionEmoji = string;
 
+/** Wire protocol version this build speaks; the server refuses older ones (client_outdated). */
+export const PROTOCOL_VERSION = 2;
+
 export interface ChatReplyRef {
   msgId: number;
   authorId: string | null;
   text: string;
   attachmentCount?: number;
+}
+
+export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'revoked' | 'expired';
+
+/** The live state of a group invitation, as embedded in a `group_invite`
+ * message. `expired` only appears on invitations that lapsed before they
+ * stopped expiring. */
+export interface InvitationCard {
+  id: string;
+  status: InvitationStatus;
+  groupId: string;
+  groupTitle: string;
+  groupAvatar: string;
+  memberCount: number;
+  inviterId: string;
+  inviteeId: string;
+  version: number;
 }
 
 export interface ChatMessage {
@@ -42,6 +62,9 @@ export interface ChatMessage {
   editedAt?: number;
   reactions?: Partial<Record<ReactionEmoji, string[]>>;
   attachments?: ChatAttachment[];
+  kind?: 'text' | 'group_invite';
+  // `null` on a group_invite message = the group is gone (tombstone)
+  invitation?: InvitationCard | null;
 }
 
 export interface ChatAttachment {
@@ -91,6 +114,14 @@ export interface Conversation {
   createdAt: number;
   updatedAt: number;
   pinnedAt: number | null;
+  // the viewer's own role in this conversation — 'member' for every DM (DMs
+  // have no owner). Real per-group authority, not the account's global role.
+  myRole: 'owner' | 'member';
+  // derived on the server from the owner's membership row; null for a DM
+  ownerId: string | null;
+  memberCount: number;
+  // 'suspended' = moderated away by an administrator: still listed, but no access
+  status?: 'active' | 'suspended';
 }
 
 export interface PublicUser {
@@ -106,7 +137,7 @@ export interface PublicUser {
 }
 
 export type ClientMessage =
-  | { t: 'join'; id?: string; token?: string }
+  | { t: 'join'; id?: string; token?: string; v: number }
   | { t: 'profile'; avatar: string; avatarPoster: string; avatarColor: string; displayName: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[] }
   | { t: 'reaction'; emoji: ReactionEmoji }
   | { t: 'deafened'; value: boolean }
@@ -118,11 +149,10 @@ export type ClientMessage =
   | { t: 'direct-open'; userId: string }
   | { t: 'conversation-close'; conversationId: string }
   | { t: 'conversation-pin'; conversationId: string; pinned: boolean }
-  | { t: 'group-create'; title: string; memberIds: string[] }
   | { t: 'group-delete'; conversationId: string }
   | { t: 'group-update'; conversationId: string; title?: string; avatar?: string }
-  | { t: 'group-members-add'; conversationId: string; memberIds: string[] }
   | { t: 'group-members-remove'; conversationId: string; userId: string }
+  | { t: 'group-transfer-owner'; conversationId: string; userId: string }
   | { t: 'load-more-messages'; conversationId: string; beforeMsgId: number }
   | { t: 'load-messages-around'; conversationId: string; msgId: number }
   | { t: 'message-search'; query: string; conversationId?: string }
@@ -131,8 +161,6 @@ export type ClientMessage =
   | { t: 'chat-edit'; msgId: number; text: string }
   | { t: 'chat-react'; msgId: number; emoji: ReactionEmoji }
   | { t: 'typing'; conversationId: string; value: boolean }
-  | { t: 'user-delete'; userId: string }
-  | { t: 'call-event'; kind: 'joined' | 'screenshare' }
   | { t: 'call-join'; conversationId: string }
   | { t: 'call-leave' }
   | { t: 'call-kick'; participantId: string }
@@ -145,7 +173,7 @@ export type ServerMessage =
       userId: string; name: string; displayName: string; avatar: string; avatarPoster: string; avatarColor: string;
       banner: string; bannerPoster: string; bio: string; profileLinks: string[]; role: 'user' | 'admin';
       maxParticipants: number; participants: Participant[];
-      conversations: Conversation[]; users: PublicUser[]; onlineUserIds: string[];
+      conversations: Conversation[]; knownUsers: PublicUser[]; onlineUserIds: string[];
       storageUsage: StorageUsage;
       livekitUrl: string;
     }
@@ -160,7 +188,7 @@ export type ServerMessage =
   | { t: 'conversation-history'; conversationId: string; messages: ChatMessage[]; hasMore: boolean }
   | { t: 'conversation-history-more'; conversationId: string; messages: ChatMessage[]; hasMore: boolean }
   | { t: 'conversation-history-around'; conversationId: string; msgId: number; messages: ChatMessage[]; hasMoreBefore: boolean; hasMoreAfter: boolean }
-  | { t: 'conversation-deleted'; conversationId: string }
+  | { t: 'conversation-deleted'; conversationId: string; reason?: 'removed' | 'deleted' }
   | { t: 'participant-joined'; participant: Participant }
   | { t: 'participant-updated'; participant: Participant }
   | { t: 'participant-left'; id: string }
@@ -169,12 +197,19 @@ export type ServerMessage =
   | { t: 'chat'; message: ChatMessage }
   | { t: 'chat-deleted'; conversationId: string; msgId: number }
   | { t: 'chat-edited'; message: ChatMessage }
+  | { t: 'invitation-updated'; invitation: InvitationCard }
+  | { t: 'role-updated'; role: 'user' | 'admin' }
   | { t: 'chat-reaction-updated'; conversationId: string; msgId: number; emoji: ReactionEmoji; userIds: string[] }
   | { t: 'typing'; conversationId: string; userId: string; value: boolean }
   | { t: 'chat-attachment-added'; conversationId: string; msgId: number; attachment: ChatAttachment }
+  // payload-free: "your friends/requests/blocks changed, refetch" — the data
+  // itself only ever travels over the authorized HTTP endpoints
+  | { t: 'social-changed' }
+  // the scoped snapshot re-sent when this connection's known peers change
+  // (same shape the welcome carries)
+  | { t: 'presence-sync'; knownUsers: PublicUser[]; participants: Participant[]; onlineUserIds: string[] }
   | { t: 'user-online'; userId: string }
   | { t: 'user-offline'; userId: string }
-  | { t: 'user-registered'; user: PublicUser }
   | { t: 'user-deleted'; userId: string }
   | ({ t: 'storage-usage' } & StorageUsage)
   | { t: 'error'; code: string; message: string }

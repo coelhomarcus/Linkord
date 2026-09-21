@@ -21,11 +21,14 @@ function mergeUserFromParticipant(prev: Map<string, PublicUser>, participant: Pa
   return next;
 }
 
-/** The room's account directory (`allUsers`, keyed by userId — distinct
- * from the reducer's own `participants` map, which is only who's actually
- * connected right now) plus who's online. `setAllUsers` is returned raw (not
- * just wrapped actions) because `useProfileUpdate` still needs to patch the
- * local user's entry directly when a profile edit is applied optimistically. */
+/** The "known users" cache (`allUsers`, keyed by userId — distinct from the
+ * reducer's own `participants` map, which is only who's actually connected
+ * right now) plus who's online. Etapa 7: this is no longer every account on
+ * the instance — `welcome.knownUsers` only seeds friends and conversation
+ * members, so a profile not already in here needs an on-demand fetch (see
+ * ProfileModal.tsx). `setAllUsers` is returned raw (not just wrapped
+ * actions) because `useProfileUpdate` still needs to patch the local
+ * user's entry directly when a profile edit is applied optimistically. */
 export function usePresence() {
   const [allUsers, setAllUsers] = useState<Map<string, PublicUser>>(new Map());
   const allUsersRef = useRef<Map<string, PublicUser>>(new Map());
@@ -54,9 +57,6 @@ export function usePresence() {
       return next;
     });
   }, []);
-  const onUserRegistered = useCallback((m: Extract<ServerMessage, { t: 'user-registered' }>) => {
-    setAllUsers((prev) => new Map(prev).set(m.user.id, m.user));
-  }, []);
   const onUserDeleted = useCallback((m: Extract<ServerMessage, { t: 'user-deleted' }>) => {
     setAllUsers((prev) => {
       if (!prev.has(m.userId)) return prev;
@@ -74,6 +74,6 @@ export function usePresence() {
 
   return {
     allUsers, allUsersRef, setAllUsers, onlineUserIds, setInitial,
-    onParticipantJoined, onParticipantUpdated, onUserOnline, onUserOffline, onUserRegistered, onUserDeleted,
+    onParticipantJoined, onParticipantUpdated, onUserOnline, onUserOffline, onUserDeleted,
   };
 }

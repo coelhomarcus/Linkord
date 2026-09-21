@@ -6,6 +6,10 @@ import { createFakeRoomContextValue, renderWithRoom } from '@tests/fixtures/room
 import type { ChatMessage } from '@/shared/types/protocol';
 import { MessageList, MessageListBridge } from '@/features/conversations/ConversationPanel';
 
+// the direct-conversation gate needs the friends provider — covered by its
+// own tests (tests/features/friends/DirectComposerGate.test.tsx)
+vi.mock('@/features/friends/DirectComposerGate', () => ({ DirectComposerGate: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
+
 const joinedState = { ...initialRoomState, joined: true };
 
 function fakeFile(name: string, type: string): File {

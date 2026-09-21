@@ -17,7 +17,7 @@ function fakeParticipant(overrides: Partial<Participant> = {}): Participant {
 function fakeConversation(overrides: Partial<Conversation> = {}): Conversation {
   return {
     id: 'conv-1', type: 'group', title: 'Grupo', avatar: '', createdBy: 'u-1', memberIds: ['u-1', 'u-2'],
-    lastMessageAt: null, createdAt: Date.now(), updatedAt: Date.now(), pinnedAt: null,
+    lastMessageAt: null, createdAt: Date.now(), updatedAt: Date.now(), pinnedAt: null, myRole: 'member', ownerId: null, memberCount: 0,
     ...overrides,
   };
 }
@@ -37,6 +37,28 @@ describe('TileMenu — remover da chamada', () => {
       ...groupCallContext,
     });
     expect(screen.getByText('Remover da chamada')).toBeInTheDocument();
+  });
+
+  it('aparece para o DONO do grupo (nao admin) olhando um membro daquele grupo', () => {
+    const participants = new Map([['p-2', fakeParticipant()]]);
+    renderWithRoom(<TileMenu />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', role: 'user' }, participants },
+      menuTarget,
+      activeCallConversationId: 'conv-1',
+      conversations: [fakeConversation({ myRole: 'owner', ownerId: 'u-1' })],
+    });
+    expect(screen.getByText('Remover da chamada')).toBeInTheDocument();
+  });
+
+  it('dono nao remove quem nao e membro do grupo', () => {
+    const participants = new Map([['p-2', fakeParticipant({ userId: 'u-9' })]]);
+    renderWithRoom(<TileMenu />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', role: 'user' }, participants },
+      menuTarget,
+      activeCallConversationId: 'conv-1',
+      conversations: [fakeConversation({ myRole: 'owner', ownerId: 'u-1' })],
+    });
+    expect(screen.queryByText('Remover da chamada')).not.toBeInTheDocument();
   });
 
   it('nao aparece para quem nao e admin', () => {

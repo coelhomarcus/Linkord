@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Room } from 'livekit-client';
 import type { Room as LKRoom } from 'livekit-client';
 import { loadDevicePreference, saveDevicePreference } from './useDevicePreference';
+import { logger } from '@/shared/lib/logger';
+
+const log = logger.child({ component: 'devices' });
 
 export interface DeviceOption {
   deviceId: string;
@@ -34,7 +37,7 @@ export function useMediaDevices(room: LKRoom, kind: MediaDeviceKind): MediaDevic
         try {
           await room.switchActiveDevice(kind, saved);
         } catch (err) {
-          console.warn(`Failed to apply saved ${kind}`, err);
+          log.warn('Failed to apply the saved media device', { kind, err: String(err) });
         }
       }
     }

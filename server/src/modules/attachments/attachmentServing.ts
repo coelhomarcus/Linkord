@@ -11,6 +11,9 @@ import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
 import { conversationExistsForUser } from '../conversations/conversationsRepository.js';
 import { filePathFor } from './attachmentStorage.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'attachments' });
 
 // Chat attachments are served (and previewed) from disk keyed by a uuid (no
 // extension — real mime type lives in the mime_type column, never trust the
@@ -71,6 +74,21 @@ async function canViewAttachment(row: Attachment, userId: string): Promise<boole
   return conversationExistsForUser(msg.conversationId, userId);
 }
 
+/** Avatars/banners are public by design and safe to cache for good. A chat
+ * attachment is only readable by current members, so the browser must
+ * revalidate on every use: the ETag is the (immutable) file id, and the 304
+ * is only ever answered AFTER the membership check — a removed member's
+ * cached copy of the URL stops resolving instead of replaying for a year. A
+ * copy already downloaded can't be recalled (docs/plano-rede-social.md §11). */
+export function cachePolicyFor(row: Pick<Attachment, 'id' | 'messageId'>, ifNoneMatch: string | undefined): {
+  cacheControl: string; etag: string | null; notModified: boolean;
+} {
+  if (row.messageId === null) return { cacheControl: 'private, max-age=31536000, immutable', etag: null, notModified: false };
+  const etag = `"${row.id}"`;
+  const matches = (ifNoneMatch ?? '').split(',').map((v) => v.trim().replace(/^W\//, '')).includes(etag);
+  return { cacheControl: 'private, no-cache', etag, notModified: matches };
+}
+
 /** Dev convenience only (see config.UPLOADS_REMOTE_URL) — pulls a file this
  * instance doesn't have on disk from the instance that does, and caches it
  * locally so it's a plain local read next time. Forwards the caller's own
@@ -91,7 +109,7 @@ async function tryCacheFromRemote(id: string, cookieHeader: string): Promise<boo
     await fs.rename(tmpPath, filePathFor(id));
     return true;
   } catch (err) {
-    console.warn(`[attachments] failed to fetch ${id} from UPLOADS_REMOTE_URL: ${err instanceof Error ? err.message : err}`);
+    log.warn('failed to fetch a file from UPLOADS_REMOTE_URL', { fileId: id, err: err instanceof Error ? err.message : String(err) });
     await fs.unlink(tmpPath).catch(() => {});
     return false;
   }
@@ -111,6 +129,10 @@ export async function serveUpload(request: FastifyRequest<{ Params: { id: string
   // indistinguishable from a wrong one, or the response itself becomes an
   // oracle for probing which UUIDs are real.
   if (!(await canViewAttachment(row, sess.userId))) return reply.code(404).send('não encontrado');
+  const policy = cachePolicyFor(row, request.headers['if-none-match']);
+  if (policy.notModified) {
+    return reply.code(304).header('ETag', policy.etag!).header('Cache-Control', policy.cacheControl).send();
+  }
 
   const path = filePathFor(id);
   let size: number;
@@ -128,9 +150,8 @@ export async function serveUpload(request: FastifyRequest<{ Params: { id: string
   const inline = INLINE_MIME_TYPES.has(row.mimeType);
   const contentType = inline ? row.mimeType : 'application/octet-stream';
   const disposition = contentDispositionFor(inline ? 'inline' : 'attachment', row.fileName);
-  // private, not public: gated by session — a shared cache shouldn't serve
-  // this to someone else without re-checking.
-  const cacheControl = 'private, max-age=31536000, immutable';
+  const { cacheControl, etag } = cachePolicyFor(row, request.headers['if-none-match']);
+  if (etag) reply.header('ETag', etag);
 
   // Range requests are what let <video>/<audio> seek at all — without
   // Accept-Ranges + 206 responses, the browser can't jump to an arbitrary

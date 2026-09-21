@@ -94,12 +94,11 @@ export interface RoomContextValue {
   openDirect: (userId: string) => void;
   closeConversation: (conversationId: string) => void;
   pinConversation: (conversationId: string, pinned: boolean) => void;
-  createGroup: (title: string, memberIds: string[]) => void;
   deleteGroup: (conversationId: string) => void;
   updateGroupTitle: (conversationId: string, title: string) => void;
   updateGroupAvatar: (conversationId: string, avatar: string) => void;
-  addGroupMembers: (conversationId: string, memberIds: string[]) => void;
   removeGroupMember: (conversationId: string, userId: string) => void;
+  transferGroupOwnership: (conversationId: string, userId: string) => void;
   messagesByConversation: Map<string, ChatMessage[]>;
   hasMoreByConversation: Map<string, boolean>;
   loadingOlderByConversation: Set<string>;
@@ -109,10 +108,14 @@ export interface RoomContextValue {
   loadOlderMessages: (conversationId: string) => void;
   allUsers: Map<string, PublicUser>;
   onlineUserIds: Set<string>;
-  deleteUserAccount: (userId: string) => void;
   kickFromCall: (participantId: string) => void;
-  moderationError: string | null;
-  clearModerationError: () => void;
+  groupActionError: string | null;
+  socialRevision: number;
+  clearGroupActionError: () => void;
+  // "you were removed from / the group was deleted" — shown app-wide, since
+  // the conversation (and any panel about it) is already gone by then
+  accessNotice: string | null;
+  clearAccessNotice: () => void;
   sendChatMessage: (conversationId: string, text: string, replyTo?: number) => void;
   deleteChatMessage: (msgId: number) => void;
   editChatMessage: (msgId: number, text: string) => void;

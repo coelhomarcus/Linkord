@@ -2,19 +2,25 @@ import { config } from '../config/env.js';
 import { participants as participantsMap, broadcast } from '../modules/presence/participants.js';
 import { createApp } from '../http/app.js';
 import { createWsServer } from '../realtime/socket.js';
-import { runMigrations } from '../db/migrate.js';
+import { describeBlockedMigration, runMigrations } from '../db/migrate.js';
 import { sweepExpiredSessions } from '../modules/auth/session.js';
 import { ensureUploadDir, sweepStaleUploads } from '../modules/attachments/uploadSession.js';
+import { sweepOrphans } from '../modules/attachments/orphanSweeper.js';
+import { drainOutbox, pruneNotifications } from '../modules/notifications/outboxWorker.js';
+import { OUTBOX_POLL_MS } from '../modules/notifications/notificationsPolicy.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child({ component: 'process' });
 
 // backstop behind the try/catch in each handler in realtime/socket.ts —
 // covers any async error escaping the normal message cycle (a timer, a
 // stray promise) that would otherwise kill the process (Node exits on
 // unhandledRejection/uncaughtException by default), disconnecting the room.
 process.on('unhandledRejection', (err) => {
-  console.error('[process] unhandledRejection:', err instanceof Error ? err.stack : err);
+  log.error('unhandledRejection', err);
 });
 process.on('uncaughtException', (err) => {
-  console.error('[process] uncaughtException:', err instanceof Error ? err.stack : err);
+  log.error('uncaughtException', err);
 });
 
 export async function bootstrap(): Promise<void> {
@@ -25,9 +31,9 @@ export async function bootstrap(): Promise<void> {
   if (config.MIGRATE_ON_BOOT) {
     try {
       await runMigrations();
-      console.log('[db] migrations up to date.');
+      log.info('migrations up to date');
     } catch (err) {
-      console.error('[db] failed to apply migrations:', err instanceof Error ? err.stack : err);
+      log.error(describeBlockedMigration(err) ?? 'failed to apply migrations', describeBlockedMigration(err) ? undefined : err);
       process.exit(1);
     }
   }
@@ -40,7 +46,7 @@ export async function bootstrap(): Promise<void> {
     await ensureUploadDir();
     await sweepStaleUploads();
   } catch (err) {
-    console.error('[attachments] failed to prepare the uploads folder:', err instanceof Error ? err.stack : err);
+    log.error('failed to prepare the uploads folder', err);
     process.exit(1);
   }
 
@@ -52,29 +58,50 @@ export async function bootstrap(): Promise<void> {
   const io = createWsServer(fastify.server);
 
   await fastify.listen({ port: config.PORT, host: config.HOST_BIND });
-  console.log(`Linkord listening on http://${config.HOST_BIND}:${config.PORT}`);
-  console.log('Single room, any participant can share. Camera/screen via WebRTC (LiveKit).');
+  log.info('listening', { host: config.HOST_BIND, port: config.PORT });
   if (!config.LIVEKIT_URL || !config.LIVEKIT_API_KEY || !config.LIVEKIT_API_SECRET) {
-    console.warn('Warning: LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET not configured — screen/camera sharing will fail.');
+    log.warn('LiveKit is not configured: calls, camera and screen sharing will fail');
   }
 
   // periodic cleanup of expired sessions — doesn't need to run per
   // request, just enough to keep the table from growing forever.
   const sessionSweepTimer = setInterval(() => {
-    sweepExpiredSessions().catch((err) => console.error('[auth] failed to clean up expired sessions:', err instanceof Error ? err.stack : err));
+    sweepExpiredSessions().catch((err) => log.error('failed to clean up expired sessions', err));
   }, 60 * 60 * 1000);
   sessionSweepTimer.unref();
 
   // same cadence — upload session TTL is 24h (config.UPLOAD_SESSION_TTL_MS),
   // checking hourly is enough to avoid orphaned chunks piling up on disk.
   const uploadSweepTimer = setInterval(() => {
-    sweepStaleUploads().catch((err) => console.error('[attachments] failed to clean up abandoned uploads:', err instanceof Error ? err.stack : err));
+    sweepStaleUploads().catch((err) => log.error('failed to clean up abandoned uploads', err));
   }, 60 * 60 * 1000);
   uploadSweepTimer.unref();
 
+  // Transactional outbox: drain the events written with each social change
+  // (safety net for a lost live emit), and prune what no longer needs to live.
+  const pumpOutbox = () => drainOutbox()
+    .then((r) => { if (r.failed > 0) log.warn('outbox events failed to deliver', r); else if (r.processed > 0) log.debug('outbox drained', r); })
+    .catch((err) => log.error('failed to drain', err));
+  const outboxTimer = setInterval(pumpOutbox, OUTBOX_POLL_MS);
+  outboxTimer.unref();
+  const pruneTimer = setInterval(() => {
+    pruneNotifications().catch((err) => log.error('failed to prune', err));
+  }, 24 * 60 * 60 * 1000);
+  pruneTimer.unref();
+
+  // Files on disk with no row behind them (a failed unlink, a crash mid-commit).
+  // The scheduled run only reports unless ORPHAN_SWEEP_DRY_RUN=0; an admin can
+  // run a real one from /admin/system.
+  const sweepOrphanFiles = () => sweepOrphans({ dryRun: config.ORPHAN_SWEEP_DRY_RUN, actor: null })
+    .then((r) => { if (r.orphanCount > 0) log.info('orphan files found', { count: r.orphanCount, bytes: r.orphanBytes, dryRun: r.dryRun, deleted: r.deleted }); })
+    .catch((err) => log.error('orphan sweep failed', err));
+  setTimeout(sweepOrphanFiles, 60_000).unref();
+  const orphanTimer = setInterval(sweepOrphanFiles, 24 * 60 * 60 * 1000);
+  orphanTimer.unref();
+
   for (const sig of ['SIGINT', 'SIGTERM'] as const) {
     process.on(sig, () => {
-      console.log(`\n${sig} received, shutting down...`);
+      log.info('shutting down', { signal: sig });
       broadcast({ t: 'server-restart' });
       for (const p of participantsMap.values()) { try { p.socket && p.socket.disconnect(true); } catch { /* socket already dying */ } }
       io.close();

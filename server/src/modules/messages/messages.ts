@@ -1,3 +1,6 @@
+import { sendUsageToUser } from '../attachments/attachmentQuota.js';
+import { isActiveAdmin } from '../admin/adminAuth.js';
+import { recordAudit } from '../admin/auditLog.js';
 import { eq, and, desc, asc, lt, gte, sql } from 'drizzle-orm';
 import { config } from '../../config/env.js';
 import { db } from '../../db/client.js';
@@ -8,14 +11,37 @@ import {
   broadcastToConversationMembers,
   conversationDisplayName,
   conversationExistsForUser,
+  getDirectPeerId,
   touchConversation,
   recordConversationActivity,
 } from '../conversations/conversationsRepository.js';
+import { canSendDirectMessage } from '../friendships/friendshipsRepository.js';
 import { resolveDisplayName } from '../users/users.js';
 import * as attachments from '../attachments/attachments.js';
 import { deleteForMessage } from '../attachments/attachmentCleanup.js';
 import * as reactions from './reactions.js';
+import { ERROR_CODES } from '../../http/errors.js';
+import { loadInvitationCards, type InvitationCard } from '../conversations/invitationCards.js';
+import { revokeInvitationForDeletedCard } from '../conversations/invitationsRepository.js';
 import type { AppSocket, HandlerTable, Participant } from '../../types.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'audit' });
+
+// Etapa 6 (docs/plano-rede-social.md §4.3): "não enviar, reagir, anexar,
+// digitar" while contact is restricted (not friends, or blocked) — this is
+// the shared gate every one of those write paths calls. `getDirectPeerId`
+// returns null for a group conversation, so the check no-ops there on its
+// own; reading history (open/load-more/around/search) is NEVER gated —
+// only these write actions are.
+async function assertCanWriteToConversation(socket: AppSocket, conversationId: string, userId: string): Promise<boolean> {
+  const peerId = await getDirectPeerId(conversationId, userId);
+  if (peerId && !(await canSendDirectMessage(userId, peerId))) {
+    send(socket, { t: 'error', code: ERROR_CODES.relationshipRequired, message: 'Vocês precisam ser amigos pra conversar por aqui.' });
+    return false;
+  }
+  return true;
+}
 
 // Deleting a conversation CASCADEs here.
 //
@@ -54,6 +80,11 @@ interface ChatMessagePayload {
   replyTo?: ReplyRef;
   reactions?: Record<string, string[]>;
   attachments?: { id: string; name: string; mime: string; size: number; thumbId?: string }[];
+  // only set for structured messages — absent means a plain text message
+  kind?: 'group_invite';
+  // the invitation's CURRENT state, resolved at read time so a card is right
+  // after a refresh; null is the tombstone (its group was deleted)
+  invitation?: InvitationCard | null;
 }
 
 interface MessageWithAuthor {
@@ -67,6 +98,8 @@ interface MessageWithAuthor {
   createdAt: Date;
   editedAt: Date | null;
   replyTo: unknown;
+  kind: string;
+  groupInvitationId: string | null;
 }
 
 function sanitizeChatText(text: unknown): string {
@@ -84,6 +117,8 @@ const messageWithAuthorSelect = {
   createdAt: messages.createdAt,
   editedAt: messages.editedAt,
   replyTo: messages.replyTo,
+  kind: messages.kind,
+  groupInvitationId: messages.groupInvitationId,
 };
 
 function rowWithParticipant(row: Message, participant: Participant): MessageWithAuthor {
@@ -98,6 +133,8 @@ function rowWithParticipant(row: Message, participant: Participant): MessageWith
     createdAt: row.createdAt,
     editedAt: row.editedAt,
     replyTo: row.replyTo,
+    kind: row.kind,
+    groupInvitationId: row.groupInvitationId,
   };
 }
 
@@ -126,7 +163,7 @@ function normalizeReplyRef(raw: unknown): ReplyRef | undefined {
  * attachments-table rows, and `reactionsByEmoji` the grouped
  * message_reactions rows for this message — neither lives in the messages
  * table itself, see modules/attachments.ts and modules/reactions.ts. */
-function rowToMessage(row: MessageWithAuthor, attachments?: Attachment[], reactionsByEmoji?: Record<string, string[]>): ChatMessagePayload {
+function rowToMessage(row: MessageWithAuthor, attachments?: Attachment[], reactionsByEmoji?: Record<string, string[]>, invitation?: InvitationCard): ChatMessagePayload {
   const out: ChatMessagePayload = {
     msgId: row.id,
     conversationId: row.conversationId,
@@ -137,6 +174,10 @@ function rowToMessage(row: MessageWithAuthor, attachments?: Attachment[], reacti
     ts: row.createdAt.getTime(),
   };
   if (row.editedAt) out.editedAt = row.editedAt.getTime();
+  if (row.kind === 'group_invite') {
+    out.kind = 'group_invite';
+    out.invitation = invitation ?? null;
+  }
   const replyTo = normalizeReplyRef(row.replyTo);
   if (replyTo) out.replyTo = replyTo;
   if (reactionsByEmoji && Object.keys(reactionsByEmoji).length) out.reactions = reactionsByEmoji;
@@ -157,11 +198,13 @@ async function buildReplyRef(conversationId: string, replyToId: unknown): Promis
   const id = Number(replyToId);
   if (!Number.isFinite(id)) return undefined;
   const [original] = await db
-    .select({ id: messages.id, authorId: messages.authorId, text: messages.text })
+    .select({ id: messages.id, authorId: messages.authorId, text: messages.text, kind: messages.kind })
     .from(messages)
     .where(and(eq(messages.id, id), eq(messages.conversationId, conversationId)))
     .limit(1);
-  if (!original) return undefined;
+  // a card can't be replied to — its preview would be blank, and answering
+  // an invitation is what its own buttons are for
+  if (!original || original.kind !== 'text') return undefined;
   const ref: ReplyRef = { msgId: original.id, authorId: original.authorId, text: original.text.slice(0, REPLY_PREVIEW_LEN) };
   // no caption on the original — likely an attachment-only message. Lets
   // the reply reference show "📎 N anexos" instead of a blank snippet.
@@ -170,6 +213,23 @@ async function buildReplyRef(conversationId: string, replyToId: unknown): Promis
     if (attachmentCount > 0) ref.attachmentCount = attachmentCount;
   }
   return ref;
+}
+
+/** Serializes a page of rows with everything that lives outside the messages
+ * table, each fetched ONCE for the whole page (attachments, reactions and
+ * invitation cards) — never a query per message. */
+async function serializeRows(rows: MessageWithAuthor[]): Promise<ChatMessagePayload[]> {
+  const messageIds = rows.map((r) => r.id);
+  const cardIds = rows.flatMap((r) => (r.kind === 'group_invite' && r.groupInvitationId ? [r.groupInvitationId] : []));
+  const [attachmentByMessageId, reactionsByMessageId, cards] = await Promise.all([
+    attachments.getByMessageIds(messageIds),
+    reactions.getByMessageIds(messageIds),
+    loadInvitationCards(cardIds),
+  ]);
+  return rows.map((r) => rowToMessage(
+    r, attachmentByMessageId.get(r.id), reactionsByMessageId.get(r.id),
+    r.groupInvitationId ? cards.get(r.groupInvitationId) : undefined,
+  ));
 }
 
 /** Client opening a conversation — sends the last CHAT_HISTORY_LIMIT messages
@@ -190,15 +250,11 @@ async function handleConversationOpen(socket: AppSocket, msg: { conversationId?:
   rows.reverse();
   // one query for all history messages' attachments/reactions, not one per
   // message (N+1) — most have neither anyway.
-  const messageIds = rows.map((r) => r.id);
-  const [attachmentByMessageId, reactionsByMessageId] = await Promise.all([
-    attachments.getByMessageIds(messageIds),
-    reactions.getByMessageIds(messageIds),
-  ]);
+  const payloads = await serializeRows(rows);
   send(socket, {
     t: 'conversation-history',
     conversationId,
-    messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id), reactionsByMessageId.get(r.id))),
+    messages: payloads,
     hasMore: rows.length === config.CHAT_HISTORY_LIMIT,
   });
 
@@ -235,15 +291,11 @@ async function handleLoadMoreMessages(socket: AppSocket, msg: { conversationId?:
     .orderBy(desc(messages.id))
     .limit(config.CHAT_HISTORY_LIMIT);
   rows.reverse();
-  const messageIds = rows.map((r) => r.id);
-  const [attachmentByMessageId, reactionsByMessageId] = await Promise.all([
-    attachments.getByMessageIds(messageIds),
-    reactions.getByMessageIds(messageIds),
-  ]);
+  const payloads = await serializeRows(rows);
   send(socket, {
     t: 'conversation-history-more',
     conversationId,
-    messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id), reactionsByMessageId.get(r.id))),
+    messages: payloads,
     hasMore: rows.length === config.CHAT_HISTORY_LIMIT,
   });
 }
@@ -281,16 +333,12 @@ async function handleLoadMessagesAround(socket: AppSocket, msg: { conversationId
   ]);
   beforeRows.reverse();
   const rows = [...beforeRows, ...afterRows];
-  const messageIds = rows.map((r) => r.id);
-  const [attachmentByMessageId, reactionsByMessageId] = await Promise.all([
-    attachments.getByMessageIds(messageIds),
-    reactions.getByMessageIds(messageIds),
-  ]);
+  const payloads = await serializeRows(rows);
   send(socket, {
     t: 'conversation-history-around',
     conversationId,
     msgId,
-    messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id), reactionsByMessageId.get(r.id))),
+    messages: payloads,
     hasMoreBefore: beforeRows.length === AROUND_BEFORE_LIMIT,
     hasMoreAfter: afterRows.length === AROUND_AFTER_LIMIT,
   });
@@ -363,6 +411,7 @@ async function handleChat(socket: AppSocket, msg: { conversationId?: string; tex
   const conversationId = conversationIdFrom(msg);
   const text = sanitizeChatText(msg.text);
   if (!conversationId || !text || !(await conversationExistsForUser(conversationId, p.userId))) return;
+  if (!(await assertCanWriteToConversation(socket, conversationId, p.userId))) return;
   const replyTo = await buildReplyRef(conversationId, msg.replyTo);
   const [row] = await db.insert(messages).values({
     conversationId, authorId: p.userId, text,
@@ -383,7 +432,12 @@ async function handleChatEdit(socket: AppSocket, msg: { msgId?: unknown; text?: 
   if (!Number.isFinite(msgId) || !text) return;
   const [existing] = await db.select().from(messages).where(eq(messages.id, msgId)).limit(1);
   if (!existing || existing.authorId !== p.userId) return;
+  if (existing.kind !== 'text') return; // an invitation card is never editable
   if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return;
+  // §4.3: editing an old message while contact is restricted would be a
+  // backdoor around the send-gate above — closing that is the specific
+  // reason edit (not delete) is restricted here.
+  if (!(await assertCanWriteToConversation(socket, existing.conversationId, p.userId))) return;
   const [updated] = await db.update(messages).set({ text, editedAt: new Date() }).where(eq(messages.id, msgId)).returning();
   // without these, editing a caption on a message WITH an attachment or a
   // reaction made it disappear for everyone (the client replaces the whole
@@ -404,9 +458,10 @@ async function handleChatReact(socket: AppSocket, msg: { msgId?: unknown; emoji?
   const msgId = Number(msg.msgId);
   const emoji = String(msg.emoji || '');
   if (!Number.isFinite(msgId) || !isSingleEmoji(emoji)) return;
-  const [existing] = await db.select({ conversationId: messages.conversationId }).from(messages).where(eq(messages.id, msgId)).limit(1);
-  if (!existing) return;
+  const [existing] = await db.select({ conversationId: messages.conversationId, kind: messages.kind }).from(messages).where(eq(messages.id, msgId)).limit(1);
+  if (!existing || existing.kind !== 'text') return; // no reactions on invitation cards
   if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return;
+  if (!(await assertCanWriteToConversation(socket, existing.conversationId, p.userId))) return;
   const userIds = await reactions.toggle(msgId, p.userId, emoji);
   await broadcastToConversationMembers(existing.conversationId, {
     t: 'chat-reaction-updated',
@@ -426,19 +481,35 @@ async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Pr
   const msgId = Number(msg.msgId);
   if (!Number.isFinite(msgId)) return;
   const [existing] = await db
-    .select({ conversationId: messages.conversationId, authorId: messages.authorId })
+    .select({ conversationId: messages.conversationId, authorId: messages.authorId, kind: messages.kind, groupInvitationId: messages.groupInvitationId })
     .from(messages)
     .where(eq(messages.id, msgId))
     .limit(1);
   if (!existing) return;
   if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return;
-  if (existing.authorId !== p.userId && p.role !== 'admin') return;
+  const isAuthor = existing.authorId === p.userId;
+  // admin authority is re-read, not taken from the connection's frozen role (§7.5)
+  if (!isAuthor && !(await isActiveAdmin(p.userId))) return;
+  // before the row goes: a card that vanished while its invitation stayed
+  // acceptable is exactly the desync this prevents
+  if (existing.kind === 'group_invite' && existing.groupInvitationId) {
+    await revokeInvitationForDeletedCard(existing.groupInvitationId);
+  }
   // delete the file on disk before the row — after the delete below, the
   // attachments row disappears via CASCADE, but nothing would know which
   // file to delete anymore (see attachments/attachmentCleanup.ts).
   await deleteForMessage(msgId);
   await db.delete(messages).where(eq(messages.id, msgId));
+  // the author's quota just got room back
+  if (existing.authorId) void sendUsageToUser(existing.authorId).catch(() => {});
   await recordConversationActivity(existing.conversationId);
+  if (!isAuthor) {
+    // moderation, so it leaves a trail — ids only, never the message body
+    await recordAudit({
+      actor: { id: p.userId, username: p.name }, action: 'message.delete', targetType: 'message', targetId: String(msgId),
+      detail: { conversationId: existing.conversationId, authorId: existing.authorId },
+    }).catch((err) => log.error('message.delete', err));
+  }
   await broadcastToConversationMembers(existing.conversationId, {
     t: 'chat-deleted',
     conversationId: existing.conversationId,
@@ -454,6 +525,7 @@ async function handleTyping(socket: AppSocket, msg: { conversationId?: string; v
   if (!p || p.socket !== socket) return;
   const conversationId = conversationIdFrom(msg);
   if (!conversationId || !(await conversationExistsForUser(conversationId, p.userId))) return;
+  if (!(await assertCanWriteToConversation(socket, conversationId, p.userId))) return;
   await broadcastToConversationMembers(conversationId, {
     t: 'typing',
     conversationId,

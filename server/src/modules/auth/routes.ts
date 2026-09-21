@@ -6,15 +6,18 @@ import { sendJson, sendError, jsonBody } from '../../http/respond.js';
 import { parseCookies, serializeCookie, clearCookie, isSecureRequest } from '../../http/cookies.js';
 import { hashPassword, verifyPassword, needsRehash, DUMMY_HASH } from './password.js';
 import { createSession, resolveSession, destroyAllSessionsForUser, destroySession } from './session.js';
-import { findByEmailLower, findByUsernameLower, isValidEmail, normalizeEmail, privateUser, publicUser } from '../users/users.js';
-import { createUser, isAdminUsername, updateEmail, updatePassword } from './accounts.js';
+import { findByEmailLower, findByUsernameLower, isValidEmail, normalizeEmail, privateUser } from '../users/users.js';
+import { createUser, updateEmail, updatePassword } from './accounts.js';
+import { checkRegistrationAllowed } from './registrationLimits.js';
 import type { User } from '../../db/schema.js';
 import { issueAuthCode, verifyAuthCode, type AuthCodePurpose } from './codes.js';
 import { sendAuthCodeEmail } from './email.js';
-import { broadcast } from '../presence/participants.js';
 import * as ratelimit from './ratelimit.js';
 import { db } from '../../db/client.js';
 import { users } from '../../db/schema.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'auth' });
 
 // /api/auth/* routes — registration closed behind an invite code, login,
 // logout, and "who am I" (used by the frontend at boot to check if
@@ -76,6 +79,7 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
   if (!config.REGISTRATION_CODE) return sendError(reply, 403, 'registration_closed', 'Registro fechado.');
   if (!safeCompare(code, config.REGISTRATION_CODE)) {
     ratelimit.recordFailure(ipKey);
+    log.warn('registration with a wrong invite code', { ip: ipKey });
     return sendError(reply, 403, 'invalid_code', 'Código de convite inválido.');
   }
   ratelimit.reset(ipKey);
@@ -91,8 +95,21 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
     return sendError(reply, 400, 'password_mismatch', 'As senhas não coincidem.');
   }
 
+  const gate = await checkRegistrationAllowed(ipOfRequest(request));
+  if (gate !== 'ok') log.warn('registration refused', { gate, ip: ipOfRequest(request) });
+  if (gate === 'paused') {
+    reply.header('Retry-After', '900');
+    return sendError(reply, 429, 'registration_paused', 'Muitos cadastros no momento. Tente novamente mais tarde.');
+  }
+  if (gate === 'ip_limited') {
+    reply.header('Retry-After', '3600');
+    return sendError(reply, 429, 'rate_limited', 'Muitos cadastros deste endereço. Tente novamente mais tarde.');
+  }
+
   const passwordHash = await hashPassword(password);
-  const role = isAdminUsername(username) ? 'admin' : 'user';
+  // never 'admin' from a sign-up: administrators are provisioned explicitly
+  // (`npm run admin:grant`, or the /admin area) — a username is not a credential.
+  const role = 'user';
 
   if (await findByEmailLower(email)) return sendError(reply, 409, 'email_taken', 'Esse e-mail já está em uso.');
 
@@ -106,10 +123,11 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
 
   const { rawToken } = await createSession(user.id);
   setSessionCookie(request, reply, rawToken);
-  // the user directory (right sidebar) for anyone already connected gets
-  // the new account without reloading — plain broadcast over already-open
-  // sockets, no coupling of this HTTP route to socket.io itself.
-  broadcast({ t: 'user-registered', user: publicUser(user) });
+  log.info('account registered', { userId: user.id, username: user.username });
+  // Etapa 7: no more global 'user-registered' broadcast — a brand-new
+  // account has zero friends and zero shared conversations by definition,
+  // so its knownPeerIds is empty on every side; the event would reach
+  // nobody anyway (see participants.ts#broadcastToKnownPeers).
   sendJson(reply, 201, { user: privateUser(user) });
 }
 
@@ -141,11 +159,18 @@ async function handleLogin(request: FastifyRequest, reply: FastifyReply): Promis
   if (!user || !ok) {
     ratelimit.recordFailure(ipKey);
     ratelimit.recordFailure(userKey);
+    log.warn('login failed', { username, ip: ipOfRequest(request) });
     return sendError(reply, 401, 'invalid_credentials', 'Usuário ou senha inválidos.');
   }
 
   ratelimit.reset(ipKey);
   ratelimit.reset(userKey);
+
+  // only reachable with the right password, so it leaks nothing about who exists
+  if (user.status !== 'active') {
+    log.warn('login refused for a suspended account', { userId: user.id, username: user.username });
+    return sendError(reply, 403, 'account_unavailable', 'Esta conta está indisponível. Fale com a administração.');
+  }
 
   if (needsRehash(user.passwordHash)) {
     hashPassword(password)
@@ -155,6 +180,7 @@ async function handleLogin(request: FastifyRequest, reply: FastifyReply): Promis
 
   const { rawToken } = await createSession(user.id);
   setSessionCookie(request, reply, rawToken);
+  log.info('login', { userId: user.id, username: user.username });
   sendJson(reply, 200, { user: privateUser(user) });
 }
 
@@ -204,7 +230,7 @@ async function issueAndSendCode(userId: string, email: string, username: string,
   try {
     await sendAuthCodeEmail({ to: email, code, purpose, username });
   } catch (err) {
-    console.error('[auth] failed to send code:', err instanceof Error ? err.message : err);
+    log.error('failed to send code', err);
     throw err;
   }
 }

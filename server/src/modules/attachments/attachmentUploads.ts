@@ -7,15 +7,20 @@ import { attachments as attachmentsTable, messages, type Attachment } from '../.
 import { sendJson, sendError, jsonBody } from '../../http/respond.js';
 import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
-import { broadcastToConversationMembers, conversationExistsForUser, touchConversation, recordConversationActivity } from '../conversations/conversationsRepository.js';
+import { broadcastToConversationMembers, conversationExistsForUser, getDirectPeerId, touchConversation, recordConversationActivity } from '../conversations/conversationsRepository.js';
+import { canSendDirectMessage } from '../friendships/friendshipsRepository.js';
 import { newId, filePathFor } from './attachmentStorage.js';
 import { generateThumbnail, THUMBNAIL_SOURCE_MIME_TYPES } from './attachmentThumbnails.js';
-import { getUsage, broadcastUsage } from './attachmentQuota.js';
+import { getUsage, sendUsageToUser } from './attachmentQuota.js';
+import { exceedsLimit, getUserStorageBytes, limitMax } from '../limits/limits.js';
 import {
   tmpDirFor, manifestPathFor, chunkPathFor, readManifest, expectedChunkLength, assembleChunks, sanitizeFileName,
-  pendingUploadBytes, getReservedBytes, withInitLock, completingUploads,
+  reserveUpload, releaseUpload, getReservedBytes, getReservedBytesForUser, withInitLock, completingUploads,
 } from './uploadSession.js';
 import type { UploadManifest } from './uploadSession.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'attachments' });
 
 // The Fastify HTTP handlers for the chunked-upload lifecycle — the on-disk
 // session mechanics (manifest, chunk paths, quota reservation, the stale
@@ -35,6 +40,13 @@ export async function handleAttachmentInit(request: FastifyRequest, reply: Fasti
   if (!conversationId || !(await conversationExistsForUser(conversationId, sess.userId))) {
     return sendError(reply, 404, 'conversation_not_found', 'Conversa não encontrada.');
   }
+  // §4.3: "anexar" is on the restricted-contact list — same gate as
+  // messages.ts's chat/react/typing. No-ops for a group (getDirectPeerId
+  // returns null there).
+  const peerId = await getDirectPeerId(conversationId, sess.userId);
+  if (peerId && !(await canSendDirectMessage(sess.userId, peerId))) {
+    return sendError(reply, 403, 'relationship_required', 'Vocês precisam ser amigos pra enviar arquivos por aqui.');
+  }
 
   const fileName = sanitizeFileName(body.fileName);
   const mimeType = String(body.mimeType || 'application/octet-stream').split(';')[0]!.trim() || 'application/octet-stream';
@@ -51,13 +63,22 @@ export async function handleAttachmentInit(request: FastifyRequest, reply: Fasti
   // bytes can be sent — see uploadSession.ts#pendingUploadBytes for why this
   // has to be check-then-reserve, atomically, rather than just checking
   // getUsage().
-  const reserved = await withInitLock(async () => {
+  const reserved = await withInitLock(async (): Promise<'ok' | 'storage_full' | 'quota_exceeded'> => {
+    // the account's own quota first: what it already stored + what it already
+    // has in flight + this file. Then the instance-wide ceiling.
+    const own = (await getUserStorageBytes(sess.userId)) + getReservedBytesForUser(sess.userId);
+    if (exceedsLimit(own, limitMax('storage'), totalSize)) return 'quota_exceeded';
     const usage = await getUsage();
-    if (usage.totalBytes + getReservedBytes() + totalSize > config.MAX_STORAGE_BYTES) return false;
-    pendingUploadBytes.set(uploadId, totalSize);
-    return true;
+    if (usage.totalBytes + getReservedBytes() + totalSize > config.MAX_STORAGE_BYTES) return 'storage_full';
+    reserveUpload(uploadId, totalSize, sess.userId);
+    return 'ok';
   });
-  if (!reserved) {
+  if (reserved === 'quota_exceeded') {
+    log.info('upload refused: account storage quota', { userId: sess.userId, totalSize });
+    return sendError(reply, 400, 'quota_exceeded', 'Você atingiu o seu limite de armazenamento. Apague arquivos seus antes de enviar mais.');
+  }
+  if (reserved === 'storage_full') {
+    log.warn('upload refused: instance storage is full', { userId: sess.userId, totalSize });
     return sendError(reply, 400, 'storage_full', 'Armazenamento cheio (30GB no total). Apague arquivos antigos antes de enviar mais.');
   }
 
@@ -70,10 +91,11 @@ export async function handleAttachmentInit(request: FastifyRequest, reply: Fasti
       chunkSize, totalChunks, createdAt: new Date().toISOString(),
     } satisfies UploadManifest));
   } catch (err) {
-    pendingUploadBytes.delete(uploadId);
+    releaseUpload(uploadId);
     throw err;
   }
 
+  log.debug('upload started', { uploadId, userId: sess.userId, conversationId, totalSize, totalChunks });
   sendJson(reply, 201, { uploadId, chunkSize, totalChunks });
 }
 
@@ -129,6 +151,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
     const [existing] = await db.select().from(messages).where(eq(messages.id, targetMsgId)).limit(1);
     if (!existing) return sendError(reply, 404, 'target_message_not_found', 'Mensagem de destino não encontrada.');
     if (existing.authorId !== sess.userId) return sendError(reply, 403, 'not_your_message', 'Você só pode anexar arquivos às suas próprias mensagens.');
+    if (existing.kind !== 'text') return sendError(reply, 400, 'invalid_target', 'Não dá para anexar arquivos a esse tipo de mensagem.');
     if (existing.conversationId !== manifest.conversationId) return sendError(reply, 400, 'conversation_mismatch', 'A conversa não corresponde ao upload.');
     if (Date.now() - existing.createdAt.getTime() > config.ATTACH_TO_MESSAGE_WINDOW_MS) {
       return sendError(reply, 400, 'target_message_too_old', 'A mensagem de destino é antiga demais para receber mais anexos.');
@@ -205,8 +228,8 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
     // only deleted after a successful commit; a failed delete here just
     // logs — sweepStaleUploads cleans it up later.
     await fs.rm(tmpDirFor(uploadId), { recursive: true, force: true })
-      .catch((err) => console.error('[attachments] failed to delete chunks after assembly:', err instanceof Error ? err.stack : err));
-    pendingUploadBytes.delete(uploadId);
+      .catch((err) => log.error('failed to delete chunks after assembly', err));
+    releaseUpload(uploadId);
 
     // Best-effort: a thumbnail that fails to generate/save just means this
     // attachment serves its full original for the inline preview too — never
@@ -224,7 +247,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
           await db.update(attachmentsTable).set({ thumbId: newThumbId }).where(eq(attachmentsTable.id, row.id));
           thumbId = newThumbId;
         } catch (err) {
-          console.warn('[attachments] failed to save thumbnail:', err instanceof Error ? err.message : err);
+          log.warn('failed to save thumbnail', { err: err instanceof Error ? err.message : String(err) });
           await fs.unlink(filePathFor(newThumbId)).catch(() => {});
         }
       }
@@ -244,7 +267,8 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
       };
       await touchConversation(message.conversationId, message.createdAt);
       await broadcastToConversationMembers(message.conversationId, { t: 'chat', message: chatMessage });
-      await broadcastUsage();
+      await sendUsageToUser(sess.userId);
+      log.info('upload completed', { uploadId, userId: sess.userId, conversationId: manifest.conversationId, bytes: manifest.totalSize });
       sendJson(reply, 201, { message: chatMessage });
     } else {
       // an EXISTING message just got another attachment (2nd-4th file of a
@@ -257,7 +281,8 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
         msgId: targetMsgId!,
         attachment: attachmentPayload,
       });
-      await broadcastUsage();
+      await sendUsageToUser(sess.userId);
+      log.info('upload completed', { uploadId, userId: sess.userId, conversationId: manifest.conversationId, bytes: manifest.totalSize, attachedTo: targetMsgId });
       sendJson(reply, 201, { attachment: attachmentPayload });
     }
   } finally {
@@ -276,7 +301,7 @@ export async function handleAttachmentCancel(request: FastifyRequest<{ Params: {
   const manifest = await readManifest(uploadId);
   if (manifest && manifest.userId === sess.userId) {
     await fs.rm(tmpDirFor(uploadId), { recursive: true, force: true }).catch(() => {});
-    pendingUploadBytes.delete(uploadId);
+    releaseUpload(uploadId);
   }
   sendJson(reply, 200, { ok: true });
 }

@@ -24,7 +24,6 @@ Linkord é uma plataforma de comunicação em tempo real com chamadas de voz, v�
 - Diretório de usuários (online/offline) e painel de moderação (apagar conta)
 - Aba de mídias — todo anexo/embed do projeto, de todos os canais
 - Preferências salvas por usuário (volume por chamada/pessoa, volume de notificações)
-- Notificação no Discord quando alguém entra na chamada ou compartilha tela (Webhook)
 
 ## Stack
 
@@ -35,7 +34,13 @@ Linkord é uma plataforma de comunicação em tempo real com chamadas de voz, v�
 
 ## Rodando localmente
 
-Requer Node.js 22+ e um Postgres acessível (`DATABASE_URL`).
+Requer Node.js 22+ e um Postgres acessível (`DATABASE_URL`). Pra um Postgres local via Docker, sem depender de nada externo:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d   # só o Postgres, isolado de produção
+```
+
+Isso sobe em `localhost:5432` com usuário/senha/banco `linkord`/`linkord`/`linkord` — bate com o `DATABASE_URL` de exemplo do `.env.example`.
 
 ```bash
 npm install
@@ -72,17 +77,17 @@ Roda automaticamente em todo push/PR pra `main`/`develop` ([`.github/workflows/t
 
 ## Variáveis de ambiente
 
-Veja [`.env.example`](.env.example) — cobre servidor, banco, contas/sessão, LiveKit, upload e a integração opcional com Discord.
+Veja [`.env.example`](.env.example) — cobre servidor, banco, contas/sessão, LiveKit, upload e limites.
 
 ## Deploy
 
 A imagem é construída pelo [`Dockerfile`](Dockerfile) (multi-stage: builda o frontend, compila o backend TypeScript, e monta um runtime enxuto sem devDependencies nem código-fonte). Produção roda via [Dokploy](https://dokploy.com) a partir desse `Dockerfile` — sem proxy reverso nem systemd no repositório, o Dokploy já cuida de domínio, HTTPS e do proxy na frente.
 
-Pra rodar localmente com Docker:
+Pra rodar localmente com Docker (app + Postgres, tudo em container):
 
 ```bash
 cp .env.example .env
-docker compose up -d
+docker compose -f docker-compose.dev.yml -f docker-compose.yml up -d
 ```
 
 ## Nota sobre áudios

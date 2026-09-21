@@ -15,6 +15,7 @@ import { conversationTitle, directUser, groupMembers } from './conversationUtils
 import { GroupAvatar } from './GroupAvatar';
 import { MessageRow } from '@/features/chat/MessageRow';
 import { MessageComposer } from '@/features/chat/MessageComposer';
+import { DirectComposerGate } from '@/features/friends/DirectComposerGate';
 import type { MessageComposerHandle } from '@/features/chat/MessageComposer';
 
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -310,12 +311,21 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
                 <Info size={16} />
               </Button>
             )}
-            <Button type="button" size="icon-sm" aria-label="Entrar na chamada" onClick={() => onOpenCall(conversation.id)} className="bg-green text-bg-primary hover:bg-green/90">
+            <Button type="button" size="icon-sm" aria-label="Entrar na chamada" disabled={conversation.status === 'suspended'} onClick={() => onOpenCall(conversation.id)} className="bg-green text-bg-primary hover:bg-green/90">
               <Phone size={16} />
             </Button>
           </header>
           <ChatSurfaceWidthProvider width={surfaceWidth}>
-            <MessageListBridge conversationId={conversation.id} onOpenProfile={onOpenProfile} />
+            {conversation.status === 'suspended' ? (
+              <div role="status" className="grid flex-1 place-items-center px-6 text-center">
+                <div>
+                  <p className="text-title font-semibold text-text-primary">Grupo suspenso</p>
+                  <p className="mt-1 max-w-sm text-label text-text-muted">A administração suspendeu este grupo. Enquanto durar, ninguém lê, escreve ou entra em chamada.</p>
+                </div>
+              </div>
+            ) : (
+              <MessageListBridge conversationId={conversation.id} onOpenProfile={onOpenProfile} />
+            )}
           </ChatSurfaceWidthProvider>
         </>
       ) : (
@@ -393,7 +403,9 @@ export function MessageListBridge({ conversationId, onOpenProfile }: { conversat
         style={{ height: composerHeight + 48 }}
       />
       <div ref={composerWrapRef} className="absolute inset-x-0 bottom-0">
-        <MessageComposer ref={composerRef} conversationId={conversationId} />
+        <DirectComposerGate conversationId={conversationId}>
+          <MessageComposer ref={composerRef} conversationId={conversationId} />
+        </DirectComposerGate>
       </div>
       {dragActive && (
         <div className="pointer-events-none absolute inset-0 z-10 m-2 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary bg-bg-primary/90 text-text-primary">

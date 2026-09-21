@@ -141,6 +141,48 @@
       "when": 1789589161481,
       "tag": "0019_outstanding_xorn",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789702052592,
+      "tag": "0020_slimy_red_ghost",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789705373712,
+      "tag": "0021_magenta_absorbing_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789990498310,
+      "tag": "0022_slippery_black_knight",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790003006147,
+      "tag": "0023_glossy_roulette",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790021695661,
+      "tag": "0024_loud_annihilus",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790025596613,
+      "tag": "0025_invitations_never_expire",
+      "breakpoints": true
     }
   ]
 }

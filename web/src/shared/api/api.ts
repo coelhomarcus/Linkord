@@ -1,6 +1,9 @@
 
-import type { ChatAttachment } from '@/shared/types/protocol';
+import type { ChatAttachment, InvitationCard, PublicUser } from '@/shared/types/protocol';
 import type { DetectedEmbed } from '@/shared/lib/chatEmbeds';
+import { logger } from '@/shared/lib/logger';
+
+const log = logger.child({ component: 'api' });
 
 export interface ApiUser {
   id: string;
@@ -18,14 +21,17 @@ export interface ApiUser {
 export class ApiError extends Error {
   status: number;
   code: string;
-  constructor(status: number, code: string, message: string) {
+  // only the friend-request cooldown response carries this
+  retryAfter?: string;
+  constructor(status: number, code: string, message: string, retryAfter?: string) {
     super(message);
     this.status = status;
     this.code = code;
+    this.retryAfter = retryAfter;
   }
 }
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
     credentials: 'same-origin',
@@ -43,8 +49,11 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   try { body = await res.json(); } catch {  }
 
   if (!res.ok) {
-    const err = (body && typeof body === 'object' ? (body as { error?: { code?: string; message?: string } }).error : null) || {};
-    throw new ApiError(res.status, err.code || 'unknown_error', err.message || 'Erro inesperado.');
+    const err = (body && typeof body === 'object' ? (body as { error?: { code?: string; message?: string; retryAfter?: string } }).error : null) || {};
+    // expected 4xx answers (validation, cooldowns, denials) are normal control flow;
+    // a server failure is worth a record, and a report
+    if (res.status >= 500) log.error('API request failed', undefined, { path: path.split('?')[0], method: init?.method ?? 'GET', status: res.status, code: err.code });
+    throw new ApiError(res.status, err.code || 'unknown_error', err.message || 'Erro inesperado.', err.retryAfter);
   }
   return body as T;
 }
@@ -130,4 +139,178 @@ export interface LinkPreviewData {
 
 export function fetchLinkPreview(url: string): Promise<LinkPreviewData> {
   return apiFetch(`/api/link-preview?url=${encodeURIComponent(url)}`);
+}
+
+/** On-demand profile fetch (Etapa 7) — for when a profile isn't already in
+ * the known-users cache (usePresence.ts's `allUsers`), e.g. the author of
+ * an old message who has since left the conversation. 404 covers both
+ * "doesn't exist" and "not authorized to view" — same posture as the rest
+ * of the social endpoints, never confirms/denies a relationship. */
+export function fetchUserProfile(userId: string): Promise<{ user: PublicUser }> {
+  return apiFetch(`/api/users/${userId}/profile`);
+}
+
+// ---- social: friends, requests, blocks (Etapa 8) ----------------------------
+
+/** The minimum a friends/requests/blocks row needs — no banner/bio, the
+ * server never sends a full profile to someone not yet authorized to see one. */
+export interface SocialUser {
+  id: string;
+  username: string;
+  displayName: string;
+  avatar: string;
+  avatarColor: string;
+}
+
+export interface SocialEntry { user: SocialUser; at: string }
+export interface SocialPage { items: SocialEntry[]; nextCursor: string | null }
+
+export type Relation = 'self' | 'none' | 'friends' | 'outgoing' | 'incoming' | 'blocked';
+export interface Relationship { relation: Relation; retryAfter: string | null }
+
+function pageQuery(params: Record<string, string | null | undefined>): string {
+  const q = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value) q.set(key, value);
+  const text = q.toString();
+  return text ? `?${text}` : '';
+}
+
+export function fetchFriends(cursor: string | null, q: string): Promise<SocialPage> {
+  return apiFetch(`/api/friends${pageQuery({ cursor, q })}`);
+}
+
+export function fetchFriendRequests(direction: 'incoming' | 'outgoing', cursor: string | null): Promise<SocialPage> {
+  return apiFetch(`/api/friend-requests${pageQuery({ direction, cursor })}`);
+}
+
+export function fetchRequestSummary(): Promise<{ incoming: number; invitations: number }> {
+  return apiFetch('/api/friend-requests/summary');
+}
+
+export function fetchBlocks(cursor: string | null): Promise<SocialPage> {
+  return apiFetch(`/api/blocks${pageQuery({ cursor })}`);
+}
+
+export function fetchRelationship(userId: string): Promise<Relationship> {
+  return apiFetch(`/api/relationships/${encodeURIComponent(userId)}`);
+}
+
+export type FriendRequestOutcome = 'created' | 'already_friends' | 'already_pending' | 'pending_received';
+
+interface FriendRequestResponse { friendship: { status: string }; direction?: 'outgoing' | 'incoming' }
+
+/** Sends a request by exact username. The server answers 201/200 with the
+ * same body shape, so the outcome is derived from the body — `direction` says
+ * a request was already pending (either way), an accepted status says the two
+ * are already friends, anything else is a fresh request. */
+export async function sendFriendRequest(username: string): Promise<FriendRequestOutcome> {
+  const res = await apiFetch<FriendRequestResponse>('/api/friend-requests', { method: 'POST', body: JSON.stringify({ username }) });
+  if (res.direction === 'incoming') return 'pending_received';
+  if (res.direction === 'outgoing') return 'already_pending';
+  return res.friendship.status === 'accepted' ? 'already_friends' : 'created';
+}
+
+export function acceptFriendRequest(userId: string): Promise<unknown> {
+  return apiFetch(`/api/friend-requests/${encodeURIComponent(userId)}/accept`, { method: 'POST' });
+}
+
+export function declineFriendRequest(userId: string): Promise<unknown> {
+  return apiFetch(`/api/friend-requests/${encodeURIComponent(userId)}/decline`, { method: 'POST' });
+}
+
+export function cancelFriendRequest(userId: string): Promise<unknown> {
+  return apiFetch(`/api/friend-requests/${encodeURIComponent(userId)}/cancel`, { method: 'POST' });
+}
+
+export function removeFriend(userId: string): Promise<unknown> {
+  return apiFetch(`/api/friendships/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+}
+
+export function blockUser(userId: string): Promise<unknown> {
+  return apiFetch(`/api/blocks/${encodeURIComponent(userId)}`, { method: 'POST' });
+}
+
+export function unblockUser(userId: string): Promise<unknown> {
+  return apiFetch(`/api/blocks/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+}
+
+// ---- group invitations (Etapa 9) --------------------------------------------
+
+export type InviteOutcome = 'sent' | 'already_pending' | 'already_member' | 'not_friends' | 'group_full' | 'unavailable';
+export interface InviteResult { userId: string; outcome: InviteOutcome; invitationId?: string }
+
+export interface ReceivedInvitationEntry {
+  id: string;
+  at: string;
+  group: { id: string; title: string; avatar: string; memberCount: number };
+  inviter: SocialUser;
+}
+export interface SentInvitationEntry { id: string; at: string; invitee: SocialUser }
+
+export function createGroup(title: string, inviteeIds: string[]): Promise<{ conversationId: string; results: InviteResult[] }> {
+  return apiFetch('/api/groups', { method: 'POST', body: JSON.stringify({ title, inviteeIds }) });
+}
+
+export function inviteToGroup(conversationId: string, userIds: string[]): Promise<{ results: InviteResult[] }> {
+  return apiFetch(`/api/groups/${encodeURIComponent(conversationId)}/invitations`, { method: 'POST', body: JSON.stringify({ userIds }) });
+}
+
+export function fetchGroupInvitations(conversationId: string, cursor: string | null): Promise<{ items: SentInvitationEntry[]; nextCursor: string | null }> {
+  return apiFetch(`/api/groups/${encodeURIComponent(conversationId)}/invitations${pageQuery({ cursor })}`);
+}
+
+export function fetchReceivedInvitations(cursor: string | null): Promise<{ items: ReceivedInvitationEntry[]; nextCursor: string | null }> {
+  return apiFetch(`/api/group-invitations${pageQuery({ cursor })}`);
+}
+
+// ---- notifications (bell) ----------------------------------------------------
+
+export type NotificationKind = 'friend_request' | 'friend_accepted' | 'group_invitation';
+export interface NotificationEntry {
+  id: string;
+  kind: NotificationKind;
+  at: string;
+  read: boolean;
+  friendshipId: string | null;
+  invitationId: string | null;
+  actor: SocialUser | null;
+  group: { id: string; title: string; avatar: string } | null;
+}
+
+export function fetchNotifications(cursor: string | null): Promise<{ items: NotificationEntry[]; nextCursor: string | null }> {
+  return apiFetch(`/api/notifications${pageQuery({ cursor })}`);
+}
+
+export function fetchUnreadNotificationCount(): Promise<{ unread: number }> {
+  return apiFetch('/api/notifications/summary');
+}
+
+export function markNotificationsRead(input: { ids: string[] } | { all: true }): Promise<{ marked: number }> {
+  return apiFetch('/api/notifications/read', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function acceptInvitation(id: string): Promise<{ invitation: InvitationCard }> {
+  return apiFetch(`/api/group-invitations/${encodeURIComponent(id)}/accept`, { method: 'POST' });
+}
+
+export function declineInvitation(id: string): Promise<{ invitation: InvitationCard }> {
+  return apiFetch(`/api/group-invitations/${encodeURIComponent(id)}/decline`, { method: 'POST' });
+}
+
+export function revokeInvitation(id: string): Promise<{ invitation: InvitationCard }> {
+  return apiFetch(`/api/group-invitations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+// ---- reports (Etapa 11) -----------------------------------------------------
+
+export function submitReport(input: { targetType: 'user' | 'group' | 'message'; targetId: string; category: string; details: string }): Promise<{ ok: true }> {
+  return apiFetch('/api/reports', { method: 'POST', body: JSON.stringify(input) });
+}
+
+// ---- group members (Etapa 10) -----------------------------------------------
+
+export interface GroupMemberEntry { user: SocialUser; role: 'owner' | 'member'; at: string }
+
+export function fetchGroupMembers(conversationId: string, cursor: string | null): Promise<{ items: GroupMemberEntry[]; nextCursor: string | null }> {
+  return apiFetch(`/api/groups/${encodeURIComponent(conversationId)}/members${pageQuery({ cursor })}`);
 }

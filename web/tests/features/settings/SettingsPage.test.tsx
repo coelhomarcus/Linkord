@@ -1,0 +1,254 @@
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, screen } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router';
+import userEvent from '@testing-library/user-event';
+import { initialRoomState } from '@/state/roomReducer';
+import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
+import type { RoomContextValue } from '@/state/RoomContext';
+import { SettingsPage } from '@/features/settings/SettingsPage';
+
+vi.mock('@/state/AuthContext', () => ({
+  useAuth: () => ({ logout: vi.fn() }),
+}));
+
+// the page header needs the animated-sidebar provider and the privacy tab
+// needs the friends provider — neither is what these tests are about
+vi.mock('@/shared/PageHeader', () => ({ PageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
+vi.mock('@/features/settings/PrivacyTab', () => ({ PrivacyTab: () => <p>lista de bloqueados</p> }));
+
+function renderSettings(overrides: Partial<RoomContextValue> = {}, path = '/app/settings/profile') {
+  return renderWithRoom(
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route path="/app/settings/:tab?" element={<SettingsPage onOpenProfile={vi.fn()} />} />
+      </Routes>
+    </MemoryRouter>,
+    overrides,
+  );
+}
+
+vi.mock('@/features/settings/ImageCropDialog', () => ({
+  ImageCropDialog: ({ open, onConfirm, onCancel }: { open: boolean; onConfirm: (crop: { x: number; y: number; width: number; height: number }) => void; onCancel: () => void }) =>
+    open ? (
+      <div>
+        <button type="button" onClick={() => onConfirm({ x: 0, y: 0, width: 10, height: 10 })}>Confirmar recorte</button>
+        <button type="button" onClick={onCancel}>Cancelar recorte</button>
+      </div>
+    ) : null,
+}));
+
+describe('SettingsPage — perfil', () => {
+  it('salva a cor escolhida para o fundo do avatar', async () => {
+    const user = userEvent.setup();
+    const updateProfile = vi.fn();
+    const state = {
+      ...initialRoomState,
+      me: {
+        ...initialRoomState.me,
+        id: 'conn-1',
+        userId: 'user-1',
+        name: 'Fulana',
+        displayName: 'Fulana',
+        avatar: '',
+        avatarColor: 'green',
+      },
+    };
+
+    renderSettings({ state, updateProfile });
+
+    await user.click(screen.getByRole('button', { name: 'Usar Fuchsia' }));
+    await user.click(screen.getByRole('button', { name: 'Salvar perfil' }));
+    expect(screen.getByRole('button', { name: 'Perfil salvo' })).toBeInTheDocument();
+
+    expect(updateProfile).toHaveBeenCalledWith({
+      avatar: '',
+      avatarPoster: '',
+      avatarColor: 'fuchsia',
+      displayName: 'Fulana',
+      banner: '',
+      bannerPoster: '',
+      bio: '',
+      profileLinks: [],
+    });
+  });
+
+  it('salva um nome de exibicao novo, diferente do username', async () => {
+    const user = userEvent.setup();
+    const updateProfile = vi.fn();
+    const state = {
+      ...initialRoomState,
+      me: {
+        ...initialRoomState.me,
+        id: 'conn-1',
+        userId: 'user-1',
+        name: 'Fulana',
+        displayName: 'Fulana',
+        avatar: '',
+        avatarColor: 'green',
+      },
+    };
+
+    renderSettings({ state, updateProfile });
+
+    const input = screen.getByLabelText('Nome de exibição');
+    await user.clear(input);
+    await user.type(input, 'Apelido Legal');
+    await user.click(screen.getByRole('button', { name: 'Salvar perfil' }));
+
+    expect(updateProfile).toHaveBeenCalledWith({
+      avatar: '',
+      avatarPoster: '',
+      avatarColor: 'green',
+      displayName: 'Apelido Legal',
+      banner: '',
+      bannerPoster: '',
+      bio: '',
+      profileLinks: [],
+    });
+  });
+
+  it('salva uma cor personalizada (fora dos presets) escolhida no color picker', async () => {
+    const user = userEvent.setup();
+    const updateProfile = vi.fn();
+    const state = {
+      ...initialRoomState,
+      me: {
+        ...initialRoomState.me,
+        id: 'conn-1',
+        userId: 'user-1',
+        name: 'Fulana',
+        displayName: 'Fulana',
+        avatar: '',
+        avatarColor: 'green',
+      },
+    };
+
+    renderSettings({ state, updateProfile });
+
+    fireEvent.change(screen.getByLabelText('Escolher cor personalizada'), { target: { value: '#a1b2c3' } });
+    await user.click(screen.getByRole('button', { name: 'Salvar perfil' }));
+
+    expect(updateProfile).toHaveBeenCalledWith({
+      avatar: '',
+      avatarPoster: '',
+      avatarColor: '#a1b2c3',
+      displayName: 'Fulana',
+      banner: '',
+      bannerPoster: '',
+      bio: '',
+      profileLinks: [],
+    });
+  });
+
+  it('salva bio e links do perfil sem linhas vazias', async () => {
+    const user = userEvent.setup();
+    const updateProfile = vi.fn();
+    const state = {
+      ...initialRoomState,
+      me: {
+        ...initialRoomState.me,
+        id: 'conn-1',
+        userId: 'user-1',
+        name: 'Fulana',
+        displayName: 'Fulana',
+        avatar: '',
+        avatarColor: 'green',
+      },
+    };
+
+    renderSettings({ state, updateProfile });
+
+    await user.type(screen.getByLabelText('Bio'), 'Oi, eu sou a Fulana.');
+    await user.type(screen.getByLabelText('Link 1'), 'https://youtube.com/@fulana');
+    await user.click(screen.getByRole('button', { name: 'Adicionar link' }));
+    await user.click(screen.getByRole('button', { name: 'Salvar perfil' }));
+
+    expect(updateProfile).toHaveBeenCalledWith({
+      avatar: '',
+      avatarPoster: '',
+      avatarColor: 'green',
+      displayName: 'Fulana',
+      banner: '',
+      bannerPoster: '',
+      bio: 'Oi, eu sou a Fulana.',
+      profileLinks: ['https://youtube.com/@fulana'],
+    });
+  });
+
+  it('mostra "Remover foto" so quando ja existe uma foto', async () => {
+    const user = userEvent.setup();
+    const stateSemFoto = {
+      ...initialRoomState,
+      me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana', avatar: '', avatarColor: 'green' },
+    };
+    renderSettings({ state: stateSemFoto });
+
+    await user.click(screen.getByRole('button', { name: 'Alterar foto de perfil' }));
+    expect(await screen.findByRole('menuitem', { name: 'Enviar do computador' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Remover foto' })).not.toBeInTheDocument();
+  });
+
+  it('recorta e envia uma nova foto de perfil, aplicando na hora (sem esperar Salvar perfil)', async () => {
+    const user = userEvent.setup();
+    const uploadProfileImage = vi.fn().mockResolvedValue('/uploads/novo-avatar');
+    const state = {
+      ...initialRoomState,
+      me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana', avatar: '', avatarColor: 'green' },
+    };
+    renderSettings({ state, uploadProfileImage });
+
+    const file = new File(['conteudo'], 'foto.png', { type: 'image/png' });
+    await user.upload(screen.getByLabelText('Selecionar foto de perfil'), file);
+    await user.click(screen.getByRole('button', { name: 'Confirmar recorte' }));
+
+    expect(uploadProfileImage).toHaveBeenCalledWith('avatar', file, { x: 0, y: 0, width: 10, height: 10 }, expect.any(Function), expect.objectContaining({ avatar: '' }));
+  });
+
+  it('remove a foto de perfil na hora, sem esperar Salvar perfil', async () => {
+    const user = userEvent.setup();
+    const updateProfile = vi.fn();
+    const state = {
+      ...initialRoomState,
+      me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana', avatar: '/uploads/foto-atual', avatarColor: 'green' },
+    };
+    renderSettings({ state, updateProfile });
+
+    await user.click(screen.getByRole('button', { name: 'Alterar foto de perfil' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Remover foto' }));
+
+    expect(updateProfile).toHaveBeenCalledWith(expect.objectContaining({ avatar: '' }));
+  });
+});
+
+describe('SettingsPage — abas pela rota', () => {
+  const adminState = { ...initialRoomState, me: { ...initialRoomState.me, id: 'c', userId: 'u', name: 'Ana', displayName: 'Ana', role: 'admin' as const } };
+  const userState = { ...initialRoomState, me: { ...initialRoomState.me, id: 'c', userId: 'u', name: 'Ana', displayName: 'Ana' } };
+
+  it('abre a aba nomeada na URL', () => {
+    renderSettings({ state: userState }, '/app/settings/privacy');
+    expect(screen.getByText('lista de bloqueados')).toBeInTheDocument();
+  });
+
+  it('aba desconhecida cai no perfil em vez de renderizar uma pagina vazia', () => {
+    renderSettings({ state: userState }, '/app/settings/naoexiste');
+    expect(screen.getByLabelText('Nome de exibição')).toBeInTheDocument();
+  });
+
+  it('a aba de administracao nao existe para quem nao e admin (cai no perfil)', () => {
+    renderSettings({ state: userState }, '/app/settings/moderation');
+    expect(screen.getByLabelText('Nome de exibição')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Administração/ })).not.toBeInTheDocument();
+  });
+
+  it('admin ve a aba de administracao', () => {
+    renderSettings({ state: adminState });
+    expect(screen.getByRole('tab', { name: /Administração/ })).toBeInTheDocument();
+  });
+
+  it('clicar numa aba navega para a rota dela', async () => {
+    const user = userEvent.setup();
+    renderSettings({ state: userState });
+    await user.click(screen.getByRole('tab', { name: /Privacidade/ }));
+    expect(screen.getByText('lista de bloqueados')).toBeInTheDocument();
+  });
+});

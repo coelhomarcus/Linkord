@@ -71,12 +71,11 @@ export function useConversationsList(sendWs: (msg: ClientMessage) => void) {
     sendWs({ t: 'conversation-pin', conversationId, pinned });
   }, [sendWs]);
 
-  const createGroup = useCallback((title: string, memberIds: string[]) => sendWs({ t: 'group-create', title, memberIds }), [sendWs]);
   const deleteGroup = useCallback((conversationId: string) => sendWs({ t: 'group-delete', conversationId }), [sendWs]);
   const updateGroupTitle = useCallback((conversationId: string, title: string) => sendWs({ t: 'group-update', conversationId, title }), [sendWs]);
   const updateGroupAvatar = useCallback((conversationId: string, avatar: string) => sendWs({ t: 'group-update', conversationId, avatar }), [sendWs]);
-  const addGroupMembers = useCallback((conversationId: string, memberIds: string[]) => sendWs({ t: 'group-members-add', conversationId, memberIds }), [sendWs]);
   const removeGroupMember = useCallback((conversationId: string, userId: string) => sendWs({ t: 'group-members-remove', conversationId, userId }), [sendWs]);
+  const transferGroupOwnership = useCallback((conversationId: string, userId: string) => sendWs({ t: 'group-transfer-owner', conversationId, userId }), [sendWs]);
 
   /** A conversation now belongs on this client's sidebar for the first
    * time (new group, or just added to an existing one) — upsert by id
@@ -89,12 +88,19 @@ export function useConversationsList(sendWs: (msg: ClientMessage) => void) {
     setConversations(next);
   }, []);
 
-  /** A conversation this client already has changed (rename, avatar, or
-   * message activity bumping lastMessageAt/updatedAt) — replace by id and
-   * re-sort, since activity/pin ordering could have changed. */
+  /** A conversation changed (rename, avatar, or message activity bumping
+   * lastMessageAt/updatedAt) — replace by id and re-sort, since activity/pin
+   * ordering could have changed. An update for one this client does NOT have
+   * yet is an insert: it is exactly how the recipient of a FIRST direct
+   * message learns the conversation exists (an empty DM is never listed, and
+   * the first message is what surfaces it — see touchConversation), and how a
+   * DM the user closed comes back when a newer message arrives. */
   const onConversationUpdated = useCallback((m: Extract<ServerMessage, { t: 'conversation-updated' }>) => {
-    if (!conversationsRef.current.some((c) => c.id === m.conversation.id)) return;
-    const next = sortConversations(conversationsRef.current.map((c) => (c.id === m.conversation.id ? m.conversation : c)));
+    const known = conversationsRef.current.some((c) => c.id === m.conversation.id);
+    const base = known
+      ? conversationsRef.current.map((c) => (c.id === m.conversation.id ? m.conversation : c))
+      : [m.conversation, ...conversationsRef.current];
+    const next = sortConversations(base);
     conversationsRef.current = next;
     setConversations(next);
   }, []);
@@ -158,7 +164,7 @@ export function useConversationsList(sendWs: (msg: ClientMessage) => void) {
     conversations, conversationsRef, activeConversationId, activeConversationIdRef,
     setInitial, setActiveConversation, clearActiveConversation, removeConversation,
     openDirect, pinConversation,
-    createGroup, deleteGroup, updateGroupTitle, updateGroupAvatar, addGroupMembers, removeGroupMember,
+    deleteGroup, updateGroupTitle, updateGroupAvatar, removeGroupMember, transferGroupOwnership,
     onConversationCreated, onConversationUpdated, onConversationMemberAdded, onConversationMemberRemoved,
     onConversationPinned, onConversationOpened, onConversationDeleted,
   };

@@ -25,6 +25,14 @@ describe('formatSizeLimit', () => {
   });
 });
 
+describe('formatFileSize — GB', () => {
+  it('a partir de 1 GiB mostra GB (2 GiB nao vira "2048.0 MB")', () => {
+    expect(formatFileSize(1024 ** 3)).toBe('1.0 GB');
+    expect(formatFileSize(2 * 1024 ** 3)).toBe('2.0 GB');
+    expect(formatFileSize(1024 ** 3 - 1)).toMatch(/MB$/);
+  });
+});
+
 describe('formatFileSize', () => {
   it('abaixo de 1KB, mostra em bytes inteiros', () => {
     expect(formatFileSize(500)).toBe('500 B');

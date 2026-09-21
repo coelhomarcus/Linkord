@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ContextMenuRootActions } from '@base-ui/react/context-menu';
-import { Copy, Download, Pencil, Pin, PinOff, Reply, Trash2, UsersRound, X } from 'lucide-react';
+import { Copy, Download, Flag, Pencil, Pin, PinOff, Reply, Trash2, UsersRound, X } from 'lucide-react';
+import { ReportDialog } from '@/features/reports/ReportDialog';
+import type { ReportTarget } from '@/features/reports/reportCategories';
 import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/shared/ui/primitives/context-menu';
 import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/shared/ui/primitives/emoji-picker';
 import { useRoom } from '@/state/RoomContext';
@@ -32,11 +34,13 @@ export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenu
   const [messageTarget, setMessageTarget] = useState<number | null>(null);
   const [conversationTarget, setConversationTarget] = useState<string | null>(null);
   const [userTarget, setUserTarget] = useState<string | null>(null);
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
   const contextMenuActionsRef = useRef<ContextMenuRootActions | null>(null);
   const isAdmin = state.me.role === 'admin';
   const targetMessage = messageTarget != null
     ? activeConversationId ? messagesByConversation.get(activeConversationId)?.find((m) => m.msgId === messageTarget) : undefined
     : undefined;
+  const targetIsInvite = targetMessage?.kind === 'group_invite';
   const targetIsMine = !!targetMessage && targetMessage.id === state.me.userId;
   const targetCanDelete = targetIsMine || isAdmin;
   const targetConversation = conversationTarget ? conversations.find((c) => c.id === conversationTarget) : undefined;
@@ -117,99 +121,112 @@ export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenu
   }
 
   return (
-    <ContextMenu
-      actionsRef={contextMenuActionsRef}
-      onOpenChange={(open) => { if (open) setHasSelection(!!window.getSelection()?.toString()); }}
-    >
-      <ContextMenuTrigger className="contents">{children}</ContextMenuTrigger>
-      {/* Only the message block's emoji picker needs a wide, fixed viewport
-          — every other block (conversation actions, download, selection,
-          stage) is a handful of short text items, so leave those at the
-          component's own natural (min-w-48, content-sized) width instead of
-          forcing them as wide as the emoji picker. */}
-      <ContextMenuContent className={showMessageBlock ? 'w-75' : undefined}>
-        {showMessageBlock && targetMessage && (
-          <>
-            <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => reactToChatMessage(targetMessage.msgId, emoji)}>
-              <EmojiPickerSearch />
-              <EmojiPickerContent />
-            </EmojiPicker>
-            <ContextMenuSeparator />
-            <ContextMenuItem onClick={() => setReplyingTo(targetMessage)}>
-              <Reply size={14} />
-              <span>Responder</span>
-            </ContextMenuItem>
-            {targetMessage.text && (
-              <ContextMenuItem onClick={handleCopyMessageText}>
+    <>
+      <ContextMenu
+        actionsRef={contextMenuActionsRef}
+        onOpenChange={(open) => { if (open) setHasSelection(!!window.getSelection()?.toString()); }}
+      >
+        <ContextMenuTrigger className="contents">{children}</ContextMenuTrigger>
+        {/* Only the message block's emoji picker needs a wide, fixed viewport
+            — every other block (conversation actions, download, selection,
+            stage) is a handful of short text items, so leave those at the
+            component's own natural (min-w-48, content-sized) width instead of
+            forcing them as wide as the emoji picker. */}
+        <ContextMenuContent className={showMessageBlock && !targetIsInvite ? 'w-75' : undefined}>
+          {showMessageBlock && targetMessage && (
+            <>
+              {!targetIsInvite && (
+                <>
+                  <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => reactToChatMessage(targetMessage.msgId, emoji)}>
+                    <EmojiPickerSearch />
+                    <EmojiPickerContent />
+                  </EmojiPicker>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onClick={() => setReplyingTo(targetMessage)}>
+                    <Reply size={14} />
+                    <span>Responder</span>
+                  </ContextMenuItem>
+                </>
+              )}
+              {targetMessage.text && (
+                <ContextMenuItem onClick={handleCopyMessageText}>
+                  <Copy size={14} />
+                  <span>Copiar texto</span>
+                </ContextMenuItem>
+              )}
+              {!targetIsMine && !targetIsInvite && !!targetMessage.id && (
+                <ContextMenuItem onClick={() => setReportTarget({ type: 'message', id: String(targetMessage.msgId), label: `mensagem de ${targetMessage.name}` })}>
+                  <Flag size={14} />
+                  <span>Denunciar</span>
+                </ContextMenuItem>
+              )}
+              {targetIsMine && !targetIsInvite && (
+                <ContextMenuItem onClick={() => setEditingMsgId(targetMessage.msgId)}>
+                  <Pencil size={14} />
+                  <span>Editar</span>
+                </ContextMenuItem>
+              )}
+              {targetCanDelete && (
+                <ContextMenuItem variant="destructive" onClick={() => deleteChatMessage(targetMessage.msgId)}>
+                  <Trash2 size={14} />
+                  <span>Apagar</span>
+                </ContextMenuItem>
+              )}
+              {(showDownloadBlock || showSelectionBlock || showStageBlock) && <ContextMenuSeparator />}
+            </>
+          )}
+          {showDownloadBlock && (
+            <>
+              <ContextMenuItem onClick={handleDownload}>
+                <Download size={14} />
+                <span>Baixar</span>
+              </ContextMenuItem>
+              {(showSelectionBlock || showStageBlock) && <ContextMenuSeparator />}
+            </>
+          )}
+          {showSelectionBlock && (
+            <>
+              <ContextMenuItem onClick={handleCopy}>
                 <Copy size={14} />
-                <span>Copiar texto</span>
+                <span>Copiar</span>
               </ContextMenuItem>
-            )}
-            {targetIsMine && (
-              <ContextMenuItem onClick={() => setEditingMsgId(targetMessage.msgId)}>
-                <Pencil size={14} />
-                <span>Editar</span>
+              {showStageBlock && <ContextMenuSeparator />}
+            </>
+          )}
+          {showStageBlock && (
+            <ContextMenuCheckboxItem
+              checked={hideAudioOnlyTiles}
+              onCheckedChange={setHideAudioOnlyTiles}
+            >
+              <span>Ocultar sem vídeo</span>
+            </ContextMenuCheckboxItem>
+          )}
+          {showUserBlock && userTarget && (
+            <>
+              <ContextMenuItem onClick={() => onOpenProfile(userTarget)}>
+                <UsersRound size={14} />
+                <span>Ver perfil</span>
               </ContextMenuItem>
-            )}
-            {targetCanDelete && (
-              <ContextMenuItem variant="destructive" onClick={() => deleteChatMessage(targetMessage.msgId)}>
-                <Trash2 size={14} />
-                <span>Apagar</span>
+              {showConversationBlock && <ContextMenuSeparator />}
+            </>
+          )}
+          {showConversationBlock && targetConversation && (
+            <>
+              <ContextMenuItem onClick={() => pinConversation(targetConversation.id, !targetConversation.pinnedAt)}>
+                {targetConversation.pinnedAt ? <PinOff size={14} /> : <Pin size={14} />}
+                <span>{targetConversation.pinnedAt ? 'Desafixar conversa' : 'Fixar conversa'}</span>
               </ContextMenuItem>
-            )}
-            {(showDownloadBlock || showSelectionBlock || showStageBlock) && <ContextMenuSeparator />}
-          </>
-        )}
-        {showDownloadBlock && (
-          <>
-            <ContextMenuItem onClick={handleDownload}>
-              <Download size={14} />
-              <span>Baixar</span>
-            </ContextMenuItem>
-            {(showSelectionBlock || showStageBlock) && <ContextMenuSeparator />}
-          </>
-        )}
-        {showSelectionBlock && (
-          <>
-            <ContextMenuItem onClick={handleCopy}>
-              <Copy size={14} />
-              <span>Copiar</span>
-            </ContextMenuItem>
-            {showStageBlock && <ContextMenuSeparator />}
-          </>
-        )}
-        {showStageBlock && (
-          <ContextMenuCheckboxItem
-            checked={hideAudioOnlyTiles}
-            onCheckedChange={setHideAudioOnlyTiles}
-          >
-            <span>Ocultar sem vídeo</span>
-          </ContextMenuCheckboxItem>
-        )}
-        {showUserBlock && userTarget && (
-          <>
-            <ContextMenuItem onClick={() => onOpenProfile(userTarget)}>
-              <UsersRound size={14} />
-              <span>Ver perfil</span>
-            </ContextMenuItem>
-            {showConversationBlock && <ContextMenuSeparator />}
-          </>
-        )}
-        {showConversationBlock && targetConversation && (
-          <>
-            <ContextMenuItem onClick={() => pinConversation(targetConversation.id, !targetConversation.pinnedAt)}>
-              {targetConversation.pinnedAt ? <PinOff size={14} /> : <Pin size={14} />}
-              <span>{targetConversation.pinnedAt ? 'Desafixar conversa' : 'Fixar conversa'}</span>
-            </ContextMenuItem>
-            {targetConversation.type === 'direct' && (
-              <ContextMenuItem onClick={() => closeConversation(targetConversation.id)}>
-                <X size={14} />
-                <span>Fechar conversa</span>
-              </ContextMenuItem>
-            )}
-          </>
-        )}
-      </ContextMenuContent>
-    </ContextMenu>
+              {targetConversation.type === 'direct' && (
+                <ContextMenuItem onClick={() => closeConversation(targetConversation.id)}>
+                  <X size={14} />
+                  <span>Fechar conversa</span>
+                </ContextMenuItem>
+              )}
+            </>
+          )}
+        </ContextMenuContent>
+      </ContextMenu>
+      <ReportDialog target={reportTarget} open={!!reportTarget} onOpenChange={(open) => { if (!open) setReportTarget(null); }} />
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, integer, bigint, jsonb, serial, boolean, uniqueIndex, index, primaryKey, customType } from 'drizzle-orm/pg-core';
+import { pgTable, text, varchar, timestamp, integer, bigint, jsonb, serial, boolean, uniqueIndex, index, primaryKey, check, customType } from 'drizzle-orm/pg-core';
 import { sql, type SQL } from 'drizzle-orm';
 
 // Postgres tsvector has no first-class drizzle column type — customType
@@ -32,9 +32,16 @@ export const users = pgTable('users', {
   bio: text('bio').notNull().default(''),
   profileLinks: jsonb('profile_links').$type<string[]>().notNull().default([]),
   role: varchar('role', { length: 16 }).notNull().default('user'), // 'user' | 'admin'
+  // 'active' | 'suspended'. A suspended account can't hold a session at all
+  // (resolveSession returns null) — see modules/admin/adminUsers.ts.
+  status: varchar('status', { length: 16 }).notNull().default('active'),
+  statusReason: text('status_reason').notNull().default(''),
+  statusChangedAt: timestamp('status_changed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
+  index('users_status_idx').on(t.status),
+  index('users_created_at_id_idx').on(t.createdAt, t.id),
   // CASE-INSENSITIVE uniqueness: "Lune" and "lune" are the same person. The
   // chosen spelling is stored in the column; uniqueness lives in an index
   // on lower(username) — every username lookup must use that SAME
@@ -98,19 +105,27 @@ export const conversations = pgTable('conversations', {
   dmKey: text('dm_key'),
   lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
   lastActivityAt: timestamp('last_activity_at', { withTimezone: true }),
+  // 'active' | 'suspended' — a suspended conversation is still listed to its
+  // members but every membership-gated read/write treats it as no access
+  // (conversationsRepository.ts#conversationExistsForUser).
+  status: varchar('status', { length: 16 }).notNull().default('active'),
+  statusReason: text('status_reason').notNull().default(''),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex('conversations_dm_key_unique').on(t.dmKey),
   index('conversations_type_idx').on(t.type),
+  index('conversations_type_status_created_idx').on(t.type, t.status, t.createdAt, t.id),
 ]);
 
-/** Membership for both DMs and groups. DMs always have two rows; groups have
- * the admin creator as `owner` and selected users as `member`. */
+/** Membership for both DMs and groups. DMs always have two rows, both
+ * `member` (a DM has no owner). Groups have the creator as `owner` and
+ * everyone else as `member` — `'admin'` was never actually assigned
+ * anywhere and has been dropped from the type. */
 export const conversationMembers = pgTable('conversation_members', {
   conversationId: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  role: varchar('role', { length: 16 }).notNull().default('member'), // 'owner' | 'admin' | 'member'
+  role: varchar('role', { length: 16 }).notNull().default('member'), // 'owner' | 'member'
   lastReadMessageId: integer('last_read_message_id'),
   // set when this member "closes" a direct conversation (Discord-style —
   // leaves their own history list without deleting anything). listForUser
@@ -126,6 +141,81 @@ export const conversationMembers = pgTable('conversation_members', {
   uniqueIndex('conversation_members_conversation_user_key').on(t.conversationId, t.userId),
   index('conversation_members_user_id_idx').on(t.userId),
   index('conversation_members_conversation_id_idx').on(t.conversationId),
+  // at most one owner per conversation — DMs never set role='owner' at all,
+  // so this only ever constrains groups. Application logic (conversations.ts)
+  // already only ever assigns exactly one owner at creation, but the real
+  // guarantee needs to live in the database, not just in code that could
+  // have a bug later.
+  uniqueIndex('conversation_members_one_owner_idx').on(t.conversationId).where(sql`${t.role} = 'owner'`),
+]);
+
+/** A friend relationship between two accounts — one row per canonical pair
+ * (`userLowId < userHighId`, a deterministic ordering of the ids so the
+ * same pair can never get two rows regardless of who requested). Consent is
+ * two-sided: `requestedBy` is whichever side is still waiting on the other
+ * while `status = 'pending'`. `version` guards against a stale accept
+ * racing a newer request (see modules/friendships in a later etapa) — the
+ * column exists now so the DB invariant is there before any handler writes
+ * to it. */
+export const friendships = pgTable('friendships', {
+  id: text('id').primaryKey(),
+  userLowId: text('user_low_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userHighId: text('user_high_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  requestedBy: text('requested_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: varchar('status', { length: 16 }).notNull().default('pending'), // 'pending' | 'accepted' | 'declined' | 'cancelled' | 'removed'
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  respondedAt: timestamp('responded_at', { withTimezone: true }),
+  retryAfter: timestamp('retry_after', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('friendships_pair_key').on(t.userLowId, t.userHighId),
+  index('friendships_user_high_id_idx').on(t.userHighId),
+  index('friendships_status_idx').on(t.status),
+  check('friendships_pair_order_check', sql`${t.userLowId} < ${t.userHighId}`),
+  check('friendships_requester_in_pair_check', sql`${t.requestedBy} = ${t.userLowId} OR ${t.requestedBy} = ${t.userHighId}`),
+  check('friendships_status_check', sql`${t.status} IN ('pending','accepted','declined','cancelled','removed')`),
+]);
+
+/** Directional block — no surrogate id, same reasoning as
+ * `messageReactions`: nothing ever references a single block row on its
+ * own. The two sides are independent: `blockerId` unblocking doesn't touch
+ * whatever `blockedId` may have done on their own row. */
+export const userBlocks = pgTable('user_blocks', {
+  blockerId: text('blocker_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  blockedId: text('blocked_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.blockerId, t.blockedId] }),
+  index('user_blocks_blocked_id_idx').on(t.blockedId), // "who blocked me"
+  check('user_blocks_different_users_check', sql`${t.blockerId} <> ${t.blockedId}`),
+]);
+
+/** A pending/resolved invitation to a group — a pending invite is NOT
+ * membership (no history, call access, search, or mentions until accepted).
+ * `conversationId` always points at a `group` conversation, never a DM.
+ * Cascades when the group itself is deleted — an invite to a group that no
+ * longer exists is meaningless, and `messages.groupInvitationId` (below)
+ * is what keeps the DM card alive as a tombstone instead of disappearing. */
+export const groupInvitations = pgTable('group_invitations', {
+  id: text('id').primaryKey(),
+  conversationId: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+  inviterId: text('inviter_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  inviteeId: text('invitee_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: varchar('status', { length: 16 }).notNull().default('pending'), // 'pending' | 'accepted' | 'declined' | 'revoked' | 'expired'
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  // legacy: invitations no longer expire (null); old rows may still carry one
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  respondedAt: timestamp('responded_at', { withTimezone: true }),
+}, (t) => [
+  // at most one PENDING invite per (group, invitee) — a re-invite after
+  // decline/expiry resolves the old row first, doesn't get blocked here.
+  uniqueIndex('group_invitations_pending_unique').on(t.conversationId, t.inviteeId).where(sql`${t.status} = 'pending'`),
+  index('group_invitations_invitee_status_idx').on(t.inviteeId, t.status),
+  index('group_invitations_conversation_id_idx').on(t.conversationId),
+  check('group_invitations_status_check', sql`${t.status} IN ('pending','accepted','declined','revoked','expired')`),
 ]);
 
 /** Chat message, now persisted (used to live only in memory, lost on
@@ -141,6 +231,12 @@ export const messages = pgTable('messages', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   editedAt: timestamp('edited_at', { withTimezone: true }),
   replyTo: jsonb('reply_to'),
+  kind: varchar('kind', { length: 16 }).notNull().default('text'), // 'text' | 'group_invite'
+  // Points at the invitation this card represents. SET NULL (not cascade):
+  // if the invitation row is gone (e.g. the group got deleted, cascading
+  // down to group_invitations), the card stays in the DM as a tombstone —
+  // "Convite indisponível" — instead of vanishing.
+  groupInvitationId: text('group_invitation_id').references(() => groupInvitations.id, { onDelete: 'set null' }),
   // Postgres computes/maintains this itself (GENERATED ALWAYS AS ... STORED)
   // on every insert/update of `text` — never set from the app. 'portuguese'
   // config for stemming (a search for "mensagem" should also find
@@ -150,6 +246,8 @@ export const messages = pgTable('messages', {
 }, (t) => [
   index('messages_conversation_id_idx').on(t.conversationId),
   index('messages_search_vector_idx').using('gin', t.searchVector),
+  index('messages_group_invitation_id_idx').on(t.groupInvitationId),
+  check('messages_kind_reference_check', sql`(${t.kind} = 'text' AND ${t.groupInvitationId} IS NULL) OR (${t.kind} = 'group_invite')`),
 ]);
 
 /** One row per (message, user, emoji) — a user can react to the same
@@ -215,6 +313,53 @@ export const attachments = pgTable('attachments', {
   index('attachments_message_id_idx').on(t.messageId),
 ]);
 
+/** The recipient's inbox/read-state for a social event — scoped for now to
+ * the resources that exist this etapa (friend requests, group invitations).
+ * Typed FKs, not a generic JSON blob, so referential integrity is real.
+ * `dedupeKey` is deterministic per event (e.g.
+ * `friend_request:<friendshipId>:<version>`) so a retried outbox write
+ * can't create a duplicate notification. "Read" only means seen — it does
+ * NOT mean accepted; the friendship/invitation row is the actual source of
+ * truth for that. */
+export const notifications = pgTable('notifications', {
+  id: text('id').primaryKey(),
+  recipientId: text('recipient_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  kind: varchar('kind', { length: 32 }).notNull(), // 'friend_request' | 'friend_accepted' | 'group_invitation'
+  friendshipId: text('friendship_id').references(() => friendships.id, { onDelete: 'cascade' }),
+  groupInvitationId: text('group_invitation_id').references(() => groupInvitations.id, { onDelete: 'cascade' }),
+  dedupeKey: text('dedupe_key').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  readAt: timestamp('read_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('notifications_dedupe_key_unique').on(t.dedupeKey),
+  index('notifications_recipient_created_idx').on(t.recipientId, t.createdAt),
+  index('notifications_recipient_unread_idx').on(t.recipientId).where(sql`${t.readAt} IS NULL`),
+  check('notifications_kind_reference_check', sql`
+    (${t.kind} IN ('friend_request','friend_accepted') AND ${t.friendshipId} IS NOT NULL AND ${t.groupInvitationId} IS NULL)
+    OR (${t.kind} = 'group_invitation' AND ${t.groupInvitationId} IS NOT NULL AND ${t.friendshipId} IS NULL)
+  `),
+]);
+
+/** Transactional outbox: the same commit that changes durable state (e.g.
+ * accepts a friend request) writes the event to deliver here, instead of
+ * emitting directly and risking a commit that succeeds while the socket
+ * emit is lost. A worker (introduced in a later etapa) delivers with
+ * dedup/retry. `payload` is a minimal reference (ids only) — it must never
+ * freeze a permission snapshot; the worker re-validates audience/authorization
+ * at delivery time, not at write time. */
+export const outboxEvents = pgTable('outbox_events', {
+  id: text('id').primaryKey(),
+  type: varchar('type', { length: 64 }).notNull(), // e.g. 'friend_request_created', 'group_invitation_created'
+  audienceUserId: text('audience_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  payload: jsonb('payload').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+  attempts: integer('attempts').notNull().default(0),
+}, (t) => [
+  index('outbox_events_unprocessed_idx').on(t.createdAt).where(sql`${t.processedAt} IS NULL`),
+  index('outbox_events_audience_user_id_idx').on(t.audienceUserId),
+]);
+
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type AuthCode = typeof authCodes.$inferSelect;
@@ -223,3 +368,83 @@ export type ConversationMember = typeof conversationMembers.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;
 export type MessageReaction = typeof messageReactions.$inferSelect;
+export type Friendship = typeof friendships.$inferSelect;
+export type UserBlock = typeof userBlocks.$inferSelect;
+export type GroupInvitation = typeof groupInvitations.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;
+export type OutboxEvent = typeof outboxEvents.$inferSelect;
+
+/** Append-only record of administrative actions. No foreign keys on purpose:
+ * the trail must outlive the account or group it is about (and the admin who
+ * acted), so actor/target are stored as ids plus a label snapshot. The
+ * application only ever INSERTs here. `detail` never carries passwords,
+ * cookies, tokens or conversation bodies. */
+export const adminAuditLogs = pgTable('admin_audit_logs', {
+  id: text('id').primaryKey(),
+  actorId: text('actor_id'),
+  actorLabel: text('actor_label').notNull().default(''),
+  action: varchar('action', { length: 48 }).notNull(),
+  targetType: varchar('target_type', { length: 16 }).notNull(), // 'user' | 'group' | 'message' | 'report' | 'system'
+  targetId: text('target_id').notNull().default(''),
+  targetLabel: text('target_label').notNull().default(''),
+  reason: text('reason').notNull().default(''),
+  result: varchar('result', { length: 16 }).notNull().default('ok'), // 'ok' | 'failed'
+  detail: jsonb('detail').$type<Record<string, unknown>>().notNull().default({}),
+  requestId: text('request_id').notNull().default(''),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('admin_audit_created_id_idx').on(t.createdAt, t.id),
+  index('admin_audit_actor_idx').on(t.actorId, t.createdAt),
+  index('admin_audit_target_idx').on(t.targetType, t.targetId, t.createdAt),
+  index('admin_audit_action_idx').on(t.action, t.createdAt),
+  check('admin_audit_result_check', sql`${t.result} IN ('ok','failed')`),
+]);
+
+/** A user's report about an account, a group or a message. `snapshot` keeps
+ * the only evidence there is — for a message, its text at the moment of the
+ * report (capped) — so the case survives the author editing or deleting it;
+ * an admin never gets to read anything else in the conversation. The reporter
+ * is never shown to the reported account. */
+export const reports = pgTable('reports', {
+  id: text('id').primaryKey(),
+  reporterId: text('reporter_id').references(() => users.id, { onDelete: 'set null' }),
+  targetType: varchar('target_type', { length: 16 }).notNull(), // 'user' | 'group' | 'message'
+  targetId: text('target_id').notNull(),
+  targetLabel: text('target_label').notNull().default(''),
+  category: varchar('category', { length: 24 }).notNull(),
+  details: text('details').notNull().default(''),
+  status: varchar('status', { length: 16 }).notNull().default('open'), // 'open' | 'reviewing' | 'resolved' | 'dismissed'
+  assigneeId: text('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+  resolution: varchar('resolution', { length: 24 }).notNull().default(''),
+  resolutionNote: text('resolution_note').notNull().default(''),
+  snapshot: jsonb('snapshot').$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+}, (t) => [
+  index('reports_status_created_idx').on(t.status, t.createdAt, t.id),
+  index('reports_target_idx').on(t.targetType, t.targetId),
+  // one live report per reporter and target — a second click is not a second case
+  uniqueIndex('reports_open_unique').on(t.reporterId, t.targetType, t.targetId).where(sql`${t.status} IN ('open','reviewing')`),
+  check('reports_target_type_check', sql`${t.targetType} IN ('user','group','message')`),
+  check('reports_status_check', sql`${t.status} IN ('open','reviewing','resolved','dismissed')`),
+]);
+
+/** Record of every correction the legacy-data repair made (docs/plano-rede-social.md
+ * §12.2 "registrar todas as correções"). The repair script creates this table
+ * itself when it runs BEFORE the migrations; this definition keeps drizzle and the
+ * migration history in step. */
+export const dataRepairs = pgTable('data_repairs', {
+  id: text('id').primaryKey(),
+  runId: text('run_id').notNull(),
+  kind: varchar('kind', { length: 32 }).notNull(),
+  targetType: varchar('target_type', { length: 16 }).notNull(),
+  targetId: text('target_id').notNull(),
+  before: jsonb('before').$type<Record<string, unknown>>().notNull().default({}),
+  after: jsonb('after').$type<Record<string, unknown>>().notNull().default({}),
+  note: text('note').notNull().default(''),
+  needsReview: boolean('needs_review').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('data_repairs_run_idx').on(t.runId),
+  index('data_repairs_target_idx').on(t.targetType, t.targetId),
+]);

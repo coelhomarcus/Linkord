@@ -77,13 +77,15 @@ export async function resolveSession(rawToken: string | undefined | null): Promi
       bio: users.bio,
       profileLinks: users.profileLinks,
       role: users.role,
+      status: users.status,
     })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
     .where(eq(sessions.tokenHash, tokenHash))
     .limit(1);
 
-  if (!row || row.expiresAt.getTime() < Date.now()) {
+  // a suspended account holds no session, whatever the DB row says
+  if (!row || row.expiresAt.getTime() < Date.now() || row.status !== 'active') {
     cacheInvalidate(tokenHash);
     return null;
   }

@@ -2,22 +2,28 @@ import type { Server as HttpServer } from 'node:http';
 import { Server, type Socket } from 'socket.io';
 import { config } from '../config/env.js';
 import {
-  participants as participantsMap, join, send, broadcast, publicParticipant, handleClose, ipOf,
-  listOnlineUserIds, setCallConversationId, handlers as participantHandlers,
+  participants as participantsMap, join, send, broadcastToKnownPeers, publicParticipant, handleClose, ipOf,
+  setCallConversationId, handlers as participantHandlers,
 } from '../modules/presence/participants.js';
+import { applyPeerVisibility, buildPresenceSnapshot } from '../modules/presence/knownPeers.js';
 import * as livekit from '../integrations/livekit/livekit.js';
 import * as reactions from '../modules/calls/reactions.js';
 import * as floodControl from './floodControl.js';
 import * as chat from '../modules/messages/messages.js';
 import * as conversations from '../modules/conversations/conversations.js';
-import { listForUser, getConversationForUser } from '../modules/conversations/conversationsRepository.js';
-import { getUsage } from '../modules/attachments/attachmentQuota.js';
-import * as discordWebhook from '../integrations/discord/discordWebhook.js';
+import { listForUser, getConversationForUser, getDirectPeerId } from '../modules/conversations/conversationsRepository.js';
+import { canSendDirectMessage } from '../modules/friendships/friendshipsRepository.js';
+import { ERROR_CODES } from '../http/errors.js';
+import { getUserUsage } from '../modules/attachments/attachmentQuota.js';
 import * as moderation from '../modules/moderation/moderation.js';
-import { listAllUsers } from '../modules/users/users.js';
 import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from '../modules/auth/session.js';
+import { isSocketOriginAllowed } from '../http/originGuard.js';
+import { isClientCompatible } from './protocolVersion.js';
 import type { AppSocket, HandlerTable } from '../types.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child({ component: 'socket' });
 
 // {message type: handler(socket, msg)} combining what each feature exports
 // — register a new feature's `handlers` here, no dispatch changes needed.
@@ -29,13 +35,13 @@ const handlers: HandlerTable = Object.assign(
   reactions.handlers,
   chat.handlers,
   conversations.handlers,
-  discordWebhook.handlers,
   moderation.handlers,
 );
 
 interface JoinMessage {
   id?: string;
   token?: string;
+  v?: unknown;
 }
 
 // Per-account sliding-window caps for the events an authenticated account
@@ -67,8 +73,17 @@ const ACTION_LIMITS: Record<string, { windowMs: number; max: number }> = {
  * history and the LiveKit token — data from other features. Lives here
  * (the composition root) so no feature depends on another. */
 async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
-  const p = join(socket, msg);
-  if (!p) return;
+  // before anything is looked up or sent: an outdated client gets nothing but the reason
+  if (!isClientCompatible(msg.v)) {
+    log.warn('join refused: outdated client', { version: msg.v ?? null, ip: socket.ip });
+    send(socket, { t: 'error', code: 'client_outdated', message: 'Há uma versão nova do Linkord. Atualize a página.' });
+    setTimeout(() => { try { socket.disconnect(true); } catch { /* already gone */ } }, 100).unref();
+    return;
+  }
+  const joined = join(socket, msg);
+  if (!joined) return;
+  const { participant: p, justCameOnline } = joined;
+  await applyPeerVisibility(p);
   // LiveKit token is NOT minted here anymore — just having the tab open/
   // logged in shouldn't open a real call session. That now only happens
   // in handleCallJoin, when someone joins a group call.
@@ -88,15 +103,17 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
     profileLinks: p.profileLinks,
     role: p.role,
     maxParticipants: config.MAX_PARTICIPANTS,
-    participants: [...participantsMap.values()].filter((o) => o.id !== p.id).map(publicParticipant),
+    // participants / knownUsers / onlineUserIds are scoped to knownPeerIds
+    // (an isolated account receives none of it) — the same snapshot is
+    // re-sent as `presence-sync` when that set changes mid-connection.
+    ...(await buildPresenceSnapshot(p)),
     conversations: await listForUser(p.userId),
-    users: await listAllUsers(),
-    onlineUserIds: listOnlineUserIds(),
-    storageUsage: await getUsage(),
+    storageUsage: await getUserUsage(p.userId),
     livekitUrl: config.LIVEKIT_URL,
   });
-  broadcast({ t: 'participant-joined', participant: publicParticipant(p) }, p.id);
-  console.log(`[${p.id}] joined (${p.name}) from ${socket.ip}`);
+  broadcastToKnownPeers(p.userId, { t: 'participant-joined', participant: publicParticipant(p) }, p.id);
+  if (justCameOnline) broadcastToKnownPeers(p.userId, { t: 'user-online', userId: p.userId });
+  log.info('joined', { participantId: p.id, username: p.name, ip: socket.ip });
 }
 
 /** Actually joins a call (group or 1:1 direct): mints a LiveKit token for
@@ -113,11 +130,20 @@ async function handleCallJoin(socket: AppSocket, msg: { conversationId?: string 
     send(socket, { t: 'error', code: 'call-not-allowed', message: 'Você não tem acesso a essa conversa.' });
     return;
   }
+  // §4.3: "iniciar chamada privada" is explicitly in the restricted-contact
+  // list — a private call token is just another way to reach someone who
+  // isn't (or is no longer) a friend. No-ops for groups (getDirectPeerId
+  // returns null there).
+  const peerId = await getDirectPeerId(conversationId, p.userId);
+  if (peerId && !(await canSendDirectMessage(p.userId, peerId))) {
+    send(socket, { t: 'error', code: ERROR_CODES.relationshipRequired, message: 'Vocês precisam ser amigos pra iniciar essa chamada.' });
+    return;
+  }
   let livekitToken: string;
   try {
     livekitToken = await livekit.createToken(p, `${config.LIVEKIT_ROOM_NAME}-${conversationId}`);
   } catch (err) {
-    console.warn(`[${p.id}] failed to generate LiveKit token: ${err instanceof Error ? err.message : err}`);
+    log.warn('failed to generate LiveKit token', { participantId: p.id, err: err instanceof Error ? err.message : String(err) });
     send(socket, { t: 'error', code: 'livekit-unavailable', message: 'Vídeo/voz indisponível no momento.' });
     return;
   }
@@ -140,11 +166,11 @@ function safeHandle(eventName: string, socket: AppSocket, payload: unknown, hand
     const result = handler(socket, payload);
     if (result && typeof (result as Promise<unknown>).catch === 'function') {
       (result as Promise<unknown>).catch((err: unknown) => {
-        console.error(`[ws] error in handler '${eventName}' (participantId=${socket.participantId}): ${err instanceof Error ? err.stack : err}`);
+        log.error('error in socket handler', err, { event: eventName, participantId: socket.participantId });
       });
     }
   } catch (err) {
-    console.error(`[ws] error in handler '${eventName}' (participantId=${socket.participantId}): ${err instanceof Error ? err.stack : err}`);
+    log.error('error in socket handler', err, { event: eventName, participantId: socket.participantId });
   }
 }
 
@@ -163,6 +189,10 @@ export function createWsServer(httpServer: HttpServer): Server {
   // kills the socket without reconnecting (socket.active becomes false
   // client-side) — RoomProvider uses that to fall back to the login screen.
   io.use(async (socket: Socket, next) => {
+    if (!isSocketOriginAllowed(socket.handshake.headers)) {
+      log.warn('socket handshake from a disallowed origin', { origin: socket.handshake.headers.origin ?? null });
+      return next(Object.assign(new Error('Origem não permitida.'), { data: { code: 'forbidden_origin' } }));
+    }
     try {
       const cookies = parseCookies(socket.handshake.headers.cookie || '');
       const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
@@ -196,6 +226,7 @@ export function createWsServer(httpServer: HttpServer): Server {
         // no participant yet (never joined) — the handler's own `p.socket
         // !== socket` guard already no-ops it, nothing to rate-limit.
         if (userId && !floodControl.allow(`${eventName}:${userId}`, rule)) {
+          log.warn('socket action rate limited', { event: eventName, userId });
           send(socket, { t: 'error', code: 'rate_limited', message: 'Você está enviando rápido demais. Espere um pouco.' });
           return;
         }
@@ -203,7 +234,10 @@ export function createWsServer(httpServer: HttpServer): Server {
       safeHandle(eventName, socket, payload || {}, handler);
     });
 
-    socket.on('disconnect', () => handleClose(socket));
+    socket.on('disconnect', (reason) => {
+      log.debug('disconnected', { participantId: socket.participantId, reason });
+      handleClose(socket);
+    });
   });
 
   return io;

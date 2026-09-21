@@ -25,19 +25,23 @@ export interface RoomState {
   reconnecting: boolean;
   joined: boolean;
   roomError: string | null;
+  // the server told this build it speaks an old protocol (client_outdated): only a reload fixes it
+  clientOutdated: boolean;
   shareError: string | null;
 }
 
 export const initialRoomState: RoomState = {
   me: {
     id: null, userId: null, name: '', displayName: '', avatar: '', avatarPoster: '', avatarColor: '',
-    banner: '', bannerPoster: '', bio: '', profileLinks: [], role: 'user', sharing: false, cameraOn: false, sharingSince: null,
+    banner: '', bannerPoster: '', bio: '', profileLinks: [], role: 'user',
+    sharing: false, cameraOn: false, sharingSince: null,
   },
   participants: new Map(),
   focusedId: null,
   reconnecting: false,
   joined: false,
   roomError: null,
+  clientOutdated: false,
   shareError: null,
 };
 
@@ -47,6 +51,8 @@ export type RoomAction =
       avatar: string; avatarPoster: string; avatarColor: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[];
       role: 'user' | 'admin'; participants: Participant[];
     }
+  // replaces the whole map — the server re-scoped who this connection may see
+  | { type: 'PARTICIPANTS_SYNC'; participants: Participant[] }
   | { type: 'PARTICIPANT_JOINED'; participant: Participant }
   | { type: 'PARTICIPANT_UPDATED'; participant: Participant }
   | { type: 'PARTICIPANT_LEFT'; id: string }
@@ -55,6 +61,8 @@ export type RoomAction =
   | { type: 'SET_LOCAL_PROFILE'; avatar: string; avatarPoster: string; avatarColor: string; displayName: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[] }
   | { type: 'SET_ROOM_ERROR'; message: string | null }
   | { type: 'SET_LOCAL_SHARING'; sharing: boolean }
+  | { type: 'SET_ROLE'; role: 'user' | 'admin' }
+  | { type: 'SET_CLIENT_OUTDATED' }
   | { type: 'SET_LOCAL_CAMERA'; on: boolean }
   | { type: 'SET_FOCUSED'; id: string | null }
   | { type: 'SET_SHARE_ERROR'; message: string | null };
@@ -86,6 +94,13 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
         joined: true,
         roomError: null,
       };
+    }
+    case 'PARTICIPANTS_SYNC': {
+      const participants = new Map<string, Participant>();
+      for (const p of action.participants) participants.set(p.id, p);
+      const focusedOwner = state.focusedId?.split(':')[0];
+      const stillThere = focusedOwner ? participants.has(focusedOwner) || focusedOwner === state.me.id : true;
+      return { ...state, participants, focusedId: stillThere ? state.focusedId : null };
     }
     case 'PARTICIPANT_JOINED': {
       const participants = new Map(state.participants);
@@ -129,6 +144,10 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       };
     case 'SET_ROOM_ERROR':
       return { ...state, roomError: action.message };
+    case 'SET_CLIENT_OUTDATED':
+      return { ...state, clientOutdated: true };
+    case 'SET_ROLE':
+      return { ...state, me: { ...state.me, role: action.role } };
     case 'SET_LOCAL_SHARING':
       return {
         ...state,

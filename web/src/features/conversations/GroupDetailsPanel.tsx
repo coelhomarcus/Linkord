@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react';
 import type { Area } from 'react-easy-crop';
 import { motion } from 'motion/react';
-import { Camera, Check, Link2, LogOut, Pencil, Search, Trash2, Upload, UserPlus, X } from 'lucide-react';
+import { Camera, Check, Crown, Flag, Link2, LogOut, Pencil, Trash2, Upload, UserPlus, X } from 'lucide-react';
 import { useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { Drawer } from '@/shared/ui/motion/drawer';
 import { Button } from '@/shared/ui/primitives/button';
@@ -19,11 +19,18 @@ import { uploadWithProgress } from '@/shared/lib/uploadWithProgress';
 import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
 import { AVATAR_MIME_TYPES, MAX_AVATAR_BYTES } from '@/shared/types/protocol';
-import type { PublicUser } from '@/shared/types/protocol';
-import { groupMembers } from './conversationUtils';
 import { GroupAvatar } from './GroupAvatar';
+import { FriendPicker } from './FriendPicker';
+import { describeInviteOutcome } from './inviteOutcome';
+import { useFriends } from '@/features/friends/FriendsContext';
+import { useCursorList } from '@/features/friends/useCursorList';
+import { ReportDialog } from '@/features/reports/ReportDialog';
+import { fetchGroupInvitations, fetchGroupMembers, inviteToGroup, revokeInvitation } from '@/shared/api/api';
+import type { SocialUser } from '@/shared/api/api';
 
 const PANEL_WIDTH = 360;
+
+const fetchNothing = () => Promise.resolve({ items: [], nextCursor: null });
 
 interface GroupDetailsPanelProps {
   conversationId: string | null;
@@ -34,23 +41,29 @@ interface GroupDetailsPanelProps {
 
 export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenProfile }: GroupDetailsPanelProps) {
   const {
-    state, conversations, allUsers, onlineUserIds,
-    updateGroupTitle, updateGroupAvatar, addGroupMembers, removeGroupMember, deleteGroup,
+    state, conversations, onlineUserIds,
+    updateGroupTitle, updateGroupAvatar, removeGroupMember, deleteGroup, transferGroupOwnership,
+    groupActionError, clearGroupActionError,
   } = useRoom();
   const { isMobile } = useAnimatedSidebar();
   const conversation = conversationId ? conversations.find((c) => c.id === conversationId) ?? null : null;
-  const isAdmin = state.me.role === 'admin';
-  const members = useMemo(() => groupMembers(conversation, allUsers), [conversation, allUsers]);
-  const memberIds = useMemo(() => new Set(members.map((m) => m.id)), [members]);
+  // real per-group ownership, not the account's global instance role — see
+  // conversationsRepository.ts#canManageGroup on the server.
+  const isOwner = conversation?.myRole === 'owner';
+  const memberIds = useMemo(() => new Set(conversation?.memberIds ?? []), [conversation?.memberIds]);
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const [addOpen, setAddOpen] = useState(false);
-  const [addQuery, setAddQuery] = useState('');
-  const [addSelected, setAddSelected] = useState<Set<string>>(new Set());
+  const [addSelected, setAddSelected] = useState<Map<string, SocialUser>>(new Map());
+  const [inviting, setInviting] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [removeTarget, setRemoveTarget] = useState<PublicUser | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<SocialUser | null>(null);
+  const [transferTarget, setTransferTarget] = useState<SocialUser | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const [cropTarget, setCropTarget] = useState<{ kind: 'file'; file: File; src: string } | null>(null);
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
@@ -68,23 +81,33 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
     if (open) return;
     setEditingTitle(false);
     setAddOpen(false);
-    setAddQuery('');
-    setAddSelected(new Set());
+    setAddSelected(new Map());
+    setInviteMessage(null);
     setAvatarError(null);
     setUrlDialogOpen(false);
+    setTransferTarget(null);
+    clearGroupActionError();
     setCropTarget((prev) => {
       if (prev?.kind === 'file') URL.revokeObjectURL(prev.src);
       return null;
     });
-  }, [open]);
+  }, [open, clearGroupActionError]);
 
-  const addCandidates = useMemo(() => {
-    const normalized = addQuery.trim().toLowerCase();
-    return [...allUsers.values()]
-      .filter((user) => !memberIds.has(user.id))
-      .filter((user) => !normalized || user.displayName.toLowerCase().includes(normalized) || user.username.toLowerCase().includes(normalized))
-      .sort((a, b) => a.displayName.localeCompare(b.displayName) || a.username.localeCompare(b.username));
-  }, [allUsers, addQuery, memberIds]);
+  // Paged from the server (§6.3). The membership snapshot in the summary is
+  // only used as a reset key: any join/leave/ownership change alters it.
+  const membersKey = `${conversation?.id}|${conversation?.ownerId}|${conversation?.memberIds.join(',')}`;
+  const fetchMembers = useCallback((cursor: string | null) => (
+    conversationId ? fetchGroupMembers(conversationId, cursor) : Promise.resolve({ items: [], nextCursor: null })
+  ), [conversationId]);
+  const memberList = useCursorList(open && conversation ? fetchMembers : fetchNothing, `${membersKey}|${open}`);
+  const { revision, bump } = useFriends();
+  const fetchSent = useCallback((cursor: string | null) => (
+    conversationId ? fetchGroupInvitations(conversationId, cursor) : Promise.resolve({ items: [], nextCursor: null })
+  ), [conversationId]);
+  // Pending invitees can't be invited again; only the owner may see (or fetch) them.
+  const sent = useCursorList(isOwner && open ? fetchSent : fetchNothing, `${conversationId}|${isOwner && open}|${revision}`);
+  const pendingIds = useMemo(() => new Set(sent.items.map((entry) => entry.invitee.id)), [sent.items]);
+  const excludeIds = useMemo(() => new Set([...memberIds, ...pendingIds]), [memberIds, pendingIds]);
 
   function startEditTitle() {
     if (!conversation) return;
@@ -104,26 +127,55 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
     if (event.key === 'Escape') setEditingTitle(false);
   }
 
-  function toggleAddCandidate(userId: string) {
+  function toggleAddCandidate(user: SocialUser) {
     setAddSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(userId)) next.delete(userId); else next.add(userId);
+      const next = new Map(prev);
+      if (next.has(user.id)) next.delete(user.id); else next.set(user.id, user);
       return next;
     });
   }
 
-  function confirmAddMembers() {
-    if (!conversation || addSelected.size === 0) return;
-    addGroupMembers(conversation.id, [...addSelected]);
-    setAddOpen(false);
-    setAddQuery('');
-    setAddSelected(new Set());
+  async function confirmInvite() {
+    if (!conversation || addSelected.size === 0 || inviting) return;
+    setInviting(true);
+    setInviteMessage(null);
+    try {
+      const { results } = await inviteToGroup(conversation.id, [...addSelected.keys()]);
+      const failed = results.filter((r) => r.outcome !== 'sent');
+      setInviteMessage(failed.length === 0
+        ? 'Convites enviados.'
+        : failed.map((r) => `${addSelected.get(r.userId)?.displayName ?? 'Usuário'}: ${describeInviteOutcome(r.outcome)}`).join(' · '));
+      setAddSelected(new Map());
+      if (failed.length === 0) setAddOpen(false);
+      bump();
+    } catch {
+      setInviteMessage('Não foi possível enviar os convites. Tente de novo.');
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  async function handleRevoke(invitationId: string) {
+    if (revokingId) return;
+    setRevokingId(invitationId);
+    try {
+      await revokeInvitation(invitationId);
+    } catch {
+      setInviteMessage('Não foi possível revogar o convite.');
+    } finally {
+      bump();
+      setRevokingId(null);
+    }
   }
 
   function handleLeave() {
     if (!conversation || !state.me.userId) return;
     removeGroupMember(conversation.id, state.me.userId);
-    onOpenChange(false);
+    // Don't close here — the owner leaving a group with other members gets
+    // rejected (conflict, see groupActionError above) and needs the panel
+    // to stay open to see why. On a successful leave, the conversation
+    // disappears from `conversations` and the effect above closes this
+    // panel on its own.
   }
 
   function handleDelete() {
@@ -136,6 +188,12 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
     if (!conversation || !removeTarget) return;
     removeGroupMember(conversation.id, removeTarget.id);
     setRemoveTarget(null);
+  }
+
+  function handleTransferOwnership() {
+    if (!conversation || !transferTarget) return;
+    transferGroupOwnership(conversation.id, transferTarget.id);
+    setTransferTarget(null);
   }
 
   function handleAvatarFilePicked(event: ChangeEvent<HTMLInputElement>) {
@@ -197,10 +255,23 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-5">
+        {groupActionError && (
+          <div className="flex items-center gap-2 rounded-md bg-red/12 px-2.5 py-1.5 text-label text-red-text">
+            <span className="min-w-0 flex-1">{groupActionError}</span>
+            <button
+              type="button"
+              onClick={clearGroupActionError}
+              aria-label="Dispensar"
+              className="flex-none text-red-text/70 transition-colors hover:text-red-text focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="relative">
             <GroupAvatar title={conversation.title || 'Grupo'} avatar={conversation.avatar} size={64} />
-            {isAdmin && (
+            {isOwner && (
               <DropdownMenu>
                 <DropdownMenuTrigger
                   disabled={uploadingAvatar}
@@ -227,7 +298,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
               </DropdownMenu>
             )}
           </div>
-          {isAdmin && (
+          {isOwner && (
             <input
               ref={avatarFileInputRef}
               type="file"
@@ -261,77 +332,43 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
           ) : (
             <button
               type="button"
-              onClick={isAdmin ? startEditTitle : undefined}
+              onClick={isOwner ? startEditTitle : undefined}
               className={cn(
                 'flex items-center gap-1.5 text-title font-semibold',
-                isAdmin && 'transition-colors hover:text-primary'
+                isOwner && 'transition-colors hover:text-primary'
               )}
             >
               {conversation.title || 'Grupo'}
-              {isAdmin && <Pencil size={13} className="text-text-muted" />}
+              {isOwner && <Pencil size={13} className="text-text-muted" />}
             </button>
           )}
-          <p className="text-caption text-text-muted">{members.length} membros</p>
+          <p className="text-caption text-text-muted">{conversation.memberCount} {conversation.memberCount === 1 ? 'membro' : 'membros'}</p>
         </div>
 
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <h3 className="text-label font-medium text-text-secondary">Membros</h3>
-            {isAdmin && (
+            {isOwner && (
               <Button type="button" variant="ghost" size="sm" onClick={() => setAddOpen((v) => !v)} className="gap-1.5 text-text-muted hover:text-text-primary">
                 <UserPlus size={14} />
-                Adicionar
+                Convidar amigos
               </Button>
             )}
           </div>
 
           {addOpen && (
             <div className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-2">
-              <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3">
-                <Search size={14} className="text-text-muted" />
-                <input
-                  autoFocus
-                  value={addQuery}
-                  onChange={(event) => setAddQuery(event.target.value)}
-                  placeholder="Buscar pessoas"
-                  className="h-9 min-w-0 flex-1 bg-transparent text-label outline-none placeholder:text-text-muted"
-                />
-              </div>
-              <div className="max-h-48 overflow-y-auto">
-                {addCandidates.length === 0 ? (
-          <p className="px-2 py-4 text-center text-caption text-text-muted">Ninguém encontrado.</p>
-                ) : addCandidates.map((user) => {
-                  const checked = addSelected.has(user.id);
-                  return (
-                    <button
-                      key={user.id}
-                      type="button"
-                      onClick={() => toggleAddCandidate(user.id)}
-                      className={cn(
-                        'flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors',
-                        checked ? 'bg-primary/12 text-text-primary' : 'text-text-secondary hover:bg-white/[0.05]'
-                      )}
-                    >
-                      <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={28} />
-                      <span className="min-w-0 flex-1 truncate text-label">{user.displayName}</span>
-                      <span className={cn(
-                        'grid size-4.5 flex-none place-items-center rounded-full border text-[10px]',
-                        checked ? 'border-primary bg-primary text-primary-foreground' : 'border-white/15'
-                      )}>
-                        {checked ? <Check size={11} /> : null}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              <Button type="button" size="sm" onClick={confirmAddMembers} disabled={addSelected.size === 0} className="mt-1">
-                Adicionar {addSelected.size > 0 ? `(${addSelected.size})` : ''}
+              <p className="px-1 text-caption text-text-muted">Só entram no grupo ao aceitar o convite.</p>
+              <FriendPicker selected={addSelected} onToggle={toggleAddCandidate} excludeIds={excludeIds} maxHeightClass="max-h-48" />
+              <Button type="button" size="sm" onClick={() => void confirmInvite()} disabled={addSelected.size === 0 || inviting} className="mt-1">
+                {inviting ? 'Enviando…' : `Convidar ${addSelected.size > 0 ? `(${addSelected.size})` : ''}`}
               </Button>
             </div>
           )}
+          {inviteMessage && <p role="status" className="px-1 text-caption text-text-muted">{inviteMessage}</p>}
 
           <div className="flex flex-col gap-1">
-            {members.map((member) => {
+            {memberList.items.map(({ user: member, role }) => {
               const online = onlineUserIds.has(member.id);
               const isMe = member.id === state.me.userId;
               return (
@@ -342,27 +379,83 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
                       <span className={cn('absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-[rgb(14_14_16)]', online ? 'bg-green' : 'bg-text-muted')} />
                     </div>
                     <span className="min-w-0">
-                      <span className="block truncate text-label font-medium">{member.displayName}{isMe ? ' (você)' : ''}</span>
+                      <span className="block truncate text-label font-medium">
+                        {member.displayName}{isMe ? ' (você)' : ''}
+                        {role === 'owner' && <span className="ml-1.5 rounded bg-primary/15 px-1 py-px align-middle text-[10px] font-medium text-primary">dono</span>}
+                      </span>
                       <span className="block truncate text-caption text-text-muted">@{member.username}</span>
                     </span>
                   </button>
-                  {isAdmin && !isMe && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label={`Remover ${member.displayName}`}
-                      onClick={() => setRemoveTarget(member)}
-                      className="flex-none text-text-muted opacity-0 transition-opacity hover:text-red-text group-hover:opacity-100"
-                    >
-                      <X size={14} />
-                    </Button>
+                  {isOwner && !isMe && (
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={`Transferir propriedade para ${member.displayName}`}
+                        onClick={() => setTransferTarget(member)}
+                        className="flex-none text-text-muted opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
+                      >
+                        <Crown size={14} />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={`Remover ${member.displayName}`}
+                        onClick={() => setRemoveTarget(member)}
+                        className="flex-none text-text-muted opacity-0 transition-opacity hover:text-red-text group-hover:opacity-100"
+                      >
+                        <X size={14} />
+                      </Button>
+                    </>
                   )}
                 </div>
               );
             })}
+            {memberList.status === 'loading' && memberList.items.length === 0 && (
+              <p className="px-2 py-3 text-center text-caption text-text-muted">Carregando membros…</p>
+            )}
+            {memberList.status === 'error' && (
+              <div className="flex flex-col items-center gap-2 px-2 py-3">
+                <p className="text-caption text-text-muted">Não foi possível carregar os membros.</p>
+                <Button type="button" variant="secondary" size="sm" onClick={memberList.retry}>Tentar de novo</Button>
+              </div>
+            )}
+            {memberList.hasMore && (
+              <Button type="button" variant="ghost" size="sm" className="self-center" disabled={memberList.loadingMore} onClick={memberList.loadMore}>
+                {memberList.loadingMore ? 'Carregando…' : 'Carregar mais'}
+              </Button>
+            )}
           </div>
         </div>
+
+        {isOwner && sent.items.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <h3 className="text-label font-medium text-text-secondary">Convites enviados</h3>
+            <div className="flex flex-col gap-1">
+              {sent.items.map((entry) => (
+                <div key={entry.id} className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-white/[0.04]">
+                  <Avatar id={entry.invitee.id} name={entry.invitee.displayName} avatar={entry.invitee.avatar} avatarColor={entry.invitee.avatarColor} size={34} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-label font-medium">{entry.invitee.displayName}</span>
+                    <span className="block truncate text-caption text-text-muted">
+                      enviado em {new Date(entry.at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                    </span>
+                  </span>
+                  <Button type="button" variant="ghost" size="xs" disabled={revokingId === entry.id} onClick={() => void handleRevoke(entry.id)}>
+                    Revogar
+                  </Button>
+                </div>
+              ))}
+            </div>
+            {sent.hasMore && (
+              <Button type="button" variant="ghost" size="sm" className="self-center" disabled={sent.loadingMore} onClick={sent.loadMore}>
+                {sent.loadingMore ? 'Carregando…' : 'Carregar mais'}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-none flex-col gap-2 border-t border-white/10 px-5 py-4">
@@ -370,7 +463,11 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
           <LogOut size={15} />
           Sair do grupo
         </Button>
-        {isAdmin && (
+        <Button type="button" variant="ghost" onClick={() => setReportOpen(true)} className="justify-start gap-2 text-text-muted hover:text-text-primary">
+          <Flag size={15} />
+          Denunciar grupo
+        </Button>
+        {isOwner && (
           <Button type="button" variant="ghost" onClick={() => setConfirmDelete(true)} className="justify-start gap-2 text-red-text hover:bg-red/10 hover:text-red-text">
             <Trash2 size={15} />
             Excluir grupo
@@ -423,6 +520,9 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
         onConfirm={handleAvatarUrlPicked}
       />
 
+      {conversation && (
+        <ReportDialog target={{ type: 'group', id: conversation.id, label: conversation.title || 'grupo' }} open={reportOpen} onOpenChange={setReportOpen} />
+      )}
       <ConfirmDialog
         open={confirmLeave}
         onOpenChange={setConfirmLeave}
@@ -449,6 +549,15 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
         confirmLabel="Remover"
         destructive
         onConfirm={handleRemoveMember}
+      />
+      <ConfirmDialog
+        open={!!transferTarget}
+        onOpenChange={(next) => { if (!next) setTransferTarget(null); }}
+        title="Transferir propriedade"
+        description={`${transferTarget?.displayName ?? ''} passa a ser o dono de "${conversation?.title || 'grupo'}" — você perde os controles de gestão do grupo.`}
+        confirmLabel="Transferir"
+        destructive
+        onConfirm={handleTransferOwnership}
       />
     </>
   );

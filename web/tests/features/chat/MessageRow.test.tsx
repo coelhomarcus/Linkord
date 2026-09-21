@@ -190,3 +190,50 @@ describe('MessageRow — reações rápidas', () => {
     expect(screen.queryByRole('button', { name: 'Reagir com 👍' })).not.toBeInTheDocument();
   });
 });
+
+describe('MessageRow — cartão de convite', () => {
+  const inviteMessage = () => makeMessage({
+    kind: 'group_invite', text: '',
+    invitation: {
+      id: 'inv', status: 'pending', groupId: 'g', groupTitle: 'Squad', groupAvatar: '', memberCount: 2,
+      inviterId: 'user-1', inviteeId: 'user-2', version: 1,
+    },
+  });
+
+  it('renderiza o card e nao oferece responder, editar nem reagir (só apagar)', () => {
+    const state = { ...initialRoomState, me: { ...initialRoomState.me, userId: 'user-2' } };
+    renderWithRoom(
+      <MessageRow message={inviteMessage()} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />,
+      { state, editingMsgId: 1 },
+    );
+    expect(screen.getByText('Squad')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Responder' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reagir' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Apagar' }).length).toBeGreaterThan(0);
+  });
+});
+
+describe('MessageRow — denunciar', () => {
+  const state = { ...initialRoomState, me: { ...initialRoomState.me, userId: 'user-1' } };
+  const row = (message: ChatMessage) => renderWithRoom(
+    <MessageRow message={message} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />,
+    { state },
+  );
+
+  it('oferece Denunciar na mensagem de outra pessoa', async () => {
+    const user = userEvent.setup();
+    row(makeMessage({ id: 'user-2' }));
+    await user.click(screen.getAllByRole('button', { name: 'Denunciar' })[0]);
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Denunciar mensagem');
+  });
+
+  it('nao oferece Denunciar na propria mensagem nem em cartao de convite', () => {
+    const { unmount } = row(makeMessage({ id: 'user-1' }));
+    expect(screen.queryByRole('button', { name: 'Denunciar' })).not.toBeInTheDocument();
+    unmount();
+    row(makeMessage({ id: 'user-2', kind: 'group_invite', text: '', invitation: null }));
+    expect(screen.queryByRole('button', { name: 'Denunciar' })).not.toBeInTheDocument();
+  });
+});
