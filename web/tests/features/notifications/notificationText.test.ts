@@ -18,9 +18,9 @@ describe('notificationText', () => {
   });
 
   it('cada tipo leva a sua pagina', () => {
-    expect(notificationTarget(base)).toBe('/app/requests');
+    expect(notificationTarget(base)).toBe('/app/friends?tab=pending#received');
     expect(notificationTarget({ ...base, kind: 'friend_accepted' })).toBe('/app/friends');
-    expect(notificationTarget({ ...base, kind: 'group_invitation' })).toBe('/app/requests?tab=invitations');
+    expect(notificationTarget({ ...base, kind: 'group_invitation' })).toBe('/app/friends?tab=invitations');
   });
 
   it('contador vira 9+', () => {

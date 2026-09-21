@@ -6,7 +6,9 @@ import { renderSocial, ana, bea } from '@tests/fixtures/socialFixture';
 import { FriendsPage } from '@/features/friends/FriendsPage';
 import * as api from '@/shared/api/api';
 
-vi.mock('@/shared/PageHeader', () => ({ PageHeader: ({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: React.ReactNode }) => (<header><h1>{title}</h1><p>{subtitle}</p>{actions}</header>) }));
+vi.mock('@/shared/PageHeader', () => ({
+  PageHeader: ({ title, middle, actions }: { title: string; middle?: React.ReactNode; actions?: React.ReactNode }) => (<header><h1>{title}</h1>{middle}{actions}</header>),
+}));
 vi.mock('@/shared/api/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/api/api')>()),
   fetchFriends: vi.fn(), fetchRequestSummary: vi.fn(), sendFriendRequest: vi.fn(), removeFriend: vi.fn(), blockUser: vi.fn(),
@@ -56,7 +58,7 @@ describe('FriendsPage', () => {
     renderSocial(<FriendsPage onOpenProfile={vi.fn()} />, { room: { state: me, onlineUserIds: new Set(['u-ana']) } });
 
     await screen.findByText('Bea');
-    await user.click(screen.getByRole('button', { name: 'Online' }));
+    await user.click(screen.getByRole('link', { name: 'Online' }));
     expect(screen.getByText('Ana')).toBeInTheDocument();
     expect(screen.queryByText('Bea')).not.toBeInTheDocument();
   });
@@ -68,7 +70,7 @@ describe('FriendsPage', () => {
     renderSocial(<FriendsPage onOpenProfile={vi.fn()} />, { room: { state: me } });
 
     await screen.findByText('Ana');
-    await user.click(screen.getByRole('button', { name: 'Adicionar amigo' }));
+    await user.click(screen.getByRole('link', { name: 'Adicionar amigo' }));
     await user.type(screen.getByPlaceholderText('@nomedeusuario'), '  @Lune ');
     await user.click(screen.getByRole('button', { name: 'Enviar' }));
 
@@ -83,7 +85,7 @@ describe('FriendsPage', () => {
     renderSocial(<FriendsPage onOpenProfile={vi.fn()} />, { room: { state: me } });
 
     await screen.findByText('Ana');
-    await user.click(screen.getByRole('button', { name: 'Adicionar amigo' }));
+    await user.click(screen.getByRole('link', { name: 'Adicionar amigo' }));
     await user.type(screen.getByPlaceholderText('@nomedeusuario'), 'ninguem');
     await user.click(screen.getByRole('button', { name: 'Enviar' }));
     expect(await screen.findByText(/Confira o nome de usuário/)).toBeInTheDocument();

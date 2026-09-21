@@ -12,7 +12,7 @@ import { formatTypingLabel } from '@/shared/lib/formatTypingLabel';
 import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
 import type { Conversation } from '@/shared/types/protocol';
-import { ROUTES, isConversationsPath } from '@/shared/lib/routes';
+import { ROUTES, friendsSection, friendsView, isConversationsPath, parseFriendsView } from '@/shared/lib/routes';
 import { useFriends } from '@/features/friends/FriendsContext';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { conversationTitle, directUser, groupMembers } from './conversationUtils';
@@ -221,7 +221,7 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
   const { isMobile, open: sidebarOpen, setOpenMobile, toggleSidebar } = useAnimatedSidebar();
   const { pendingIncomingCount } = useFriends();
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const collapsed = !isMobile && !sidebarOpen;
   const [query, setQuery] = useState('');
   const [groupOpen, setGroupOpen] = useState(false);
@@ -247,8 +247,11 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
     if (isMobile) setOpenMobile(false);
   }
 
-  const friendsActive = pathname === ROUTES.friends;
-  const requestsActive = pathname === ROUTES.requests;
+  // Friends and Requests are one page now; both shortcuts stay until the global rail replaces them
+  const activeFriendsView = parseFriendsView(new URLSearchParams(search).get('tab'));
+  const onFriendsPage = pathname === ROUTES.friends;
+  const requestsActive = onFriendsPage && (activeFriendsView === 'pending' || activeFriendsView === 'invitations');
+  const friendsActive = onFriendsPage && !requestsActive;
   const onConversations = isConversationsPath(pathname);
 
   return (
@@ -287,10 +290,10 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
             </div>
 
             <div className="flex flex-none flex-col gap-1.5">
-              <CollapsedNavButton label="Amigos" active={friendsActive} onClick={() => goTo(ROUTES.friends)}>
+              <CollapsedNavButton label="Amigos" active={friendsActive} onClick={() => goTo(friendsView('all'))}>
                 <UsersRound size={18} />
               </CollapsedNavButton>
-              <CollapsedNavButton label="Solicitações" active={requestsActive} badge={pendingIncomingCount} onClick={() => goTo(ROUTES.requests)}>
+              <CollapsedNavButton label="Solicitações" active={requestsActive} badge={pendingIncomingCount} onClick={() => goTo(friendsSection('received'))}>
                 <UserPlus size={18} />
               </CollapsedNavButton>
               <NotificationBell collapsed />
@@ -372,16 +375,16 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
                 </button>
               </div>
               <div className="grid flex-none grid-cols-2 gap-1 rounded-xl border border-white/10 bg-black/25 p-1">
-                <NavShortcut label="Amigos" active={friendsActive} onClick={() => goTo(ROUTES.friends)}>
+                <NavShortcut label="Amigos" active={friendsActive} onClick={() => goTo(friendsView('all'))}>
                   <UsersRound size={14} />
                 </NavShortcut>
-                <NavShortcut label="Solicitações" active={requestsActive} badge={pendingIncomingCount} onClick={() => goTo(ROUTES.requests)}>
+                <NavShortcut label="Solicitações" active={requestsActive} badge={pendingIncomingCount} onClick={() => goTo(friendsSection('received'))}>
                   <UserPlus size={14} />
                 </NavShortcut>
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto">
-                <TransitionNotice onOpenFriends={() => goTo(ROUTES.friends)} />
+                <TransitionNotice onOpenFriends={() => goTo(friendsView('all'))} />
                 <div className="flex flex-col gap-1">
                   {filteredConversations.length === 0 ? (
                     <p className="px-3 py-8 text-center text-label text-text-muted">Nenhuma conversa.</p>

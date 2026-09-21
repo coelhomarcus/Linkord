@@ -29,7 +29,7 @@ import { GlobalContextMenu } from '@/app/layout/GlobalContextMenu';
 import { ProfileModal } from '@/features/profile/ProfileModal';
 import { FriendsProvider } from '@/features/friends/FriendsContext';
 import { FriendsPage } from '@/features/friends/FriendsPage';
-import { RequestsPage } from '@/features/friends/RequestsPage';
+import { RequestsRedirect } from '@/features/friends/RequestsRedirect';
 import { SettingsPage } from '@/features/settings/SettingsPage';
 import { AWAITING_OPEN, ROUTES, isConversationsPath } from '@/shared/lib/routes';
 import { useConversationRouteSync } from '@/app/useConversationRouteSync';
@@ -190,7 +190,7 @@ function Shell() {
               )}
             />
             <Route path={ROUTES.friends} element={<FriendsPage onOpenProfile={setProfileUserId} />} />
-            <Route path={ROUTES.requests} element={<RequestsPage onOpenProfile={setProfileUserId} />} />
+            <Route path={ROUTES.requests} element={<RequestsRedirect />} />
             <Route path="/admin/*" element={<Suspense fallback={<p className="p-6 text-label text-text-muted">Carregando…</p>}><AdminArea /></Suspense>} />
             <Route path="/app/settings/:tab?" element={<SettingsPage onOpenProfile={setProfileUserId} />} />
             <Route path="*" element={<Navigate to={ROUTES.conversations} replace />} />

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ROUTES, conversationIdFromPath, isAwaitingOpen, isConversationsPath, isSettingsTab,
+  ROUTES, conversationIdFromPath, friendsSection, friendsView, isAwaitingOpen, isConversationsPath, isSettingsTab, parseFriendsView,
 } from '@/shared/lib/routes';
 
 describe('conversationIdFromPath', () => {
@@ -49,5 +49,32 @@ describe('isAwaitingOpen', () => {
     expect(isAwaitingOpen({ awaitingOpen: 'sim' })).toBe(false);
     expect(isAwaitingOpen(null)).toBe(false);
     expect(isAwaitingOpen('x')).toBe(false);
+  });
+});
+
+describe('rotas de Amigos', () => {
+  it('Todos e a rota sem query; as outras visoes usam ?tab=', () => {
+    expect(friendsView('all')).toBe('/app/friends');
+    expect(friendsView('online')).toBe('/app/friends?tab=online');
+    expect(friendsView('invitations')).toBe('/app/friends?tab=invitations');
+    expect(friendsView('add')).toBe('/app/friends?tab=add');
+  });
+
+  it('a busca acompanha a visao', () => {
+    expect(friendsView('online', 'ana')).toBe('/app/friends?tab=online&q=ana');
+    expect(friendsView('all', 'ana')).toBe('/app/friends?q=ana');
+  });
+
+  it('secoes de Pendentes usam hash', () => {
+    expect(friendsSection('received')).toBe('/app/friends?tab=pending#received');
+    expect(friendsSection('sent')).toBe('/app/friends?tab=pending#sent');
+  });
+
+  it('valor desconhecido ou ausente cai em Todos', () => {
+    expect(parseFriendsView(null)).toBe('all');
+    expect(parseFriendsView('lixo')).toBe('all');
+    expect(parseFriendsView('')).toBe('all');
+    expect(parseFriendsView('pending')).toBe('pending');
+    expect(parseFriendsView('add')).toBe('add');
   });
 });

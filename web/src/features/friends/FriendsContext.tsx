@@ -9,6 +9,8 @@ interface FriendsContextValue {
    * refetch off it instead of patching themselves. */
   revision: number;
   bump: () => void;
+  /** Friend requests waiting on this user's answer. */
+  pendingFriendRequestCount: number;
   /** Everything waiting on this user's answer: friend requests + group invitations. */
   pendingIncomingCount: number;
   pendingInvitationCount: number;
@@ -36,7 +38,7 @@ export function FriendsProvider({ children }: { children: ReactNode }) {
   }, [revision]);
 
   const value = useMemo(() => ({
-    revision, bump, pendingIncomingCount: summary.incoming + summary.invitations, pendingInvitationCount: summary.invitations,
+    revision, bump, pendingFriendRequestCount: summary.incoming, pendingIncomingCount: summary.incoming + summary.invitations, pendingInvitationCount: summary.invitations,
   }), [revision, bump, summary]);
   return <FriendsContext.Provider value={value}>{children}</FriendsContext.Provider>;
 }

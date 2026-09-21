@@ -54,7 +54,7 @@ describe('NotificationBell', () => {
     await user.click(await screen.findByRole('button', { name: 'Notificações, 1 não lida' }));
     await user.click(await screen.findByText('Ana convidou você para o grupo Squad'));
     expect(mocked.markNotificationsRead).toHaveBeenCalledWith({ ids: ['n1'] });
-    expect(screen.getByTestId('where')).toHaveTextContent('/app/requests?tab=invitations');
+    expect(screen.getByTestId('where')).toHaveTextContent('/app/friends?tab=invitations');
   });
 
   it('item ja lido nao chama a API ao clicar', async () => {
