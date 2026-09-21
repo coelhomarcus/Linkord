@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { X } from 'lucide-react';
 import { Button } from '@/shared/ui/primitives/button';
 import { Avatar } from '@/shared/Avatar';
 import { GroupAvatar } from '@/features/conversations/GroupAvatar';
@@ -15,7 +16,7 @@ function NotificationIcon({ entry }: { entry: NotificationEntry }) {
   return <Avatar id={actor?.id ?? entry.id} name={actor?.displayName ?? '?'} avatar={actor?.avatar ?? ''} avatarColor={actor?.avatarColor ?? 'blurple'} size={36} className="flex-none" />;
 }
 
-export function NotificationList({ onSelect }: { onSelect: (entry: NotificationEntry) => void }) {
+export function NotificationList({ onSelect, onDismiss }: { onSelect: (entry: NotificationEntry) => void; onDismiss: (entry: NotificationEntry) => void }) {
   const { revision } = useFriends();
   const fetchPage = useCallback((cursor: string | null) => fetchNotifications(cursor), []);
   const list = useCursorList(fetchPage, String(revision));
@@ -34,12 +35,12 @@ export function NotificationList({ onSelect }: { onSelect: (entry: NotificationE
   return (
     <ul className="flex max-h-[min(24rem,60vh)] flex-col overflow-y-auto">
       {list.items.map((entry) => (
-        <li key={entry.id}>
+        <li key={entry.id} className="group relative">
           <button
             type="button"
             onClick={() => onSelect(entry)}
             className={cn(
-              'flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'flex w-full items-center gap-3 rounded-lg py-2 pl-2 pr-9 text-left transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               !entry.read && 'bg-primary/[0.08]',
             )}
           >
@@ -49,6 +50,14 @@ export function NotificationList({ onSelect }: { onSelect: (entry: NotificationE
               <span className="block text-caption text-text-muted">{formatRelativeTime(entry.at)}</span>
             </span>
             {!entry.read && <span aria-label="Não lida" className="size-2 flex-none rounded-full bg-primary" />}
+          </button>
+          <button
+            type="button"
+            aria-label="Descartar notificação"
+            onClick={() => onDismiss(entry)}
+            className="absolute right-1.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-md text-text-muted transition-colors hover:bg-white/[0.1] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <X size={14} />
           </button>
         </li>
       ))}

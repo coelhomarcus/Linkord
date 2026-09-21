@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { Bell } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/primitives/popover';
 import { Button, buttonVariants } from '@/shared/ui/primitives/button';
-import { markNotificationsRead } from '@/shared/api/api';
+import { clearNotifications, deleteNotification, markNotificationsRead } from '@/shared/api/api';
 import type { NotificationEntry } from '@/shared/api/api';
 import { cn } from '@/shared/lib/utils';
 import { useFriends } from '@/features/friends/FriendsContext';
@@ -31,6 +31,22 @@ export function NotificationBell({ collapsed = false, onNavigate }: { collapsed?
     }
   }
 
+  async function removeFromList(request: () => Promise<unknown>, unreadAfter: number) {
+    setError(false);
+    setUnread(unreadAfter);
+    try {
+      await request();
+    } catch {
+      setError(true);
+    } finally {
+      bump();
+    }
+  }
+
+  function dismiss(entry: NotificationEntry) {
+    void removeFromList(() => deleteNotification(entry.id), entry.read ? unread : Math.max(0, unread - 1));
+  }
+
   function select(entry: NotificationEntry) {
     if (!entry.read) void markAndSync({ ids: [entry.id] }, Math.max(0, unread - 1));
     setOpen(false);
@@ -56,14 +72,19 @@ export function NotificationBell({ collapsed = false, onNavigate }: { collapsed?
         )}
       </PopoverTrigger>
       <PopoverContent side={collapsed ? 'right' : 'bottom'} align="start" className="w-[min(22rem,calc(100vw-1.5rem))] bg-bg-modal">
-        <div className="flex items-center justify-between px-1">
+        <div className="flex flex-col gap-1 px-1">
           <h2 className="text-label font-semibold text-text-primary">Notificações</h2>
-          <Button type="button" variant="ghost" size="sm" disabled={unread === 0} onClick={() => void markAndSync({ all: true }, 0)}>
-            Marcar todas como lidas
-          </Button>
+          <div className="-mx-2 flex items-center justify-between">
+            <Button type="button" variant="ghost" size="sm" disabled={unread === 0} onClick={() => void markAndSync({ all: true }, 0)}>
+              Marcar todas como lidas
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => void removeFromList(clearNotifications, 0)}>
+              Limpar tudo
+            </Button>
+          </div>
         </div>
         {error && <p role="alert" className="rounded-md bg-red/12 px-2.5 py-1.5 text-label text-red-text">Não foi possível atualizar. Tente de novo.</p>}
-        <NotificationList onSelect={select} />
+        <NotificationList onSelect={select} onDismiss={dismiss} />
       </PopoverContent>
     </Popover>
   );

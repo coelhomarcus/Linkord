@@ -221,6 +221,14 @@ describe('matriz: notificacoes e denuncias', () => {
     assert.equal((await call(w.stranger, 'GET', '/api/notifications')).body.items.length, 0);
     assert.equal((await call(w.stranger, 'POST', '/api/notifications/read', { ids: mine.map((n) => n.id) })).body.marked, 0);
     assert.equal((await call(w.invitee, 'POST', '/api/notifications/read', { ids: mine.map((n) => n.id) })).body.marked, mine.length);
+    // dismissing follows the same rule: someone else's request deletes nothing
+    assert.equal((await call(w.stranger, 'DELETE', `/api/notifications/${mine[0]!.id}`)).body.deleted, 0);
+    assert.equal((await call(w.stranger, 'DELETE', '/api/notifications')).body.deleted, 0);
+    assert.equal((await call(w.invitee, 'GET', '/api/notifications')).body.items.length, mine.length);
+    assert.equal((await call(w.invitee, 'DELETE', `/api/notifications/${mine[0]!.id}`)).body.deleted, 1);
+    assert.equal((await call(w.invitee, 'DELETE', '/api/notifications')).body.deleted, mine.length - 1);
+    assert.equal((await call(w.invitee, 'GET', '/api/notifications')).body.items.length, 0);
+    expectDenied(await call(null, 'DELETE', '/api/notifications'), 401, 'unauthenticated', 'limpar sem sessao');
     expectDenied(await call(null, 'GET', '/api/notifications'), 401, 'unauthenticated', 'sem sessao');
   });
 

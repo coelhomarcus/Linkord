@@ -285,6 +285,14 @@ export function fetchUnreadNotificationCount(): Promise<{ unread: number }> {
   return apiFetch('/api/notifications/summary');
 }
 
+export function deleteNotification(id: string): Promise<{ deleted: number }> {
+  return apiFetch(`/api/notifications/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function clearNotifications(): Promise<{ deleted: number }> {
+  return apiFetch('/api/notifications', { method: 'DELETE' });
+}
+
 export function markNotificationsRead(input: { ids: string[] } | { all: true }): Promise<{ marked: number }> {
   return apiFetch('/api/notifications/read', { method: 'POST', body: JSON.stringify(input) });
 }

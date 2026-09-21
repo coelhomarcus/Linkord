@@ -3,7 +3,7 @@ import { config } from '../../config/env.js';
 import { sendJson, sendError, jsonBody } from '../../http/respond.js';
 import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
-import { countUnread, listNotifications, markRead } from './notificationsRepository.js';
+import { countUnread, deleteAllNotifications, deleteNotification, listNotifications, markRead } from './notificationsRepository.js';
 
 async function session(request: FastifyRequest, reply: FastifyReply): Promise<{ userId: string } | null> {
   const cookies = parseCookies(request.headers.cookie || '');
@@ -33,5 +33,15 @@ export function registerNotificationRoutes(fastify: FastifyInstance): void {
     const ids = body.all === true ? 'all' as const : Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === 'string').slice(0, 100) : null;
     if (ids === null) return sendError(reply, 400, 'invalid_request', 'Informe ids ou all.');
     sendJson(reply, 200, { marked: await markRead(sess.userId, ids) });
+  });
+
+  fastify.delete('/api/notifications', async (request, reply) => {
+    const sess = await session(request, reply);
+    if (sess) sendJson(reply, 200, { deleted: await deleteAllNotifications(sess.userId) });
+  });
+
+  fastify.delete('/api/notifications/:id', async (request: FastifyRequest<{ Params: { id: string } }>, reply) => {
+    const sess = await session(request, reply);
+    if (sess) sendJson(reply, 200, { deleted: await deleteNotification(sess.userId, String(request.params.id || '')) });
   });
 }

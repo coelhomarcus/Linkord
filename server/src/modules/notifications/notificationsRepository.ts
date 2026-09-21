@@ -87,6 +87,20 @@ export async function countUnread(userId: string): Promise<number> {
   return row?.n ?? 0;
 }
 
+/** Removes notifications from the recipient's own list. Idempotent, and never
+ * reaches someone else's row: the recipient always comes from the session. */
+export async function deleteNotification(userId: string, id: string): Promise<number> {
+  const rows = await db.delete(notifications)
+    .where(and(eq(notifications.recipientId, userId), eq(notifications.id, id)))
+    .returning({ id: notifications.id });
+  return rows.length;
+}
+
+export async function deleteAllNotifications(userId: string): Promise<number> {
+  const rows = await db.delete(notifications).where(eq(notifications.recipientId, userId)).returning({ id: notifications.id });
+  return rows.length;
+}
+
 /** Idempotent: ids that are already read, or belong to someone else, are simply skipped. */
 export async function markRead(userId: string, ids: string[] | 'all'): Promise<number> {
   const scope = ids === 'all'
