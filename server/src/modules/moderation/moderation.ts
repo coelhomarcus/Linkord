@@ -1,16 +1,16 @@
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { config } from '../../config/env.js';
 import { db } from '../../db/client.js';
-import { conversationMembers, conversations, users } from '../../db/schema.js';
+import { conversations } from '../../db/schema.js';
 import { findById } from '../users/users.js';
-import { invalidateSessionsForUser } from '../auth/session.js';
-import { participants, broadcastToKnownPeers, send, removeParticipant, setCallConversationId } from '../presence/participants.js';
-import { revokeCallAccess } from '../calls/callAccess.js';
+import { participants, send, setCallConversationId } from '../presence/participants.js';
 import * as livekit from '../../integrations/livekit/livekit.js';
-import { deleteAvatarFile } from '../attachments/attachmentCleanup.js';
-import { canManageGroup, getMemberRole, reconcileGroupMembership } from '../conversations/conversationsRepository.js';
+import { canManageGroup, getMemberRole } from '../conversations/conversationsRepository.js';
+import { isActiveAdmin } from '../admin/adminAuth.js';
+import { deleteUserAccount } from '../admin/adminUsers.js';
+import { recordAudit } from '../admin/auditLog.js';
 import { ERROR_CODES } from '../../http/errors.js';
-import type { AppSocket, HandlerTable, Participant } from '../../types.js';
+import type { AppSocket, HandlerTable } from '../../types.js';
 
 // Admin-only moderation actions — account deletion (Settings "Moderation"
 // tab) and kicking someone from a group call. Deleted users' messages don't disappear (authorId becomes NULL, so
@@ -26,77 +26,25 @@ export function canKickFromCall(input: { actorIsAdmin: boolean; actorOwnsGroup: 
   return input.actorIsAdmin || (input.actorOwnsGroup && input.targetIsMember);
 }
 
-function isAdmin(p: Participant | undefined): boolean {
-  return !!p && p.role === 'admin';
-}
-
+/** Legacy socket entry point of the Settings "Moderação" tab, kept only until
+ * the /admin area replaces that tab (etapa 11, parte 3). It no longer owns any
+ * logic: the deletion, its protections (self, last active admin), group
+ * succession and the audit trail all live in admin/adminUsers.ts. */
 async function handleUserDelete(socket: AppSocket, msg: { userId?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
-  if (!p || p.socket !== socket || !isAdmin(p)) return;
+  if (!p || p.socket !== socket || !(await isActiveAdmin(p.userId))) return;
 
   const targetId = String(msg.userId || '');
   if (!targetId) return;
-
-  // no "promote to admin" screen exists — the only way back to admin would
-  // be re-registering with ADMIN_USERNAME, so it's safer to just never
-  // allow deleting your OWN account here.
-  if (targetId === p.userId) {
-    send(socket, { t: 'error', code: 'cannot-delete-self', message: 'Você não pode apagar a própria conta por aqui.' });
-    return;
-  }
-
   const target = await findById(targetId);
   if (!target) return; // already deleted (race with another admin, or invalid id)
 
-  // groups this account was in — read BEFORE the delete below, since the
-  // membership rows vanish via CASCADE the instant the account does.
-  const groupIds = (await db
-    .select({ conversationId: conversationMembers.conversationId })
-    .from(conversationMembers)
-    .innerJoin(conversations, eq(conversations.id, conversationMembers.conversationId))
-    .where(and(eq(conversationMembers.userId, targetId), eq(conversations.type, 'group'))))
-    .map((row) => row.conversationId);
-
-  // delete the avatar FILE before the row — after the delete below there's
-  // no way to know which one it was (users.avatar only exists on this row;
-  // attachments has no userId column). Only matters for our own uploads
-  // (`/uploads/<id>`) — deleteAvatarFile already silently ignores an
-  // external/empty URL.
-  if (target.avatar) {
-    await deleteAvatarFile(target.avatar).catch((err) => {
-      console.error(`[moderation] failed to delete profile photo for ${targetId}:`, err instanceof Error ? err.stack : err);
-    });
-  }
-
-  const result = await db.delete(users).where(eq(users.id, targetId));
-  if (result.rowCount === 0) return;
-
-  // closes the up-to-60s window the session cache (modules/auth/session.ts)
-  // would otherwise leave open — without this, a recently-resolved session
-  // would stay "valid" to the server for a while even after the account is
-  // gone from the DB.
-  invalidateSessionsForUser(targetId);
-
-  // immediately kick every live connection for this account (could be more
-  // than one tab) — sessions are already gone via CASCADE, but an already-
-  // connected socket has no way to know that until it tries to reconnect.
-  for (const other of [...participants.values()]) {
-    if (other.userId !== targetId) continue;
-    const otherSocket = other.socket;
-    // the media connection outlives the socket, so cut it at the SFU too
-    if (other.callConversationId) void revokeCallAccess(targetId, other.callConversationId);
-    removeParticipant(other);
-    try { otherSocket?.disconnect(true); } catch { /* socket dying */ }
-  }
-
-  // scoped, not global (Etapa 7) — reaches whoever already has targetId in
-  // their OWN knownPeerIds (friend or shared conversation), works even
-  // though the target's own connections were just disconnected above.
-  broadcastToKnownPeers(targetId, { t: 'user-deleted', userId: targetId });
-
-  // a deleted account can't stay a member of anything — reuse the same
-  // "did this empty the group" cleanup a normal group-members-remove does.
-  for (const conversationId of groupIds) await reconcileGroupMembership(conversationId, targetId);
+  const result = await deleteUserAccount(
+    { actor: { id: p.userId, username: p.name }, reason: 'Exclusão pela aba Moderação', requestId: '' },
+    targetId, target.username,
+  );
+  if (result.code === 'self') send(socket, { t: 'error', code: 'cannot-delete-self', message: 'Você não pode apagar a própria conta por aqui.' });
+  else if (result.code === 'last_admin') send(socket, { t: 'error', code: 'last-admin', message: 'Essa conta é o último administrador ativo.' });
 }
 
 /** Removes one CONNECTION (not account) from its current GROUP call —
@@ -120,9 +68,11 @@ async function handleCallKick(socket: AppSocket, msg: { participantId?: string }
   if (callConversation?.type !== 'group') return;
 
   const callGroupId = target.callConversationId;
+  const actorIsAdmin = await isActiveAdmin(p.userId);
+  const actorOwnsGroup = await canManageGroup(callGroupId, p.userId);
   const allowed = canKickFromCall({
-    actorIsAdmin: isAdmin(p),
-    actorOwnsGroup: await canManageGroup(callGroupId, p.userId),
+    actorIsAdmin,
+    actorOwnsGroup,
     targetIsMember: (await getMemberRole(callGroupId, target.userId)) !== null,
   });
   if (!allowed) {
@@ -141,6 +91,14 @@ async function handleCallKick(socket: AppSocket, msg: { participantId?: string }
   // resets callConversationId + all self-reported media flags and broadcasts
   // participant-updated, so every OTHER connected client's UI (tiles) updates for free.
   setCallConversationId(target, null);
+
+  // acting as an instance admin (not as the group's owner) is an audited moderation action
+  if (actorIsAdmin && !actorOwnsGroup) {
+    await recordAudit({
+      actor: { id: p.userId, username: p.name }, action: 'call.kick', targetType: 'user', targetId: target.userId, targetLabel: target.name,
+      detail: { conversationId: callGroupId },
+    }).catch((err) => console.error('[audit] call.kick:', err instanceof Error ? err.message : err));
+  }
 }
 
 export const handlers: HandlerTable = {

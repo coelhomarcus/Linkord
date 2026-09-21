@@ -39,6 +39,8 @@ export interface ConversationSummary {
   // null for a DM. `memberIds` stays for presence/mentions until etapa 14.
   ownerId: string | null;
   memberCount: number;
+  // 'suspended' = moderated away by an admin: still listed, no access
+  status: 'active' | 'suspended';
 }
 
 export function sanitizeConversationTitle(name: unknown): string | null {
@@ -68,6 +70,7 @@ export function rowToSummary(row: Conversation, memberIds: string[], pinnedAt: D
     myRole,
     ownerId,
     memberCount: memberIds.length,
+    status: row.status === 'suspended' ? 'suspended' : 'active',
   };
 }
 
@@ -191,12 +194,20 @@ export async function createGroup(ownerId: string, title: string): Promise<Conve
   });
 }
 
+/** THE access gate: membership AND an active conversation. A suspended
+ * conversation (admin moderation) is invisible to every read, write, media
+ * fetch, search, upload and call token that goes through here — members still
+ * see it listed (listForUser) but as unavailable. */
 export async function getConversationForUser(conversationId: string, userId: string): Promise<Conversation | null> {
   const [row] = await db
     .select({ conversation: conversations })
     .from(conversationMembers)
     .innerJoin(conversations, eq(conversations.id, conversationMembers.conversationId))
-    .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, userId)))
+    .where(and(
+      eq(conversationMembers.conversationId, conversationId),
+      eq(conversationMembers.userId, userId),
+      eq(conversations.status, 'active'),
+    ))
     .limit(1);
   return row?.conversation ?? null;
 }
@@ -267,7 +278,16 @@ export async function getMemberRole(conversationId: string, userId: string): Pro
  * instance role. Replaces the old `isAdmin(p)` gate in conversations.ts,
  * which let ANY instance admin manage ANY group regardless of membership. */
 export async function canManageGroup(conversationId: string, userId: string): Promise<boolean> {
-  return (await getMemberRole(conversationId, userId)) === 'owner';
+  const [row] = await db.select({ role: conversationMembers.role })
+    .from(conversationMembers)
+    .innerJoin(conversations, eq(conversations.id, conversationMembers.conversationId))
+    .where(and(
+      eq(conversationMembers.conversationId, conversationId),
+      eq(conversationMembers.userId, userId),
+      eq(conversations.status, 'active'),
+    ))
+    .limit(1);
+  return row?.role === 'owner';
 }
 
 /** A genuinely NEW message was created (send, or a fresh attachment-only

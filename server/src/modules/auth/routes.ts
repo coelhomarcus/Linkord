@@ -146,6 +146,11 @@ async function handleLogin(request: FastifyRequest, reply: FastifyReply): Promis
   ratelimit.reset(ipKey);
   ratelimit.reset(userKey);
 
+  // only reachable with the right password, so it leaks nothing about who exists
+  if (user.status !== 'active') {
+    return sendError(reply, 403, 'account_unavailable', 'Esta conta está indisponível. Fale com a administração.');
+  }
+
   if (needsRehash(user.passwordHash)) {
     hashPassword(password)
       .then((newHash) => db.update(users).set({ passwordHash: newHash, updatedAt: new Date() }).where(eq(users.id, user.id)))

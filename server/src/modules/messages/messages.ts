@@ -1,3 +1,5 @@
+import { isActiveAdmin } from '../admin/adminAuth.js';
+import { recordAudit } from '../admin/auditLog.js';
 import { eq, and, desc, asc, lt, gte, sql } from 'drizzle-orm';
 import { config } from '../../config/env.js';
 import { db } from '../../db/client.js';
@@ -480,13 +482,22 @@ async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Pr
     .limit(1);
   if (!existing) return;
   if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return;
-  if (existing.authorId !== p.userId && p.role !== 'admin') return;
+  const isAuthor = existing.authorId === p.userId;
+  // admin authority is re-read, not taken from the connection's frozen role (§7.5)
+  if (!isAuthor && !(await isActiveAdmin(p.userId))) return;
   // delete the file on disk before the row — after the delete below, the
   // attachments row disappears via CASCADE, but nothing would know which
   // file to delete anymore (see attachments/attachmentCleanup.ts).
   await deleteForMessage(msgId);
   await db.delete(messages).where(eq(messages.id, msgId));
   await recordConversationActivity(existing.conversationId);
+  if (!isAuthor) {
+    // moderation, so it leaves a trail — ids only, never the message body
+    await recordAudit({
+      actor: { id: p.userId, username: p.name }, action: 'message.delete', targetType: 'message', targetId: String(msgId),
+      detail: { conversationId: existing.conversationId, authorId: existing.authorId },
+    }).catch((err) => console.error('[audit] message.delete:', err instanceof Error ? err.message : err));
+  }
   await broadcastToConversationMembers(existing.conversationId, {
     t: 'chat-deleted',
     conversationId: existing.conversationId,

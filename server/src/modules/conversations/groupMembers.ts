@@ -20,9 +20,17 @@ const joinedAtIso = sql<string>`to_char(${conversationMembers.joinedAt} at time 
 export async function listGroupMembers(
   viewerId: string, conversationId: string, cursorRaw?: string,
 ): Promise<{ items: GroupMemberEntry[]; nextCursor: string | null } | 'not_found' | 'invalid_cursor'> {
+  if (!(await conversationExistsForUser(conversationId, viewerId))) return 'not_found';
+  return pageGroupMembers(conversationId, cursorRaw);
+}
+
+/** The page itself, with NO access check — the caller authorizes (a member
+ * for the group panel, an active admin for the administrative detail). */
+export async function pageGroupMembers(
+  conversationId: string, cursorRaw?: string,
+): Promise<{ items: GroupMemberEntry[]; nextCursor: string | null } | 'not_found' | 'invalid_cursor'> {
   const cursor = cursorRaw ? decodeTimeCursor(cursorRaw) : null;
   if (cursorRaw && !cursor) return 'invalid_cursor';
-  if (!(await conversationExistsForUser(conversationId, viewerId))) return 'not_found';
   const [group] = await db.select({ type: conversations.type }).from(conversations).where(eq(conversations.id, conversationId)).limit(1);
   if (group?.type !== 'group') return 'not_found';
 

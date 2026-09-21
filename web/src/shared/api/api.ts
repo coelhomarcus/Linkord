@@ -149,8 +149,11 @@ export interface AdminUserRow extends PublicUser { online: boolean }
 /** Admin-only, minimal stopgap for ModerationTab — the socket welcome no
  * longer ships a global directory, so the "list every account to delete
  * one" admin view needs its own fetch now. */
-export function fetchAdminUsers(): Promise<{ users: AdminUserRow[] }> {
-  return apiFetch('/api/admin/users');
+export async function fetchAdminUsers(): Promise<{ users: AdminUserRow[] }> {
+  // paged now (etapa 11); this legacy caller only shows the first page until
+  // the /admin area replaces the Moderation tab
+  const page = await apiFetch<{ items: { id: string; username: string; displayName: string; avatar: string; avatarColor: string; role: 'user' | 'admin' }[] }>('/api/admin/users');
+  return { users: page.items.map((u) => ({ ...u, banner: '', bio: '', profileLinks: [], online: false })) };
 }
 
 // ---- social: friends, requests, blocks (Etapa 8) ----------------------------

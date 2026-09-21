@@ -190,7 +190,7 @@ export async function requestFriendship(fromUserId: string, toUsername: string):
   const target = await findByUsernameLower(toUsername);
   // "não revelar bloqueio reverso" (§5.3): a nonexistent account and a
   // block in EITHER direction produce the exact same response.
-  if (!target || target.id === fromUserId || await isBlockedEitherWay(fromUserId, target.id)) {
+  if (!target || target.status !== 'active' || target.id === fromUserId || await isBlockedEitherWay(fromUserId, target.id)) {
     return { code: 'user_unavailable' };
   }
   const toUserId = target.id;

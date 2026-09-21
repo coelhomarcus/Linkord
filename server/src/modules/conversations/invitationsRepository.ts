@@ -119,7 +119,7 @@ async function inviteOne(inviterId: string, conversationId: string, inviteeId: s
     return await withUserPairLock(inviterId, inviteeId, async (tx) => {
       await lockGroup(tx, conversationId);
       const [group] = await tx.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
-      if (!group || group.type !== 'group') return { result: unavailable };
+      if (!group || group.type !== 'group' || group.status !== 'active') return { result: unavailable };
 
       // authority is re-checked INSIDE the lock — the caller may have lost
       // ownership between the up-front check and here
@@ -200,8 +200,8 @@ async function announceCard(inviter: User, sent: SentCard): Promise<void> {
 export async function createInvitations(
   inviterId: string, conversationId: string, rawInviteeIds: unknown,
 ): Promise<{ results: InviteResult[] } | { error: 'not_found' | 'forbidden' | 'too_many' }> {
-  const [group] = await db.select({ type: conversations.type }).from(conversations).where(eq(conversations.id, conversationId)).limit(1);
-  if (!group || group.type !== 'group') return { error: 'not_found' };
+  const [group] = await db.select({ type: conversations.type, status: conversations.status }).from(conversations).where(eq(conversations.id, conversationId)).limit(1);
+  if (!group || group.type !== 'group' || group.status !== 'active') return { error: 'not_found' };
   if (!(await canManageGroup(conversationId, inviterId))) return { error: 'forbidden' };
   const { ids, tooMany } = normalizeInviteeIds(rawInviteeIds, inviterId);
   if (tooMany) return { error: 'too_many' };
@@ -275,7 +275,7 @@ export async function acceptInvitation(inviteeId: string, id: string): Promise<I
 
       const inviterIsOwner = memberRows.some((m) => m.userId === invitation.inviterId && m.role === 'owner');
       const friendship = await getFriendship(invitation.inviterId, inviteeId, tx);
-      const stillAllowed = group.type === 'group' && inviterIsOwner && friendship?.status === 'accepted'
+      const stillAllowed = group.type === 'group' && group.status === 'active' && inviterIsOwner && friendship?.status === 'accepted'
         && !(await isBlockedEitherWay(invitation.inviterId, inviteeId, tx));
       if (!stillAllowed) {
         // never leave a pending invitation that can no longer be honored

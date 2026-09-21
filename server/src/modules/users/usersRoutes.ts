@@ -3,10 +3,9 @@ import { config } from '../../config/env.js';
 import { sendJson, sendError } from '../../http/respond.js';
 import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
-import { findById, listAllUsers, publicUser } from './users.js';
+import { findById, publicUser } from './users.js';
 import { areFriends } from '../friendships/friendshipsRepository.js';
 import { shareAnyConversation } from '../conversations/conversationsRepository.js';
-import { listOnlineUserIds } from '../presence/participants.js';
 
 type Params = { userId: string };
 
@@ -41,23 +40,6 @@ async function handleGetProfile(request: FastifyRequest<{ Params: Params }>, rep
   sendJson(reply, 200, { user: publicUser(target) });
 }
 
-/** `GET /api/admin/users` — a minimal stopgap so ModerationTab's "list
- * every account to delete one" keeps working now that the socket welcome
- * no longer ships a global directory (Etapa 7). Not the real admin area
- * (Etapa 11) — that should relocate/expand this into proper paginated
- * admin endpoints. */
-async function handleListAllUsers(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-  const cookies = parseCookies(request.headers.cookie || '');
-  const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-  if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
-  if (sess.role !== 'admin') return sendError(reply, 403, 'forbidden', 'Apenas administradores.');
-
-  const allUsers = await listAllUsers();
-  const online = new Set(listOnlineUserIds());
-  sendJson(reply, 200, { users: allUsers.map((u) => ({ ...u, online: online.has(u.id) })) });
-}
-
 export function registerUserRoutes(fastify: FastifyInstance): void {
   fastify.get('/api/users/:userId/profile', handleGetProfile);
-  fastify.get('/api/admin/users', handleListAllUsers);
 }

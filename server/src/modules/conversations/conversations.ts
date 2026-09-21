@@ -4,7 +4,7 @@ import { conversationMembers, conversations, users } from '../../db/schema.js';
 import { participants, send, sendToUser } from '../presence/participants.js';
 import { refreshKnownPeers } from '../presence/knownPeers.js';
 import { sanitizeAvatar } from '../profile/sanitize.js';
-import { deleteAvatarFile, deleteForConversation } from '../attachments/attachmentCleanup.js';
+import { deleteAvatarFile } from '../attachments/attachmentCleanup.js';
 import { ERROR_CODES } from '../../http/errors.js';
 import {
   canManageGroup,
@@ -20,6 +20,7 @@ import {
 import { createInvitations, announceRevocations } from './invitationsRepository.js';
 import { removeMember, transferOwnership } from './groupMembership.js';
 import { revokeCallAccess } from '../calls/callAccess.js';
+import { deleteGroupCompletely } from './groupDeletion.js';
 import type { AppSocket, HandlerTable } from '../../types.js';
 
 // The socket handlers for conversation/group actions (open a DM, create a
@@ -129,16 +130,7 @@ async function handleGroupDelete(socket: AppSocket, msg: { conversationId?: stri
     send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Você não tem permissão para gerenciar esse grupo.' });
     return;
   }
-  const [conversation] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
-  if (!conversation || conversation.type !== 'group') return;
-  const memberRows = await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
-  await deleteForConversation(conversationId);
-  await db.delete(conversations).where(eq(conversations.id, conversationId));
-  for (const member of memberRows) {
-    sendToUser(member.userId, { t: 'conversation-deleted', conversationId, reason: 'deleted' });
-    void revokeCallAccess(member.userId, conversationId);
-  }
-  await refreshKnownPeers(memberRows.map((row) => row.userId));
+  await deleteGroupCompletely(conversationId);
 }
 
 /** Owner-only rename/re-avatar. `title` and `avatar` are each applied only

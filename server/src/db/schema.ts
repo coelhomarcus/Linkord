@@ -32,9 +32,16 @@ export const users = pgTable('users', {
   bio: text('bio').notNull().default(''),
   profileLinks: jsonb('profile_links').$type<string[]>().notNull().default([]),
   role: varchar('role', { length: 16 }).notNull().default('user'), // 'user' | 'admin'
+  // 'active' | 'suspended'. A suspended account can't hold a session at all
+  // (resolveSession returns null) — see modules/admin/adminUsers.ts.
+  status: varchar('status', { length: 16 }).notNull().default('active'),
+  statusReason: text('status_reason').notNull().default(''),
+  statusChangedAt: timestamp('status_changed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
+  index('users_status_idx').on(t.status),
+  index('users_created_at_id_idx').on(t.createdAt, t.id),
   // CASE-INSENSITIVE uniqueness: "Lune" and "lune" are the same person. The
   // chosen spelling is stored in the column; uniqueness lives in an index
   // on lower(username) — every username lookup must use that SAME
@@ -98,11 +105,17 @@ export const conversations = pgTable('conversations', {
   dmKey: text('dm_key'),
   lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
   lastActivityAt: timestamp('last_activity_at', { withTimezone: true }),
+  // 'active' | 'suspended' — a suspended conversation is still listed to its
+  // members but every membership-gated read/write treats it as no access
+  // (conversationsRepository.ts#conversationExistsForUser).
+  status: varchar('status', { length: 16 }).notNull().default('active'),
+  statusReason: text('status_reason').notNull().default(''),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex('conversations_dm_key_unique').on(t.dmKey),
   index('conversations_type_idx').on(t.type),
+  index('conversations_type_status_created_idx').on(t.type, t.status, t.createdAt, t.id),
 ]);
 
 /** Membership for both DMs and groups. DMs always have two rows, both
@@ -362,3 +375,29 @@ export type UserBlock = typeof userBlocks.$inferSelect;
 export type GroupInvitation = typeof groupInvitations.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type OutboxEvent = typeof outboxEvents.$inferSelect;
+
+/** Append-only record of administrative actions. No foreign keys on purpose:
+ * the trail must outlive the account or group it is about (and the admin who
+ * acted), so actor/target are stored as ids plus a label snapshot. The
+ * application only ever INSERTs here. `detail` never carries passwords,
+ * cookies, tokens or conversation bodies. */
+export const adminAuditLogs = pgTable('admin_audit_logs', {
+  id: text('id').primaryKey(),
+  actorId: text('actor_id'),
+  actorLabel: text('actor_label').notNull().default(''),
+  action: varchar('action', { length: 48 }).notNull(),
+  targetType: varchar('target_type', { length: 16 }).notNull(), // 'user' | 'group' | 'message' | 'report' | 'system'
+  targetId: text('target_id').notNull().default(''),
+  targetLabel: text('target_label').notNull().default(''),
+  reason: text('reason').notNull().default(''),
+  result: varchar('result', { length: 16 }).notNull().default('ok'), // 'ok' | 'failed'
+  detail: jsonb('detail').$type<Record<string, unknown>>().notNull().default({}),
+  requestId: text('request_id').notNull().default(''),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('admin_audit_created_id_idx').on(t.createdAt, t.id),
+  index('admin_audit_actor_idx').on(t.actorId, t.createdAt),
+  index('admin_audit_target_idx').on(t.targetType, t.targetId, t.createdAt),
+  index('admin_audit_action_idx').on(t.action, t.createdAt),
+  check('admin_audit_result_check', sql`${t.result} IN ('ok','failed')`),
+]);

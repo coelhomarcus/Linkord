@@ -33,3 +33,15 @@ export async function revokePendingForGroup(tx: Tx, conversationId: string): Pro
     .returning({ id: groupInvitations.id });
   return rows.map((r) => r.id);
 }
+
+/** A suspended or deleted account can neither send nor answer an invitation. */
+export async function revokePendingForUser(tx: Tx, userId: string): Promise<string[]> {
+  const rows = await tx.update(groupInvitations)
+    .set({ status: 'revoked', respondedAt: new Date(), version: sql`${groupInvitations.version} + 1` })
+    .where(and(
+      eq(groupInvitations.status, 'pending'),
+      or(eq(groupInvitations.inviterId, userId), eq(groupInvitations.inviteeId, userId)),
+    ))
+    .returning({ id: groupInvitations.id });
+  return rows.map((r) => r.id);
+}
