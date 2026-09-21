@@ -6,6 +6,7 @@ import { friendships, notifications, outboxEvents, users, type Friendship } from
 import { findByUsernameLower, toSocialUser, type SocialUser } from '../users/users.js';
 import { canonicalUserPair, withUserPairLock, type Tx } from '../users/userPairLock.js';
 import { isBlocked, isBlockedEitherWay } from '../blocks/blocksRepository.js';
+import { revokePendingBetween } from '../conversations/invitationRevocation.js';
 import { SOCIAL_PAGE_SIZE, decodeTimeCursor, decodeUsernameCursor, encodeTimeCursor, escapeLike } from './cursor.js';
 
 export type FriendshipResult =
@@ -18,7 +19,9 @@ export type FriendshipResult =
   | { code: 'accepted'; friendship: Friendship }
   | { code: 'declined'; friendship: Friendship }
   | { code: 'cancelled'; friendship: Friendship }
-  | { code: 'removed'; friendship: Friendship }
+  // ids of pending group invitations the removal invalidated (§7.2.5) — the
+  // HTTP layer announces them once the transaction has committed
+  | { code: 'removed'; friendship: Friendship; revokedInvitationIds?: string[] }
   | { code: 'not_found' }
   | { code: 'forbidden' }
   | { code: 'invalid_state' };
@@ -289,6 +292,7 @@ export async function removeFriendship(userId: string, otherUserId: string): Pro
       status: 'removed', respondedAt: new Date(), retryAfter: new Date(Date.now() + config.FRIEND_REQUEST_COOLDOWN_MS),
       version: sql`${friendships.version} + 1`, updatedAt: new Date(),
     }).where(eq(friendships.id, existing.id)).returning();
-    return { code: 'removed', friendship: row! };
+    const revokedInvitationIds = await revokePendingBetween(tx, userId, otherUserId);
+    return { code: 'removed', friendship: row!, revokedInvitationIds };
   });
 }

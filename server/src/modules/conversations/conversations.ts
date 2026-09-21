@@ -1,8 +1,7 @@
-import crypto from 'node:crypto';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { conversationMembers, conversations, users } from '../../db/schema.js';
-import { participants, send } from '../presence/participants.js';
+import { participants, send, sendToUser } from '../presence/participants.js';
 import { refreshKnownPeers } from '../presence/knownPeers.js';
 import { sanitizeAvatar } from '../profile/sanitize.js';
 import { deleteAvatarFile, deleteForConversation } from '../attachments/attachmentCleanup.js';
@@ -10,6 +9,8 @@ import { ERROR_CODES } from '../../http/errors.js';
 import {
   canManageGroup,
   conversationExistsForUser,
+  createGroup,
+  getOrCreateDirect,
   getConversationForUser,
   getMemberRole,
   reconcileGroupMembership,
@@ -17,6 +18,8 @@ import {
   sanitizeConversationTitle,
   sendConversationUpdateToMembers,
 } from './conversationsRepository.js';
+import { createInvitations, announceRevocations } from './invitationsRepository.js';
+import { revokePendingForGroup } from './invitationRevocation.js';
 import type { AppSocket, HandlerTable } from '../../types.js';
 
 // The socket handlers for conversation/group actions (open a DM, create a
@@ -24,19 +27,6 @@ import type { AppSocket, HandlerTable } from '../../types.js';
 // only dispatched as a block via `handlers`. The repository API other
 // modules actually depend on (listForUser, touchConversation, etc.) lives
 // in conversationsRepository.ts; see that file's own module comment.
-
-function dmKeyFor(a: string, b: string): string {
-  return [a, b].sort().join(':');
-}
-
-/** Sends `obj` to every currently-connected socket belonging to `userId` —
- * multi-tab/device fan-out for events that are only ever visible to the
- * acting user themselves (closing a DM, pinning, marking as read). */
-function sendToUser(userId: string, obj: { t: string; [key: string]: unknown }): void {
-  for (const p of participants.values()) {
-    if (p.userId === userId) send(p.socket, obj);
-  }
-}
 
 async function findUser(userId: string): Promise<boolean> {
   const [row] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
@@ -56,27 +46,7 @@ async function handleDirectOpen(socket: AppSocket, msg: { userId?: string }): Pr
   const otherUserId = String(msg.userId || '');
   if (!otherUserId || otherUserId === p.userId || !(await findUser(otherUserId))) return;
 
-  const dmKey = dmKeyFor(p.userId, otherUserId);
-  const [existing] = await db.select().from(conversations).where(eq(conversations.dmKey, dmKey)).limit(1);
-  let conversation = existing;
-  if (!conversation) {
-    const now = new Date();
-    conversation = await db.transaction(async (tx) => {
-      const [inserted] = await tx.insert(conversations).values({
-        id: crypto.randomUUID(),
-        type: 'direct',
-        title: '',
-        createdBy: p.userId,
-        dmKey,
-        updatedAt: now,
-      }).returning();
-      await tx.insert(conversationMembers).values([
-        { conversationId: inserted!.id, userId: p.userId, role: 'member' },
-        { conversationId: inserted!.id, userId: otherUserId, role: 'member' },
-      ]);
-      return inserted!;
-    });
-  }
+  const { conversation } = await getOrCreateDirect(p.userId, otherUserId, p.userId);
 
   send(socket, {
     t: 'conversation-opened',
@@ -132,52 +102,23 @@ async function handleConversationPin(socket: AppSocket, msg: { conversationId?: 
 // Any active account can create a group — creating one makes you its
 // owner (canManageGroup, conversationsRepository.ts), same as everyone
 // else's groups. No instance-role gate here at all.
+//
+// Nobody but the creator becomes a member here anymore (docs/plano-rede-social.md
+// §4.2.10): `memberIds` from a client that still sends them (an old build, or a
+// raw socket) are turned into INVITATIONS, and only accepting one creates a
+// member. The current client creates groups over HTTP (POST /api/groups) and
+// sees each invitation's result; this path stays for the ones that don't.
 async function handleGroupCreate(socket: AppSocket, msg: { title?: string; memberIds?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   const title = sanitizeConversationTitle(msg.title);
   if (!title) return;
 
-  const rawMemberIds = Array.isArray(msg.memberIds) ? msg.memberIds.map(String) : [];
-  const requested = [...new Set([p.userId, ...rawMemberIds])];
-  const existingUsers = await db.select({ id: users.id }).from(users).where(inArray(users.id, requested));
-  const memberIds = existingUsers.map((row) => row.id);
-  if (!memberIds.includes(p.userId)) memberIds.push(p.userId);
-
-  const now = new Date();
-  // atomic: a failure between the two inserts used to be able to leave a
-  // conversation row with NO members at all (never surfaced to anyone,
-  // never cleaned up).
-  const conversation = await db.transaction(async (tx) => {
-    const [inserted] = await tx.insert(conversations).values({
-      id: crypto.randomUUID(),
-      type: 'group',
-      title,
-      createdBy: p.userId,
-      updatedAt: now,
-    }).returning();
-    await tx.insert(conversationMembers).values(memberIds.map((userId) => ({
-      conversationId: inserted!.id,
-      userId,
-      role: userId === p.userId ? 'owner' : 'member',
-    })));
-    return inserted!;
-  });
-
-  // Creator gets 'conversation-opened' (adds it AND switches to it, same as
-  // handleDirectOpen) with `conversation` populated — the other members
-  // just get 'conversation-created' (adds it, doesn't switch anyone's view).
-  // `pinnedAt: null` for everyone: a brand-new group can't already be pinned.
-  // Two summaries, not one shared object: the creator's `myRole` is 'owner',
-  // everyone else's is 'member' — see rowToSummary/ConversationSummary.
-  const ownerSummary = rowToSummary(conversation, memberIds, null, 'owner');
-  const memberSummary = rowToSummary(conversation, memberIds, null, 'member');
-  send(socket, { t: 'conversation-opened', conversationId: conversation.id, conversation: ownerSummary });
-  for (const userId of memberIds) {
-    if (userId === p.userId) continue;
-    sendToUser(userId, { t: 'conversation-created', conversation: memberSummary });
+  const conversation = await createGroup(p.userId, title);
+  send(socket, { t: 'conversation-opened', conversationId: conversation.id, conversation: rowToSummary(conversation, [p.userId], null, 'owner') });
+  if (Array.isArray(msg.memberIds) && msg.memberIds.length) {
+    await createInvitations(p.userId, conversation.id, msg.memberIds);
   }
-  await refreshKnownPeers(memberIds);
 }
 
 async function handleGroupDelete(socket: AppSocket, msg: { conversationId?: string }): Promise<void> {
@@ -242,44 +183,12 @@ async function handleGroupUpdate(socket: AppSocket, msg: { conversationId?: stri
   await sendConversationUpdateToMembers('conversation-updated', updatedRow!);
 }
 
-/** Owner-only. Silently skips ids that don't exist or are already members —
- * matches handleGroupCreate's "just filter, don't error" approach. */
-async function handleGroupMembersAdd(socket: AppSocket, msg: { conversationId?: string; memberIds?: unknown }): Promise<void> {
-  const p = participants.get(socket.participantId ?? '');
-  if (!p || p.socket !== socket) return;
-  const conversationId = String(msg.conversationId || '');
-  if (!conversationId) return;
-  if (!(await canManageGroup(conversationId, p.userId))) {
-    send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Você não tem permissão para gerenciar esse grupo.' });
-    return;
-  }
-  const [conversation] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
-  if (!conversation || conversation.type !== 'group') return;
-
-  const rawMemberIds = Array.isArray(msg.memberIds) ? [...new Set(msg.memberIds.map(String))] : [];
-  if (!rawMemberIds.length) return;
-  const currentRows = await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
-  const currentIds = new Set(currentRows.map((row) => row.userId));
-  const candidateIds = rawMemberIds.filter((id) => !currentIds.has(id));
-  if (!candidateIds.length) return;
-  const existingUsers = await db.select({ id: users.id }).from(users).where(inArray(users.id, candidateIds));
-  const newIds = existingUsers.map((row) => row.id);
-  if (!newIds.length) return;
-
-  await db.insert(conversationMembers).values(newIds.map((userId) => ({ conversationId, userId, role: 'member' as const })));
-
-  // Brand-new members have never seen this conversation — they need the
-  // whole thing (pinnedAt: null, they can't have pinned it yet). Existing
-  // members just need to know who joined, one event per new member.
-  const allMemberIds = [...currentIds, ...newIds];
-  const summary = rowToSummary(conversation, allMemberIds, null, 'member');
-  for (const userId of newIds) sendToUser(userId, { t: 'conversation-created', conversation: summary });
-  for (const newUserId of newIds) {
-    for (const participant of participants.values()) {
-      if (currentIds.has(participant.userId)) send(participant.socket, { t: 'conversation-member-added', conversationId, userId: newUserId });
-    }
-  }
-  await refreshKnownPeers(allMemberIds);
+/** Adding a member directly is gone: joining a group takes the invitee's
+ * acceptance (docs/plano-rede-social.md §4.2.10). Kept as a handler only so a
+ * client that still sends this gets a clear refusal instead of silence —
+ * nothing here writes to conversation_members. */
+async function handleGroupMembersAdd(socket: AppSocket): Promise<void> {
+  send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Convide amigos para o grupo — eles entram ao aceitar o convite.' });
 }
 
 /** Owner-only. Hands the group to an existing member and demotes the
@@ -306,14 +215,20 @@ async function handleGroupTransferOwner(socket: AppSocket, msg: { conversationId
     return;
   }
 
-  await db.transaction(async (tx) => {
+  const revokedInvitationIds = await db.transaction(async (tx) => {
+    // group row first — the same order every invitation operation takes its
+    // locks in (see invitationsRepository.ts), so a concurrent accept can't deadlock with this
+    await tx.execute(sql`select id from conversations where id = ${conversationId} for update`);
     await tx.update(conversationMembers).set({ role: 'member' })
       .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, p.userId)));
     await tx.update(conversationMembers).set({ role: 'owner' })
       .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, newOwnerId)));
+    // whatever the previous owner still had pending dies with their ownership
+    return revokePendingForGroup(tx, conversationId);
   });
 
   await sendConversationUpdateToMembers('conversation-updated', conversation);
+  await announceRevocations(revokedInvitationIds);
 }
 
 /** The group's owner removes anyone; a member can only remove THEMSELVES

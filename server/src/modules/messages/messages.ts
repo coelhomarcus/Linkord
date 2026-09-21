@@ -18,6 +18,7 @@ import * as attachments from '../attachments/attachments.js';
 import { deleteForMessage } from '../attachments/attachmentCleanup.js';
 import * as reactions from './reactions.js';
 import { ERROR_CODES } from '../../http/errors.js';
+import { loadInvitationCards, type InvitationCard } from '../conversations/invitationCards.js';
 import type { AppSocket, HandlerTable, Participant } from '../../types.js';
 
 // Etapa 6 (docs/plano-rede-social.md §4.3): "não enviar, reagir, anexar,
@@ -72,6 +73,11 @@ interface ChatMessagePayload {
   replyTo?: ReplyRef;
   reactions?: Record<string, string[]>;
   attachments?: { id: string; name: string; mime: string; size: number; thumbId?: string }[];
+  // only set for structured messages — absent means a plain text message
+  kind?: 'group_invite';
+  // the invitation's CURRENT state, resolved at read time so a card is right
+  // after a refresh; null is the tombstone (its group was deleted)
+  invitation?: InvitationCard | null;
 }
 
 interface MessageWithAuthor {
@@ -85,6 +91,8 @@ interface MessageWithAuthor {
   createdAt: Date;
   editedAt: Date | null;
   replyTo: unknown;
+  kind: string;
+  groupInvitationId: string | null;
 }
 
 function sanitizeChatText(text: unknown): string {
@@ -102,6 +110,8 @@ const messageWithAuthorSelect = {
   createdAt: messages.createdAt,
   editedAt: messages.editedAt,
   replyTo: messages.replyTo,
+  kind: messages.kind,
+  groupInvitationId: messages.groupInvitationId,
 };
 
 function rowWithParticipant(row: Message, participant: Participant): MessageWithAuthor {
@@ -116,6 +126,8 @@ function rowWithParticipant(row: Message, participant: Participant): MessageWith
     createdAt: row.createdAt,
     editedAt: row.editedAt,
     replyTo: row.replyTo,
+    kind: row.kind,
+    groupInvitationId: row.groupInvitationId,
   };
 }
 
@@ -144,7 +156,7 @@ function normalizeReplyRef(raw: unknown): ReplyRef | undefined {
  * attachments-table rows, and `reactionsByEmoji` the grouped
  * message_reactions rows for this message — neither lives in the messages
  * table itself, see modules/attachments.ts and modules/reactions.ts. */
-function rowToMessage(row: MessageWithAuthor, attachments?: Attachment[], reactionsByEmoji?: Record<string, string[]>): ChatMessagePayload {
+function rowToMessage(row: MessageWithAuthor, attachments?: Attachment[], reactionsByEmoji?: Record<string, string[]>, invitation?: InvitationCard): ChatMessagePayload {
   const out: ChatMessagePayload = {
     msgId: row.id,
     conversationId: row.conversationId,
@@ -155,6 +167,10 @@ function rowToMessage(row: MessageWithAuthor, attachments?: Attachment[], reacti
     ts: row.createdAt.getTime(),
   };
   if (row.editedAt) out.editedAt = row.editedAt.getTime();
+  if (row.kind === 'group_invite') {
+    out.kind = 'group_invite';
+    out.invitation = invitation ?? null;
+  }
   const replyTo = normalizeReplyRef(row.replyTo);
   if (replyTo) out.replyTo = replyTo;
   if (reactionsByEmoji && Object.keys(reactionsByEmoji).length) out.reactions = reactionsByEmoji;
@@ -175,11 +191,13 @@ async function buildReplyRef(conversationId: string, replyToId: unknown): Promis
   const id = Number(replyToId);
   if (!Number.isFinite(id)) return undefined;
   const [original] = await db
-    .select({ id: messages.id, authorId: messages.authorId, text: messages.text })
+    .select({ id: messages.id, authorId: messages.authorId, text: messages.text, kind: messages.kind })
     .from(messages)
     .where(and(eq(messages.id, id), eq(messages.conversationId, conversationId)))
     .limit(1);
-  if (!original) return undefined;
+  // a card can't be replied to — its preview would be blank, and answering
+  // an invitation is what its own buttons are for
+  if (!original || original.kind !== 'text') return undefined;
   const ref: ReplyRef = { msgId: original.id, authorId: original.authorId, text: original.text.slice(0, REPLY_PREVIEW_LEN) };
   // no caption on the original — likely an attachment-only message. Lets
   // the reply reference show "📎 N anexos" instead of a blank snippet.
@@ -188,6 +206,23 @@ async function buildReplyRef(conversationId: string, replyToId: unknown): Promis
     if (attachmentCount > 0) ref.attachmentCount = attachmentCount;
   }
   return ref;
+}
+
+/** Serializes a page of rows with everything that lives outside the messages
+ * table, each fetched ONCE for the whole page (attachments, reactions and
+ * invitation cards) — never a query per message. */
+async function serializeRows(rows: MessageWithAuthor[]): Promise<ChatMessagePayload[]> {
+  const messageIds = rows.map((r) => r.id);
+  const cardIds = rows.flatMap((r) => (r.kind === 'group_invite' && r.groupInvitationId ? [r.groupInvitationId] : []));
+  const [attachmentByMessageId, reactionsByMessageId, cards] = await Promise.all([
+    attachments.getByMessageIds(messageIds),
+    reactions.getByMessageIds(messageIds),
+    loadInvitationCards(cardIds),
+  ]);
+  return rows.map((r) => rowToMessage(
+    r, attachmentByMessageId.get(r.id), reactionsByMessageId.get(r.id),
+    r.groupInvitationId ? cards.get(r.groupInvitationId) : undefined,
+  ));
 }
 
 /** Client opening a conversation — sends the last CHAT_HISTORY_LIMIT messages
@@ -208,15 +243,11 @@ async function handleConversationOpen(socket: AppSocket, msg: { conversationId?:
   rows.reverse();
   // one query for all history messages' attachments/reactions, not one per
   // message (N+1) — most have neither anyway.
-  const messageIds = rows.map((r) => r.id);
-  const [attachmentByMessageId, reactionsByMessageId] = await Promise.all([
-    attachments.getByMessageIds(messageIds),
-    reactions.getByMessageIds(messageIds),
-  ]);
+  const payloads = await serializeRows(rows);
   send(socket, {
     t: 'conversation-history',
     conversationId,
-    messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id), reactionsByMessageId.get(r.id))),
+    messages: payloads,
     hasMore: rows.length === config.CHAT_HISTORY_LIMIT,
   });
 
@@ -253,15 +284,11 @@ async function handleLoadMoreMessages(socket: AppSocket, msg: { conversationId?:
     .orderBy(desc(messages.id))
     .limit(config.CHAT_HISTORY_LIMIT);
   rows.reverse();
-  const messageIds = rows.map((r) => r.id);
-  const [attachmentByMessageId, reactionsByMessageId] = await Promise.all([
-    attachments.getByMessageIds(messageIds),
-    reactions.getByMessageIds(messageIds),
-  ]);
+  const payloads = await serializeRows(rows);
   send(socket, {
     t: 'conversation-history-more',
     conversationId,
-    messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id), reactionsByMessageId.get(r.id))),
+    messages: payloads,
     hasMore: rows.length === config.CHAT_HISTORY_LIMIT,
   });
 }
@@ -299,16 +326,12 @@ async function handleLoadMessagesAround(socket: AppSocket, msg: { conversationId
   ]);
   beforeRows.reverse();
   const rows = [...beforeRows, ...afterRows];
-  const messageIds = rows.map((r) => r.id);
-  const [attachmentByMessageId, reactionsByMessageId] = await Promise.all([
-    attachments.getByMessageIds(messageIds),
-    reactions.getByMessageIds(messageIds),
-  ]);
+  const payloads = await serializeRows(rows);
   send(socket, {
     t: 'conversation-history-around',
     conversationId,
     msgId,
-    messages: rows.map((r) => rowToMessage(r, attachmentByMessageId.get(r.id), reactionsByMessageId.get(r.id))),
+    messages: payloads,
     hasMoreBefore: beforeRows.length === AROUND_BEFORE_LIMIT,
     hasMoreAfter: afterRows.length === AROUND_AFTER_LIMIT,
   });
@@ -402,6 +425,7 @@ async function handleChatEdit(socket: AppSocket, msg: { msgId?: unknown; text?: 
   if (!Number.isFinite(msgId) || !text) return;
   const [existing] = await db.select().from(messages).where(eq(messages.id, msgId)).limit(1);
   if (!existing || existing.authorId !== p.userId) return;
+  if (existing.kind !== 'text') return; // an invitation card is never editable
   if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return;
   // §4.3: editing an old message while contact is restricted would be a
   // backdoor around the send-gate above — closing that is the specific
@@ -427,8 +451,8 @@ async function handleChatReact(socket: AppSocket, msg: { msgId?: unknown; emoji?
   const msgId = Number(msg.msgId);
   const emoji = String(msg.emoji || '');
   if (!Number.isFinite(msgId) || !isSingleEmoji(emoji)) return;
-  const [existing] = await db.select({ conversationId: messages.conversationId }).from(messages).where(eq(messages.id, msgId)).limit(1);
-  if (!existing) return;
+  const [existing] = await db.select({ conversationId: messages.conversationId, kind: messages.kind }).from(messages).where(eq(messages.id, msgId)).limit(1);
+  if (!existing || existing.kind !== 'text') return; // no reactions on invitation cards
   if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return;
   if (!(await assertCanWriteToConversation(socket, existing.conversationId, p.userId))) return;
   const userIds = await reactions.toggle(msgId, p.userId, emoji);

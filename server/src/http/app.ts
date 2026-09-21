@@ -13,6 +13,7 @@ import { registerLinkPreviewRoutes } from '../modules/link-preview/linkPreview.j
 import { registerFriendshipRoutes } from '../modules/friendships/friendships.js';
 import { registerBlockRoutes } from '../modules/blocks/blocks.js';
 import { registerUserRoutes } from '../modules/users/usersRoutes.js';
+import { registerInvitationRoutes } from '../modules/conversations/invitations.js';
 
 // compiled, this file becomes server/dist/http/app.js, hence the three
 // '..' up to the repo root, then into web/dist.
@@ -59,6 +60,7 @@ export function createApp(): FastifyInstance {
   registerFriendshipRoutes(fastify);
   registerBlockRoutes(fastify);
   registerUserRoutes(fastify);
+  registerInvitationRoutes(fastify);
 
   // static files from the frontend build (web/dist) — wildcard:false so it
   // doesn't compete with setNotFoundHandler below for the same catch-all.

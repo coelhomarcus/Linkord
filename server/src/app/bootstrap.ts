@@ -5,6 +5,7 @@ import { createWsServer } from '../realtime/socket.js';
 import { runMigrations } from '../db/migrate.js';
 import { sweepExpiredSessions } from '../modules/auth/session.js';
 import { ensureUploadDir, sweepStaleUploads } from '../modules/attachments/uploadSession.js';
+import { sweepExpiredInvitations } from '../modules/conversations/invitationsRepository.js';
 
 // backstop behind the try/catch in each handler in realtime/socket.ts —
 // covers any async error escaping the normal message cycle (a timer, a
@@ -71,6 +72,16 @@ export async function bootstrap(): Promise<void> {
     sweepStaleUploads().catch((err) => console.error('[attachments] failed to clean up abandoned uploads:', err instanceof Error ? err.stack : err));
   }, 60 * 60 * 1000);
   uploadSweepTimer.unref();
+
+  // Pending invitations past their deadline already READ as expired
+  // (effectiveStatus); this persists it and updates the cards on screen.
+  // Once now, then every 5 minutes — short, because a card that outlives its
+  // deadline for long looks broken to whoever is watching it.
+  const sweepInvitations = () => sweepExpiredInvitations()
+    .catch((err) => console.error('[invitations] failed to expire old invitations:', err instanceof Error ? err.stack : err));
+  void sweepInvitations();
+  const invitationSweepTimer = setInterval(sweepInvitations, 5 * 60 * 1000);
+  invitationSweepTimer.unref();
 
   for (const sig of ['SIGINT', 'SIGTERM'] as const) {
     process.on(sig, () => {

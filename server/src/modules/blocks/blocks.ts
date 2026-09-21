@@ -6,6 +6,7 @@ import { resolveSession } from '../auth/session.js';
 import { findById } from '../users/users.js';
 import { blockUser, unblockUser, listBlocks } from './blocksRepository.js';
 import { onSocialChange } from '../presence/knownPeers.js';
+import { announceRevocations } from '../conversations/invitationsRepository.js';
 
 type Params = { userId: string };
 
@@ -18,9 +19,10 @@ async function handleBlock(request: FastifyRequest<{ Params: Params }>, reply: F
   if (!targetId || targetId === sess.userId || !(await findById(targetId))) {
     return sendError(reply, 404, 'user_not_found', 'Conta não encontrada.');
   }
-  await blockUser(sess.userId, targetId);
+  const revokedIds = await blockUser(sess.userId, targetId);
   sendJson(reply, 200, { blocked: true });
   void onSocialChange(sess.userId, targetId);
+  void announceRevocations(revokedIds);
 }
 
 async function handleUnblock(request: FastifyRequest<{ Params: Params }>, reply: FastifyReply): Promise<void> {

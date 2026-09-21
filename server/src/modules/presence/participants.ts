@@ -74,6 +74,14 @@ export function broadcastToKnownPeers(subjectUserId: string, obj: { t: string; [
   }
 }
 
+/** Sends `obj` to every live connection of one account (multi-tab/device
+ * fan-out for events only that account should see). */
+export function sendToUser(userId: string, obj: { t: string; [key: string]: unknown }): void {
+  for (const p of participants.values()) {
+    if (p.userId === userId) send(p.socket, obj);
+  }
+}
+
 /** True if ANY connection for this account has a live socket right now —
  * used for the online/offline directory. Linear scan is fine at this scale. */
 export function isUserOnline(userId: string): boolean {

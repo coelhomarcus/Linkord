@@ -1,9 +1,11 @@
+import crypto from 'node:crypto';
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { conversationMembers, conversations, users, type Conversation } from '../../db/schema.js';
 import { participants, send } from '../presence/participants.js';
 import { resolveDisplayName } from '../users/users.js';
 import { deleteForConversation } from '../attachments/attachmentCleanup.js';
+import type { Tx } from '../users/userPairLock.js';
 
 // The conversations API other modules actually depend on (messages.ts,
 // moderation.ts, attachmentServing.ts, attachmentUploads.ts) — as opposed
@@ -139,6 +141,45 @@ export async function broadcastToConversationMembers(conversationId: string, obj
   for (const p of participants.values()) {
     if (allowed.has(p.userId)) send(p.socket, obj);
   }
+}
+
+export function dmKeyFor(a: string, b: string): string {
+  return [a, b].sort().join(':');
+}
+
+/** Finds or creates the direct conversation between two accounts —
+ * idempotent under concurrency. The old "select, then insert" would throw on
+ * the unique `dm_key` index when two requests raced (and roll the whole
+ * transaction back); `ON CONFLICT DO NOTHING` makes the loser wait for the
+ * winner's commit and then just read its row. Pass a `tx` to join a caller's
+ * transaction (an invitation card is created together with its invitation). */
+export async function getOrCreateDirect(a: string, b: string, creatorId: string, executor?: Tx): Promise<{ conversation: Conversation; created: boolean }> {
+  const run = async (tx: Tx) => {
+    const dmKey = dmKeyFor(a, b);
+    const [inserted] = await tx.insert(conversations).values({
+      id: crypto.randomUUID(), type: 'direct', title: '', createdBy: creatorId, dmKey, updatedAt: new Date(),
+    }).onConflictDoNothing({ target: conversations.dmKey }).returning();
+    const conversation = inserted ?? (await tx.select().from(conversations).where(eq(conversations.dmKey, dmKey)).limit(1))[0]!;
+    await tx.insert(conversationMembers).values([
+      { conversationId: conversation.id, userId: a, role: 'member' },
+      { conversationId: conversation.id, userId: b, role: 'member' },
+    ]).onConflictDoNothing();
+    return { conversation, created: !!inserted };
+  };
+  return executor ? run(executor) : db.transaction(run);
+}
+
+/** A group with its creator as the single `owner` member, in one
+ * transaction — no path adds anyone else directly anymore (only an accepted
+ * invitation does, see invitationsRepository.ts). */
+export async function createGroup(ownerId: string, title: string): Promise<Conversation> {
+  return db.transaction(async (tx) => {
+    const [inserted] = await tx.insert(conversations).values({
+      id: crypto.randomUUID(), type: 'group', title, createdBy: ownerId, updatedAt: new Date(),
+    }).returning();
+    await tx.insert(conversationMembers).values({ conversationId: inserted!.id, userId: ownerId, role: 'owner' });
+    return inserted!;
+  });
 }
 
 export async function getConversationForUser(conversationId: string, userId: string): Promise<Conversation | null> {

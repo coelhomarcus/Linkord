@@ -1,8 +1,9 @@
 import { and, desc, eq, or, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { userBlocks, friendships, users } from '../../db/schema.js';
-import { withUserPairLock } from '../users/userPairLock.js';
+import { withUserPairLock, type Tx } from '../users/userPairLock.js';
 import { toSocialUser, type SocialUser } from '../users/users.js';
+import { revokePendingBetween } from '../conversations/invitationRevocation.js';
 import { SOCIAL_PAGE_SIZE, decodeTimeCursor, encodeTimeCursor } from '../friendships/cursor.js';
 
 export async function isBlocked(blockerId: string, blockedId: string): Promise<boolean> {
@@ -18,8 +19,11 @@ export async function listBlockedEitherWayIds(userId: string): Promise<string[]>
   return rows.map((r) => (r.blockerId === userId ? r.blockedId : r.blockerId));
 }
 
-export async function isBlockedEitherWay(a: string, b: string): Promise<boolean> {
-  const [row] = await db.select({ blockerId: userBlocks.blockerId }).from(userBlocks)
+/** Pass `executor` when called inside a transaction: the default pool-level
+ * query would take a second connection while the transaction holds one,
+ * which starves the small pool under concurrent pair-locked operations. */
+export async function isBlockedEitherWay(a: string, b: string, executor: Tx | typeof db = db): Promise<boolean> {
+  const [row] = await executor.select({ blockerId: userBlocks.blockerId }).from(userBlocks)
     .where(or(
       and(eq(userBlocks.blockerId, a), eq(userBlocks.blockedId, b)),
       and(eq(userBlocks.blockerId, b), eq(userBlocks.blockedId, a)),
@@ -35,8 +39,8 @@ export async function isBlockedEitherWay(a: string, b: string): Promise<boolean>
  * Only the status transition is duplicated here, not the cooldown/version
  * bookkeeping a real friend-request rejection goes through — a block isn't
  * a request that could be retried, there's nothing to cool down. */
-export async function blockUser(blockerId: string, blockedId: string): Promise<void> {
-  await withUserPairLock(blockerId, blockedId, async (tx) => {
+export async function blockUser(blockerId: string, blockedId: string): Promise<string[]> {
+  return withUserPairLock(blockerId, blockedId, async (tx) => {
     await tx.insert(userBlocks).values({ blockerId, blockedId }).onConflictDoNothing();
     await tx.update(friendships)
       .set({ status: 'removed', respondedAt: new Date(), version: sql`${friendships.version} + 1` })
@@ -47,6 +51,9 @@ export async function blockUser(blockerId: string, blockedId: string): Promise<v
         ),
         sql`${friendships.status} IN ('pending', 'accepted')`,
       ));
+    // a pending group invitation between the two is invalidated in the same
+    // transaction (§7.3); the ids go back so the caller can update the cards
+    return revokePendingBetween(tx, blockerId, blockedId);
   });
 }
 

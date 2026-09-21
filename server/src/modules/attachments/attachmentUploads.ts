@@ -137,6 +137,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
     const [existing] = await db.select().from(messages).where(eq(messages.id, targetMsgId)).limit(1);
     if (!existing) return sendError(reply, 404, 'target_message_not_found', 'Mensagem de destino não encontrada.');
     if (existing.authorId !== sess.userId) return sendError(reply, 403, 'not_your_message', 'Você só pode anexar arquivos às suas próprias mensagens.');
+    if (existing.kind !== 'text') return sendError(reply, 400, 'invalid_target', 'Não dá para anexar arquivos a esse tipo de mensagem.');
     if (existing.conversationId !== manifest.conversationId) return sendError(reply, 400, 'conversation_mismatch', 'A conversa não corresponde ao upload.');
     if (Date.now() - existing.createdAt.getTime() > config.ATTACH_TO_MESSAGE_WINDOW_MS) {
       return sendError(reply, 400, 'target_message_too_old', 'A mensagem de destino é antiga demais para receber mais anexos.');
