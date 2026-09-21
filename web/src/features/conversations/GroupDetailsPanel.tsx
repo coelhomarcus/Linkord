@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react';
 import type { Area } from 'react-easy-crop';
 import { motion } from 'motion/react';
-import { Camera, Check, Crown, Link2, LogOut, Pencil, Trash2, Upload, UserPlus, X } from 'lucide-react';
+import { Camera, Check, Crown, Flag, Link2, LogOut, Pencil, Trash2, Upload, UserPlus, X } from 'lucide-react';
 import { useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { Drawer } from '@/shared/ui/motion/drawer';
 import { Button } from '@/shared/ui/primitives/button';
@@ -24,6 +24,7 @@ import { FriendPicker } from './FriendPicker';
 import { describeInviteOutcome } from './inviteOutcome';
 import { useFriends } from '@/features/friends/FriendsContext';
 import { useCursorList } from '@/features/friends/useCursorList';
+import { ReportDialog } from '@/features/reports/ReportDialog';
 import { fetchGroupInvitations, fetchGroupMembers, inviteToGroup, revokeInvitation } from '@/shared/api/api';
 import type { SocialUser } from '@/shared/api/api';
 
@@ -58,6 +59,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
   const [inviting, setInviting] = useState(false);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<SocialUser | null>(null);
@@ -461,6 +463,10 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
           <LogOut size={15} />
           Sair do grupo
         </Button>
+        <Button type="button" variant="ghost" onClick={() => setReportOpen(true)} className="justify-start gap-2 text-text-muted hover:text-text-primary">
+          <Flag size={15} />
+          Denunciar grupo
+        </Button>
         {isOwner && (
           <Button type="button" variant="ghost" onClick={() => setConfirmDelete(true)} className="justify-start gap-2 text-red-text hover:bg-red/10 hover:text-red-text">
             <Trash2 size={15} />
@@ -514,6 +520,9 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
         onConfirm={handleAvatarUrlPicked}
       />
 
+      {conversation && (
+        <ReportDialog target={{ type: 'group', id: conversation.id, label: conversation.title || 'grupo' }} open={reportOpen} onOpenChange={setReportOpen} />
+      )}
       <ConfirmDialog
         open={confirmLeave}
         onOpenChange={setConfirmLeave}

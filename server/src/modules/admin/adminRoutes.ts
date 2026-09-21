@@ -12,7 +12,9 @@ import {
   assignGroupOwner, deleteGroupAsAdmin, getAdminGroup, listAdminGroups, reactivateGroup, suspendGroup,
   type GroupActionResult,
 } from './adminGroups.js';
+import { claimReport, getAdminReport, listAdminReports, resolveReport, type ReportActionResult } from './adminReports.js';
 import type { AuditActor } from './auditLog.js';
+import type { ReportAction } from '../reports/reportsPolicy.js';
 
 type Query = Record<string, string | undefined>;
 type IdParams = { id: string };
@@ -25,9 +27,13 @@ const ERRORS: Record<string, [number, string, string]> = {
   not_suspended: [409, 'not_suspended', 'Não está suspenso.'],
   not_member: [409, 'not_member', 'Essa conta não é membro do grupo.'],
   confirmation_mismatch: [400, 'confirmation_mismatch', 'A confirmação não confere.'],
+  already_closed: [409, 'already_closed', 'Essa denúncia já foi encerrada.'],
+  not_open: [409, 'not_open', 'Essa denúncia já está em análise.'],
+  invalid_action: [400, 'invalid_action', 'Essa ação não se aplica a esse tipo de denúncia.'],
+  action_failed: [409, 'action_failed', 'Não foi possível aplicar a ação; a denúncia continua aberta.'],
 };
 
-function respond(reply: FastifyReply, result: UserActionResult | GroupActionResult): void {
+function respond(reply: FastifyReply, result: UserActionResult | GroupActionResult | ReportActionResult): void {
   if (result.code === 'ok') return sendJson(reply, 200, { ok: true });
   const [status, code, message] = ERRORS[result.code] ?? [500, 'internal_error', 'Erro interno.'];
   sendError(reply, status, code, message);
@@ -106,6 +112,31 @@ export function registerAdminRoutes(fastify: FastifyInstance): void {
   fastify.delete('/api/admin/groups/:id', async (request: FastifyRequest<{ Params: IdParams }>, reply) => {
     const m = await mutating(request, reply);
     if (m) respond(reply, await deleteGroupAsAdmin({ actor: m.actor, reason: m.reason, requestId: request.id }, request.params.id));
+  });
+
+  fastify.get('/api/admin/reports', (request: FastifyRequest<{ Querystring: Query }>, reply) => reading(request, reply, () => {
+    const { status, targetType, cursor } = request.query;
+    return listAdminReports({ status, targetType }, cursor);
+  }));
+  fastify.get('/api/admin/reports/:id', async (request: FastifyRequest<{ Params: IdParams }>, reply) => {
+    const actor = await requireAdmin(request, reply);
+    if (!actor) return;
+    const detail = await getAdminReport({ actor, requestId: request.id }, request.params.id);
+    if (!detail) return sendError(reply, 404, 'not_found', 'Não encontrado.');
+    sendJson(reply, 200, detail);
+  });
+  fastify.post('/api/admin/reports/:id/claim', async (request: FastifyRequest<{ Params: IdParams }>, reply) => {
+    const m = await mutating(request, reply);
+    if (m) respond(reply, await claimReport({ actor: m.actor, reason: m.reason, requestId: request.id }, request.params.id));
+  });
+  fastify.post('/api/admin/reports/:id/resolve', async (request: FastifyRequest<{ Params: IdParams }>, reply) => {
+    const m = await mutating(request, reply);
+    if (!m) return;
+    const action = m.body.action == null || m.body.action === '' ? null : String(m.body.action) as ReportAction;
+    if (action !== null && !['suspend_user', 'suspend_group', 'delete_message'].includes(action)) {
+      return sendError(reply, 400, 'invalid_action', 'Ação inválida.');
+    }
+    respond(reply, await resolveReport({ actor: m.actor, reason: m.reason, requestId: request.id }, request.params.id, { dismiss: m.body.dismiss === true, action }));
   });
 
   fastify.get('/api/admin/audit', (request: FastifyRequest<{ Querystring: Query }>, reply) => reading(request, reply, () => {

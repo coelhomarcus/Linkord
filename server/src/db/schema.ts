@@ -401,3 +401,32 @@ export const adminAuditLogs = pgTable('admin_audit_logs', {
   index('admin_audit_action_idx').on(t.action, t.createdAt),
   check('admin_audit_result_check', sql`${t.result} IN ('ok','failed')`),
 ]);
+
+/** A user's report about an account, a group or a message. `snapshot` keeps
+ * the only evidence there is — for a message, its text at the moment of the
+ * report (capped) — so the case survives the author editing or deleting it;
+ * an admin never gets to read anything else in the conversation. The reporter
+ * is never shown to the reported account. */
+export const reports = pgTable('reports', {
+  id: text('id').primaryKey(),
+  reporterId: text('reporter_id').references(() => users.id, { onDelete: 'set null' }),
+  targetType: varchar('target_type', { length: 16 }).notNull(), // 'user' | 'group' | 'message'
+  targetId: text('target_id').notNull(),
+  targetLabel: text('target_label').notNull().default(''),
+  category: varchar('category', { length: 24 }).notNull(),
+  details: text('details').notNull().default(''),
+  status: varchar('status', { length: 16 }).notNull().default('open'), // 'open' | 'reviewing' | 'resolved' | 'dismissed'
+  assigneeId: text('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+  resolution: varchar('resolution', { length: 24 }).notNull().default(''),
+  resolutionNote: text('resolution_note').notNull().default(''),
+  snapshot: jsonb('snapshot').$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+}, (t) => [
+  index('reports_status_created_idx').on(t.status, t.createdAt, t.id),
+  index('reports_target_idx').on(t.targetType, t.targetId),
+  // one live report per reporter and target — a second click is not a second case
+  uniqueIndex('reports_open_unique').on(t.reporterId, t.targetType, t.targetId).where(sql`${t.status} IN ('open','reviewing')`),
+  check('reports_target_type_check', sql`${t.targetType} IN ('user','group','message')`),
+  check('reports_status_check', sql`${t.status} IN ('open','reviewing','resolved','dismissed')`),
+]);

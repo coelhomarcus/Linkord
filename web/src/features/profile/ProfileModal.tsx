@@ -8,6 +8,8 @@ import { fetchUserProfile } from '@/shared/api/api';
 import type { PublicUser } from '@/shared/types/protocol';
 import { ProfileActions } from '@/features/friends/ProfileActions';
 import { ProfileCard } from './ProfileCard';
+import { ReportDialog } from '@/features/reports/ReportDialog';
+import { Flag } from 'lucide-react';
 
 interface ProfileModalProps {
   userId: string | null;
@@ -24,7 +26,8 @@ type ProfileImageSelection = {
  * message who has since left the conversation. `fetchStatus` only tracks
  * that fallback path — a cache hit never touches it. */
 export function ProfileModal({ userId, onClose }: ProfileModalProps) {
-  const { allUsers, onlineUserIds } = useRoom();
+  const { state, allUsers, onlineUserIds } = useRoom();
+  const [reportOpen, setReportOpen] = useState(false);
   const cachedUser = userId ? allUsers.get(userId) : null;
   const [fetchedUser, setFetchedUser] = useState<PublicUser | null>(null);
   const [fetchStatus, setFetchStatus] = useState<'idle' | 'loading' | 'error'>('idle');
@@ -85,8 +88,18 @@ export function ProfileModal({ userId, onClose }: ProfileModalProps) {
               onAvatarClick={user.avatar ? () => setLightboxImage({ src: user.avatar, kind: 'avatar' }) : undefined}
             />
             <ProfileActions userId={user.id} username={user.username} displayName={user.displayName} onNavigate={onClose} />
+            {user.id !== state.me.userId && (
+              <div className="px-4 pb-4">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setReportOpen(true)} className="text-text-muted hover:text-red-text">
+                  <Flag size={14} /><span>Denunciar</span>
+                </Button>
+              </div>
+            )}
           </div>
         </DialogContent>
+      )}
+      {user && (
+        <ReportDialog target={{ type: 'user', id: user.id, label: `@${user.username}` }} open={reportOpen} onOpenChange={setReportOpen} />
       )}
       {user && (
         <ImageLightbox

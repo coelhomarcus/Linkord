@@ -282,6 +282,12 @@ export function revokeInvitation(id: string): Promise<{ invitation: InvitationCa
   return apiFetch(`/api/group-invitations/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+// ---- reports (Etapa 11) -----------------------------------------------------
+
+export function submitReport(input: { targetType: 'user' | 'group' | 'message'; targetId: string; category: string; details: string }): Promise<{ ok: true }> {
+  return apiFetch('/api/reports', { method: 'POST', body: JSON.stringify(input) });
+}
+
 // ---- group members (Etapa 10) -----------------------------------------------
 
 export interface GroupMemberEntry { user: SocialUser; role: 'owner' | 'member'; at: string }

@@ -128,4 +128,11 @@ describe('GroupDetailsPanel — convites', () => {
     await user.click(await screen.findByRole('button', { name: 'Tentar de novo' }));
     expect(await screen.findByText('Ana')).toBeInTheDocument();
   });
+
+  it('qualquer membro pode denunciar o grupo', async () => {
+    const user = userEvent.setup();
+    setup('member');
+    await user.click(await screen.findByRole('button', { name: /Denunciar grupo/ }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Denunciar grupo');
+  });
 });

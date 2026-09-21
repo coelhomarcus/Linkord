@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { MoreHorizontal, Pencil, Plus, Reply, SmilePlus, Trash2 } from 'lucide-react';
+import { Flag, MoreHorizontal, Pencil, Plus, Reply, SmilePlus, Trash2 } from 'lucide-react';
 import { Avatar } from '@/shared/Avatar';
 import { ChatAttachment, IMAGE_MIME_TYPES } from '@/features/chat/ChatAttachment';
 import { ImageAttachmentGrid } from '@/features/chat/ImageAttachmentGrid';
@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/shared/ui/primitives/emoji-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/primitives/popover';
 import { Textarea } from '@/shared/ui/primitives/textarea';
+import { ReportDialog } from '@/features/reports/ReportDialog';
 import { formatTime } from '@/shared/lib/formatChatTime';
 import { mentionsUser } from '@/shared/lib/mentions';
 import { cn } from '@/shared/lib/utils';
@@ -97,6 +98,7 @@ interface MessageRowProps {
 export function MessageRow({ message, showHeader, highlighted, allUsers, mentionLookup, onOpenProfile, onReply, onJumpTo }: MessageRowProps) {
   const { state, deleteChatMessage, editChatMessage, reactToChatMessage, editingMsgId, setEditingMsgId } = useRoom();
   const [editText, setEditText] = useState(message.text);
+  const [reportOpen, setReportOpen] = useState(false);
   const isMine = message.id === state.me.userId;
   const isMod = state.me.role === 'admin';
   const canDelete = isMine || isMod;
@@ -106,6 +108,7 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
   const replyAuthor = message.replyTo?.authorId ? allUsers.get(message.replyTo.authorId) : undefined;
   const mentionsMe = !isMine && mentionsUser(message.text, mentionLookup, state.me.userId);
   const isInvite = message.kind === 'group_invite';
+  const canReport = !isMine && !isInvite && !!message.id;
   const isEditing = !isInvite && editingMsgId === message.msgId;
 
   function saveEdit() {
@@ -273,6 +276,11 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
             <Pencil size={13} />
           </Button>
         )}
+        {canReport && (
+          <Button type="button" variant="ghost" size="icon-xs" aria-label="Denunciar" onClick={() => setReportOpen(true)}>
+            <Flag size={13} />
+          </Button>
+        )}
         {canDelete && (
           <Button type="button" variant="ghost" size="icon-xs" aria-label="Apagar" onClick={() => deleteChatMessage(message.msgId)} className="hover:bg-red/10 hover:text-red">
             <Trash2 size={13} />
@@ -291,10 +299,14 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
           <DropdownMenuContent align="end">
             {!isInvite && <DropdownMenuItem onClick={onReply}><Reply size={14} />Responder</DropdownMenuItem>}
             {isMine && !isInvite && <DropdownMenuItem onClick={startEdit}><Pencil size={14} />Editar</DropdownMenuItem>}
+            {canReport && <DropdownMenuItem onClick={() => setReportOpen(true)}><Flag size={14} />Denunciar</DropdownMenuItem>}
             {canDelete && <DropdownMenuItem variant="destructive" onClick={() => deleteChatMessage(message.msgId)}><Trash2 size={14} />Apagar</DropdownMenuItem>}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      {reportOpen && (
+        <ReportDialog target={{ type: 'message', id: String(message.msgId), label: `mensagem de ${displayedName}` }} open onOpenChange={setReportOpen} />
+      )}
     </div>
   );
 }

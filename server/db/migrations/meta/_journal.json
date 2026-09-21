@@ -162,6 +162,13 @@
       "when": 1789990498310,
       "tag": "0022_slippery_black_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790003006147,
+      "tag": "0023_glossy_roulette",
+      "breakpoints": true
     }
   ]
 }

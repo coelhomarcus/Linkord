@@ -14,6 +14,7 @@ import { registerFriendshipRoutes } from '../modules/friendships/friendships.js'
 import { registerBlockRoutes } from '../modules/blocks/blocks.js';
 import { registerUserRoutes } from '../modules/users/usersRoutes.js';
 import { registerInvitationRoutes } from '../modules/conversations/invitations.js';
+import { registerReportRoutes } from '../modules/reports/reports.js';
 import { registerAdminRoutes } from '../modules/admin/adminRoutes.js';
 import { registerGroupMemberRoutes } from '../modules/conversations/groupMembers.js';
 
@@ -64,6 +65,7 @@ export function createApp(): FastifyInstance {
   registerUserRoutes(fastify);
   registerInvitationRoutes(fastify);
   registerGroupMemberRoutes(fastify);
+  registerReportRoutes(fastify);
   registerAdminRoutes(fastify);
 
   // static files from the frontend build (web/dist) — wildcard:false so it
