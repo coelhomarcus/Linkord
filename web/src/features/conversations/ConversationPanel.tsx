@@ -311,12 +311,21 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
                 <Info size={16} />
               </Button>
             )}
-            <Button type="button" size="icon-sm" aria-label="Entrar na chamada" onClick={() => onOpenCall(conversation.id)} className="bg-green text-bg-primary hover:bg-green/90">
+            <Button type="button" size="icon-sm" aria-label="Entrar na chamada" disabled={conversation.status === 'suspended'} onClick={() => onOpenCall(conversation.id)} className="bg-green text-bg-primary hover:bg-green/90">
               <Phone size={16} />
             </Button>
           </header>
           <ChatSurfaceWidthProvider width={surfaceWidth}>
-            <MessageListBridge conversationId={conversation.id} onOpenProfile={onOpenProfile} />
+            {conversation.status === 'suspended' ? (
+              <div role="status" className="grid flex-1 place-items-center px-6 text-center">
+                <div>
+                  <p className="text-title font-semibold text-text-primary">Grupo suspenso</p>
+                  <p className="mt-1 max-w-sm text-label text-text-muted">A administração suspendeu este grupo. Enquanto durar, ninguém lê, escreve ou entra em chamada.</p>
+                </div>
+              </div>
+            ) : (
+              <MessageListBridge conversationId={conversation.id} onOpenProfile={onOpenProfile} />
+            )}
           </ChatSurfaceWidthProvider>
         </>
       ) : (

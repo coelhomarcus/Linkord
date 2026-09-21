@@ -2,21 +2,17 @@ import { eq } from 'drizzle-orm';
 import { config } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { conversations } from '../../db/schema.js';
-import { findById } from '../users/users.js';
 import { participants, send, setCallConversationId } from '../presence/participants.js';
 import * as livekit from '../../integrations/livekit/livekit.js';
 import { canManageGroup, getMemberRole } from '../conversations/conversationsRepository.js';
 import { isActiveAdmin } from '../admin/adminAuth.js';
-import { deleteUserAccount } from '../admin/adminUsers.js';
 import { recordAudit } from '../admin/auditLog.js';
 import { ERROR_CODES } from '../../http/errors.js';
 import type { AppSocket, HandlerTable } from '../../types.js';
 
-// Admin-only moderation actions — account deletion (Settings "Moderation"
-// tab) and kicking someone from a group call. Deleted users' messages don't disappear (authorId becomes NULL, so
-// their profile resolves to the neutral deleted-user fallback). Deleting an
-// account means "this person can't log in anymore," not "rewrite chat
-// history". Sessions vanish via CASCADE.
+// Kicking someone out of a group call (the owner of that group, or an instance
+// admin). Account deletion, suspension and the rest of the administrative
+// actions live in modules/admin/ (HTTP, audited).
 
 /** Kick-from-call authority (docs/plano-rede-social.md §4.1): the OWNER of the
  * group the call belongs to, for someone who is a member of it. Instance
@@ -24,27 +20,6 @@ import type { AppSocket, HandlerTable } from '../../types.js';
  * 11) replaces it — global role still doesn't make anyone an owner. */
 export function canKickFromCall(input: { actorIsAdmin: boolean; actorOwnsGroup: boolean; targetIsMember: boolean }): boolean {
   return input.actorIsAdmin || (input.actorOwnsGroup && input.targetIsMember);
-}
-
-/** Legacy socket entry point of the Settings "Moderação" tab, kept only until
- * the /admin area replaces that tab (etapa 11, parte 3). It no longer owns any
- * logic: the deletion, its protections (self, last active admin), group
- * succession and the audit trail all live in admin/adminUsers.ts. */
-async function handleUserDelete(socket: AppSocket, msg: { userId?: string }): Promise<void> {
-  const p = participants.get(socket.participantId ?? '');
-  if (!p || p.socket !== socket || !(await isActiveAdmin(p.userId))) return;
-
-  const targetId = String(msg.userId || '');
-  if (!targetId) return;
-  const target = await findById(targetId);
-  if (!target) return; // already deleted (race with another admin, or invalid id)
-
-  const result = await deleteUserAccount(
-    { actor: { id: p.userId, username: p.name }, reason: 'Exclusão pela aba Moderação', requestId: '' },
-    targetId, target.username,
-  );
-  if (result.code === 'self') send(socket, { t: 'error', code: 'cannot-delete-self', message: 'Você não pode apagar a própria conta por aqui.' });
-  else if (result.code === 'last_admin') send(socket, { t: 'error', code: 'last-admin', message: 'Essa conta é o último administrador ativo.' });
 }
 
 /** Removes one CONNECTION (not account) from its current GROUP call —
@@ -102,6 +77,5 @@ async function handleCallKick(socket: AppSocket, msg: { participantId?: string }
 }
 
 export const handlers: HandlerTable = {
-  'user-delete': handleUserDelete,
   'call-kick': handleCallKick,
 };

@@ -47,7 +47,9 @@ function ConversationRow({ conversation, active, onClick }: {
     ? [{ id: state.me.userId ?? 'me', displayName: state.me.displayName, avatar: state.me.avatar, avatarColor: state.me.avatarColor }, ...otherCallParticipants]
     : otherCallParticipants;
   const hasActiveCall = callParticipants.length > 0;
-  const subtitle = lastMessage
+  const subtitle = conversation.status === 'suspended'
+    ? 'Suspenso pela administração'
+    : lastMessage
     ? `${lastMessage.id === state.me.userId ? 'Você' : lastMessage.name}: ${messagePreviewText(lastMessage)}`
     : conversation.type === 'group'
       ? `${members.length} membros`

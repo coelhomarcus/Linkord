@@ -234,15 +234,15 @@ describe('SettingsPage — abas pela rota', () => {
     expect(screen.getByLabelText('Nome de exibição')).toBeInTheDocument();
   });
 
-  it('a aba de moderacao nao existe para quem nao e admin (cai no perfil)', () => {
+  it('a aba de administracao nao existe para quem nao e admin (cai no perfil)', () => {
     renderSettings({ state: userState }, '/app/settings/moderation');
     expect(screen.getByLabelText('Nome de exibição')).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: /Moderação/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Administração/ })).not.toBeInTheDocument();
   });
 
-  it('admin ve a aba de moderacao', () => {
+  it('admin ve a aba de administracao', () => {
     renderSettings({ state: adminState });
-    expect(screen.getByRole('tab', { name: /Moderação/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Administração/ })).toBeInTheDocument();
   });
 
   it('clicar numa aba navega para a rota dela', async () => {

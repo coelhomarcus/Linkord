@@ -15,6 +15,7 @@ export const ROUTES = {
   friends: '/app/friends',
   requests: '/app/requests',
   settings: '/app/settings',
+  admin: '/admin/users',
   settingsTab: (tab: SettingsTab) => `/app/settings/${tab}`,
 } as const;
 

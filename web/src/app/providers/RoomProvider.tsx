@@ -59,7 +59,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const registerRequestChatView = useCallback((fn: () => void) => { requestChatViewRef.current = fn; }, []);
   const requestChatView = useCallback(() => { requestChatViewRef.current?.(); }, []);
 
-  const [moderationError, setModerationError] = useState<string | null>(null);
   // 'forbidden'/'conflict'/'not_found' over the socket are, today, only
   // ever group-action denials (conversations.ts) — rename/delete/members/
   // transfer/leave. If another domain starts using these same codes over
@@ -136,7 +135,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     sendWs({ t: 'conversation-close', conversationId });
   }, [conversationsList.removeConversation, chatMessages.clearUnread, sendWs]);
 
-  const deleteUserAccount = useCallback((userId: string) => sendWs({ t: 'user-delete', userId }), [sendWs]);
 
   const disconnectIntentionally = useCallback(() => {
     intentionalCloseRef.current = true;
@@ -282,8 +280,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         if (m.code === 'full') {
           disconnectIntentionally();
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Sala cheia, tente mais tarde.' });
-        } else if (m.code === 'cannot-delete-self') {
-          setModerationError(m.message);
         } else if (m.code === 'forbidden' || m.code === 'conflict' || m.code === 'not_found') {
           setGroupActionError(m.message);
         } else if (m.code === 'livekit-unavailable') {
@@ -351,7 +347,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         unreadByConversation: chatMessages.unreadByConversation,
         typingByConversation: typingIndicator.typingByConversation, sendTyping: typingIndicator.sendTyping,
         allUsers: presence.allUsers, onlineUserIds: presence.onlineUserIds,
-        deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null), kickFromCall: callLifecycle.kickFromCall,
+        kickFromCall: callLifecycle.kickFromCall,
         groupActionError, clearGroupActionError: () => setGroupActionError(null),
         accessNotice, clearAccessNotice: () => setAccessNotice(null),
         socialRevision,

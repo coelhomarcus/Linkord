@@ -11,3 +11,5 @@ export type ReportCategory = (typeof REPORT_CATEGORIES)[number]['value'];
 export type ReportTarget = { type: 'user' | 'group' | 'message'; id: string; label: string };
 
 export const MAX_REPORT_DETAILS = 1000;
+
+export const categoryLabel = (value: string): string => REPORT_CATEGORIES.find((c) => c.value === value)?.label ?? value;

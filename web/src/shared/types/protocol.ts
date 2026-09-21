@@ -118,6 +118,8 @@ export interface Conversation {
   // derived on the server from the owner's membership row; null for a DM
   ownerId: string | null;
   memberCount: number;
+  // 'suspended' = moderated away by an administrator: still listed, but no access
+  status?: 'active' | 'suspended';
 }
 
 export interface PublicUser {
@@ -157,7 +159,6 @@ export type ClientMessage =
   | { t: 'chat-edit'; msgId: number; text: string }
   | { t: 'chat-react'; msgId: number; emoji: ReactionEmoji }
   | { t: 'typing'; conversationId: string; value: boolean }
-  | { t: 'user-delete'; userId: string }
   | { t: 'call-event'; kind: 'joined' | 'screenshare' }
   | { t: 'call-join'; conversationId: string }
   | { t: 'call-leave' }

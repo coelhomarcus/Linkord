@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { RoomProvider } from '@/app/providers/RoomProvider';
 import { useRoom } from '@/state/RoomContext';
@@ -37,6 +37,9 @@ import { CommandPalette } from '@/shared/ui/motion/command-palette';
 import { buildCommandItems } from '@/features/conversations/commandPaletteItems';
 import { loadSidebarCollapsed, saveSidebarCollapsed } from '@/shared/hooks/useSidebarCollapsedPreference';
 import { TooltipProvider } from '@/shared/ui/primitives/tooltip';
+
+// the administrative area is its own chunk: ordinary users never download it
+const AdminArea = lazy(() => import('@/features/admin/AdminArea'));
 
 function Shell() {
   const {
@@ -186,6 +189,7 @@ function Shell() {
             />
             <Route path={ROUTES.friends} element={<FriendsPage onOpenProfile={setProfileUserId} />} />
             <Route path={ROUTES.requests} element={<RequestsPage onOpenProfile={setProfileUserId} />} />
+            <Route path="/admin/*" element={<Suspense fallback={<p className="p-6 text-label text-text-muted">Carregando…</p>}><AdminArea /></Suspense>} />
             <Route path="/app/settings/:tab?" element={<SettingsPage onOpenProfile={setProfileUserId} />} />
             <Route path="*" element={<Navigate to={ROUTES.conversations} replace />} />
           </Routes>

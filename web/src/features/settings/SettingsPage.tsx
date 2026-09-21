@@ -3,7 +3,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import type { Area } from 'react-easy-crop';
 import { Navigate, useNavigate, useParams } from 'react-router';
 import { Bell, Check, CheckCircle2, HardDrive, IdCard, Loader2, Lock, LogOut, Mail, Settings2, ShieldCheck, SlidersHorizontal, User, Volume2, VolumeX } from 'lucide-react';
-import { ModerationTab } from './ModerationTab';
+import { AdminLinkTab } from './AdminLinkTab';
 import { PrivacyTab } from './PrivacyTab';
 import { ImageCropDialog } from './ImageCropDialog';
 import { ImageUrlDialog } from '../../shared/ImageUrlDialog';
@@ -375,7 +375,7 @@ export function SettingsPage({ onOpenProfile }: SettingsPageProps) {
             <TabsTrigger value="prefs" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Settings2 size={16} /><span>Preferências</span></TabsTrigger>
             <TabsTrigger value="privacy" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Lock size={16} /><span>Privacidade</span></TabsTrigger>
             {isAdmin && (
-              <TabsTrigger value="moderation" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><ShieldCheck size={16} /><span>Moderação</span></TabsTrigger>
+              <TabsTrigger value="moderation" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><ShieldCheck size={16} /><span>Administração</span></TabsTrigger>
             )}
           </TabsList>
 
@@ -601,7 +601,7 @@ export function SettingsPage({ onOpenProfile }: SettingsPageProps) {
 
             {isAdmin && (
               <TabsPanel value="moderation">
-                <ModerationTab />
+                <AdminLinkTab />
               </TabsPanel>
             )}
           </div>

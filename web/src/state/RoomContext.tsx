@@ -108,10 +108,7 @@ export interface RoomContextValue {
   loadOlderMessages: (conversationId: string) => void;
   allUsers: Map<string, PublicUser>;
   onlineUserIds: Set<string>;
-  deleteUserAccount: (userId: string) => void;
   kickFromCall: (participantId: string) => void;
-  moderationError: string | null;
-  clearModerationError: () => void;
   groupActionError: string | null;
   socialRevision: number;
   clearGroupActionError: () => void;

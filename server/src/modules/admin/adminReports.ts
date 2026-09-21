@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { reports, users } from '../../db/schema.js';
 import { SOCIAL_PAGE_SIZE, decodeTimeCursor, encodeTimeCursor } from '../friendships/cursor.js';
@@ -36,7 +36,9 @@ export async function listAdminReports(filters: { status?: string; targetType?: 
   if (cursorRaw && !cursor) return 'invalid_cursor';
   const rows = await db.select(listSelect).from(reports)
     .where(and(
-      filters.status && ['open', 'reviewing', 'resolved', 'dismissed'].includes(filters.status) ? eq(reports.status, filters.status) : undefined,
+      // 'closed' = resolved + dismissed, the queue's "done" view
+      filters.status === 'closed' ? inArray(reports.status, ['resolved', 'dismissed'])
+        : filters.status && ['open', 'reviewing', 'resolved', 'dismissed'].includes(filters.status) ? eq(reports.status, filters.status) : undefined,
       filters.targetType && ['user', 'group', 'message'].includes(filters.targetType) ? eq(reports.targetType, filters.targetType) : undefined,
       cursor ? sql`(${reports.createdAt}, ${reports.id}) < (${cursor.ts}::timestamptz, ${cursor.id})` : undefined,
     ))
