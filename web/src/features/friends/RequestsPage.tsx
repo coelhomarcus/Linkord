@@ -151,6 +151,7 @@ function describeInvitationError(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.code === 'group_full') return 'O grupo está cheio.';
     if (err.code === 'invitation_expired') return 'Este convite expirou.';
+    if (err.code === 'quota_exceeded') return 'Você já participa do máximo de grupos permitido.';
   }
   return 'Não foi possível concluir a ação. Tente de novo.';
 }

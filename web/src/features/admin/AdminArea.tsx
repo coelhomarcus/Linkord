@@ -8,6 +8,7 @@ import { GroupDetailPage } from './GroupDetailPage';
 import { GroupsPage } from './GroupsPage';
 import { ReportDetailPage } from './ReportDetailPage';
 import { ReportsPage } from './ReportsPage';
+import { SystemPage } from './SystemPage';
 import { UserDetailPage } from './UserDetailPage';
 import { UsersPage } from './UsersPage';
 
@@ -16,6 +17,7 @@ const NAV = [
   { to: '/admin/groups', label: 'Grupos' },
   { to: '/admin/reports', label: 'Denúncias' },
   { to: '/admin/audit', label: 'Auditoria' },
+  { to: '/admin/system', label: 'Sistema' },
 ] as const;
 
 /** The administrative area (docs/plano-rede-social.md §9). Loaded on demand —
@@ -46,6 +48,7 @@ export default function AdminArea() {
           <Route path="reports" element={<ReportsPage />} />
           <Route path="reports/:id" element={<ReportDetailPage />} />
           <Route path="audit" element={<AuditPage />} />
+          <Route path="system" element={<SystemPage />} />
           <Route path="*" element={<Navigate to="/admin/users" replace />} />
         </Routes>
       </div>

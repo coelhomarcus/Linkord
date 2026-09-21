@@ -487,7 +487,7 @@ export function SettingsPage({ onOpenProfile }: SettingsPageProps) {
 
               <div className={settingsCardClass}>
                 <span className={cn(sectionLabelClass, 'flex items-center gap-1.5')}>
-                  <HardDrive size={14} /> Armazenamento de anexos
+                  <HardDrive size={14} /> Seu armazenamento de anexos
                 </span>
                 <div className="h-2 w-full overflow-hidden rounded-full bg-bg-hover">
                   <div
@@ -496,7 +496,7 @@ export function SettingsPage({ onOpenProfile }: SettingsPageProps) {
                   />
                 </div>
                 <p className="select-none text-label text-text-muted">
-                  {formatGB(storageUsage.totalBytes)} de {formatGB(storageUsage.maxBytes)} usados, {storageUsage.totalFiles} arquivo{storageUsage.totalFiles === 1 ? '' : 's'} enviado{storageUsage.totalFiles === 1 ? '' : 's'}.
+                  {formatGB(storageUsage.totalBytes)} de {formatGB(storageUsage.maxBytes)} da sua cota usados, {storageUsage.totalFiles} arquivo{storageUsage.totalFiles === 1 ? '' : 's'} enviado{storageUsage.totalFiles === 1 ? '' : 's'}.
                 </p>
               </div>
 

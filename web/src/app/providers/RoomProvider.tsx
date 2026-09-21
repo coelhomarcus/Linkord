@@ -236,6 +236,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'chat-edited':
         chatMessages.onChatEdited(m);
         break;
+      case 'role-updated':
+        // an administrator granted or removed this account's admin role while it is connected
+        dispatch({ type: 'SET_ROLE', role: m.role });
+        break;
       case 'invitation-updated':
         chatMessages.onInvitationUpdated(m);
         break;
@@ -280,6 +284,11 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         if (m.code === 'full') {
           disconnectIntentionally();
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Sala cheia, tente mais tarde.' });
+        } else if (m.code === 'too_many_connections') {
+          disconnectIntentionally();
+          dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Você já tem conexões demais abertas. Feche alguma aba.' });
+        } else if (m.code === 'quota_exceeded') {
+          setGroupActionError(m.message);
         } else if (m.code === 'forbidden' || m.code === 'conflict' || m.code === 'not_found') {
           setGroupActionError(m.message);
         } else if (m.code === 'livekit-unavailable') {

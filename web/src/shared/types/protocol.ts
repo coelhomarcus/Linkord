@@ -197,6 +197,7 @@ export type ServerMessage =
   | { t: 'chat-deleted'; conversationId: string; msgId: number }
   | { t: 'chat-edited'; message: ChatMessage }
   | { t: 'invitation-updated'; invitation: InvitationCard }
+  | { t: 'role-updated'; role: 'user' | 'admin' }
   | { t: 'chat-reaction-updated'; conversationId: string; msgId: number; emoji: ReactionEmoji; userIds: string[] }
   | { t: 'typing'; conversationId: string; userId: string; value: boolean }
   | { t: 'chat-attachment-added'; conversationId: string; msgId: number; attachment: ChatAttachment }

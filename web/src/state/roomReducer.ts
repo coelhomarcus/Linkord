@@ -58,6 +58,7 @@ export type RoomAction =
   | { type: 'SET_LOCAL_PROFILE'; avatar: string; avatarPoster: string; avatarColor: string; displayName: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[] }
   | { type: 'SET_ROOM_ERROR'; message: string | null }
   | { type: 'SET_LOCAL_SHARING'; sharing: boolean }
+  | { type: 'SET_ROLE'; role: 'user' | 'admin' }
   | { type: 'SET_LOCAL_CAMERA'; on: boolean }
   | { type: 'SET_FOCUSED'; id: string | null }
   | { type: 'SET_SHARE_ERROR'; message: string | null };
@@ -139,6 +140,8 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       };
     case 'SET_ROOM_ERROR':
       return { ...state, roomError: action.message };
+    case 'SET_ROLE':
+      return { ...state, me: { ...state.me, role: action.role } };
     case 'SET_LOCAL_SHARING':
       return {
         ...state,

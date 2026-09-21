@@ -39,6 +39,8 @@ export const fetchAdminUsers = (filters: { q?: string; status?: string; role?: s
 export const fetchAdminUser = (id: string) => apiFetch<AdminUserDetail>(`/api/admin/users/${encodeURIComponent(id)}`);
 export const suspendUser = (id: string, reason: string) => post(`/api/admin/users/${encodeURIComponent(id)}/suspend`, { reason });
 export const reactivateUser = (id: string, reason: string) => post(`/api/admin/users/${encodeURIComponent(id)}/reactivate`, { reason });
+export const grantAdmin = (id: string, reason: string) => post(`/api/admin/users/${encodeURIComponent(id)}/grant-admin`, { reason });
+export const revokeAdmin = (id: string, reason: string) => post(`/api/admin/users/${encodeURIComponent(id)}/revoke-admin`, { reason });
 export const revokeUserSessions = (id: string, reason: string) => post(`/api/admin/users/${encodeURIComponent(id)}/revoke-sessions`, { reason });
 export const deleteUser = (id: string, reason: string, confirm: string) =>
   apiFetch<{ ok: true }>(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ reason, confirm }) });
@@ -88,3 +90,23 @@ export const resolveReport = (id: string, input: { reason: string; action: Repor
 
 export const fetchAudit = (filters: { actor?: string; targetType?: string; targetId?: string; action?: string; from?: string; to?: string }, cursor: string | null) =>
   apiFetch<Page<AuditRow>>(`/api/admin/audit${qs({ ...filters, cursor })}`);
+
+// ---- system ------------------------------------------------------------------
+
+export interface SweepResult {
+  at: string; dryRun: boolean; scanned: number; orphanCount: number; orphanBytes: number; deleted: number; failed: number; recent: number; missingFiles: number;
+}
+export interface SystemInfo {
+  storage: { usedBytes: number; files: number; maxBytes: number };
+  connections: { live: number; onlineAccounts: number; max: number; perAccountMax: number };
+  accounts: { total: number; newLastHour: number; newPerHourCap: number; activeAdmins: number; suspended: number };
+  livekit: { configured: boolean };
+  outbox: { pending: number; failed: number };
+  notifications: { unread: number };
+  orphanSweep: { dryRunByDefault: boolean; last: SweepResult | null };
+  discord: { announcing: boolean };
+}
+
+export const fetchSystem = () => apiFetch<SystemInfo>('/api/admin/system');
+export const sweepOrphans = (input: { dryRun: true } | { dryRun: false; reason: string }) =>
+  apiFetch<{ result: SweepResult }>('/api/admin/system/sweep-orphans', { method: 'POST', body: JSON.stringify(input) });

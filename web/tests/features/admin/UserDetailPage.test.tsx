@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { renderAdmin, adminRoom, auditRow } from './adminFixture';
 import { UserDetailPage } from '@/features/admin/UserDetailPage';
 import * as adminApi from '@/features/admin/adminApi';
+import { ApiError } from '@/shared/api/api';
 
 vi.mock('@/features/admin/adminApi');
 const mocked = vi.mocked(adminApi);
@@ -76,5 +77,47 @@ describe('UserDetailPage', () => {
     mocked.fetchAdminUser.mockRejectedValue(Object.assign(new Error('x'), { status: 404 }));
     open();
     expect(await screen.findByText(/Conta não encontrada/)).toBeInTheDocument();
+  });
+
+  it('conceder admin exige motivo e o username digitado', async () => {
+    const u = userEvent.setup();
+    mocked.grantAdmin.mockResolvedValue({ ok: true });
+    open();
+    await u.click(await screen.findByRole('button', { name: 'Conceder admin' }));
+    await u.type(screen.getByLabelText(/Motivo/), 'segunda pessoa de confiança');
+    const confirm = screen.getAllByRole('button', { name: 'Conceder admin' }).at(-1)!;
+    expect(confirm).toBeDisabled();
+    await u.type(screen.getByLabelText(/Para confirmar/), 'ana');
+    await u.click(confirm);
+    await waitFor(() => expect(mocked.grantAdmin).toHaveBeenCalledWith('u1', 'segunda pessoa de confiança'));
+  });
+
+  it('conta admin oferece Remover admin (desabilitado na propria)', async () => {
+    mocked.fetchAdminUser.mockResolvedValue(detail({ role: 'admin' }));
+    const { unmount } = open();
+    expect(await screen.findByRole('button', { name: 'Remover admin' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Conceder admin' })).not.toBeInTheDocument();
+    unmount();
+
+    open(adminRoom('admin', 'u1'));
+    expect(await screen.findByRole('button', { name: 'Remover admin' })).toBeDisabled();
+  });
+
+  it('conta suspensa nao pode receber admin', async () => {
+    mocked.fetchAdminUser.mockResolvedValue(detail({ status: 'suspended', statusChangedAt: '2026-01-02T00:00:00.000Z' }));
+    open();
+    expect(await screen.findByRole('button', { name: 'Conceder admin' })).toBeDisabled();
+  });
+
+  it('o ultimo admin ativo mostra o erro traduzido', async () => {
+    const u = userEvent.setup();
+    mocked.fetchAdminUser.mockResolvedValue(detail({ role: 'admin' }));
+    mocked.revokeAdmin.mockRejectedValue(new ApiError(409, 'last_admin', 'x'));
+    open();
+    await u.click(await screen.findByRole('button', { name: 'Remover admin' }));
+    await u.type(screen.getByLabelText(/Motivo/), 'rodízio');
+    await u.type(screen.getByLabelText(/Para confirmar/), 'ana');
+    await u.click(screen.getAllByRole('button', { name: 'Remover admin' }).at(-1)!);
+    expect(await screen.findByRole('alert')).toHaveTextContent('último administrador ativo');
   });
 });

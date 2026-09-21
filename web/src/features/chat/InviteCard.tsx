@@ -73,6 +73,7 @@ function LiveInviteCard({ invitation }: { invitation: InvitationCard }) {
     } catch (err) {
       if (err instanceof ApiError && err.code === 'group_full') setOutcome('group_full');
       else if (err instanceof ApiError && err.code === 'invitation_expired') setOutcome('expired');
+      else if (err instanceof ApiError && err.code === 'quota_exceeded') setError('Você já participa do máximo de grupos permitido.');
       else setError('Não foi possível concluir a ação. Tente de novo.');
     } finally {
       setBusy(null);

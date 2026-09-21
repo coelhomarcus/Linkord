@@ -182,3 +182,13 @@ describe('roomReducer', () => {
     expect(next).toBe(initialRoomState);
   });
 });
+
+describe('roomReducer — SET_ROLE', () => {
+  it('atualiza o papel da propria conta sem tocar no resto do estado', () => {
+    const state = { ...initialRoomState, me: { ...initialRoomState.me, userId: 'u1', role: 'user' as const } };
+    const next = roomReducer(state, { type: 'SET_ROLE', role: 'admin' });
+    expect(next.me.role).toBe('admin');
+    expect(next.me.userId).toBe('u1');
+    expect(roomReducer(next, { type: 'SET_ROLE', role: 'user' }).me.role).toBe('user');
+  });
+});

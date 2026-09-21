@@ -4,7 +4,7 @@ import { Button } from '@/shared/ui/primitives/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/shared/ui/primitives/dialog';
 import { Input } from '@/shared/ui/primitives/input';
 import { Label } from '@/shared/ui/primitives/label';
-import { createGroup } from '@/shared/api/api';
+import { ApiError, createGroup } from '@/shared/api/api';
 import type { InviteResult, SocialUser } from '@/shared/api/api';
 import { FriendPicker } from './FriendPicker';
 import { describeInviteOutcome } from './inviteOutcome';
@@ -61,8 +61,8 @@ export function GroupCreateDialog({ open, onOpenChange, onCreated }: GroupCreate
       onCreated?.();
       if (failed.length === 0) close();
       else setFailures(failed);
-    } catch {
-      setError('Não foi possível criar o grupo. Tente de novo.');
+    } catch (err) {
+      setError(err instanceof ApiError && err.code === 'quota_exceeded' ? err.message : 'Não foi possível criar o grupo. Tente de novo.');
     } finally {
       setSubmitting(false);
     }

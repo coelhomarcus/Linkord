@@ -23,7 +23,7 @@ export function describeSendError(err: unknown): string {
       const when = err.retryAfter ? formatRetryAfter(err.retryAfter) : '';
       return when ? `Aguarde para tentar de novo — disponível a partir de ${when}.` : 'Aguarde um pouco antes de tentar de novo.';
     }
-    if (err.code === 'rate_limited') return err.message;
+    if (err.code === 'rate_limited' || err.code === 'quota_exceeded') return err.message;
   }
   return 'Não foi possível enviar a solicitação.';
 }

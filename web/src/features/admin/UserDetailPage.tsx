@@ -4,13 +4,13 @@ import { Avatar } from '@/shared/Avatar';
 import { Button } from '@/shared/ui/primitives/button';
 import { formatFileSize } from '@/shared/lib/formatBytes';
 import { useRoom } from '@/state/RoomContext';
-import { deleteUser, fetchAdminUser, reactivateUser, revokeUserSessions, suspendUser } from './adminApi';
+import { deleteUser, fetchAdminUser, grantAdmin, reactivateUser, revokeAdmin, revokeUserSessions, suspendUser } from './adminApi';
 import type { AdminUserDetail } from './adminApi';
 import { ReasonDialog } from './ReasonDialog';
 import { formatWhen } from './adminFormat';
 import { AuditList, Badge, Field, Section } from './adminUi';
 
-type Dialog = 'suspend' | 'reactivate' | 'revoke' | 'delete' | null;
+type Dialog = 'suspend' | 'reactivate' | 'revoke' | 'delete' | 'grant-admin' | 'revoke-admin' | null;
 
 export function UserDetailPage() {
   const { id = '' } = useParams();
@@ -62,6 +62,9 @@ export function UserDetailPage() {
           ? <Button type="button" size="sm" onClick={() => setDialog('reactivate')}>Reativar conta</Button>
           : <Button type="button" size="sm" variant="secondary" disabled={isSelf} onClick={() => setDialog('suspend')}>Suspender</Button>}
         <Button type="button" size="sm" variant="secondary" onClick={() => setDialog('revoke')}>Revogar sessões</Button>
+        {user.role === 'admin'
+          ? <Button type="button" size="sm" variant="secondary" disabled={isSelf} onClick={() => setDialog('revoke-admin')}>Remover admin</Button>
+          : <Button type="button" size="sm" variant="secondary" disabled={suspended} onClick={() => setDialog('grant-admin')}>Conceder admin</Button>}
         <Button type="button" size="sm" variant="destructive" disabled={isSelf} onClick={() => setDialog('delete')}>Excluir conta</Button>
         {isSelf && <p className="self-center text-caption text-text-muted">Não é possível suspender ou excluir a própria conta.</p>}
       </div>
@@ -100,6 +103,12 @@ export function UserDetailPage() {
       <ReasonDialog open={dialog === 'revoke'} onOpenChange={(o) => !o && setDialog(null)} title="Revogar sessões"
         description={`Encerra todas as sessões e conexões de @${user.username}. A conta continua ativa.`} confirmLabel="Revogar"
         onSubmit={(reason) => run(() => revokeUserSessions(user.id, reason))()} />
+      <ReasonDialog open={dialog === 'grant-admin'} onOpenChange={(o) => !o && setDialog(null)} title="Conceder administração"
+        description={`@${user.username} passa a ver e operar toda a instância: usuários, grupos, denúncias e auditoria. Faça isso só para quem você confia.`}
+        confirmLabel="Conceder admin" confirmText={user.username} onSubmit={(reason) => run(() => grantAdmin(user.id, reason))()} />
+      <ReasonDialog open={dialog === 'revoke-admin'} onOpenChange={(o) => !o && setDialog(null)} title="Remover administração"
+        description={`@${user.username} volta a ser uma conta comum. Não é possível remover o último administrador ativo.`}
+        confirmLabel="Remover admin" destructive confirmText={user.username} onSubmit={(reason) => run(() => revokeAdmin(user.id, reason))()} />
       <ReasonDialog open={dialog === 'delete'} onOpenChange={(o) => !o && setDialog(null)} title="Excluir conta"
         description="Definitivo. Grupos que ela possui passam ao membro mais antigo; grupos sem outros membros são apagados. As mensagens já enviadas continuam no histórico."
         confirmLabel="Excluir para sempre" destructive confirmText={user.username}
