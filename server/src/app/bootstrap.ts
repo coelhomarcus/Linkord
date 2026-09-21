@@ -2,7 +2,7 @@ import { config } from '../config/env.js';
 import { participants as participantsMap, broadcast } from '../modules/presence/participants.js';
 import { createApp } from '../http/app.js';
 import { createWsServer } from '../realtime/socket.js';
-import { runMigrations } from '../db/migrate.js';
+import { describeBlockedMigration, runMigrations } from '../db/migrate.js';
 import { sweepExpiredSessions } from '../modules/auth/session.js';
 import { ensureUploadDir, sweepStaleUploads } from '../modules/attachments/uploadSession.js';
 import { sweepExpiredInvitations } from '../modules/conversations/invitationsRepository.js';
@@ -31,7 +31,7 @@ export async function bootstrap(): Promise<void> {
       await runMigrations();
       console.log('[db] migrations up to date.');
     } catch (err) {
-      console.error('[db] failed to apply migrations:', err instanceof Error ? err.stack : err);
+      console.error('[db] failed to apply migrations:', describeBlockedMigration(err) ?? (err instanceof Error ? err.stack : err));
       process.exit(1);
     }
   }

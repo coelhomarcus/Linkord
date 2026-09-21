@@ -169,6 +169,13 @@
       "when": 1790003006147,
       "tag": "0023_glossy_roulette",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790021695661,
+      "tag": "0024_loud_annihilus",
+      "breakpoints": true
     }
   ]
 }

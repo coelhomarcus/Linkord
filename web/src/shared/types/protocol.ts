@@ -23,6 +23,9 @@ export interface Participant {
 
 export type ReactionEmoji = string;
 
+/** Wire protocol version this build speaks; the server refuses older ones (client_outdated). */
+export const PROTOCOL_VERSION = 2;
+
 export interface ChatReplyRef {
   msgId: number;
   authorId: string | null;
@@ -135,7 +138,7 @@ export interface PublicUser {
 }
 
 export type ClientMessage =
-  | { t: 'join'; id?: string; token?: string }
+  | { t: 'join'; id?: string; token?: string; v: number }
   | { t: 'profile'; avatar: string; avatarPoster: string; avatarColor: string; displayName: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[] }
   | { t: 'reaction'; emoji: ReactionEmoji }
   | { t: 'deafened'; value: boolean }

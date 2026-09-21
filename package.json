@@ -19,6 +19,10 @@
     "typecheck:server:tests": "tsc -p server/tsconfig.tests.json",
     "admin:grant": "node --env-file-if-exists=.env --import tsx server/src/scripts/adminRole.ts grant",
     "admin:revoke": "node --env-file-if-exists=.env --import tsx server/src/scripts/adminRole.ts revoke",
+    "db:preflight": "node --env-file-if-exists=.env --import tsx server/src/scripts/legacyPreflight.ts",
+    "db:repair": "node --env-file-if-exists=.env --import tsx server/src/scripts/legacyRepair.ts",
+    "db:rehearse": "node --env-file-if-exists=.env --import tsx server/src/scripts/rehearseMigration.ts",
+    "test:integration": "node --env-file-if-exists=.env --import tsx server/src/scripts/runIntegrationTests.ts",
     "db:generate": "node --env-file-if-exists=.env ./node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "node --env-file-if-exists=.env --import tsx server/src/db/migrate.ts",
     "db:studio": "node --env-file-if-exists=.env ./node_modules/drizzle-kit/bin.cjs studio"

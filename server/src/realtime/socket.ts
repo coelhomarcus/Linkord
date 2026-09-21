@@ -19,6 +19,7 @@ import * as moderation from '../modules/moderation/moderation.js';
 import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from '../modules/auth/session.js';
 import { isSocketOriginAllowed } from '../http/originGuard.js';
+import { isClientCompatible } from './protocolVersion.js';
 import type { AppSocket, HandlerTable } from '../types.js';
 
 // {message type: handler(socket, msg)} combining what each feature exports
@@ -37,6 +38,7 @@ const handlers: HandlerTable = Object.assign(
 interface JoinMessage {
   id?: string;
   token?: string;
+  v?: unknown;
 }
 
 // Per-account sliding-window caps for the events an authenticated account
@@ -68,6 +70,12 @@ const ACTION_LIMITS: Record<string, { windowMs: number; max: number }> = {
  * history and the LiveKit token — data from other features. Lives here
  * (the composition root) so no feature depends on another. */
 async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
+  // before anything is looked up or sent: an outdated client gets nothing but the reason
+  if (!isClientCompatible(msg.v)) {
+    send(socket, { t: 'error', code: 'client_outdated', message: 'Há uma versão nova do Linkord. Atualize a página.' });
+    setTimeout(() => { try { socket.disconnect(true); } catch { /* already gone */ } }, 100).unref();
+    return;
+  }
   const joined = join(socket, msg);
   if (!joined) return;
   const { participant: p, justCameOnline } = joined;

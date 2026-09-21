@@ -430,3 +430,23 @@ export const reports = pgTable('reports', {
   check('reports_target_type_check', sql`${t.targetType} IN ('user','group','message')`),
   check('reports_status_check', sql`${t.status} IN ('open','reviewing','resolved','dismissed')`),
 ]);
+
+/** Record of every correction the legacy-data repair made (docs/plano-rede-social.md
+ * §12.2 "registrar todas as correções"). The repair script creates this table
+ * itself when it runs BEFORE the migrations; this definition keeps drizzle and the
+ * migration history in step. */
+export const dataRepairs = pgTable('data_repairs', {
+  id: text('id').primaryKey(),
+  runId: text('run_id').notNull(),
+  kind: varchar('kind', { length: 32 }).notNull(),
+  targetType: varchar('target_type', { length: 16 }).notNull(),
+  targetId: text('target_id').notNull(),
+  before: jsonb('before').$type<Record<string, unknown>>().notNull().default({}),
+  after: jsonb('after').$type<Record<string, unknown>>().notNull().default({}),
+  note: text('note').notNull().default(''),
+  needsReview: boolean('needs_review').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('data_repairs_run_idx').on(t.runId),
+  index('data_repairs_target_idx').on(t.targetType, t.targetId),
+]);

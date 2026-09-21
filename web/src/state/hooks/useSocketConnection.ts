@@ -3,6 +3,7 @@ import type { Dispatch, MutableRefObject } from 'react';
 import { io } from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
 import { loadIdentity } from '@/shared/lib/identitySession';
+import { PROTOCOL_VERSION } from '@/shared/types/protocol';
 import type { ClientMessage, ServerMessage } from '@/shared/types/protocol';
 import type { RoomAction } from '@/state/roomReducer';
 
@@ -40,7 +41,7 @@ export function useSocketConnection(deps: SocketConnectionDeps) {
 
     socket.on('connect', () => {
       const saved = loadIdentity();
-      sendWs({ t: 'join', id: saved?.id, token: saved?.token });
+      sendWs({ t: 'join', id: saved?.id, token: saved?.token, v: PROTOCOL_VERSION });
     });
 
     socket.onAny((_eventName: string, payload: ServerMessage) => onMessageRef.current(payload));
