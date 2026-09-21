@@ -100,13 +100,13 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
   const fetchMembers = useCallback((cursor: string | null) => (
     conversationId ? fetchGroupMembers(conversationId, cursor) : Promise.resolve({ items: [], nextCursor: null })
   ), [conversationId]);
-  const memberList = useCursorList(open && conversation ? fetchMembers : fetchNothing, `${membersKey}|${open}`);
+  const memberList = useCursorList(open && conversation ? fetchMembers : fetchNothing, `${membersKey}|${open}`, { getKey: (entry) => entry.user.id });
   const { revision, bump } = useFriends();
   const fetchSent = useCallback((cursor: string | null) => (
     conversationId ? fetchGroupInvitations(conversationId, cursor) : Promise.resolve({ items: [], nextCursor: null })
   ), [conversationId]);
   // Pending invitees can't be invited again; only the owner may see (or fetch) them.
-  const sent = useCursorList(isOwner && open ? fetchSent : fetchNothing, `${conversationId}|${isOwner && open}|${revision}`);
+  const sent = useCursorList(isOwner && open ? fetchSent : fetchNothing, `${conversationId}|${isOwner && open}`, { revision, getKey: (entry) => entry.id });
   const pendingIds = useMemo(() => new Set(sent.items.map((entry) => entry.invitee.id)), [sent.items]);
   const excludeIds = useMemo(() => new Set([...memberIds, ...pendingIds]), [memberIds, pendingIds]);
 

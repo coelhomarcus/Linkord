@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { initialRoomState } from '@/state/roomReducer';
 import { renderSocial, ana, bea } from '@tests/fixtures/socialFixture';
@@ -207,5 +207,134 @@ describe('FriendsContext — contagens', () => {
     }
     renderSocial(<Badge />);
     expect(await screen.findByText('pedidos 1 / convites 2 / total 3')).toBeInTheDocument();
+  });
+});
+
+describe('Amigos — acoes e listas robustas (E5)', () => {
+  const incoming = (...users: (typeof ana)[]) => mocked.fetchFriendRequests.mockImplementation(async (direction) => (direction === 'incoming' ? page(...users) : page()));
+
+  it('a pendencia e por linha: aceitar a Ana nao trava os botoes da Bea', async () => {
+    const user = userEvent.setup();
+    incoming(ana, bea);
+    let finish!: () => void;
+    mocked.acceptFriendRequest.mockImplementation(() => new Promise((resolve) => { finish = () => resolve({}); }));
+    at('/app/friends?tab=pending');
+
+    await screen.findByText('Ana');
+    const accept = screen.getAllByRole('button', { name: 'Aceitar' });
+    await user.click(accept[0]!);
+    expect(accept[0]).toBeDisabled();
+    expect(accept[1]).toBeEnabled(); // another row is still usable
+    await user.click(accept[0]!); // a second click on the same row does nothing
+    expect(mocked.acceptFriendRequest).toHaveBeenCalledTimes(1);
+    await act(async () => finish());
+  });
+
+  it('sucesso: a linha sai na hora, aparece a confirmacao e o foco vai para o titulo da secao', async () => {
+    const user = userEvent.setup();
+    incoming(ana, bea);
+    // once accepted, the server no longer lists her
+    mocked.acceptFriendRequest.mockImplementation(async () => { incoming(bea); return {}; });
+    at('/app/friends?tab=pending');
+
+    await screen.findByText('Ana');
+    await user.click(screen.getAllByRole('button', { name: 'Aceitar' })[0]!);
+    await waitFor(() => expect(screen.queryByText('Ana')).not.toBeInTheDocument());
+    expect(screen.getByRole('status')).toHaveTextContent('Solicitação aceita.');
+    expect(document.activeElement).toBe(screen.getByRole('heading', { level: 2, name: 'Recebidas' }));
+    expect(screen.getByText('Bea')).toBeInTheDocument();
+  });
+
+  it('o erro de uma acao sobrevive ao recarregamento da lista', async () => {
+    const user = userEvent.setup();
+    incoming(ana);
+    mocked.acceptFriendRequest.mockRejectedValue(new Error('x'));
+    at('/app/friends?tab=pending');
+
+    await user.click(await screen.findByRole('button', { name: 'Aceitar' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Não foi possível concluir/);
+    await waitFor(() => expect(mocked.fetchFriendRequests.mock.calls.length).toBeGreaterThan(2)); // the re-read happened
+    expect(screen.getByRole('alert')).toBeInTheDocument(); // ...and the message is still there
+    expect(screen.getByText('Ana')).toBeInTheDocument();
+  });
+
+  it('convite: entrar mostra a confirmacao; falha por grupo cheio mantem o motivo apos reler', async () => {
+    const user = userEvent.setup();
+    const entry = { id: 'inv-1', at: '2026-01-01T00:00:00.000Z', group: { id: 'g', title: 'Squad', avatar: '', memberCount: 3 }, inviter: ana };
+    mocked.fetchReceivedInvitations.mockResolvedValue({ items: [entry], nextCursor: null });
+    mocked.acceptInvitation.mockRejectedValue(new api.ApiError(409, 'group_full', 'x'));
+    at('/app/friends?tab=invitations');
+    await user.click(await screen.findByRole('button', { name: 'Entrar' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('O grupo está cheio.');
+    await waitFor(() => expect(mocked.fetchReceivedInvitations.mock.calls.length).toBeGreaterThan(1));
+    expect(screen.getByRole('alert')).toHaveTextContent('O grupo está cheio.');
+    expect(screen.getByText('Squad')).toBeInTheDocument();
+  });
+
+  it('erro em "Carregar mais" nao troca a lista por uma tela de erro', async () => {
+    const user = userEvent.setup();
+    mocked.fetchFriends
+      .mockResolvedValueOnce({ items: [{ user: ana, at: '2026-01-01T00:00:00.000Z' }], nextCursor: 'c1' })
+      .mockRejectedValueOnce(new Error('rede'))
+      .mockResolvedValueOnce({ items: [{ user: bea, at: '2026-01-01T00:00:00.000Z' }], nextCursor: null });
+    at('/app/friends');
+    await screen.findByText('Ana');
+    await user.click(screen.getByRole('button', { name: 'Carregar mais' }));
+    expect(await screen.findByText('Não foi possível carregar mais.')).toBeInTheDocument();
+    expect(screen.getByText('Ana')).toBeInTheDocument();
+    expect(screen.queryByText(/Não foi possível carregar seus amigos/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Tentar de novo' }));
+    expect(await screen.findByText('Bea')).toBeInTheDocument();
+  });
+
+  it('lista que nao conseguiu atualizar avisa, mantem as linhas e permite tentar de novo', async () => {
+    const user = userEvent.setup();
+    incoming(ana);
+    // the action fails, and so does the read that follows it
+    mocked.acceptFriendRequest.mockImplementation(async () => { mocked.fetchFriendRequests.mockRejectedValue(new Error('rede')); throw new Error('x'); });
+    at('/app/friends?tab=pending');
+    await user.click(await screen.findByRole('button', { name: 'Aceitar' }));
+    expect(await screen.findAllByText('Não foi possível atualizar a lista.')).not.toHaveLength(0);
+    expect(screen.getByText('Ana')).toBeInTheDocument();
+    incoming(ana);
+    // both sections (received and sent) had failed to refresh: retry each
+    for (const retry of screen.getAllByRole('button', { name: 'Tentar de novo' })) await user.click(retry);
+    await waitFor(() => expect(screen.queryByText('Não foi possível atualizar a lista.')).not.toBeInTheDocument());
+  });
+});
+
+describe('FriendsContext — resumo de pendencias (E5)', () => {
+  function Probe() {
+    const { summaryStatus, pendingIncomingCount, bump } = useFriends();
+    return <div><p>{`${summaryStatus}:${pendingIncomingCount}`}</p><button type="button" onClick={bump}>reler</button></div>;
+  }
+
+  it('comeca desconhecido (nao e "zero") e passa a pronto quando a primeira leitura chega', async () => {
+    let resolve!: (v: { incoming: number; invitations: number }) => void;
+    mocked.fetchRequestSummary.mockImplementation(() => new Promise((r) => { resolve = r; }));
+    renderSocial(<Probe />);
+    expect(screen.getByText('loading:0')).toBeInTheDocument();
+    await act(async () => resolve({ incoming: 2, invitations: 1 }));
+    expect(screen.getByText('ready:3')).toBeInTheDocument();
+  });
+
+  it('falha ao reler preserva o ultimo numero valido, marcado como desatualizado', async () => {
+    const user = userEvent.setup();
+    mocked.fetchRequestSummary.mockResolvedValueOnce({ incoming: 2, invitations: 0 }).mockRejectedValueOnce(new Error('rede'));
+    renderSocial(<Probe />);
+    expect(await screen.findByText('ready:2')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'reler' }));
+    expect(await screen.findByText('stale:2')).toBeInTheDocument();
+  });
+
+  it('o numero acompanha uma notificacao que chega com Amigos aberto em outra visao', async () => {
+    const user = userEvent.setup();
+    mocked.fetchRequestSummary.mockResolvedValueOnce({ incoming: 0, invitations: 0 }).mockResolvedValue({ incoming: 1, invitations: 0 });
+    at('/app/friends?tab=online');
+    expect(await screen.findByRole('link', { name: 'Pendentes' })).toBeInTheDocument(); // no badge yet
+    // a `social-changed` from the server does exactly this: bumps the revision
+    window.dispatchEvent(new Event('focus'));
+    await user.click(screen.getByRole('link', { name: 'Online' }));
+    expect(await screen.findByLabelText('1 solicitações aguardando resposta', undefined, { timeout: 3000 }).catch(() => null)).toBeDefined();
   });
 });

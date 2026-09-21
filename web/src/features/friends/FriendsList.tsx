@@ -3,19 +3,25 @@ import { useNavigate } from 'react-router';
 import { Check, Copy, MessageCircle, MoreHorizontal, UserPlus, UserRound } from 'lucide-react';
 import { useRoom } from '@/state/RoomContext';
 import { blockUser, fetchFriends, removeFriend } from '@/shared/api/api';
-import type { SocialUser } from '@/shared/api/api';
+import type { SocialEntry, SocialUser } from '@/shared/api/api';
 import { Button } from '@/shared/ui/primitives/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/shared/ui/primitives/dropdown-menu';
 import { ROUTES, friendsView } from '@/shared/lib/routes';
+import { ActionFeedback } from './ActionFeedback';
+import type { Feedback } from './ActionFeedback';
 import { ListSearch } from './ListSearch';
 import { ListSectionHeader } from './ListSectionHeader';
+import { LoadMoreFooter } from './LoadMoreFooter';
 import { SocialConfirmDialog } from './SocialConfirmDialog';
 import type { SocialConfirm } from './SocialConfirmDialog';
 import { SocialUserRow } from './SocialUserRow';
 import { useFriends } from './FriendsContext';
 import { useCursorList } from './useCursorList';
 import { useDebouncedValue } from './useDebouncedValue';
+import { usePendingIds } from './usePendingIds';
 import { useUrlSearch } from './useUrlSearch';
+
+const friendKey = (entry: SocialEntry) => entry.user.id;
 
 /** Everyone / Online. The search text lives in the URL (`?q=`): typing replaces the
  * entry, so Back returns to the previous VIEW, not to each keystroke. */
@@ -30,7 +36,9 @@ export function FriendsList({ view, query, onQueryChange, onOpenProfile }: {
   const navigate = useNavigate();
   const { value, setValue, search } = useUrlSearch(query, onQueryChange);
   const [confirm, setConfirm] = useState<SocialConfirm | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const pending = usePendingIds();
+  const [feedback, setFeedback] = useState<Feedback>(null);
+  const clearFeedback = useCallback(() => setFeedback(null), []);
   const [copied, setCopied] = useState(false);
 
   // Online is decided by the server before pagination, so a friend past the first
@@ -41,19 +49,22 @@ export function FriendsList({ view, query, onQueryChange, onOpenProfile }: {
     (cursor: string | null) => fetchFriends(cursor, search, view === 'online' ? 'online' : undefined),
     [search, view],
   );
-  const list = useCursorList(fetchPage, `${view}|${search}|${revision}|${presenceKey}`);
+  const list = useCursorList(fetchPage, `${view}|${search}`, { revision: `${revision}|${presenceKey}`, getKey: friendKey });
   const visible = list.items;
   // only the unfiltered list can say "no friends at all"; an empty Online view just means nobody is on now
   const isEmptyAccount = view === 'all' && list.status === 'ready' && list.items.length === 0 && !search;
 
-  async function runAction(action: () => Promise<unknown>) {
-    setActionError(null);
-    try {
-      await action();
+  async function runAction(userId: string, action: () => Promise<unknown>) {
+    setFeedback(null);
+    const outcome = await pending.run(userId, action);
+    if (!outcome) return;
+    if (!outcome.ok) {
+      setFeedback({ tone: 'error', text: 'Não foi possível concluir a ação. Tente de novo.' });
       bump();
-    } catch {
-      setActionError('Não foi possível concluir a ação. Tente de novo.');
+      return;
     }
+    list.removeItem(userId);
+    bump();
   }
 
   function handleMessage(user: SocialUser) {
@@ -80,7 +91,7 @@ export function FriendsList({ view, query, onQueryChange, onOpenProfile }: {
     <div className="flex flex-col gap-4">
       {!isEmptyAccount && <ListSearch value={value} onChange={setValue} label="Buscar nos seus amigos" />}
 
-      {actionError && <p role="alert" className="rounded-md bg-red/12 px-2.5 py-1.5 text-label text-red-text">{actionError}</p>}
+      <ActionFeedback feedback={feedback} onClear={clearFeedback} />
 
       {list.status === 'loading' && <p className="py-8 text-center text-label text-text-muted">Carregando amigos…</p>}
 
@@ -125,7 +136,7 @@ export function FriendsList({ view, query, onQueryChange, onOpenProfile }: {
                   </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger
-                      render={<Button type="button" variant="ghost" size="icon-sm" aria-label={`Mais ações para ${user.displayName}`} />}
+                      render={<Button type="button" variant="ghost" size="icon-sm" disabled={pending.isPending(user.id)} aria-label={`Mais ações para ${user.displayName}`} />}
                     >
                       <MoreHorizontal size={16} />
                     </DropdownMenuTrigger>
@@ -146,16 +157,12 @@ export function FriendsList({ view, query, onQueryChange, onOpenProfile }: {
         </section>
       )}
 
-      {list.hasMore && list.status === 'ready' && (
-        <Button type="button" variant="ghost" size="sm" className="self-center" disabled={list.loadingMore} onClick={list.loadMore}>
-          {list.loadingMore ? 'Carregando…' : 'Carregar mais'}
-        </Button>
-      )}
+      {list.status === 'ready' && <LoadMoreFooter list={list} />}
 
       <SocialConfirmDialog
         target={confirm}
         onCancel={() => setConfirm(null)}
-        onConfirm={(target) => void runAction(() => (target.kind === 'remove' ? removeFriend(target.userId) : blockUser(target.userId)))}
+        onConfirm={(target) => void runAction(target.userId, () => (target.kind === 'remove' ? removeFriend(target.userId) : blockUser(target.userId)))}
       />
     </div>
   );

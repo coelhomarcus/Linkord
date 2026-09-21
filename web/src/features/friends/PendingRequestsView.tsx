@@ -22,11 +22,11 @@ export function PendingRequestsView({ query, onQueryChange, onOpenProfile }: { q
       <ListSearch value={value} onChange={setValue} label="Buscar nas solicitações" />
       <section id="received" aria-labelledby="received-title" className="scroll-mt-4">
         <ListSectionHeader id="received-title" title="Recebidas" count={!search && pendingFriendRequestCount > 0 ? `${pendingFriendRequestCount} aguardando resposta` : undefined} />
-        <FriendRequestList direction="incoming" search={search} onOpenProfile={onOpenProfile} />
+        <FriendRequestList direction="incoming" search={search} headingId="received-title" onOpenProfile={onOpenProfile} />
       </section>
       <section id="sent" aria-labelledby="sent-title" className="scroll-mt-4">
         <ListSectionHeader id="sent-title" title="Enviadas" />
-        <FriendRequestList direction="outgoing" search={search} onOpenProfile={onOpenProfile} />
+        <FriendRequestList direction="outgoing" search={search} headingId="sent-title" onOpenProfile={onOpenProfile} />
       </section>
     </div>
   );
