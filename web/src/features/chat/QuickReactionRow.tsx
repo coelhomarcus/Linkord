@@ -5,7 +5,7 @@ import { cn } from '@/shared/lib/utils';
 // triggering its emoji-dataset fetch, see shared/ui/primitives/emoji-picker.tsx)
 // on every single open — most reactions are one of these anyway. The full
 // picker only mounts once "+" is actually clicked.
-export const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const;
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const;
 
 export function QuickReactionRow({ onPick, onMore, className }: { onPick: (emoji: string) => void; onMore: () => void; className?: string }) {
   return (
