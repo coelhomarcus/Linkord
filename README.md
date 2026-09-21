@@ -24,7 +24,6 @@ Linkord é uma plataforma de comunicação em tempo real com chamadas de voz, v�
 - Diretório de usuários (online/offline) e painel de moderação (apagar conta)
 - Aba de mídias — todo anexo/embed do projeto, de todos os canais
 - Preferências salvas por usuário (volume por chamada/pessoa, volume de notificações)
-- Notificação no Discord quando alguém entra na chamada ou compartilha tela (Webhook)
 
 ## Stack
 
@@ -78,7 +77,7 @@ Roda automaticamente em todo push/PR pra `main`/`develop` ([`.github/workflows/t
 
 ## Variáveis de ambiente
 
-Veja [`.env.example`](.env.example) — cobre servidor, banco, contas/sessão, LiveKit, upload e a integração opcional com Discord.
+Veja [`.env.example`](.env.example) — cobre servidor, banco, contas/sessão, LiveKit, upload e limites.
 
 ## Deploy
 

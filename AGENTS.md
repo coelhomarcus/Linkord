@@ -40,7 +40,7 @@ server/src/
   db/                   # client.ts, schema.ts, migrate.ts
   http/                 # app.ts (Fastify), cookies.ts, respond.ts
   realtime/             # socket.ts — combines every module's `handlers` into one dispatch table
-  integrations/<name>/  # external service adapters: discord/, livekit/
+  integrations/<name>/  # external service adapters: livekit/
   modules/<domain>/     # auth, users, presence, conversations, messages, calls,
                         # attachments, moderation, profile, link-preview
 server/tests/            # mirrors server/src/ — NO tests inside src/

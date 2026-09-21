@@ -15,7 +15,6 @@ import { listForUser, getConversationForUser, getDirectPeerId } from '../modules
 import { canSendDirectMessage } from '../modules/friendships/friendshipsRepository.js';
 import { ERROR_CODES } from '../http/errors.js';
 import { getUserUsage } from '../modules/attachments/attachmentQuota.js';
-import * as discordWebhook from '../integrations/discord/discordWebhook.js';
 import * as moderation from '../modules/moderation/moderation.js';
 import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from '../modules/auth/session.js';
@@ -32,7 +31,6 @@ const handlers: HandlerTable = Object.assign(
   reactions.handlers,
   chat.handlers,
   conversations.handlers,
-  discordWebhook.handlers,
   moderation.handlers,
 );
 

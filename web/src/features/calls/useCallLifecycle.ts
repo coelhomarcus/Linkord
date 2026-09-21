@@ -148,22 +148,17 @@ export function useCallLifecycle(deps: CallLifecycleDeps) {
       if (pub.source === Track.Source.ScreenShare) playSound('screenshare');
       if (pub.source === Track.Source.Camera) playSound('camera');
     };
-    const onLocalPublished = (pub: { source: Track.Source }) => {
-      onPublished(pub);
-      if (pub.source === Track.Source.Microphone) sendWs({ t: 'call-event', kind: 'joined' });
-      if (pub.source === Track.Source.ScreenShare) sendWs({ t: 'call-event', kind: 'screenshare' });
-    };
     const onMicUnpublished = (pub: { source: Track.Source }) => {
       if (pub.source === Track.Source.Microphone) playSound('userLeave');
     };
     livekitRoom.on(RoomEvent.TrackPublished, onPublished);
     livekitRoom.on(RoomEvent.TrackUnpublished, onMicUnpublished);
-    livekitRoom.on(RoomEvent.LocalTrackPublished, onLocalPublished);
+    livekitRoom.on(RoomEvent.LocalTrackPublished, onPublished);
     livekitRoom.on(RoomEvent.LocalTrackUnpublished, onMicUnpublished);
     return () => {
       livekitRoom.off(RoomEvent.TrackPublished, onPublished);
       livekitRoom.off(RoomEvent.TrackUnpublished, onMicUnpublished);
-      livekitRoom.off(RoomEvent.LocalTrackPublished, onLocalPublished);
+      livekitRoom.off(RoomEvent.LocalTrackPublished, onPublished);
       livekitRoom.off(RoomEvent.LocalTrackUnpublished, onMicUnpublished);
     };
   }, [livekitRoom, sendWs]);

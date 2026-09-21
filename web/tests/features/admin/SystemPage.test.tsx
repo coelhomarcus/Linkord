@@ -16,7 +16,7 @@ const info = (over: Partial<adminApi.SystemInfo> = {}): adminApi.SystemInfo => (
   connections: { live: 4, onlineAccounts: 3, max: 50, perAccountMax: 5 },
   accounts: { total: 20, newLastHour: 2, newPerHourCap: 30, activeAdmins: 2, suspended: 1 },
   livekit: { configured: true }, outbox: { pending: 0, failed: 0 }, notifications: { unread: 7 },
-  orphanSweep: { dryRunByDefault: true, last: null }, discord: { announcing: false }, ...over,
+  orphanSweep: { dryRunByDefault: true, last: null }, ...over,
 });
 const open = () => renderAdmin(<SystemPage />, { path: '/admin/system', pattern: '/admin/system' });
 
@@ -32,7 +32,6 @@ describe('SystemPage', () => {
     expect(screen.getByText(/4 de 50 \(até 5 por conta\)/)).toBeInTheDocument();
     expect(screen.getByText(/2 de 30/)).toBeInTheDocument();
     expect(screen.getByText('configurado')).toBeInTheDocument();
-    expect(screen.getByText('desligado')).toBeInTheDocument();
   });
 
   it('avisa quando o cadastro esta pausado e quando o outbox tem falhas', async () => {

@@ -32,6 +32,5 @@ export async function getSystemInfo() {
     outbox,
     notifications: { unread: unread[0]?.n ?? 0 },
     orphanSweep: { dryRunByDefault: config.ORPHAN_SWEEP_DRY_RUN, last: getLastSweep() },
-    discord: { announcing: !!(config.DISCORD_WEBHOOK_URL && config.DISCORD_WEBHOOK_CONVERSATION_ID) },
   };
 }

@@ -97,7 +97,6 @@ export function SystemPage() {
       <Section title="Serviços">
         <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Chamadas (LiveKit)">{info.livekit.configured ? 'configurado' : 'NÃO configurado'}</Field>
-          <Field label="Discord">{info.discord.announcing ? 'anunciando uma conversa escolhida' : 'desligado'}</Field>
           <Field label="Fila de eventos (outbox)">{outbox.pending} pendente(s), {outbox.failed} falha(s)</Field>
           <Field label="Notificações não lidas">{info.notifications.unread}</Field>
         </dl>

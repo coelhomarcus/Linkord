@@ -104,7 +104,6 @@ export interface SystemInfo {
   outbox: { pending: number; failed: number };
   notifications: { unread: number };
   orphanSweep: { dryRunByDefault: boolean; last: SweepResult | null };
-  discord: { announcing: boolean };
 }
 
 export const fetchSystem = () => apiFetch<SystemInfo>('/api/admin/system');

@@ -159,7 +159,6 @@ export type ClientMessage =
   | { t: 'chat-edit'; msgId: number; text: string }
   | { t: 'chat-react'; msgId: number; emoji: ReactionEmoji }
   | { t: 'typing'; conversationId: string; value: boolean }
-  | { t: 'call-event'; kind: 'joined' | 'screenshare' }
   | { t: 'call-join'; conversationId: string }
   | { t: 'call-leave' }
   | { t: 'call-kick'; participantId: string }

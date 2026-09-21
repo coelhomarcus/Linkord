@@ -109,10 +109,6 @@ const LIVEKIT_ROOM_NAME = process.env.LIVEKIT_ROOM_NAME || 'linkord-room';
 // an old token (removal also evicts live connections, see evictFromCall).
 const LIVEKIT_TOKEN_TTL_SECONDS = Number(process.env.LIVEKIT_TOKEN_TTL_SECONDS || 300);
 
-// optional — notifies a Discord channel when someone joins the call or
-// starts sharing (see modules/discordWebhook.ts). Empty disables it silently.
-const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || '';
-
 // optional, dev convenience only: when DATABASE_URL points at the same DB a
 // deployed instance uses, `attachments` rows exist locally but the actual
 // FILES only live on that instance's disk (UPLOAD_DIR is always local, never
@@ -138,8 +134,6 @@ const MAX_PENDING_OUTGOING_REQUESTS = Number(process.env.MAX_PENDING_OUTGOING_RE
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '').split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean);
 // production-like unless NODE_ENV says otherwise; only used to allow the Vite dev origin.
 const IS_DEV = process.env.NODE_ENV === 'development' || (!process.env.NODE_ENV && !process.env.APP_URL);
-// Discord posts call activity ONLY for this one conversation (opt-in); empty = off.
-const DISCORD_WEBHOOK_CONVERSATION_ID = (process.env.DISCORD_WEBHOOK_CONVERSATION_ID || '').trim();
 // files on disk with no `attachments` row are only collected after this long,
 // so an upload that is still being committed is never mistaken for an orphan.
 const ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000;
@@ -160,9 +154,8 @@ export const config = {
   MIN_USERNAME_LEN, MAX_USERNAME_LEN, MAX_DISPLAY_NAME_LEN, MIN_PASSWORD_LEN, MAX_PASSWORD_LEN,
   RESEND_API_KEY, RESEND_FROM_EMAIL, APP_URL, AUTH_CODE_TTL_MS, AUTH_CODE_MAX_ATTEMPTS,
   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_ROOM_NAME, LIVEKIT_TOKEN_TTL_SECONDS,
-  DISCORD_WEBHOOK_URL,
   UPLOADS_REMOTE_URL,
   REGISTRATIONS_PER_IP_PER_HOUR, MAX_NEW_ACCOUNTS_PER_HOUR, MAX_CONNECTIONS_PER_USER,
   MAX_USER_STORAGE_BYTES, MAX_OWNED_GROUPS_PER_USER, MAX_GROUP_MEMBERSHIPS_PER_USER, MAX_FRIENDS, MAX_PENDING_OUTGOING_REQUESTS,
-  ALLOWED_ORIGINS, IS_DEV, DISCORD_WEBHOOK_CONVERSATION_ID, ORPHAN_GRACE_MS, ORPHAN_SWEEP_DRY_RUN,
+  ALLOWED_ORIGINS, IS_DEV, ORPHAN_GRACE_MS, ORPHAN_SWEEP_DRY_RUN,
 };
