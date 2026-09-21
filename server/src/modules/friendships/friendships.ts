@@ -119,22 +119,35 @@ async function handleRemove(request: FastifyRequest<{ Params: Params }>, reply: 
   afterMutation(sess.userId, otherId, result);
 }
 
-async function handleListFriends(request: FastifyRequest<{ Querystring: { cursor?: string; q?: string } }>, reply: FastifyReply): Promise<void> {
-  const sess = await requireSession(request, reply);
-  if (!sess) return;
-  const page = await listFriends(sess.userId, { cursor: request.query.cursor, q: normalizeSearchQuery(request.query.q) || undefined });
-  if (page === 'invalid_cursor') return sendError(reply, 400, 'invalid_cursor', 'Cursor inválido.');
-  sendJson(reply, 200, page);
+/** Where "who is online right now" comes from. Injected by the composition root so
+ * this module never imports the socket layer. */
+export interface FriendshipRouteDeps { onlineUserIds: () => string[] }
+
+function makeListFriends(deps: FriendshipRouteDeps) {
+  return async function handleListFriends(request: FastifyRequest<{ Querystring: { cursor?: string; q?: string; status?: string } }>, reply: FastifyReply): Promise<void> {
+    const sess = await requireSession(request, reply);
+    if (!sess) return;
+    const { status } = request.query;
+    if (status !== undefined && status !== 'online') return sendError(reply, 400, 'invalid_request', 'Filtro inválido.');
+    const page = await listFriends(sess.userId, {
+      cursor: request.query.cursor,
+      q: normalizeSearchQuery(request.query.q) || undefined,
+      // the repository intersects these with THIS account's accepted friends
+      onlineIds: status === 'online' ? deps.onlineUserIds() : undefined,
+    });
+    if (page === 'invalid_cursor') return sendError(reply, 400, 'invalid_cursor', 'Cursor inválido.');
+    sendJson(reply, 200, page);
+  };
 }
 
-async function handleListRequests(request: FastifyRequest<{ Querystring: { direction?: string; cursor?: string } }>, reply: FastifyReply): Promise<void> {
+async function handleListRequests(request: FastifyRequest<{ Querystring: { direction?: string; cursor?: string; q?: string } }>, reply: FastifyReply): Promise<void> {
   const sess = await requireSession(request, reply);
   if (!sess) return;
   const { direction, cursor } = request.query;
   if (direction !== 'incoming' && direction !== 'outgoing') {
     return sendError(reply, 400, 'invalid_direction', 'Direção inválida.');
   }
-  const page = await listFriendRequests(sess.userId, direction, cursor);
+  const page = await listFriendRequests(sess.userId, direction, cursor, normalizeSearchQuery(request.query.q) || undefined);
   if (page === 'invalid_cursor') return sendError(reply, 400, 'invalid_cursor', 'Cursor inválido.');
   sendJson(reply, 200, page);
 }
@@ -154,8 +167,8 @@ async function handleRelationship(request: FastifyRequest<{ Params: Params }>, r
   sendJson(reply, 200, await getRelationship(sess.userId, String(request.params.userId || '')));
 }
 
-export function registerFriendshipRoutes(fastify: FastifyInstance): void {
-  fastify.get('/api/friends', handleListFriends);
+export function registerFriendshipRoutes(fastify: FastifyInstance, deps: FriendshipRouteDeps): void {
+  fastify.get('/api/friends', makeListFriends(deps));
   fastify.get('/api/friend-requests', handleListRequests);
   fastify.get('/api/friend-requests/summary', handleRequestSummary);
   fastify.get('/api/relationships/:userId', handleRelationship);

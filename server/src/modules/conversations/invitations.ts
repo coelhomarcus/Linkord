@@ -5,6 +5,7 @@ import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
 import * as floodControl from '../../realtime/floodControl.js';
 import { sendToUser } from '../presence/participants.js';
+import { normalizeSearchQuery } from '../friendships/cursor.js';
 import { groupCreationBlockedBy } from '../limits/limits.js';
 import { createGroup, rowToSummary, sanitizeConversationTitle } from './conversationsRepository.js';
 import {
@@ -99,10 +100,10 @@ async function handleListSent(request: FastifyRequest<{ Params: GroupParams; Que
   sendJson(reply, 200, page);
 }
 
-async function handleListReceived(request: FastifyRequest<{ Querystring: { cursor?: string } }>, reply: FastifyReply): Promise<void> {
+async function handleListReceived(request: FastifyRequest<{ Querystring: { cursor?: string; q?: string } }>, reply: FastifyReply): Promise<void> {
   const sess = await requireSession(request, reply);
   if (!sess) return;
-  const page = await listReceivedInvitations(sess.userId, request.query.cursor);
+  const page = await listReceivedInvitations(sess.userId, request.query.cursor, normalizeSearchQuery(request.query.q) || undefined);
   if (page === 'invalid_cursor') return sendError(reply, 400, 'invalid_cursor', 'Cursor inválido.');
   sendJson(reply, 200, page);
 }

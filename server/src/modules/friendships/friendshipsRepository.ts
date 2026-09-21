@@ -1,7 +1,7 @@
 import { markNotificationsRead } from '../notifications/notificationsRepository.js';
 import { countFriends, countPendingOutgoing, exceedsLimit, limitMax } from '../limits/limits.js';
 import crypto from 'node:crypto';
-import { and, desc, eq, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { config } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { friendships, notifications, outboxEvents, users, type Friendship } from '../../db/schema.js';
@@ -68,13 +68,17 @@ const microsecondIso = (col: typeof friendships.updatedAt) =>
 
 /** The caller's accepted friends, alphabetical by username (keyset
  * pagination — see cursor.ts). `q` narrows to username/displayName matches
- * within THIS user's friends only, never a global search. */
-export async function listFriends(userId: string, opts: { cursor?: string; q?: string }): Promise<SocialPage | 'invalid_cursor'> {
+ * within THIS user's friends only, never a global search. `onlineIds`, when
+ * given, restricts to friends among those accounts BEFORE the limit and cursor,
+ * so an online friend past the first page is still found (the caller supplies
+ * the ids: this module knows nothing about sockets). */
+export async function listFriends(userId: string, opts: { cursor?: string; q?: string; onlineIds?: string[] }): Promise<SocialPage | 'invalid_cursor'> {
   let after: string | null = null;
   if (opts.cursor) {
     after = decodeUsernameCursor(opts.cursor);
     if (!after) return 'invalid_cursor';
   }
+  if (opts.onlineIds && opts.onlineIds.length === 0) return { items: [], nextCursor: null };
   const pattern = opts.q ? `%${escapeLike(opts.q)}%` : null;
   const rows = await db
     .select({ user: users, acceptedAt: friendships.acceptedAt, updatedAt: friendships.updatedAt })
@@ -85,6 +89,7 @@ export async function listFriends(userId: string, opts: { cursor?: string; q?: s
       or(eq(friendships.userLowId, userId), eq(friendships.userHighId, userId)),
       after ? sql`lower(${users.username}) > ${after}` : undefined,
       pattern ? sql`(lower(${users.username}) like ${pattern} or lower(${users.displayName}) like ${pattern})` : undefined,
+      opts.onlineIds ? inArray(users.id, opts.onlineIds) : undefined,
     ))
     .orderBy(sql`lower(${users.username})`)
     .limit(SOCIAL_PAGE_SIZE + 1);
@@ -97,9 +102,10 @@ export async function listFriends(userId: string, opts: { cursor?: string; q?: s
 
 /** Pending requests, newest first. `incoming` = someone else asked the
  * caller; `outgoing` = the caller asked someone else. */
-export async function listFriendRequests(userId: string, direction: 'incoming' | 'outgoing', cursorRaw?: string): Promise<SocialPage | 'invalid_cursor'> {
+export async function listFriendRequests(userId: string, direction: 'incoming' | 'outgoing', cursorRaw?: string, q?: string): Promise<SocialPage | 'invalid_cursor'> {
   const cursor = cursorRaw ? decodeTimeCursor(cursorRaw) : null;
   if (cursorRaw && !cursor) return 'invalid_cursor';
+  const pattern = q ? `%${escapeLike(q)}%` : null;
   const ts = microsecondIso(friendships.updatedAt);
   const rows = await db
     .select({ user: users, ts, id: friendships.id })
@@ -109,6 +115,7 @@ export async function listFriendRequests(userId: string, direction: 'incoming' |
       eq(friendships.status, 'pending'),
       or(eq(friendships.userLowId, userId), eq(friendships.userHighId, userId)),
       direction === 'outgoing' ? eq(friendships.requestedBy, userId) : sql`${friendships.requestedBy} <> ${userId}`,
+      pattern ? sql`(lower(${users.username}) like ${pattern} or lower(${users.displayName}) like ${pattern})` : undefined,
       cursor ? sql`(${friendships.updatedAt}, ${friendships.id}) < (${cursor.ts}::timestamptz, ${cursor.id})` : undefined,
     ))
     .orderBy(desc(friendships.updatedAt), desc(friendships.id))
