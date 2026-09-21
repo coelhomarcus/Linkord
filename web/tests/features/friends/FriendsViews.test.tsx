@@ -75,7 +75,7 @@ describe('Amigos — a visao vem da URL', () => {
 
   it('a busca vem de ?q= e vai para o servidor', async () => {
     at('/app/friends?q=an');
-    await waitFor(() => expect(mocked.fetchFriends).toHaveBeenCalledWith(null, 'an'));
+    await waitFor(() => expect(mocked.fetchFriends).toHaveBeenCalledWith(null, 'an', undefined));
     expect(screen.getByLabelText('Buscar nos seus amigos')).toHaveValue('an');
   });
 
@@ -95,7 +95,7 @@ describe('Amigos — Pendentes', () => {
     at('/app/friends?tab=pending');
 
     expect(await screen.findByText('Ana')).toBeInTheDocument();
-    expect(mocked.fetchFriendRequests).toHaveBeenCalledWith('incoming', null);
+    expect(mocked.fetchFriendRequests).toHaveBeenCalledWith('incoming', null, '');
     await user.click(screen.getByRole('button', { name: 'Aceitar' }));
     expect(mocked.acceptFriendRequest).toHaveBeenCalledWith('u-ana');
   });
@@ -139,6 +139,36 @@ describe('Amigos — Pendentes', () => {
   });
 });
 
+describe('Amigos — busca em Pendentes e Convites (no servidor, antes da paginacao)', () => {
+  it('Pendentes manda ?q= para recebidas e enviadas', async () => {
+    at('/app/friends?tab=pending&q=ana');
+    await waitFor(() => {
+      expect(mocked.fetchFriendRequests).toHaveBeenCalledWith('incoming', null, 'ana');
+      expect(mocked.fetchFriendRequests).toHaveBeenCalledWith('outgoing', null, 'ana');
+    });
+    expect(screen.getByLabelText('Buscar nas solicitações')).toHaveValue('ana');
+  });
+
+  it('busca sem resultado diz isso (nao "nenhuma solicitacao")', async () => {
+    at('/app/friends?tab=pending&q=zzz');
+    expect((await screen.findAllByText('Nenhum resultado para esta busca.')).length).toBe(2);
+  });
+
+  it('Convites manda ?q= e mostra vazio de busca', async () => {
+    at('/app/friends?tab=invitations&q=squad');
+    await waitFor(() => expect(mocked.fetchReceivedInvitations).toHaveBeenCalledWith(null, 'squad'));
+    expect(await screen.findByText('Nenhum resultado para esta busca.')).toBeInTheDocument();
+  });
+
+  it('digitar na busca de Pendentes escreve ?q= sem trocar de visao', async () => {
+    const user = userEvent.setup();
+    at('/app/friends?tab=pending');
+    await user.type(await screen.findByLabelText('Buscar nas solicitações'), 'bia');
+    await waitFor(() => expect(mocked.fetchFriendRequests).toHaveBeenCalledWith('incoming', null, 'bia'));
+    expect(screen.getByRole('heading', { level: 2, name: 'Recebidas' })).toBeInTheDocument();
+  });
+});
+
 describe('Amigos — Convites de grupo', () => {
   const entry = { id: 'inv-1', at: '2026-01-01T00:00:00.000Z', group: { id: 'g', title: 'Squad', avatar: '', memberCount: 3 }, inviter: ana };
 
@@ -150,6 +180,7 @@ describe('Amigos — Convites de grupo', () => {
     at('/app/friends?tab=invitations');
 
     expect(await screen.findByText('Squad')).toBeInTheDocument();
+    expect(screen.getByText(/3 membros$/)).toBeInTheDocument(); // regression: a stray "}" once trailed it
     await user.click(screen.getByRole('button', { name: 'Entrar' }));
     expect(mocked.acceptInvitation).toHaveBeenCalledWith('inv-1');
     await user.click(await screen.findByRole('button', { name: 'Recusar' }));

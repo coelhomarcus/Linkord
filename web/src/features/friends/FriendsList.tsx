@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Check, Copy, MessageCircle, MoreHorizontal, Search, UserPlus, UserRound } from 'lucide-react';
+import { Check, Copy, MessageCircle, MoreHorizontal, UserPlus, UserRound } from 'lucide-react';
 import { useRoom } from '@/state/RoomContext';
 import { blockUser, fetchFriends, removeFriend } from '@/shared/api/api';
 import type { SocialUser } from '@/shared/api/api';
 import { Button } from '@/shared/ui/primitives/button';
-import { Input } from '@/shared/ui/primitives/input';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/shared/ui/primitives/dropdown-menu';
 import { ROUTES, friendsView } from '@/shared/lib/routes';
+import { ListSearch } from './ListSearch';
 import { ListSectionHeader } from './ListSectionHeader';
 import { SocialConfirmDialog } from './SocialConfirmDialog';
 import type { SocialConfirm } from './SocialConfirmDialog';
@@ -15,6 +15,7 @@ import { SocialUserRow } from './SocialUserRow';
 import { useFriends } from './FriendsContext';
 import { useCursorList } from './useCursorList';
 import { useDebouncedValue } from './useDebouncedValue';
+import { useUrlSearch } from './useUrlSearch';
 
 /** Everyone / Online. The search text lives in the URL (`?q=`): typing replaces the
  * entry, so Back returns to the previous VIEW, not to each keystroke. */
@@ -27,29 +28,23 @@ export function FriendsList({ view, query, onQueryChange, onOpenProfile }: {
   const { state, onlineUserIds, openDirect, requestChatView } = useRoom();
   const { revision, bump } = useFriends();
   const navigate = useNavigate();
-  const [value, setValue] = useState(query);
-  const search = useDebouncedValue(value.trim(), 250);
+  const { value, setValue, search } = useUrlSearch(query, onQueryChange);
   const [confirm, setConfirm] = useState<SocialConfirm | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // the URL is the source: an outside change of `q` (Back, a link) replaces the
-  // input — adjusted during render, not from an effect
-  const [seenQuery, setSeenQuery] = useState(query);
-  if (query !== seenQuery) {
-    setSeenQuery(query);
-    setValue(query);
-  }
-  // and what was typed goes back to the URL once it settles
-  useEffect(() => { if (search !== query.trim()) onQueryChange(search); }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const fetchPage = useCallback((cursor: string | null) => fetchFriends(cursor, search), [search]);
-  const list = useCursorList(fetchPage, `${search}|${revision}`);
-
-  // "Online" narrows what's already loaded — presence is a live signal from the
-  // room, not something the paginated endpoint knows about
-  const visible = view === 'online' ? list.items.filter((entry) => onlineUserIds.has(entry.user.id)) : list.items;
-  const isEmptyAccount = list.status === 'ready' && list.items.length === 0 && !search;
+  // Online is decided by the server before pagination, so a friend past the first
+  // page still shows. Presence is live: when it changes, the online view asks
+  // again (grouped, so a burst of connections is one request)
+  const presenceKey = useDebouncedValue(view === 'online' ? [...onlineUserIds].sort().join(',') : '', 600);
+  const fetchPage = useCallback(
+    (cursor: string | null) => fetchFriends(cursor, search, view === 'online' ? 'online' : undefined),
+    [search, view],
+  );
+  const list = useCursorList(fetchPage, `${view}|${search}|${revision}|${presenceKey}`);
+  const visible = list.items;
+  // only the unfiltered list can say "no friends at all"; an empty Online view just means nobody is on now
+  const isEmptyAccount = view === 'all' && list.status === 'ready' && list.items.length === 0 && !search;
 
   async function runAction(action: () => Promise<unknown>) {
     setActionError(null);
@@ -83,18 +78,7 @@ export function FriendsList({ view, query, onQueryChange, onOpenProfile }: {
 
   return (
     <div className="flex flex-col gap-4">
-      {!isEmptyAccount && (
-        <div className="relative">
-          <Search size={16} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-          <Input
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            placeholder="Buscar nos seus amigos"
-            aria-label="Buscar nos seus amigos"
-            className="w-full pl-9"
-          />
-        </div>
-      )}
+      {!isEmptyAccount && <ListSearch value={value} onChange={setValue} label="Buscar nos seus amigos" />}
 
       {actionError && <p role="alert" className="rounded-md bg-red/12 px-2.5 py-1.5 text-label text-red-text">{actionError}</p>}
 
@@ -129,7 +113,7 @@ export function FriendsList({ view, query, onQueryChange, onOpenProfile }: {
             <p className="py-8 text-center text-label text-text-muted">
               {search
                 ? 'Nenhum resultado para esta busca.'
-                : view === 'online' && list.hasMore ? 'Nenhum amigo online entre os carregados.' : view === 'online' ? 'Nenhum amigo online agora.' : 'Nenhum amigo encontrado.'}
+                : view === 'online' ? 'Nenhum amigo online agora.' : 'Nenhum amigo encontrado.'}
             </p>
           ) : (
             <div className="flex flex-col divide-y divide-white/[0.06]">

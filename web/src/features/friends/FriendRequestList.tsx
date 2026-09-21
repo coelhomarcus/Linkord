@@ -12,12 +12,12 @@ function formatWhen(iso: string): string {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }
 
-export function FriendRequestList({ direction, onOpenProfile }: { direction: RequestDirection; onOpenProfile: (userId: string) => void }) {
+export function FriendRequestList({ direction, search = '', onOpenProfile }: { direction: RequestDirection; search?: string; onOpenProfile: (userId: string) => void }) {
   const { revision, bump } = useFriends();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const fetchPage = useCallback((cursor: string | null) => fetchFriendRequests(direction, cursor), [direction]);
-  const list = useCursorList(fetchPage, `${direction}|${revision}`);
+  const fetchPage = useCallback((cursor: string | null) => fetchFriendRequests(direction, cursor, search), [direction, search]);
+  const list = useCursorList(fetchPage, `${direction}|${search}|${revision}`);
 
   async function act(userId: string, action: (id: string) => Promise<unknown>) {
     if (busyId) return;
@@ -45,7 +45,7 @@ export function FriendRequestList({ direction, onOpenProfile }: { direction: Req
   if (list.items.length === 0) {
     return (
       <p className="py-10 text-center text-label text-text-muted">
-        {direction === 'incoming' ? 'Nenhuma solicitação recebida.' : 'Você não tem solicitações enviadas.'}
+        {search ? 'Nenhum resultado para esta busca.' : direction === 'incoming' ? 'Nenhuma solicitação recebida.' : 'Você não tem solicitações enviadas.'}
       </p>
     );
   }

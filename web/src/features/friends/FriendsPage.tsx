@@ -60,8 +60,8 @@ export function FriendsPage({ onOpenProfile }: { onOpenProfile: (userId: string)
         {(view === 'all' || view === 'online') && (
           <FriendsList key={view} view={view} query={query} onQueryChange={setQuery} onOpenProfile={onOpenProfile} />
         )}
-        {view === 'pending' && <PendingRequestsView onOpenProfile={onOpenProfile} />}
-        {view === 'invitations' && <GroupInvitationsView onOpenProfile={onOpenProfile} />}
+        {view === 'pending' && <PendingRequestsView query={query} onQueryChange={setQuery} onOpenProfile={onOpenProfile} />}
+        {view === 'invitations' && <GroupInvitationsView query={query} onQueryChange={setQuery} onOpenProfile={onOpenProfile} />}
         {view === 'add' && <AddFriendView />}
       </main>
     </div>

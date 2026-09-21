@@ -175,12 +175,12 @@ function pageQuery(params: Record<string, string | null | undefined>): string {
   return text ? `?${text}` : '';
 }
 
-export function fetchFriends(cursor: string | null, q: string): Promise<SocialPage> {
-  return apiFetch(`/api/friends${pageQuery({ cursor, q })}`);
+export function fetchFriends(cursor: string | null, q: string, status?: 'online'): Promise<SocialPage> {
+  return apiFetch(`/api/friends${pageQuery({ cursor, q, status })}`);
 }
 
-export function fetchFriendRequests(direction: 'incoming' | 'outgoing', cursor: string | null): Promise<SocialPage> {
-  return apiFetch(`/api/friend-requests${pageQuery({ direction, cursor })}`);
+export function fetchFriendRequests(direction: 'incoming' | 'outgoing', cursor: string | null, q?: string): Promise<SocialPage> {
+  return apiFetch(`/api/friend-requests${pageQuery({ direction, cursor, q })}`);
 }
 
 export function fetchRequestSummary(): Promise<{ incoming: number; invitations: number }> {
@@ -259,8 +259,8 @@ export function fetchGroupInvitations(conversationId: string, cursor: string | n
   return apiFetch(`/api/groups/${encodeURIComponent(conversationId)}/invitations${pageQuery({ cursor })}`);
 }
 
-export function fetchReceivedInvitations(cursor: string | null): Promise<{ items: ReceivedInvitationEntry[]; nextCursor: string | null }> {
-  return apiFetch(`/api/group-invitations${pageQuery({ cursor })}`);
+export function fetchReceivedInvitations(cursor: string | null, q?: string): Promise<{ items: ReceivedInvitationEntry[]; nextCursor: string | null }> {
+  return apiFetch(`/api/group-invitations${pageQuery({ cursor, q })}`);
 }
 
 // ---- notifications (bell) ----------------------------------------------------
