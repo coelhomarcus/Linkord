@@ -39,7 +39,11 @@ type SidebarSide = "left" | "right";
 type SidebarVariant = "sidebar" | "floating" | "inset";
 type SidebarCollapsible = "offcanvas" | "icon" | "none";
 
+// Two cut-offs, the same ones the CSS classes use (`md` = 768, `lg` = 1024):
+// below 768 the app is on a phone layout; below 1024 the conversations sidebar
+// is an overlay drawer instead of a column.
 const MOBILE_QUERY = "(max-width: 767px)";
+const OVERLAY_QUERY = "(max-width: 1023px)";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 const PANEL_TRANSITION = {
@@ -124,30 +128,28 @@ const FOCUSABLE_SELECTOR = [
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
 
-function subscribeToMobileQuery(callback: () => void) {
-  const query = window.matchMedia(MOBILE_QUERY);
-  query.addEventListener("change", callback);
-  return () => query.removeEventListener("change", callback);
-}
-
-function getMobileSnapshot() {
-  return window.matchMedia(MOBILE_QUERY).matches;
-}
-
-function getServerMobileSnapshot() {
-  return false;
-}
-
-function useIsMobile() {
+function useMediaQuery(mediaQuery: string) {
   return useSyncExternalStore(
-    subscribeToMobileQuery,
-    getMobileSnapshot,
-    getServerMobileSnapshot,
+    (callback) => {
+      const query = window.matchMedia(mediaQuery);
+      query.addEventListener("change", callback);
+      return () => query.removeEventListener("change", callback);
+    },
+    () => window.matchMedia(mediaQuery).matches,
+    () => false,
   );
 }
 
+const useIsMobile = () => useMediaQuery(MOBILE_QUERY);
+const useIsOverlay = () => useMediaQuery(OVERLAY_QUERY);
+
 interface AnimatedSidebarContextValue {
+  /** phone layout (< 768px) */
   isMobile: boolean;
+  /** the sidebar is an overlay drawer (< 1024px), opened with `openMobile` */
+  isOverlay: boolean;
+  /** CSS variables the drawer needs: it is portaled to <body>, so it can't inherit them from the wrapper */
+  drawerVars: CSSProperties;
   layoutId: string;
   open: boolean;
   openMobile: boolean;
@@ -195,6 +197,8 @@ type SidebarProviderStyle = CSSProperties & {
   "--sidebar-width"?: string;
   "--sidebar-width-icon"?: string;
   "--sidebar-width-mobile"?: string;
+  /** distance from the left edge where the overlay drawer starts (a permanent rail stays visible) at 768px and up */
+  "--sidebar-overlay-offset"?: string;
 };
 
 export interface AnimatedSidebarProviderProps
@@ -224,6 +228,7 @@ export function AnimatedSidebarProvider({
   const [internalOpenMobile, setInternalOpenMobile] =
     useState(defaultOpenMobile);
   const isMobile = useIsMobile();
+  const isOverlay = useIsOverlay();
   const reduce = useReducedMotion() ?? false;
   const generatedId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -247,9 +252,18 @@ export function AnimatedSidebarProvider({
   );
 
   const toggleSidebar = useCallback(() => {
-    if (isMobile) setOpenMobile(!mobileOpen);
+    if (isOverlay) setOpenMobile(!mobileOpen);
     else setOpen(!desktopOpen);
-  }, [desktopOpen, isMobile, mobileOpen, setOpen, setOpenMobile]);
+  }, [desktopOpen, isOverlay, mobileOpen, setOpen, setOpenMobile]);
+
+  // widening the window past the drawer range must not leave the drawer "open"
+  // to pop back up the next time it narrows
+  useEffect(() => {
+    const query = window.matchMedia(OVERLAY_QUERY);
+    const onChange = () => { if (!query.matches) setOpenMobile(false); };
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, [setOpenMobile]);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -270,6 +284,11 @@ export function AnimatedSidebarProvider({
     <AnimatedSidebarContext.Provider
       value={{
         isMobile,
+        isOverlay,
+        drawerVars: {
+          "--sidebar-width-mobile": style?.["--sidebar-width-mobile"] ?? "18rem",
+          "--sidebar-overlay-offset": style?.["--sidebar-overlay-offset"] ?? "0px",
+        } as CSSProperties,
         layoutId: `${generatedId}-active`,
         open: desktopOpen,
         openMobile: mobileOpen,
@@ -335,7 +354,9 @@ function MobileSidebar({
   }, [context.openMobile]);
 
   useEffect(() => {
-    if (!context.openMobile) return;
+    // `mounted` too: a drawer that is open from the very first render only has
+    // a panel once it has mounted, and that is when focus can go inside
+    if (!context.openMobile || !mounted) return;
 
     const body = document.body;
     const scrollY = window.scrollY;
@@ -353,11 +374,23 @@ function MobileSidebar({
     body.style.right = "0";
     body.style.overflow = "hidden";
 
-    const focusFrame = requestAnimationFrame(() => {
-      const firstFocusable =
-        panelRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
-      (firstFocusable ?? panelRef.current)?.focus({ preventScroll: true });
-    });
+    // whatever had focus when the drawer opened (the header button, the rail toggle)
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    // The panel isn't focusable for the first frame or two after it opens (it is
+    // still becoming visible), and a focus() on it is silently ignored — so keep
+    // trying until focus is really inside, instead of trusting the first frame.
+    let focusFrame = 0;
+    let attempts = 0;
+    const focusInto = () => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      // the panel itself, not its first control: that one may be a tooltip trigger
+      // whose tooltip would open on focus and swallow the first Escape
+      panel.focus({ preventScroll: true });
+      if (document.activeElement !== panel && attempts++ < 15) focusFrame = requestAnimationFrame(focusInto);
+    };
+    focusFrame = requestAnimationFrame(focusInto);
 
     return () => {
       cancelAnimationFrame(focusFrame);
@@ -367,9 +400,10 @@ function MobileSidebar({
       body.style.right = previousBodyStyles.right;
       body.style.overflow = previousBodyStyles.overflow;
       window.scrollTo(0, scrollY);
-      context.triggerRef.current?.focus({ preventScroll: true });
+      const returnTo = context.triggerRef.current ?? opener;
+      if (returnTo && document.contains(returnTo)) returnTo.focus({ preventScroll: true });
     };
-  }, [context.openMobile, context.triggerRef]);
+  }, [context.openMobile, context.triggerRef, mounted]);
 
   if (!mounted) return null;
 
@@ -380,14 +414,15 @@ function MobileSidebar({
   // transparent edge-spanning one. See tests/fixed-overlay-edge-sampling.test.tsx.
   return createPortal(
     <div
+      style={context.drawerVars}
       className={cn(
-        "pointer-events-none fixed left-0 top-0 z-50 size-0 md:hidden",
+        "pointer-events-none fixed left-0 top-0 z-50 size-0 lg:hidden",
         hidden && !context.openMobile ? "invisible" : "visible",
       )}
     >
       <motion.button
         type="button"
-        aria-label="Close sidebar"
+        aria-label="Fechar navegação"
         tabIndex={context.openMobile ? 0 : -1}
         initial={false}
         animate={{ opacity: context.openMobile ? 1 : 0 }}
@@ -396,7 +431,7 @@ function MobileSidebar({
         }
         onClick={() => context.setOpenMobile(false)}
         className={cn(
-          "fixed inset-0 bg-black/40",
+          "fixed inset-0 bg-black/40 md:left-(--sidebar-overlay-offset,0px)",
           context.openMobile
             ? "pointer-events-auto"
             : "pointer-events-none",
@@ -469,8 +504,8 @@ function MobileSidebar({
         }}
         className={cn(
           "pointer-events-auto fixed inset-y-0 flex h-dvh w-(--sidebar-width-mobile) max-w-[88vw] flex-col overflow-hidden",
-          "border-border bg-background shadow-2xl will-change-transform",
-          side === "left" ? "left-0 border-r" : "right-0 border-l",
+          "border-border bg-background pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-2xl will-change-transform",
+          side === "left" ? "left-0 border-r md:left-(--sidebar-overlay-offset,0px)" : "right-0 border-l",
           !context.openMobile && "pointer-events-none",
           className,
         )}
@@ -520,7 +555,7 @@ export const AnimatedSidebar = forwardRef<HTMLElement, AnimatedSidebarProps>(
         ? "var(--sidebar-width-icon)"
         : "var(--sidebar-width)";
 
-    if (context.isMobile) {
+    if (context.isOverlay) {
       return (
         <MobileSidebar
           ariaLabel={ariaLabel}
@@ -549,7 +584,7 @@ export const AnimatedSidebar = forwardRef<HTMLElement, AnimatedSidebarProps>(
         }
         style={style}
         className={cn(
-          "group/sidebar relative hidden h-auto shrink-0 md:block will-change-[width]",
+          "group/sidebar relative hidden h-auto shrink-0 lg:block will-change-[width]",
           "peer",
           side === "right" && "order-last",
           className,
@@ -600,7 +635,7 @@ export const AnimatedSidebarTrigger = forwardRef<
   forwardedRef,
 ) {
   const context = useAnimatedSidebar();
-  const expanded = context.isMobile ? context.openMobile : context.open;
+  const expanded = context.isOverlay ? context.openMobile : context.open;
 
   return (
     <button
@@ -649,7 +684,7 @@ export const AnimatedSidebarClose = forwardRef<
       onClick={(event) => {
         onClick?.(event);
         if (event.defaultPrevented) return;
-        if (context.isMobile) context.setOpenMobile(false);
+        if (context.isOverlay) context.setOpenMobile(false);
         else context.setOpen(false);
       }}
       className={cn(
@@ -956,7 +991,7 @@ export function AnimatedSidebarMenuSubButton({
       return;
     }
     onSelect?.();
-    if (context.isMobile && closeOnSelect) context.setOpenMobile(false);
+    if (context.isOverlay && closeOnSelect) context.setOpenMobile(false);
   };
 
   const content = (
@@ -1056,14 +1091,14 @@ export function AnimatedSidebarMenuButton({
     onSelect?.();
     const shouldCloseOnSelect =
       closeOnSelect ?? ariaExpanded === undefined;
-    if (context.isMobile && shouldCloseOnSelect) {
+    if (context.isOverlay && shouldCloseOnSelect) {
       context.setOpenMobile(false);
     }
     // A submenu cannot render in the icon rail, so opening one from there
     // leaves its children unreachable — a pointer can still fall back to the
     // rail or the shortcut, a finger has nothing. Selecting a group unfolds
     // the panel that is about to hold it.
-    if (ariaExpanded !== undefined && panel.collapsed && !context.isMobile) {
+    if (ariaExpanded !== undefined && panel.collapsed && !context.isOverlay) {
       context.setOpen(true);
     }
   };

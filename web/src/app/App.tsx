@@ -57,9 +57,10 @@ function Shell() {
   // Landing straight on a page (a deep link, a refresh on /app/friends) should
   // show that page — the sidebar sheet is only the landing screen when the URL
   // names no page at all.
+  // only on a phone: from 768px the rail is on screen and the drawer opens on demand
   const [mobileShowSidebar, setMobileShowSidebar] = useState(() => {
     const path = window.location.pathname.replace(/\/$/, '');
-    return path === '' || path === '/app' || path === ROUTES.conversations;
+    return window.matchMedia('(max-width: 767px)').matches && (path === '' || path === '/app' || path === ROUTES.conversations);
   });
   const [searchOpen, setSearchOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -165,7 +166,7 @@ function Shell() {
         openMobile={mobileShowSidebar}
         onOpenMobileChange={setMobileShowSidebar}
         className="h-dvh bg-bg-primary text-text-primary"
-        style={{ '--sidebar-width': '18rem', '--sidebar-width-mobile': '24rem' }}
+        style={{ '--sidebar-width': '18rem', '--sidebar-width-mobile': '24rem', '--sidebar-overlay-offset': '4rem' }}
       >
         <ReconnectBanner />
         <AccessNotice />
@@ -262,7 +263,7 @@ function CommandPaletteMount({ open, onOpenChange, onCall, onMobileNavigated }: 
   onMobileNavigated: () => void;
 }) {
   const { state, conversations, allUsers, activeCallConversationId, openConversation, openDirect, requestChatView } = useRoom();
-  const { isMobile } = useAnimatedSidebar();
+  const { isOverlay } = useAnimatedSidebar();
   const navigate = useNavigate();
 
   const commandItems = useMemo(() => buildCommandItems(
@@ -272,19 +273,19 @@ function CommandPaletteMount({ open, onOpenChange, onCall, onMobileNavigated }: 
         openConversation(id);
         navigate(ROUTES.conversation(id));
         requestChatView();
-        if (isMobile) onMobileNavigated();
+        if (isOverlay) onMobileNavigated();
       },
       onMessageUser: (userId) => {
         openDirect(userId);
         requestChatView();
-        if (isMobile) onMobileNavigated();
+        if (isOverlay) onMobileNavigated();
       },
       onCall: (id) => {
         openConversation(id);
         onCall(id);
       },
     }
-  ), [conversations, allUsers, state.me.userId, state.participants, activeCallConversationId, isMobile, openConversation, openDirect, requestChatView, onCall, onMobileNavigated, navigate]);
+  ), [conversations, allUsers, state.me.userId, state.participants, activeCallConversationId, isOverlay, openConversation, openDirect, requestChatView, onCall, onMobileNavigated, navigate]);
 
   return (
     <CommandPalette

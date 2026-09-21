@@ -120,7 +120,7 @@ function ConversationRow({ conversation, active, onClick }: {
 
 export function ConversationSidebar({ onOpenPalette, mobileRail }: ConversationSidebarProps) {
   const { state, conversations, activeConversationId, openConversation, allUsers, requestChatView } = useRoom();
-  const { isMobile, setOpenMobile, toggleSidebar } = useAnimatedSidebar();
+  const { isMobile, isOverlay, setOpenMobile, toggleSidebar } = useAnimatedSidebar();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [query, setQuery] = useState('');
@@ -139,7 +139,7 @@ export function ConversationSidebar({ onOpenPalette, mobileRail }: ConversationS
     // conversations path and doesn't push a second history entry.
     navigate(ROUTES.conversation(conversationId));
     requestChatView();
-    if (isMobile) setOpenMobile(false);
+    if (isOverlay) setOpenMobile(false);
   }
 
   const onConversations = isConversationsPath(pathname);
@@ -154,6 +154,7 @@ export function ConversationSidebar({ onOpenPalette, mobileRail }: ConversationS
         panelClassName="border-r-0 bg-bg-primary"
       >
         <div className="flex h-full min-h-0">
+          {/* on a phone the rail lives in the drawer; from 768px it stays on screen beside it */}
           {isMobile && mobileRail}
           <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
             <div className="flex flex-none items-center gap-2 px-4 py-4">
@@ -161,7 +162,7 @@ export function ConversationSidebar({ onOpenPalette, mobileRail }: ConversationS
               <Button type="button" size="icon-sm" aria-label="Criar grupo" onClick={() => setGroupOpen(true)} className="flex-none">
                 <Plus size={16} />
               </Button>
-              {!isMobile && (
+              {!isOverlay && (
                 <Button type="button" variant="ghost" size="icon-sm" aria-label="Ocultar lista de conversas" onClick={toggleSidebar} className="flex-none text-text-muted hover:text-text-primary">
                   <PanelLeftClose size={16} />
                 </Button>
@@ -188,7 +189,7 @@ export function ConversationSidebar({ onOpenPalette, mobileRail }: ConversationS
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto">
-                <TransitionNotice onOpenFriends={() => { navigate(friendsView('all')); if (isMobile) setOpenMobile(false); }} />
+                <TransitionNotice onOpenFriends={() => { navigate(friendsView('all')); if (isOverlay) setOpenMobile(false); }} />
                 <div className="flex flex-col gap-1">
                   {filteredConversations.length === 0 ? (
                     <p className="px-3 py-8 text-center text-label text-text-muted">Nenhuma conversa.</p>
@@ -209,7 +210,7 @@ export function ConversationSidebar({ onOpenPalette, mobileRail }: ConversationS
       <GroupCreateDialog
         open={groupOpen}
         onOpenChange={setGroupOpen}
-        onCreated={() => { if (isMobile) setOpenMobile(false); }}
+        onCreated={() => { if (isOverlay) setOpenMobile(false); }}
       />
     </>
   );

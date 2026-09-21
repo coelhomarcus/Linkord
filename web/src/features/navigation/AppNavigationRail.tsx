@@ -59,8 +59,12 @@ export function AppNavigationRail({ onOpenProfile, className }: { onOpenProfile:
   const { state } = useRoom();
   const { pendingIncomingCount } = useFriends();
   const { pathname } = useLocation();
-  const { isMobile, open: listOpen, setOpenMobile, toggleSidebar } = useAnimatedSidebar();
-  const afterNavigate = () => { if (isMobile) setOpenMobile(false); };
+  const { isMobile, isOverlay, open: listOpen, openMobile, setOpenMobile, toggleSidebar } = useAnimatedSidebar();
+  const afterNavigate = () => { if (isOverlay) setOpenMobile(false); };
+  // as a drawer the list is opened from here; as a column it can be hidden from its own header, so this is only the way back
+  // (on a phone the rail already sits inside that drawer, so the button would only close it)
+  const showListToggle = isOverlay ? !isMobile : !listOpen;
+  const listExpanded = isOverlay ? openMobile : listOpen;
   const onSettings = pathname.startsWith(ROUTES.settings) || pathname.startsWith('/admin');
   const friendsLabel = pendingIncomingCount > 0 ? `Amigos, ${pendingIncomingCount} aguardando resposta` : 'Amigos';
 
@@ -76,13 +80,12 @@ export function AppNavigationRail({ onOpenProfile, className }: { onOpenProfile:
 
       <div className="flex-1" />
 
-      {/* hiding lives in the list's own header; once it is hidden this is the way back */}
-      {!isMobile && !listOpen && (
+      {showListToggle && (
         <Tooltip>
           <TooltipTrigger
             onClick={toggleSidebar}
             aria-label="Mostrar lista de conversas"
-            aria-expanded={false}
+            aria-expanded={listExpanded}
             className={cn(itemClass, stateClass(false))}
           >
             <PanelLeftOpen size={20} aria-hidden />
