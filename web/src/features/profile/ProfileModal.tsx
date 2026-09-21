@@ -76,25 +76,28 @@ export function ProfileModal({ userId, onClose }: ProfileModalProps) {
         </DialogContent>
       )}
       {user && (
-        <DialogContent className="max-h-[90vh] max-w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden bg-bg-modal p-0 sm:max-w-130">
+        <DialogContent closeButtonVariant="overlay" className="max-h-[90vh] max-w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden bg-bg-modal p-0 sm:max-w-130">
           <DialogHeader className="sr-only">
             <DialogTitle>Perfil de {user.displayName}</DialogTitle>
           </DialogHeader>
           <div className="min-h-0 overflow-y-auto">
             <ProfileCard
+              bare
               user={user}
               online={onlineUserIds.has(user.id)}
               onBannerClick={user.banner ? () => setLightboxImage({ src: user.banner, kind: 'banner' }) : undefined}
               onAvatarClick={user.avatar ? () => setLightboxImage({ src: user.avatar, kind: 'avatar' }) : undefined}
             />
-            <ProfileActions userId={user.id} username={user.username} displayName={user.displayName} onNavigate={onClose} />
-            {user.id !== state.me.userId && (
-              <div className="px-4 pb-4">
-                <Button type="button" variant="ghost" size="sm" onClick={() => setReportOpen(true)} className="text-text-muted hover:text-red-text">
+            <div className="flex items-start justify-between gap-3 border-t border-white/10 px-6 py-4">
+              <div className="min-w-0 flex-1">
+                <ProfileActions userId={user.id} username={user.username} displayName={user.displayName} onNavigate={onClose} className="p-0" />
+              </div>
+              {user.id !== state.me.userId && (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setReportOpen(true)} className="flex-none text-text-muted hover:text-red-text">
                   <Flag size={14} /><span>Denunciar</span>
                 </Button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </DialogContent>
       )}

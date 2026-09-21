@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react';
 import type { Area } from 'react-easy-crop';
 import { motion } from 'motion/react';
-import { Camera, Check, Crown, Flag, Link2, LogOut, Pencil, Trash2, Upload, UserPlus, X } from 'lucide-react';
+import { Camera, Check, Crown, Flag, Link2, LogOut, Pencil, Trash2, Upload, UserPlus } from 'lucide-react';
+import { CloseButton } from '@/shared/ui/primitives/close-button';
 import { useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { Drawer } from '@/shared/ui/motion/drawer';
 import { Button } from '@/shared/ui/primitives/button';
@@ -249,23 +250,14 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
     <>
       <div className="flex flex-none items-center gap-2 border-b border-white/10 px-5 py-4">
         <h2 className="flex-1 text-title font-semibold">Detalhes do grupo</h2>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Fechar" onClick={() => onOpenChange(false)}>
-          <X size={16} />
-        </Button>
+        <CloseButton onClick={() => onOpenChange(false)} />
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-5">
         {groupActionError && (
           <div className="flex items-center gap-2 rounded-md bg-red/12 px-2.5 py-1.5 text-label text-red-text">
             <span className="min-w-0 flex-1">{groupActionError}</span>
-            <button
-              type="button"
-              onClick={clearGroupActionError}
-              aria-label="Dispensar"
-              className="flex-none text-red-text/70 transition-colors hover:text-red-text focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            >
-              <X size={14} />
-            </button>
+            <CloseButton size="xs" label="Dispensar" onClick={clearGroupActionError} />
           </div>
         )}
         <div className="flex flex-col items-center gap-3 text-center">
@@ -398,16 +390,13 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
                       >
                         <Crown size={14} />
                       </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label={`Remover ${member.displayName}`}
+                      <CloseButton
+                        variant="danger"
+                        size="xs"
+                        label={`Remover ${member.displayName}`}
                         onClick={() => setRemoveTarget(member)}
-                        className="flex-none text-text-muted opacity-0 transition-opacity hover:text-red-text group-hover:opacity-100"
-                      >
-                        <X size={14} />
-                      </Button>
+                        className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                      />
                     </>
                   )}
                 </div>

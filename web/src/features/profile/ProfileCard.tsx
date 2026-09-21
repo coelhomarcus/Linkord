@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
-import { AtSign, BadgeCheck, Camera, Check, ExternalLink, Link2, Loader2, Palette, Plus, Trash2, Upload, X } from 'lucide-react';
+import { AtSign, BadgeCheck, Camera, Check, ExternalLink, Link2, Loader2, Palette, Plus, Trash2, Upload } from 'lucide-react';
+import { CloseButton } from '@/shared/ui/primitives/close-button';
 import { Avatar, AVATAR_COLOR_OPTIONS } from '@/shared/Avatar';
 import { BANNER_ASPECT_RATIO, BrandIcon, bannerStyle, linkInfo } from '@/features/profile/profileLinks';
 import type { LinkInfo } from '@/features/profile/profileLinks';
@@ -36,6 +37,8 @@ interface ProfileCardProps {
   onBannerRemove?: () => void;
   bannerUploading?: boolean;
   className?: string;
+  /** no border or rounded corners of its own — for a container that already has an edge (the profile modal) */
+  bare?: boolean;
   /** Makes the display name an inline text field instead of a heading —
    * editing happens right where the value is shown, Twitter-style. */
   onDisplayNameChange?: (value: string) => void;
@@ -82,14 +85,14 @@ export function ProfileCard({
   onBannerUpload, onBannerUploadUrl, onBannerRemove, bannerUploading,
   className,
   onDisplayNameChange, onBioChange, onAvatarColorChange,
-  editableLinks, onLinkChange, onAddLink, onRemoveLink,
+  editableLinks, onLinkChange, onAddLink, onRemoveLink, bare,
 }: ProfileCardProps) {
   const links = (user.profileLinks ?? []).map(linkInfo).filter((item): item is LinkInfo => !!item);
   const linksEditable = editableLinks !== undefined && onLinkChange && onAddLink && onRemoveLink;
   const isCustomAvatarColor = !AVATAR_COLOR_OPTIONS.some((option) => option.value === user.avatarColor);
 
   return (
-    <div className={cn('overflow-hidden rounded-xl border border-strong bg-bg-modal', className)}>
+    <div className={cn('overflow-hidden bg-bg-modal', !bare && 'rounded-xl border border-strong', className)}>
       {onBannerUpload ? (
         <div className="group relative w-full" style={{ ...bannerStyle(user), aspectRatio: BANNER_ASPECT_RATIO }}>
           <DropdownMenu>
@@ -289,16 +292,7 @@ export function ProfileCard({
                     onChange={(e) => onLinkChange!(index, e.target.value)}
                     className="min-w-0 flex-1 border-b border-transparent bg-transparent py-1 text-body text-text-primary outline-none placeholder:text-text-muted/70 focus:border-primary/50"
                   />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Remover link"
-                    className="flex-none text-text-muted hover:bg-red/12 hover:text-red"
-                    onClick={() => onRemoveLink!(index)}
-                  >
-                    <X size={15} />
-                  </Button>
+                  <CloseButton variant="danger" label="Remover link" onClick={() => onRemoveLink!(index)} />
                 </div>
               );
             })}

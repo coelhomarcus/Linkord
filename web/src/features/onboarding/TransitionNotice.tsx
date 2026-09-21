@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Sparkles, X } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
+import { CloseButton } from '@/shared/ui/primitives/close-button';
 import { Button } from '@/shared/ui/primitives/button';
 import { rememberTransitionNoticeDismissed, wasTransitionNoticeDismissed } from './transitionNoticeStorage';
 
@@ -33,9 +34,7 @@ export function TransitionNotice({ onOpenFriends }: { onOpenFriends: () => void 
             <Button type="button" size="xs" variant="ghost" onClick={dismiss}>Entendi</Button>
           </div>
         </div>
-        <button type="button" aria-label="Dispensar aviso" onClick={dismiss} className="grid size-6 flex-none place-items-center rounded-full text-text-muted hover:bg-white/10 hover:text-text-primary">
-          <X size={13} />
-        </button>
+        <CloseButton size="xs" label="Dispensar aviso" onClick={dismiss} />
       </div>
     </section>
   );

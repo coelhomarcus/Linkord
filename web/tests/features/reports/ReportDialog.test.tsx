@@ -38,7 +38,7 @@ describe('ReportDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Enviar denúncia' }));
     await screen.findByText('Denúncia enviada.');
     expect(screen.getByText(/sigilosa|A administração vai analisar/)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Fechar' }));
+    await user.click(screen.getByText('Fechar', { selector: 'button' }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 

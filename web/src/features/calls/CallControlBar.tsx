@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Headphones, HeadphoneOff, Mic, MicOff, Monitor, MonitorX, PhoneOff, Smile, Video, VideoOff, X } from 'lucide-react';
+import { Headphones, HeadphoneOff, Mic, MicOff, Monitor, MonitorX, PhoneOff, Smile, Video, VideoOff } from 'lucide-react';
+import { CloseButton } from '@/shared/ui/primitives/close-button';
 import { useRoom } from '../../state/RoomContext';
 import { useParticipantMedia } from './useLiveKitTrack';
 import type { ReactionEmoji } from '@/shared/types/protocol';
@@ -37,14 +38,7 @@ export function CallControlBar() {
       {state.shareError && (
         <div className="flex max-w-[calc(100vw-2rem)] items-start gap-2 rounded-md border border-strong bg-bg-floating px-3 py-2 text-label text-text-secondary shadow-popover md:max-w-100">
           <span className="min-w-0 flex-1">{state.shareError}</span>
-          <button
-            type="button"
-            onClick={() => dispatch({ type: 'SET_SHARE_ERROR', message: null })}
-            aria-label="Dispensar aviso"
-            className="flex-none text-text-muted transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            <X size={14} />
-          </button>
+          <CloseButton size="xs" label="Dispensar aviso" onClick={() => dispatch({ type: 'SET_SHARE_ERROR', message: null })} />
         </div>
       )}
       <div className="flex items-center gap-2">

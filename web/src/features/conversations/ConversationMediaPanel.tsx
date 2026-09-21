@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { Play, X } from 'lucide-react';
+import { Play } from 'lucide-react';
+import { CloseButton } from '@/shared/ui/primitives/close-button';
 import { useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { Drawer } from '@/shared/ui/motion/drawer';
 import { InfiniteMasonry } from '@/shared/ui/motion/infinite-masonry';
-import { Button } from '@/shared/ui/primitives/button';
 import { Tabs, TabsList, TabsIndicator, TabsTrigger } from '@/shared/ui/primitives/tabs';
 import { DocumentAttachmentCard } from '@/features/media/DocumentAttachmentCard';
 import { ImageLightbox } from '@/features/media/ImageLightbox';
@@ -124,9 +124,7 @@ export function ConversationMediaPanel({ conversationId, open, onOpenChange }: C
     <>
       <div className="flex flex-none items-center gap-2 border-b border-white/10 px-5 py-4">
         <h2 className="flex-1 text-title font-semibold">Mídias e links</h2>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Fechar" onClick={() => onOpenChange(false)}>
-          <X size={16} />
-        </Button>
+        <CloseButton onClick={() => onOpenChange(false)} />
       </div>
 
       <div className="flex flex-none items-center px-5 pt-4">

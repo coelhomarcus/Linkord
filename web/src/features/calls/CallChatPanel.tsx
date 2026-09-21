@@ -1,8 +1,8 @@
 import { motion } from 'motion/react';
-import { MessageCircle, X } from 'lucide-react';
+import { MessageCircle } from 'lucide-react';
+import { CloseButton } from '@/shared/ui/primitives/close-button';
 import { useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { Drawer } from '@/shared/ui/motion/drawer';
-import { Button } from '@/shared/ui/primitives/button';
 import { SPRING_LAYOUT } from '@/shared/lib/ease';
 import { ChatSurfaceWidthProvider } from '@/shared/lib/chatSurfaceWidth';
 import { useRoom } from '@/state/RoomContext';
@@ -33,9 +33,7 @@ export function CallChatPanel({ conversationId, open, onOpenChange, onOpenProfil
       <div className="flex flex-none items-center gap-2 border-b border-white/10 px-4 py-4">
         <MessageCircle size={18} className="flex-none text-text-muted" />
         <h2 className="min-w-0 flex-1 truncate text-title font-semibold">{title}</h2>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Fechar chat" onClick={() => onOpenChange(false)}>
-          <X size={16} />
-        </Button>
+        <CloseButton label="Fechar chat" onClick={() => onOpenChange(false)} />
       </div>
       <MessageListBridge conversationId={conversation.id} onOpenProfile={onOpenProfile} />
     </ChatSurfaceWidthProvider>

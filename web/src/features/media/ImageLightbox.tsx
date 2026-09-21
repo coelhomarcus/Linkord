@@ -1,5 +1,5 @@
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
-import { X } from 'lucide-react';
+import { CloseButton } from '@/shared/ui/primitives/close-button';
 
 interface ImageLightboxProps {
   src: string;
@@ -56,12 +56,7 @@ export function ImageLightbox({ src, alt, open, onOpenChange, variant = 'default
               onClick={(e) => e.stopPropagation()}
             />
           )}
-          <DialogPrimitive.Close
-            aria-label="Fechar"
-            className="fixed right-4 top-4 z-50 flex size-10 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            <X size={18} />
-          </DialogPrimitive.Close>
+          <DialogPrimitive.Close render={<CloseButton variant="overlay" size="md" className="fixed right-4 top-4 z-50" />} />
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

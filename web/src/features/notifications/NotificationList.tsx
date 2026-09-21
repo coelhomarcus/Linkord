@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { X } from 'lucide-react';
+import { CloseButton } from '@/shared/ui/primitives/close-button';
 import { Button } from '@/shared/ui/primitives/button';
 import { Avatar } from '@/shared/Avatar';
 import { GroupAvatar } from '@/features/conversations/GroupAvatar';
@@ -51,14 +51,7 @@ export function NotificationList({ onSelect, onDismiss }: { onSelect: (entry: No
             </span>
             {!entry.read && <span aria-label="Não lida" className="size-2 flex-none rounded-full bg-primary" />}
           </button>
-          <button
-            type="button"
-            aria-label="Descartar notificação"
-            onClick={() => onDismiss(entry)}
-            className="absolute right-1.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-md text-text-muted transition-colors hover:bg-white/[0.1] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <X size={14} />
-          </button>
+          <CloseButton size="xs" label="Descartar notificação" onClick={() => onDismiss(entry)} className="absolute right-1.5 top-1/2 -translate-y-1/2" />
         </li>
       ))}
       {list.hasMore && (
