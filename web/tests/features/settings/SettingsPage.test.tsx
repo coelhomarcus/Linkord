@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import userEvent from '@testing-library/user-event';
 import { initialRoomState } from '@/state/roomReducer';
 import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
@@ -13,7 +13,9 @@ vi.mock('@/state/AuthContext', () => ({
 
 // the page header needs the animated-sidebar provider and the privacy tab
 // needs the friends provider — neither is what these tests are about
-vi.mock('@/shared/PageHeader', () => ({ PageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
+vi.mock('@/shared/PageHeader', () => ({
+  PageHeader: ({ title, leading }: { title: string; leading?: React.ReactNode }) => <header>{leading}<h1>{title}</h1></header>,
+}));
 vi.mock('@/features/settings/PrivacyTab', () => ({ PrivacyTab: () => <p>lista de bloqueados</p> }));
 
 function renderSettings(overrides: Partial<RoomContextValue> = {}, path = '/app/settings/profile') {
@@ -220,49 +222,133 @@ describe('SettingsPage — perfil', () => {
   });
 });
 
-describe('SettingsPage — abas pela rota', () => {
+let mockMode: 'wide' | 'compact' = 'wide';
+vi.mock('@/features/settings/useSettingsLayout', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/settings/useSettingsLayout')>()),
+  useSettingsLayout: () => mockMode,
+}));
+
+function Where() {
+  const location = useLocation();
+  return <p data-testid="where">{location.pathname}</p>;
+}
+
+function renderRouted(overrides: Partial<RoomContextValue> = {}, path = '/app/settings/profile') {
+  return renderWithRoom(
+    <MemoryRouter initialEntries={[path]}>
+      <Where />
+      <Routes>
+        <Route path="/app/settings/:tab?" element={<SettingsPage onOpenProfile={vi.fn()} />} />
+      </Routes>
+    </MemoryRouter>,
+    overrides,
+  );
+}
+
+describe('SettingsPage — navegacao por categorias', () => {
   const adminState = { ...initialRoomState, me: { ...initialRoomState.me, id: 'c', userId: 'u', name: 'Ana', displayName: 'Ana', role: 'admin' as const } };
   const userState = { ...initialRoomState, me: { ...initialRoomState.me, id: 'c', userId: 'u', name: 'Ana', displayName: 'Ana' } };
 
-  it('abre a aba nomeada na URL', () => {
+  beforeEach(() => { mockMode = 'wide'; });
+
+  it('abre a categoria nomeada na URL e a marca como pagina atual', () => {
     renderSettings({ state: userState }, '/app/settings/privacy');
     expect(screen.getByText('lista de bloqueados')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Privacidade' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Perfil' })).not.toHaveAttribute('aria-current');
   });
 
-  it('aba desconhecida cai no perfil em vez de renderizar uma pagina vazia', () => {
-    renderSettings({ state: userState }, '/app/settings/naoexiste');
+  it('sem categoria na URL, o modo amplo mostra o Perfil na mesma URL (sem redirecionar)', () => {
+    renderRouted({ state: userState }, '/app/settings');
     expect(screen.getByLabelText('Nome de exibição')).toBeInTheDocument();
+    expect(screen.getByTestId('where')).toHaveTextContent('/app/settings');
+    expect(screen.getByRole('link', { name: 'Perfil' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('a aba de administracao nao existe para quem nao e admin (cai no perfil)', () => {
-    renderSettings({ state: userState }, '/app/settings/moderation');
+  it('categoria desconhecida cai no perfil em vez de renderizar uma pagina vazia', () => {
+    renderRouted({ state: userState }, '/app/settings/naoexiste');
     expect(screen.getByLabelText('Nome de exibição')).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: /Administração/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId('where')).toHaveTextContent('/app/settings/profile');
   });
 
-  it('admin ve a aba de administracao', () => {
+  it('administracao nao aparece para quem nao e admin (nem por URL)', () => {
+    renderRouted({ state: userState }, '/app/settings/moderation');
+    expect(screen.getByTestId('where')).toHaveTextContent('/app/settings/profile');
+    expect(screen.queryByRole('link', { name: 'Administração' })).not.toBeInTheDocument();
+  });
+
+  it('admin ve a categoria de administracao', () => {
     renderSettings({ state: adminState });
-    expect(screen.getByRole('tab', { name: /Administração/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Administração' })).toBeInTheDocument();
   });
 
-  it('clicar numa aba navega para a rota dela', async () => {
+  it('clicar numa categoria navega para a rota dela', async () => {
     const user = userEvent.setup();
-    renderSettings({ state: userState });
-    await user.click(screen.getByRole('tab', { name: /Privacidade/ }));
+    renderRouted({ state: userState });
+    await user.click(screen.getByRole('link', { name: 'Privacidade' }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/app/settings/privacy');
     expect(screen.getByText('lista de bloqueados')).toBeInTheDocument();
   });
 
-  it('o botao de salvar fica no painel lateral mas continua no mesmo formulario do cartao', () => {
+  it('o botao de salvar fica junto do cartao, no mesmo formulario, sem painel lateral', () => {
     renderSettings({ state: userState });
     const form = screen.getByRole('button', { name: 'Salvar perfil' }).closest('form');
     expect(form).not.toBeNull();
     expect(form!.contains(screen.getByLabelText('Nome de exibição'))).toBe(true);
+    expect(screen.queryByText('Salvar alterações')).not.toBeInTheDocument();
   });
 
   it.each([
-    ['account', 'Conta'], ['av', 'Áudio e vídeo'], ['notifications', 'Notificações'], ['prefs', 'Preferências'], ['privacy', 'Privacidade'],
-  ])('a aba %s abre com o proprio titulo', (tab, title) => {
+    ['account', 'Minha conta'], ['av', 'Áudio e vídeo'], ['notifications', 'Notificações'], ['prefs', 'Preferências'], ['privacy', 'Privacidade'],
+  ])('a categoria %s abre com o proprio titulo', (tab, title) => {
     renderSettings({ state: userState }, `/app/settings/${tab}`);
     expect(screen.getByRole('heading', { level: 2, name: title })).toBeInTheDocument();
+  });
+
+  it('Minha conta lista as secoes em sequencia (sem grade de cards)', () => {
+    renderSettings({ state: userState }, '/app/settings/account');
+    for (const name of ['Identificação', 'E-mail', 'Armazenamento de anexos', 'Sessão']) {
+      expect(screen.getByRole('heading', { level: 3, name })).toBeInTheDocument();
+    }
+  });
+});
+
+describe('SettingsPage — modo compacto (indice e detalhe)', () => {
+  const userState = { ...initialRoomState, me: { ...initialRoomState.me, id: 'c', userId: 'u', name: 'Ana', displayName: 'Ana' } };
+
+  beforeEach(() => { mockMode = 'compact'; });
+  afterEach(() => { mockMode = 'wide'; });
+
+  it('/app/settings mostra o indice de categorias, sem formulario', () => {
+    renderRouted({ state: userState }, '/app/settings');
+    expect(screen.getByRole('navigation', { name: 'Categorias de ajustes' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Áudio e vídeo' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Nome de exibição')).not.toBeInTheDocument();
+  });
+
+  it('uma categoria abre direto por link, com retorno acessivel ao indice', async () => {
+    const user = userEvent.setup();
+    renderRouted({ state: userState }, '/app/settings/privacy');
+    expect(screen.getByText('lista de bloqueados')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Categorias de ajustes' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Voltar às configurações' }));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/app\/settings$/);
+    expect(screen.getByRole('link', { name: 'Privacidade' })).toBeInTheDocument();
+  });
+
+  it('do indice, abrir uma categoria e voltar percorre o historico (nao empilha o indice de novo)', async () => {
+    const user = userEvent.setup();
+    renderRouted({ state: userState }, '/app/settings');
+    await user.click(screen.getByRole('link', { name: 'Privacidade' }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/app/settings/privacy');
+    await user.click(screen.getByRole('button', { name: 'Voltar às configurações' }));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/app\/settings$/);
+    expect(screen.getByRole('navigation', { name: 'Categorias de ajustes' })).toBeInTheDocument();
+  });
+
+  it('o indice nao lista administracao para quem nao e admin', () => {
+    renderRouted({ state: userState }, '/app/settings');
+    expect(screen.queryByRole('link', { name: 'Administração' })).not.toBeInTheDocument();
   });
 });

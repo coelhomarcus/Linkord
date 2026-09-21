@@ -4,6 +4,7 @@ import { fetchBlocks, unblockUser } from '@/shared/api/api';
 import { SocialUserRow } from '@/features/friends/SocialUserRow';
 import { useFriends } from '@/features/friends/FriendsContext';
 import { useCursorList } from '@/features/friends/useCursorList';
+import { SettingsSection, SettingsSections } from './SettingsLayout';
 
 /** Blocked accounts. Only YOUR blocks are listed — who blocked you is never
  * exposed anywhere. */
@@ -29,14 +30,12 @@ export function PrivacyTab({ onOpenProfile }: { onOpenProfile: (userId: string) 
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-body font-medium text-text-primary">Pessoas bloqueadas</h2>
-        <p className="select-none text-label text-text-muted">
-          Quem você bloqueia não consegue te enviar mensagens nem te ligar em conversa privada. Desbloquear não devolve a amizade — vocês precisam se adicionar de novo.
-        </p>
-      </div>
-
+    <SettingsSections>
+    <SettingsSection
+      id="blocked"
+      title="Pessoas bloqueadas"
+      description="Quem você bloqueia não consegue te enviar mensagens nem te ligar em conversa privada. Desbloquear não devolve a amizade — vocês precisam se adicionar de novo."
+    >
       {actionError && <p role="alert" className="rounded-md bg-red/12 px-2.5 py-1.5 text-label text-red-text">{actionError}</p>}
       {list.status === 'loading' && <p className="py-4 text-center text-label text-text-muted">Carregando…</p>}
       {list.status === 'error' && (
@@ -49,7 +48,7 @@ export function PrivacyTab({ onOpenProfile }: { onOpenProfile: (userId: string) 
         <p className="py-4 text-center text-label text-text-muted">Você não bloqueou ninguém.</p>
       )}
 
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))] gap-x-4">
+      <div className="flex flex-col divide-y divide-white/10">
         {list.items.map(({ user }) => (
           <SocialUserRow key={user.id} user={user} onOpenProfile={() => onOpenProfile(user.id)}>
             <Button type="button" variant="secondary" size="sm" disabled={busyId === user.id} onClick={() => void handleUnblock(user.id)}>
@@ -64,6 +63,7 @@ export function PrivacyTab({ onOpenProfile }: { onOpenProfile: (userId: string) 
           {list.loadingMore ? 'Carregando…' : 'Carregar mais'}
         </Button>
       )}
-    </div>
+    </SettingsSection>
+    </SettingsSections>
   );
 }
