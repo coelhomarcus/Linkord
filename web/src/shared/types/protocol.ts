@@ -30,6 +30,24 @@ export interface ChatReplyRef {
   attachmentCount?: number;
 }
 
+export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'revoked' | 'expired';
+
+/** The live state of a group invitation, as embedded in a `group_invite`
+ * message. `status` already accounts for expiry on the server; the client
+ * additionally flips a pending card to expired at `expiresAt` (InviteCard). */
+export interface InvitationCard {
+  id: string;
+  status: InvitationStatus;
+  groupId: string;
+  groupTitle: string;
+  groupAvatar: string;
+  memberCount: number;
+  inviterId: string;
+  inviteeId: string;
+  expiresAt: number;
+  version: number;
+}
+
 export interface ChatMessage {
   msgId: number;
   conversationId: string;
@@ -42,6 +60,9 @@ export interface ChatMessage {
   editedAt?: number;
   reactions?: Partial<Record<ReactionEmoji, string[]>>;
   attachments?: ChatAttachment[];
+  kind?: 'text' | 'group_invite';
+  // `null` on a group_invite message = the group is gone (tombstone)
+  invitation?: InvitationCard | null;
 }
 
 export interface ChatAttachment {
@@ -121,10 +142,8 @@ export type ClientMessage =
   | { t: 'direct-open'; userId: string }
   | { t: 'conversation-close'; conversationId: string }
   | { t: 'conversation-pin'; conversationId: string; pinned: boolean }
-  | { t: 'group-create'; title: string; memberIds: string[] }
   | { t: 'group-delete'; conversationId: string }
   | { t: 'group-update'; conversationId: string; title?: string; avatar?: string }
-  | { t: 'group-members-add'; conversationId: string; memberIds: string[] }
   | { t: 'group-members-remove'; conversationId: string; userId: string }
   | { t: 'group-transfer-owner'; conversationId: string; userId: string }
   | { t: 'load-more-messages'; conversationId: string; beforeMsgId: number }
@@ -173,6 +192,7 @@ export type ServerMessage =
   | { t: 'chat'; message: ChatMessage }
   | { t: 'chat-deleted'; conversationId: string; msgId: number }
   | { t: 'chat-edited'; message: ChatMessage }
+  | { t: 'invitation-updated'; invitation: InvitationCard }
   | { t: 'chat-reaction-updated'; conversationId: string; msgId: number; emoji: ReactionEmoji; userIds: string[] }
   | { t: 'typing'; conversationId: string; userId: string; value: boolean }
   | { t: 'chat-attachment-added'; conversationId: string; msgId: number; attachment: ChatAttachment }

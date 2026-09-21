@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { playSound } from '@/shared/sounds';
 import { notifyIncomingChatMessage } from '@/shared/notifications';
+import { messagePreviewText } from '@/features/chat/messagePreview';
 import { mentionsUsername } from '@/shared/lib/mentions';
 import type { ChatMessage, ClientMessage, Conversation, PublicUser, ReactionEmoji, ServerMessage } from '@/shared/types/protocol';
 
@@ -172,7 +173,7 @@ export function useChatMessages(deps: ChatMessagesDeps) {
         conversationName: displayNameForConversation(conversationsRef.current.find((c) => c.id === conversationId), myUserIdRef.current, allUsersRef.current),
         senderId: m.message.id,
         senderName: (m.message.id ? allUsersRef.current.get(m.message.id)?.displayName : undefined) ?? m.message.name,
-        text: m.message.text,
+        text: messagePreviewText(m.message),
         mentioned: mentionsUsername(m.message.text, myUsernameRef.current),
       });
     }
@@ -192,6 +193,21 @@ export function useChatMessages(deps: ChatMessagesDeps) {
       const existing = prev.get(conversationId);
       if (!existing) return prev;
       return new Map(prev).set(conversationId, existing.map((msg) => (msg.msgId === m.message.msgId ? m.message : msg)));
+    });
+  }, []);
+
+  /** A card's state changed on the server. The same invitation only ever
+   * sits in one DM, but the client doesn't track which — patch by id across
+   * every cached conversation, and return the same Map when nothing matched. */
+  const onInvitationUpdated = useCallback((m: Extract<ServerMessage, { t: 'invitation-updated' }>) => {
+    setMessagesByConversation((prev) => {
+      let next: Map<string, ChatMessage[]> | null = null;
+      for (const [conversationId, list] of prev) {
+        if (!list.some((msg) => msg.invitation?.id === m.invitation.id)) continue;
+        next ??= new Map(prev);
+        next.set(conversationId, list.map((msg) => (msg.invitation?.id === m.invitation.id ? { ...msg, invitation: m.invitation } : msg)));
+      }
+      return next ?? prev;
     });
   }, []);
 
@@ -246,6 +262,6 @@ export function useChatMessages(deps: ChatMessagesDeps) {
     sendChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,
     replyingTo, setReplyingTo, editingMsgId, setEditingMsgId,
     onConversationHistory, onConversationHistoryAround, onConversationHistoryMore,
-    onChat, onChatDeleted, onChatEdited, onChatAttachmentAdded, onChatReactionUpdated, onConversationDeleted, onConversationRead,
+    onChat, onChatDeleted, onChatEdited, onInvitationUpdated, onChatAttachmentAdded, onChatReactionUpdated, onConversationDeleted, onConversationRead,
   };
 }

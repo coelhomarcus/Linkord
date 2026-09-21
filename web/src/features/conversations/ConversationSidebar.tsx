@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router';
+import { messagePreviewText } from '@/features/chat/messagePreview';
 import { PanelLeftClose, Pin, Plus, Search, Settings, Users, UserPlus, UsersRound, PhoneCall } from 'lucide-react';
 import { AnimatedSidebar, useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { Button, buttonVariants } from '@/shared/ui/primitives/button';
@@ -47,7 +48,7 @@ function ConversationRow({ conversation, active, onClick }: {
     : otherCallParticipants;
   const hasActiveCall = callParticipants.length > 0;
   const subtitle = lastMessage
-    ? `${lastMessage.id === state.me.userId ? 'Você' : lastMessage.name}: ${lastMessage.text || 'Anexo'}`
+    ? `${lastMessage.id === state.me.userId ? 'Você' : lastMessage.name}: ${messagePreviewText(lastMessage)}`
     : conversation.type === 'group'
       ? `${members.length} membros`
       : other?.username ? `@${other.username}` : 'Conversa direta';

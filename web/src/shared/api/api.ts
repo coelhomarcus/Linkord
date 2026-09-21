@@ -1,5 +1,5 @@
 
-import type { ChatAttachment, PublicUser } from '@/shared/types/protocol';
+import type { ChatAttachment, InvitationCard, PublicUser } from '@/shared/types/protocol';
 import type { DetectedEmbed } from '@/shared/lib/chatEmbeds';
 
 export interface ApiUser {
@@ -186,7 +186,7 @@ export function fetchFriendRequests(direction: 'incoming' | 'outgoing', cursor: 
   return apiFetch(`/api/friend-requests${pageQuery({ direction, cursor })}`);
 }
 
-export function fetchRequestSummary(): Promise<{ incoming: number }> {
+export function fetchRequestSummary(): Promise<{ incoming: number; invitations: number }> {
   return apiFetch('/api/friend-requests/summary');
 }
 
@@ -235,4 +235,46 @@ export function blockUser(userId: string): Promise<unknown> {
 
 export function unblockUser(userId: string): Promise<unknown> {
   return apiFetch(`/api/blocks/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+}
+
+// ---- group invitations (Etapa 9) --------------------------------------------
+
+export type InviteOutcome = 'sent' | 'already_pending' | 'already_member' | 'not_friends' | 'cooldown' | 'group_full' | 'unavailable';
+export interface InviteResult { userId: string; outcome: InviteOutcome; invitationId?: string; retryAfter?: string }
+
+export interface ReceivedInvitationEntry {
+  id: string;
+  at: string;
+  expiresAt: number;
+  group: { id: string; title: string; avatar: string; memberCount: number };
+  inviter: SocialUser;
+}
+export interface SentInvitationEntry { id: string; at: string; expiresAt: number; invitee: SocialUser }
+
+export function createGroup(title: string, inviteeIds: string[]): Promise<{ conversationId: string; results: InviteResult[] }> {
+  return apiFetch('/api/groups', { method: 'POST', body: JSON.stringify({ title, inviteeIds }) });
+}
+
+export function inviteToGroup(conversationId: string, userIds: string[]): Promise<{ results: InviteResult[] }> {
+  return apiFetch(`/api/groups/${encodeURIComponent(conversationId)}/invitations`, { method: 'POST', body: JSON.stringify({ userIds }) });
+}
+
+export function fetchGroupInvitations(conversationId: string, cursor: string | null): Promise<{ items: SentInvitationEntry[]; nextCursor: string | null }> {
+  return apiFetch(`/api/groups/${encodeURIComponent(conversationId)}/invitations${pageQuery({ cursor })}`);
+}
+
+export function fetchReceivedInvitations(cursor: string | null): Promise<{ items: ReceivedInvitationEntry[]; nextCursor: string | null }> {
+  return apiFetch(`/api/group-invitations${pageQuery({ cursor })}`);
+}
+
+export function acceptInvitation(id: string): Promise<{ invitation: InvitationCard }> {
+  return apiFetch(`/api/group-invitations/${encodeURIComponent(id)}/accept`, { method: 'POST' });
+}
+
+export function declineInvitation(id: string): Promise<{ invitation: InvitationCard }> {
+  return apiFetch(`/api/group-invitations/${encodeURIComponent(id)}/decline`, { method: 'POST' });
+}
+
+export function revokeInvitation(id: string): Promise<{ invitation: InvitationCard }> {
+  return apiFetch(`/api/group-invitations/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }

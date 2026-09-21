@@ -94,11 +94,9 @@ export interface RoomContextValue {
   openDirect: (userId: string) => void;
   closeConversation: (conversationId: string) => void;
   pinConversation: (conversationId: string, pinned: boolean) => void;
-  createGroup: (title: string, memberIds: string[]) => void;
   deleteGroup: (conversationId: string) => void;
   updateGroupTitle: (conversationId: string, title: string) => void;
   updateGroupAvatar: (conversationId: string, avatar: string) => void;
-  addGroupMembers: (conversationId: string, memberIds: string[]) => void;
   removeGroupMember: (conversationId: string, userId: string) => void;
   transferGroupOwnership: (conversationId: string, userId: string) => void;
   messagesByConversation: Map<string, ChatMessage[]>;

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { SocialEntry, SocialPage } from '@/shared/api/api';
+
+interface Page<T> { items: T[]; nextCursor: string | null }
 
 export type ListStatus = 'loading' | 'error' | 'ready';
 
@@ -8,8 +9,8 @@ export type ListStatus = 'loading' | 'error' | 'ready';
  * revision) while keeping the rows already on screen, so a live update
  * doesn't flash an empty list. Responses from a superseded request are
  * dropped — a slow page must never overwrite a newer one. */
-export function useCursorList(fetchPage: (cursor: string | null) => Promise<SocialPage>, resetKey: string) {
-  const [items, setItems] = useState<SocialEntry[]>([]);
+export function useCursorList<T>(fetchPage: (cursor: string | null) => Promise<Page<T>>, resetKey: string) {
+  const [items, setItems] = useState<T[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [status, setStatus] = useState<ListStatus>('loading');
   const [loadingMore, setLoadingMore] = useState(false);

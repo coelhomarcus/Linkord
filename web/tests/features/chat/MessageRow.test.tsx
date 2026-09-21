@@ -190,3 +190,27 @@ describe('MessageRow — reações rápidas', () => {
     expect(screen.queryByRole('button', { name: 'Reagir com 👍' })).not.toBeInTheDocument();
   });
 });
+
+describe('MessageRow — cartão de convite', () => {
+  const inviteMessage = () => makeMessage({
+    kind: 'group_invite', text: '',
+    invitation: {
+      id: 'inv', status: 'pending', groupId: 'g', groupTitle: 'Squad', groupAvatar: '', memberCount: 2,
+      inviterId: 'user-1', inviteeId: 'user-2', expiresAt: Date.now() + 1e6, version: 1,
+    },
+  });
+
+  it('renderiza o card e nao oferece responder, editar nem reagir (só apagar)', () => {
+    const state = { ...initialRoomState, me: { ...initialRoomState.me, userId: 'user-2' } };
+    renderWithRoom(
+      <MessageRow message={inviteMessage()} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />,
+      { state, editingMsgId: 1 },
+    );
+    expect(screen.getByText('Squad')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Responder' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reagir' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Apagar' }).length).toBeGreaterThan(0);
+  });
+});

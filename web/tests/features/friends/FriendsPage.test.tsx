@@ -18,7 +18,7 @@ const page = (...users: (typeof ana)[]) => ({ items: users.map((user) => ({ user
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocked.fetchRequestSummary.mockResolvedValue({ incoming: 0 });
+  mocked.fetchRequestSummary.mockResolvedValue({ incoming: 0, invitations: 0 });
 });
 
 describe('FriendsPage', () => {

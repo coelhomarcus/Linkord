@@ -37,6 +37,7 @@ export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenu
   const targetMessage = messageTarget != null
     ? activeConversationId ? messagesByConversation.get(activeConversationId)?.find((m) => m.msgId === messageTarget) : undefined
     : undefined;
+  const targetIsInvite = targetMessage?.kind === 'group_invite';
   const targetIsMine = !!targetMessage && targetMessage.id === state.me.userId;
   const targetCanDelete = targetIsMine || isAdmin;
   const targetConversation = conversationTarget ? conversations.find((c) => c.id === conversationTarget) : undefined;
@@ -127,25 +128,29 @@ export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenu
           stage) is a handful of short text items, so leave those at the
           component's own natural (min-w-48, content-sized) width instead of
           forcing them as wide as the emoji picker. */}
-      <ContextMenuContent className={showMessageBlock ? 'w-75' : undefined}>
+      <ContextMenuContent className={showMessageBlock && !targetIsInvite ? 'w-75' : undefined}>
         {showMessageBlock && targetMessage && (
           <>
-            <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => reactToChatMessage(targetMessage.msgId, emoji)}>
-              <EmojiPickerSearch />
-              <EmojiPickerContent />
-            </EmojiPicker>
-            <ContextMenuSeparator />
-            <ContextMenuItem onClick={() => setReplyingTo(targetMessage)}>
-              <Reply size={14} />
-              <span>Responder</span>
-            </ContextMenuItem>
+            {!targetIsInvite && (
+              <>
+                <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => reactToChatMessage(targetMessage.msgId, emoji)}>
+                  <EmojiPickerSearch />
+                  <EmojiPickerContent />
+                </EmojiPicker>
+                <ContextMenuSeparator />
+                <ContextMenuItem onClick={() => setReplyingTo(targetMessage)}>
+                  <Reply size={14} />
+                  <span>Responder</span>
+                </ContextMenuItem>
+              </>
+            )}
             {targetMessage.text && (
               <ContextMenuItem onClick={handleCopyMessageText}>
                 <Copy size={14} />
                 <span>Copiar texto</span>
               </ContextMenuItem>
             )}
-            {targetIsMine && (
+            {targetIsMine && !targetIsInvite && (
               <ContextMenuItem onClick={() => setEditingMsgId(targetMessage.msgId)}>
                 <Pencil size={14} />
                 <span>Editar</span>

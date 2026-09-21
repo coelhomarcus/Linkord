@@ -3,19 +3,20 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderSocial, ana, bea } from '@tests/fixtures/socialFixture';
 import { RequestsPage } from '@/features/friends/RequestsPage';
+import { useFriends } from '@/features/friends/FriendsContext';
 import * as api from '@/shared/api/api';
 
 vi.mock('@/shared/PageHeader', () => ({ PageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
 vi.mock('@/shared/api/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/api/api')>()),
-  fetchFriendRequests: vi.fn(), fetchRequestSummary: vi.fn(), acceptFriendRequest: vi.fn(), declineFriendRequest: vi.fn(), cancelFriendRequest: vi.fn(),
+  fetchFriendRequests: vi.fn(), fetchRequestSummary: vi.fn(), fetchReceivedInvitations: vi.fn(), acceptInvitation: vi.fn(), declineInvitation: vi.fn(), acceptFriendRequest: vi.fn(), declineFriendRequest: vi.fn(), cancelFriendRequest: vi.fn(),
 }));
 const mocked = vi.mocked(api);
 const page = (...users: (typeof ana)[]) => ({ items: users.map((user) => ({ user, at: '2026-01-01T00:00:00.000Z' })), nextCursor: null });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocked.fetchRequestSummary.mockResolvedValue({ incoming: 1 });
+  mocked.fetchRequestSummary.mockResolvedValue({ incoming: 1, invitations: 0 });
 });
 
 describe('RequestsPage', () => {
@@ -71,5 +72,58 @@ describe('RequestsPage', () => {
     mocked.fetchFriendRequests.mockResolvedValue(page());
     renderSocial(<RequestsPage onOpenProfile={vi.fn()} />);
     expect(await screen.findByText('Nenhuma solicitação recebida.')).toBeInTheDocument();
+  });
+
+  describe('aba Convites', () => {
+    const entry = { id: 'inv-1', at: '2026-01-01T00:00:00.000Z', expiresAt: Date.now() + 86_400_000, group: { id: 'g', title: 'Squad', avatar: '', memberCount: 3 }, inviter: ana };
+
+    it('lista convites de grupo e aceita/recusa por id do convite', async () => {
+      const user = userEvent.setup();
+      mocked.fetchFriendRequests.mockResolvedValue(page());
+      mocked.fetchReceivedInvitations.mockResolvedValue({ items: [entry], nextCursor: null });
+      mocked.acceptInvitation.mockResolvedValue({ invitation: {} as never });
+      mocked.declineInvitation.mockResolvedValue({ invitation: {} as never });
+      renderSocial(<RequestsPage onOpenProfile={vi.fn()} />);
+
+      await user.click(await screen.findByRole('button', { name: 'Convites' }));
+      expect(await screen.findByText('Squad')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Entrar' }));
+      expect(mocked.acceptInvitation).toHaveBeenCalledWith('inv-1');
+      await user.click(await screen.findByRole('button', { name: 'Recusar' }));
+      expect(mocked.declineInvitation).toHaveBeenCalledWith('inv-1');
+    });
+
+    it('convite expirado no aceite mostra o motivo', async () => {
+      const user = userEvent.setup();
+      mocked.fetchFriendRequests.mockResolvedValue(page());
+      mocked.fetchReceivedInvitations.mockResolvedValue({ items: [entry], nextCursor: null });
+      mocked.acceptInvitation.mockRejectedValue(new api.ApiError(409, 'invitation_expired', 'x'));
+      renderSocial(<RequestsPage onOpenProfile={vi.fn()} />);
+
+      await user.click(await screen.findByRole('button', { name: 'Convites' }));
+      await user.click(await screen.findByRole('button', { name: 'Entrar' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('Este convite expirou.');
+    });
+
+    it('sem convites diz isso', async () => {
+      const user = userEvent.setup();
+      mocked.fetchFriendRequests.mockResolvedValue(page());
+      mocked.fetchReceivedInvitations.mockResolvedValue({ items: [], nextCursor: null });
+      renderSocial(<RequestsPage onOpenProfile={vi.fn()} />);
+      await user.click(await screen.findByRole('button', { name: 'Convites' }));
+      expect(await screen.findByText('Nenhum convite de grupo pendente.')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('FriendsContext — badge', () => {
+  it('soma solicitacoes recebidas e convites de grupo pendentes', async () => {
+    mocked.fetchRequestSummary.mockResolvedValue({ incoming: 1, invitations: 2 });
+    function Badge() {
+      const { pendingIncomingCount, pendingInvitationCount } = useFriends();
+      return <p>{`total ${pendingIncomingCount} / convites ${pendingInvitationCount}`}</p>;
+    }
+    renderSocial(<Badge />);
+    expect(await screen.findByText('total 3 / convites 2')).toBeInTheDocument();
   });
 });

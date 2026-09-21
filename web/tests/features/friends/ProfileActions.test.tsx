@@ -19,7 +19,7 @@ function renderActions(relation: api.Relation, retryAfter: string | null = null,
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocked.fetchRequestSummary.mockResolvedValue({ incoming: 0 });
+  mocked.fetchRequestSummary.mockResolvedValue({ incoming: 0, invitations: 0 });
 });
 
 describe('ProfileActions — o que aparece depende so da relacao', () => {

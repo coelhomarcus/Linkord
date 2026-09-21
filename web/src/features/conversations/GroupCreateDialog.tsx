@@ -1,12 +1,13 @@
-import { useMemo, useState } from 'react';
-import { Check, Search, UsersRound } from 'lucide-react';
+import { useState } from 'react';
+import { UsersRound } from 'lucide-react';
 import { Button } from '@/shared/ui/primitives/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/shared/ui/primitives/dialog';
 import { Input } from '@/shared/ui/primitives/input';
 import { Label } from '@/shared/ui/primitives/label';
-import { Avatar } from '@/shared/Avatar';
-import { cn } from '@/shared/lib/utils';
-import { useRoom } from '@/state/RoomContext';
+import { createGroup } from '@/shared/api/api';
+import type { InviteResult, SocialUser } from '@/shared/api/api';
+import { FriendPicker } from './FriendPicker';
+import { describeInviteOutcome } from './inviteOutcome';
 
 interface GroupCreateDialogProps {
   open: boolean;
@@ -15,110 +16,109 @@ interface GroupCreateDialogProps {
 }
 
 export function GroupCreateDialog({ open, onOpenChange, onCreated }: GroupCreateDialogProps) {
-  const { state, allUsers, createGroup } = useRoom();
   const [title, setTitle] = useState('');
-  const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Map<string, SocialUser>>(new Map());
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // set once the group exists but some invitations didn't go out — the
+  // dialog stays open to say which, instead of swallowing it
+  const [failures, setFailures] = useState<{ user: SocialUser; text: string }[] | null>(null);
 
-  const users = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return [...allUsers.values()]
-      .filter((user) => user.id !== state.me.userId)
-      .filter((user) => !normalized || user.displayName.toLowerCase().includes(normalized) || user.username.toLowerCase().includes(normalized))
-      .sort((a, b) => a.displayName.localeCompare(b.displayName) || a.username.localeCompare(b.username));
-  }, [allUsers, query, state.me.userId]);
-
-  function toggle(userId: string) {
+  function toggle(user: SocialUser) {
     setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(userId)) next.delete(userId);
-      else next.add(userId);
+      const next = new Map(prev);
+      if (next.has(user.id)) next.delete(user.id);
+      else next.set(user.id, user);
       return next;
     });
   }
 
-  function handleSubmit() {
-    const name = title.trim();
-    if (!name) return;
-    createGroup(name, [...selected]);
+  function reset() {
     setTitle('');
-    setQuery('');
-    setSelected(new Set());
+    setSelected(new Map());
+    setError(null);
+    setFailures(null);
+  }
+
+  function close() {
+    reset();
     onOpenChange(false);
-    onCreated?.();
+  }
+
+  async function handleSubmit() {
+    const name = title.trim();
+    if (!name || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const { results } = await createGroup(name, [...selected.keys()]);
+      const failed = results
+        .filter((r: InviteResult) => r.outcome !== 'sent')
+        .flatMap((r) => {
+          const user = selected.get(r.userId);
+          return user ? [{ user, text: describeInviteOutcome(r.outcome) }] : [];
+        });
+      onCreated?.();
+      if (failed.length === 0) close();
+      else setFailures(failed);
+    } catch {
+      setError('Não foi possível criar o grupo. Tente de novo.');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) reset(); onOpenChange(next); }}>
       <DialogContent className="max-w-lg border-white/10 bg-[rgb(18_18_20)] p-0 text-text-primary">
         <DialogHeader className="border-b border-white/10 px-5 py-4">
           <DialogTitle className="flex items-center gap-2 text-title">
             <UsersRound size={18} />
-            Novo grupo
+            {failures ? 'Grupo criado' : 'Novo grupo'}
           </DialogTitle>
         </DialogHeader>
-        <div className="flex flex-col gap-4 px-5 py-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="group-title" className="text-label text-text-muted">Nome</Label>
-            <Input
-              id="group-title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              maxLength={80}
-              placeholder="Ex: Produto, familia, squad"
-              className="border-white/10 bg-white/[0.04]"
-            />
+        {failures ? (
+          <div className="flex flex-col gap-2 px-5 py-4">
+            <p className="text-label text-text-secondary">O grupo foi criado, mas alguns convites não foram enviados:</p>
+            <ul className="flex flex-col gap-1 text-label text-text-muted">
+              {failures.map(({ user, text }) => (
+                <li key={user.id}><span className="font-medium text-text-secondary">{user.displayName}</span> — {text}</li>
+              ))}
+            </ul>
           </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="group-users" className="text-label text-text-muted">Adicionar pessoas</Label>
-            <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3">
-              <Search size={15} className="text-text-muted" />
-              <input
-                id="group-users"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Buscar usuários"
-                className="h-9 min-w-0 flex-1 bg-transparent text-label outline-none placeholder:text-text-muted"
+        ) : (
+          <div className="flex flex-col gap-4 px-5 py-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="group-title" className="text-label text-text-muted">Nome</Label>
+              <Input
+                id="group-title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                maxLength={80}
+                placeholder="Ex: Produto, familia, squad"
+                className="border-white/10 bg-white/[0.04]"
               />
             </div>
-            <div className="max-h-72 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-1">
-              {users.length === 0 ? (
-                <p className="px-3 py-8 text-center text-label text-text-muted">Nenhum usuário encontrado.</p>
-              ) : users.map((user) => {
-                const checked = selected.has(user.id);
-                return (
-                  <button
-                    key={user.id}
-                    type="button"
-                    onClick={() => toggle(user.id)}
-                    className={cn(
-                      'flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left transition-colors',
-                      checked ? 'bg-primary/12 text-text-primary' : 'text-text-secondary hover:bg-white/[0.05]'
-                    )}
-                  >
-                    <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={34} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-label font-medium">{user.displayName}</span>
-                      <span className="block truncate text-caption text-text-muted">@{user.username}</span>
-                    </span>
-                    <span className={cn(
-                      'grid size-5 place-items-center rounded-full border text-[11px]',
-                      checked ? 'border-primary bg-primary text-primary-foreground' : 'border-white/15'
-                    )}>
-                      {checked ? <Check size={12} /> : null}
-                    </span>
-                  </button>
-                );
-              })}
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="group-users" className="text-label text-text-muted">Convidar amigos</Label>
+              <p className="text-caption text-text-muted">Seus amigos receberão um convite e só entram no grupo ao aceitar.</p>
+              <FriendPicker selected={selected} onToggle={toggle} inputId="group-users" />
             </div>
+            {error && <p role="alert" className="text-label text-red-text">{error}</p>}
           </div>
-        </div>
+        )}
         <DialogFooter className="border-t border-white/10 px-5 py-4">
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button type="button" onClick={handleSubmit} disabled={!title.trim()}>
-            Criar grupo
-          </Button>
+          {failures ? (
+            <Button type="button" onClick={close}>Fechar</Button>
+          ) : (
+            <>
+              <Button type="button" variant="ghost" onClick={close}>Cancelar</Button>
+              <Button type="button" onClick={() => void handleSubmit()} disabled={!title.trim() || submitting}>
+                {submitting ? 'Criando…' : selected.size > 0 ? `Criar e convidar (${selected.size})` : 'Criar grupo'}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

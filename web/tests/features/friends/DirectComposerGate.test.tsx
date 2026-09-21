@@ -28,7 +28,7 @@ function renderGate(conv: Conversation) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocked.fetchRequestSummary.mockResolvedValue({ incoming: 0 });
+  mocked.fetchRequestSummary.mockResolvedValue({ incoming: 0, invitations: 0 });
 });
 
 describe('DirectComposerGate', () => {

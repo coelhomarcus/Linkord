@@ -9,7 +9,9 @@ interface FriendsContextValue {
    * refetch off it instead of patching themselves. */
   revision: number;
   bump: () => void;
+  /** Everything waiting on this user's answer: friend requests + group invitations. */
   pendingIncomingCount: number;
+  pendingInvitationCount: number;
 }
 
 const FriendsContext = createContext<FriendsContextValue | null>(null);
@@ -20,7 +22,7 @@ const FriendsContext = createContext<FriendsContextValue | null>(null);
 export function FriendsProvider({ children }: { children: ReactNode }) {
   const { socialRevision } = useRoom();
   const [localBumps, setLocalBumps] = useState(0);
-  const [pendingIncomingCount, setPendingIncomingCount] = useState(0);
+  const [summary, setSummary] = useState({ incoming: 0, invitations: 0 });
   const revision = socialRevision + localBumps;
 
   const bump = useCallback(() => setLocalBumps((n) => n + 1), []);
@@ -28,12 +30,14 @@ export function FriendsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     fetchRequestSummary()
-      .then((summary) => { if (!cancelled) setPendingIncomingCount(summary.incoming); })
+      .then((res) => { if (!cancelled) setSummary({ incoming: res.incoming, invitations: res.invitations ?? 0 }); })
       .catch(() => { /* the badge is a hint — a failed fetch just leaves the old number */ });
     return () => { cancelled = true; };
   }, [revision]);
 
-  const value = useMemo(() => ({ revision, bump, pendingIncomingCount }), [revision, bump, pendingIncomingCount]);
+  const value = useMemo(() => ({
+    revision, bump, pendingIncomingCount: summary.incoming + summary.invitations, pendingInvitationCount: summary.invitations,
+  }), [revision, bump, summary]);
   return <FriendsContext.Provider value={value}>{children}</FriendsContext.Provider>;
 }
 

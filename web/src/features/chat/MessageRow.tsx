@@ -4,6 +4,7 @@ import { MoreHorizontal, Pencil, Plus, Reply, SmilePlus, Trash2 } from 'lucide-r
 import { Avatar } from '@/shared/Avatar';
 import { ChatAttachment, IMAGE_MIME_TYPES } from '@/features/chat/ChatAttachment';
 import { ImageAttachmentGrid } from '@/features/chat/ImageAttachmentGrid';
+import { InviteCard } from '@/features/chat/InviteCard';
 import { ChatMessageText } from '@/features/chat/ChatMessageText';
 import { Button } from '@/shared/ui/primitives/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/shared/ui/primitives/dropdown-menu';
@@ -104,7 +105,8 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
   const displayedAvatar = author?.avatar ?? message.avatar;
   const replyAuthor = message.replyTo?.authorId ? allUsers.get(message.replyTo.authorId) : undefined;
   const mentionsMe = !isMine && mentionsUser(message.text, mentionLookup, state.me.userId);
-  const isEditing = editingMsgId === message.msgId;
+  const isInvite = message.kind === 'group_invite';
+  const isEditing = !isInvite && editingMsgId === message.msgId;
 
   function saveEdit() {
     const trimmed = editText.trim();
@@ -207,6 +209,9 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
               </p>
             </div>
           ) : (
+            isInvite ? (
+              <InviteCard invitation={message.invitation} />
+            ) : (
             <>
               <div className="text-body leading-[1.375rem] text-text-secondary">
                 <ChatMessageText text={message.text} mentionLookup={mentionLookup} myUserId={state.me.userId} onOpenProfile={onOpenProfile} />
@@ -220,6 +225,7 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
                 ))
               )}
             </>
+            )
           )}
         </div>
 
@@ -256,11 +262,13 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
           picker, which is portaled outside this row), snapping the open
           popover to the viewport's top-left corner. */}
       <div className="absolute right-3 top-0 hidden -translate-y-1/2 items-center gap-0.5 rounded-full border border-white/10 bg-[rgb(20_20_23)] p-0.5 opacity-0 shadow-popover transition-opacity pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto md:flex">
-        <ReactionButton onPick={(emoji) => reactToChatMessage(message.msgId, emoji)} />
-        <Button type="button" variant="ghost" size="icon-xs" aria-label="Responder" onClick={onReply}>
-          <Reply size={13} />
-        </Button>
-        {isMine && (
+        {!isInvite && <ReactionButton onPick={(emoji) => reactToChatMessage(message.msgId, emoji)} />}
+        {!isInvite && (
+          <Button type="button" variant="ghost" size="icon-xs" aria-label="Responder" onClick={onReply}>
+            <Reply size={13} />
+          </Button>
+        )}
+        {isMine && !isInvite && (
           <Button type="button" variant="ghost" size="icon-xs" aria-label="Editar" onClick={startEdit}>
             <Pencil size={13} />
           </Button>
@@ -275,14 +283,14 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
       {/* Mobile — no hover, so the toolbar above is unreachable; a persistent
           reaction button plus a tap menu for the rest cover the same actions. */}
       <div className="absolute right-3 top-1 flex items-center gap-0.5 md:hidden">
-        <ReactionButton onPick={(emoji) => reactToChatMessage(message.msgId, emoji)} />
+        {!isInvite && <ReactionButton onPick={(emoji) => reactToChatMessage(message.msgId, emoji)} />}
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Acoes" />}>
             <MoreHorizontal size={13} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onReply}><Reply size={14} />Responder</DropdownMenuItem>
-            {isMine && <DropdownMenuItem onClick={startEdit}><Pencil size={14} />Editar</DropdownMenuItem>}
+            {!isInvite && <DropdownMenuItem onClick={onReply}><Reply size={14} />Responder</DropdownMenuItem>}
+            {isMine && !isInvite && <DropdownMenuItem onClick={startEdit}><Pencil size={14} />Editar</DropdownMenuItem>}
             {canDelete && <DropdownMenuItem variant="destructive" onClick={() => deleteChatMessage(message.msgId)}><Trash2 size={14} />Apagar</DropdownMenuItem>}
           </DropdownMenuContent>
         </DropdownMenu>

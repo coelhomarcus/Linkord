@@ -237,6 +237,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'chat-edited':
         chatMessages.onChatEdited(m);
         break;
+      case 'invitation-updated':
+        chatMessages.onInvitationUpdated(m);
+        break;
       case 'chat-attachment-added':
         chatMessages.onChatAttachmentAdded(m);
         break;
@@ -331,9 +334,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         noiseSuppressionEnabled: roomSettings.noiseSuppressionEnabled, setNoiseSuppressionEnabled: roomSettings.setNoiseSuppressionEnabled,
         conversations: conversationsList.conversations, activeConversationId: conversationsList.activeConversationId,
         openConversation, openDirect: conversationsList.openDirect, closeConversation, pinConversation: conversationsList.pinConversation,
-        createGroup: conversationsList.createGroup, deleteGroup: conversationsList.deleteGroup,
+        deleteGroup: conversationsList.deleteGroup,
         updateGroupTitle: conversationsList.updateGroupTitle, updateGroupAvatar: conversationsList.updateGroupAvatar,
-        addGroupMembers: conversationsList.addGroupMembers, removeGroupMember: conversationsList.removeGroupMember,
+        removeGroupMember: conversationsList.removeGroupMember,
         transferGroupOwnership: conversationsList.transferGroupOwnership,
         messagesByConversation: chatMessages.messagesByConversation, hasMoreByConversation: chatMessages.hasMoreByConversation,
         loadingOlderByConversation: chatMessages.loadingOlderByConversation, loadOlderMessages: chatMessages.loadOlderMessages,
