@@ -66,6 +66,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   // the socket later, this needs to get more specific (e.g. carry which
   // action it was about) instead of assuming "group action" like it does now.
   const [groupActionError, setGroupActionError] = useState<string | null>(null);
+  // bumped whenever the server says friends/requests/blocks changed — the
+  // friends feature refetches its own lists off this, so social state never
+  // has to live inside the room reducer
+  const [socialRevision, setSocialRevision] = useState(0);
 
   // Domain hooks — each owns one slice of what used to all live directly in
   // this component (see the module comment in each hooks/use*.ts file for
@@ -244,6 +248,13 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         chatMessages.onConversationDeleted(m);
         callLifecycle.onConversationDeleted(m.conversationId);
         break;
+      case 'social-changed':
+        setSocialRevision((n) => n + 1);
+        break;
+      case 'presence-sync':
+        dispatch({ type: 'PARTICIPANTS_SYNC', participants: m.participants });
+        presence.setInitial(m.knownUsers, m.onlineUserIds);
+        break;
       case 'user-online':
         presence.onUserOnline(m);
         break;
@@ -331,6 +342,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         allUsers: presence.allUsers, onlineUserIds: presence.onlineUserIds,
         deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null), kickFromCall: callLifecycle.kickFromCall,
         groupActionError, clearGroupActionError: () => setGroupActionError(null),
+        socialRevision,
         sendChatMessage: chatMessages.sendChatMessage, deleteChatMessage: chatMessages.deleteChatMessage,
         editChatMessage: chatMessages.editChatMessage, reactToChatMessage: chatMessages.reactToChatMessage,
         replyingTo: chatMessages.replyingTo, setReplyingTo: chatMessages.setReplyingTo,

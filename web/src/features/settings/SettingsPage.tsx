@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import type { Area } from 'react-easy-crop';
-import { Bell, Check, CheckCircle2, HardDrive, IdCard, Loader2, LogOut, Mail, Settings2, ShieldCheck, SlidersHorizontal, User, Volume2, VolumeX } from 'lucide-react';
+import { Navigate, useNavigate, useParams } from 'react-router';
+import { Bell, Check, CheckCircle2, HardDrive, IdCard, Loader2, Lock, LogOut, Mail, Settings2, ShieldCheck, SlidersHorizontal, User, Volume2, VolumeX } from 'lucide-react';
 import { ModerationTab } from './ModerationTab';
+import { PrivacyTab } from './PrivacyTab';
 import { ImageCropDialog } from './ImageCropDialog';
 import { ImageUrlDialog } from '../../shared/ImageUrlDialog';
 import { ProfileCard } from '../profile/ProfileCard';
@@ -17,7 +19,8 @@ import { SectionLabel, sectionLabelClass } from './SectionLabel';
 import { cn } from '@/shared/lib/utils';
 import { formatMB } from '../../shared/lib/formatBytes';
 import { AVATAR_MIME_TYPES, MAX_AVATAR_BYTES, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '@/shared/types/protocol';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/ui/primitives/dialog';
+import { PageHeader } from '@/shared/PageHeader';
+import { ROUTES, isSettingsTab } from '@/shared/lib/routes';
 import { Label } from '@/shared/ui/primitives/label';
 import { Button } from '@/shared/ui/primitives/button';
 import { Input } from '@/shared/ui/primitives/input';
@@ -35,9 +38,8 @@ function formatGB(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-interface SettingsModalProps {
-  open: boolean;
-  onClose: () => void;
+interface SettingsPageProps {
+  onOpenProfile: (userId: string) => void;
 }
 
 function DevicePicker({ label, room, kind }: { label: string; room: import('livekit-client').Room; kind: MediaDeviceKind }) {
@@ -171,13 +173,16 @@ type ProfileCropTarget =
   // a CORS/tainted-canvas issue (see ImageCropDialog.tsx's own comment).
   | { field: 'avatar' | 'banner'; kind: 'url'; url: string };
 
-export function SettingsModal({ open, onClose }: SettingsModalProps) {
+export function SettingsPage({ onOpenProfile }: SettingsPageProps) {
   const {
     state, updateProfile, uploadProfileImage, showStats, setShowStats,
     notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled, showTileBanners, setShowTileBanners, livekitRoom, storageUsage,
     noiseSuppressionEnabled, setNoiseSuppressionEnabled,
   } = useRoom();
   const { logout, user } = useAuth();
+  const { tab } = useParams<{ tab?: string }>();
+  const navigate = useNavigate();
+  const pageRef = useRef<HTMLDivElement | null>(null);
   const [avatar, setAvatar] = useState(state.me.avatar);
   const [avatarPoster, setAvatarPoster] = useState(state.me.avatarPoster);
   const [avatarColor, setAvatarColor] = useState(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
@@ -205,19 +210,19 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   // client-side progress stays indeterminate).
   const [activeUpload, setActiveUpload] = useState<{ field: 'avatar' | 'banner'; kind: 'file' | 'url' } | null>(null);
 
+  // keeps the form in sync with the account whenever it changes (a profile
+  // saved from another tab); the page mounting is what used to be "modal opened"
   useEffect(() => {
-    if (open) {
-      setProfileSaved(false);
-      setAvatar(state.me.avatar);
-      setAvatarPoster(state.me.avatarPoster);
-      setAvatarColor(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
-      setDisplayName(state.me.displayName);
-      setBanner(state.me.banner);
-      setBannerPoster(state.me.bannerPoster);
-      setBio(state.me.bio);
-      setProfileLinks(state.me.profileLinks.length ? state.me.profileLinks : ['']);
-    }
-  }, [open, state.me.avatar, state.me.avatarPoster, state.me.avatarColor, state.me.banner, state.me.bannerPoster, state.me.bio, state.me.displayName, state.me.profileLinks]);
+    setProfileSaved(false);
+    setAvatar(state.me.avatar);
+    setAvatarPoster(state.me.avatarPoster);
+    setAvatarColor(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
+    setDisplayName(state.me.displayName);
+    setBanner(state.me.banner);
+    setBannerPoster(state.me.bannerPoster);
+    setBio(state.me.bio);
+    setProfileLinks(state.me.profileLinks.length ? state.me.profileLinks : ['']);
+  }, [state.me.avatar, state.me.avatarPoster, state.me.avatarColor, state.me.banner, state.me.bannerPoster, state.me.bio, state.me.displayName, state.me.profileLinks]);
 
   useEffect(() => {
     if (!profileSaved) return;
@@ -342,13 +347,25 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     updateProfile({ avatar, avatarPoster, avatarColor, displayName, banner: '', bannerPoster: '', bio, profileLinks: profileLinksForSubmit() });
   }
 
+  // On a narrow screen the tab strip scrolls sideways; a deep link to a tab
+  // past the fold (/app/settings/privacy) would otherwise land on a page
+  // that never shows which tab is active.
+  useEffect(() => {
+    pageRef.current?.querySelector('[role="tab"][aria-selected="true"]')?.scrollIntoView?.({ inline: 'center', block: 'nearest' });
+  }, [tab]);
+
+  // an unknown tab — or the admin-only one for a non-admin — falls back to
+  // the first tab instead of rendering an empty page
+  const isAdmin = state.me.role === 'admin';
+  if (!isSettingsTab(tab) || (tab === 'moderation' && !isAdmin)) {
+    return <Navigate to={ROUTES.settingsTab('profile')} replace />;
+  }
+
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent className="inset-0 h-full max-h-full w-full max-w-full translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-none bg-bg-modal p-0 gap-0 md:inset-auto md:top-1/2 md:left-1/2 md:h-auto md:min-h-150 md:max-h-[90vh] md:w-full md:max-w-4xl md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl">
-        <DialogHeader className="border-b border-white/10 px-4 pt-5 pb-2 pr-12 md:px-6 md:pr-12">
-          <DialogTitle className="text-display font-bold text-text-primary">Ajustes</DialogTitle>
-        </DialogHeader>
-        <Tabs defaultValue="profile" orientation="vertical" className="min-h-0 min-w-0 flex-1 flex-col items-stretch md:flex-row">
+    <div className="flex h-full min-h-0 flex-col">
+      <PageHeader title="Ajustes" />
+      <div ref={pageRef} className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col">
+        <Tabs value={tab} onValueChange={(next) => navigate(ROUTES.settingsTab(next as typeof tab))} orientation="vertical" className="min-h-0 min-w-0 flex-1 flex-col items-stretch md:flex-row">
           <TabsList className="h-auto w-full min-w-0 flex-none flex-row items-stretch gap-1 overflow-x-auto rounded-none border-b border-white/10 bg-transparent p-2 md:w-48 md:flex-col md:overflow-visible md:border-b-0 md:border-r md:p-3">
             <TabsIndicator className="rounded-lg bg-primary/12" />
             <TabsTrigger value="profile" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><User size={16} /><span>Perfil</span></TabsTrigger>
@@ -356,7 +373,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             <TabsTrigger value="av" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><SlidersHorizontal size={16} /><span>Áudio e vídeo</span></TabsTrigger>
             <TabsTrigger value="notifications" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Bell size={16} /><span>Notificações</span></TabsTrigger>
             <TabsTrigger value="prefs" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Settings2 size={16} /><span>Preferências</span></TabsTrigger>
-            {state.me.role === 'admin' && (
+            <TabsTrigger value="privacy" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Lock size={16} /><span>Privacidade</span></TabsTrigger>
+            {isAdmin && (
               <TabsTrigger value="moderation" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><ShieldCheck size={16} /><span>Moderação</span></TabsTrigger>
             )}
           </TabsList>
@@ -577,14 +595,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               </div>
             </TabsPanel>
 
-            {state.me.role === 'admin' && (
+            <TabsPanel value="privacy">
+              <PrivacyTab onOpenProfile={onOpenProfile} />
+            </TabsPanel>
+
+            {isAdmin && (
               <TabsPanel value="moderation">
                 <ModerationTab />
               </TabsPanel>
             )}
           </div>
         </Tabs>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
 }

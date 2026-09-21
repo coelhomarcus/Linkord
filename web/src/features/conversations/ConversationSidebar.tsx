@@ -1,15 +1,18 @@
 import { useMemo, useState } from 'react';
-import { MessageCircle, PanelLeftClose, Pin, Plus, Search, Settings, Users, UsersRound, PhoneCall } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { useLocation, useNavigate } from 'react-router';
+import { PanelLeftClose, Pin, Plus, Search, Settings, Users, UserPlus, UsersRound, PhoneCall } from 'lucide-react';
 import { AnimatedSidebar, useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { Button, buttonVariants } from '@/shared/ui/primitives/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/motion/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/primitives/tooltip';
 import { Avatar } from '@/shared/Avatar';
 import { formatTime } from '@/shared/lib/formatChatTime';
 import { formatTypingLabel } from '@/shared/lib/formatTypingLabel';
 import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
-import type { Conversation, PublicUser } from '@/shared/types/protocol';
+import type { Conversation } from '@/shared/types/protocol';
+import { ROUTES, isConversationsPath } from '@/shared/lib/routes';
+import { useFriends } from '@/features/friends/FriendsContext';
 import { conversationTitle, directUser, groupMembers } from './conversationUtils';
 import { GroupAvatar } from './GroupAvatar';
 import { GroupCreateDialog } from './GroupCreateDialog';
@@ -113,28 +116,6 @@ function ConversationRow({ conversation, active, onClick }: {
   );
 }
 
-function UserRow({ user, onClick, onOpenProfile }: { user: PublicUser; onClick: () => void; onOpenProfile: (userId: string) => void }) {
-  const { onlineUserIds } = useRoom();
-  const online = onlineUserIds.has(user.id);
-  return (
-    <div data-user-id={user.id} className="group flex items-center gap-2 rounded-xl border border-transparent px-2 py-2 hover:border-white/10 hover:bg-white/[0.045]">
-      <button type="button" onClick={onClick} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-        <div className="relative flex-none">
-          <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={40} />
-          <span className={cn('absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-[rgb(14_14_16)]', online ? 'bg-green' : 'bg-text-muted')} />
-        </div>
-        <span className="min-w-0">
-          <span className="block truncate text-label font-medium text-text-secondary">{user.displayName}</span>
-          <span className="block truncate text-caption text-text-muted">@{user.username}</span>
-        </span>
-      </button>
-      <Button type="button" variant="ghost" size="icon-xs" aria-label={`Abrir perfil de ${user.displayName}`} onClick={() => onOpenProfile(user.id)} className="opacity-0 transition-opacity group-hover:opacity-100">
-        <UsersRound size={13} />
-      </Button>
-    </div>
-  );
-}
-
 function CollapsedConversationButton({ conversation, active, onClick }: {
   conversation: Conversation;
   active: boolean;
@@ -171,11 +152,72 @@ function CollapsedConversationButton({ conversation, active, onClick }: {
   );
 }
 
+function CountBadge({ count }: { count: number }) {
+  return (
+    <span className="grid min-w-4.5 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground">
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
+/** Expanded-mode shortcut to a full page (Amigos / Solicitações). */
+function NavShortcut({ label, active, badge, onClick, children }: {
+  label: string;
+  active: boolean;
+  badge?: number;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      className={cn(
+        'flex h-8 items-center justify-center gap-1.5 rounded-lg text-label font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        active ? 'bg-primary/20 text-text-primary' : 'text-text-muted hover:bg-white/[0.06] hover:text-text-primary'
+      )}
+    >
+      {children}
+      <span>{label}</span>
+      {!!badge && <CountBadge count={badge} />}
+    </button>
+  );
+}
+
+function CollapsedNavButton({ label, active, badge, onClick, children }: {
+  label: string;
+  active: boolean;
+  badge?: number;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        onClick={onClick}
+        aria-label={badge ? `${label}, ${badge} pendente${badge === 1 ? '' : 's'}` : label}
+        aria-current={active ? 'page' : undefined}
+        className={cn(
+          'relative grid size-11 place-items-center rounded-xl transition-colors',
+          active ? 'bg-primary/20 text-text-primary' : 'text-text-muted hover:bg-white/[0.06] hover:text-text-primary'
+        )}
+      >
+        {children}
+        {!!badge && <span className="absolute -right-1 -top-1"><CountBadge count={badge} /></span>}
+      </TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalette }: ConversationSidebarProps) {
-  const { state, conversations, activeConversationId, openConversation, openDirect, allUsers, requestChatView } = useRoom();
+  const { state, conversations, activeConversationId, openConversation, allUsers, requestChatView } = useRoom();
   const { isMobile, open: sidebarOpen, setOpenMobile, toggleSidebar } = useAnimatedSidebar();
+  const { pendingIncomingCount } = useFriends();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
   const collapsed = !isMobile && !sidebarOpen;
-  const [tab, setTab] = useState('conversations');
   const [query, setQuery] = useState('');
   const [groupOpen, setGroupOpen] = useState(false);
   const normalized = query.trim().toLowerCase();
@@ -184,24 +226,25 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
     conversations.filter((conversation) => conversationTitle(conversation, state.me.userId, allUsers).toLowerCase().includes(normalized))
   ), [allUsers, conversations, normalized, state.me.userId]);
 
-  const filteredUsers = useMemo(() => (
-    [...allUsers.values()]
-      .filter((user) => user.id !== state.me.userId)
-      .filter((user) => !normalized || user.displayName.toLowerCase().includes(normalized) || user.username.toLowerCase().includes(normalized))
-      .sort((a, b) => a.displayName.localeCompare(b.displayName) || a.username.localeCompare(b.username))
-  ), [allUsers, normalized, state.me.userId]);
-
   function selectConversation(conversationId: string) {
     openConversation(conversationId);
+    // explicit, not left to the URL sync: re-opening the conversation that is
+    // ALREADY active (from the friends page, say) changes no state, so nothing
+    // else would navigate. Done before requestChatView so that call sees a
+    // conversations path and doesn't push a second history entry.
+    navigate(ROUTES.conversation(conversationId));
     requestChatView();
     if (isMobile) setOpenMobile(false);
   }
 
-  function selectUser(userId: string) {
-    openDirect(userId);
-    requestChatView();
+  function goTo(path: string) {
+    navigate(path);
     if (isMobile) setOpenMobile(false);
   }
+
+  const friendsActive = pathname === ROUTES.friends;
+  const requestsActive = pathname === ROUTES.requests;
+  const onConversations = isConversationsPath(pathname);
 
   return (
     <>
@@ -232,13 +275,19 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
                 <CollapsedConversationButton
                   key={conversation.id}
                   conversation={conversation}
-                  active={conversation.id === activeConversationId}
+                  active={onConversations && conversation.id === activeConversationId}
                   onClick={() => selectConversation(conversation.id)}
                 />
               ))}
             </div>
 
             <div className="flex flex-none flex-col gap-1.5">
+              <CollapsedNavButton label="Amigos" active={friendsActive} onClick={() => goTo(ROUTES.friends)}>
+                <UsersRound size={18} />
+              </CollapsedNavButton>
+              <CollapsedNavButton label="Solicitações" active={requestsActive} badge={pendingIncomingCount} onClick={() => goTo(ROUTES.requests)}>
+                <UserPlus size={18} />
+              </CollapsedNavButton>
               <Tooltip>
                 <TooltipTrigger
                   onClick={() => setGroupOpen(true)}
@@ -303,7 +352,7 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder={tab === 'people' ? 'Buscar pessoas' : 'Buscar conversas'}
+                  placeholder="Buscar conversas"
                   className="h-10 min-w-0 flex-1 bg-transparent text-label outline-none placeholder:text-text-muted"
                 />
                 <button
@@ -315,43 +364,29 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
                   ⌘K
                 </button>
               </div>
-              <Tabs value={tab} onValueChange={setTab} variant="segment" className="flex min-h-0 flex-1 flex-col">
-                <TabsList className="flex-none grid w-full grid-cols-2 rounded-xl border border-white/10 bg-black/25 p-1">
-                  <TabsTrigger value="conversations" className="w-full gap-1.5 rounded-lg">
-                    <MessageCircle size={14} />
-                    Conversas
-                  </TabsTrigger>
-                  <TabsTrigger value="people" className="w-full gap-1.5 rounded-lg">
-                    <UsersRound size={14} />
-                    Pessoas
-                  </TabsTrigger>
-                </TabsList>
+              <div className="grid flex-none grid-cols-2 gap-1 rounded-xl border border-white/10 bg-black/25 p-1">
+                <NavShortcut label="Amigos" active={friendsActive} onClick={() => goTo(ROUTES.friends)}>
+                  <UsersRound size={14} />
+                </NavShortcut>
+                <NavShortcut label="Solicitações" active={requestsActive} badge={pendingIncomingCount} onClick={() => goTo(ROUTES.requests)}>
+                  <UserPlus size={14} />
+                </NavShortcut>
+              </div>
 
-                <TabsContent value="conversations" className="mt-3 min-h-0 flex-1 overflow-y-auto">
-                  <div className="flex flex-col gap-1">
-                    {filteredConversations.length === 0 ? (
-                      <p className="px-3 py-8 text-center text-label text-text-muted">Nenhuma conversa.</p>
-                    ) : filteredConversations.map((conversation) => (
-                      <ConversationRow
-                        key={conversation.id}
-                        conversation={conversation}
-                        active={conversation.id === activeConversationId}
-                        onClick={() => selectConversation(conversation.id)}
-                      />
-                    ))}
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="people" className="mt-3 min-h-0 flex-1 overflow-y-auto">
-                  <div className="flex flex-col gap-1">
-                    {filteredUsers.length === 0 ? (
-                      <p className="px-3 py-8 text-center text-label text-text-muted">Nenhuma pessoa.</p>
-                    ) : filteredUsers.map((user) => (
-                      <UserRow key={user.id} user={user} onClick={() => selectUser(user.id)} onOpenProfile={onOpenProfile} />
-                    ))}
-                  </div>
-                </TabsContent>
-              </Tabs>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="flex flex-col gap-1">
+                  {filteredConversations.length === 0 ? (
+                    <p className="px-3 py-8 text-center text-label text-text-muted">Nenhuma conversa.</p>
+                  ) : filteredConversations.map((conversation) => (
+                    <ConversationRow
+                      key={conversation.id}
+                      conversation={conversation}
+                      active={onConversations && conversation.id === activeConversationId}
+                      onClick={() => selectConversation(conversation.id)}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -359,7 +394,7 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
       <GroupCreateDialog
         open={groupOpen}
         onOpenChange={setGroupOpen}
-        onCreated={() => { setTab('conversations'); if (isMobile) setOpenMobile(false); }}
+        onCreated={() => { if (isMobile) setOpenMobile(false); }}
       />
     </>
   );

@@ -90,12 +90,19 @@ export function useConversationsList(sendWs: (msg: ClientMessage) => void) {
     setConversations(next);
   }, []);
 
-  /** A conversation this client already has changed (rename, avatar, or
-   * message activity bumping lastMessageAt/updatedAt) — replace by id and
-   * re-sort, since activity/pin ordering could have changed. */
+  /** A conversation changed (rename, avatar, or message activity bumping
+   * lastMessageAt/updatedAt) — replace by id and re-sort, since activity/pin
+   * ordering could have changed. An update for one this client does NOT have
+   * yet is an insert: it is exactly how the recipient of a FIRST direct
+   * message learns the conversation exists (an empty DM is never listed, and
+   * the first message is what surfaces it — see touchConversation), and how a
+   * DM the user closed comes back when a newer message arrives. */
   const onConversationUpdated = useCallback((m: Extract<ServerMessage, { t: 'conversation-updated' }>) => {
-    if (!conversationsRef.current.some((c) => c.id === m.conversation.id)) return;
-    const next = sortConversations(conversationsRef.current.map((c) => (c.id === m.conversation.id ? m.conversation : c)));
+    const known = conversationsRef.current.some((c) => c.id === m.conversation.id);
+    const base = known
+      ? conversationsRef.current.map((c) => (c.id === m.conversation.id ? m.conversation : c))
+      : [m.conversation, ...conversationsRef.current];
+    const next = sortConversations(base);
     conversationsRef.current = next;
     setConversations(next);
   }, []);

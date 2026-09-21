@@ -18,10 +18,13 @@ export interface ApiUser {
 export class ApiError extends Error {
   status: number;
   code: string;
-  constructor(status: number, code: string, message: string) {
+  // only the friend-request cooldown response carries this
+  retryAfter?: string;
+  constructor(status: number, code: string, message: string, retryAfter?: string) {
     super(message);
     this.status = status;
     this.code = code;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -43,8 +46,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   try { body = await res.json(); } catch {  }
 
   if (!res.ok) {
-    const err = (body && typeof body === 'object' ? (body as { error?: { code?: string; message?: string } }).error : null) || {};
-    throw new ApiError(res.status, err.code || 'unknown_error', err.message || 'Erro inesperado.');
+    const err = (body && typeof body === 'object' ? (body as { error?: { code?: string; message?: string; retryAfter?: string } }).error : null) || {};
+    throw new ApiError(res.status, err.code || 'unknown_error', err.message || 'Erro inesperado.', err.retryAfter);
   }
   return body as T;
 }
@@ -148,4 +151,88 @@ export interface AdminUserRow extends PublicUser { online: boolean }
  * one" admin view needs its own fetch now. */
 export function fetchAdminUsers(): Promise<{ users: AdminUserRow[] }> {
   return apiFetch('/api/admin/users');
+}
+
+// ---- social: friends, requests, blocks (Etapa 8) ----------------------------
+
+/** The minimum a friends/requests/blocks row needs — no banner/bio, the
+ * server never sends a full profile to someone not yet authorized to see one. */
+export interface SocialUser {
+  id: string;
+  username: string;
+  displayName: string;
+  avatar: string;
+  avatarColor: string;
+}
+
+export interface SocialEntry { user: SocialUser; at: string }
+export interface SocialPage { items: SocialEntry[]; nextCursor: string | null }
+
+export type Relation = 'self' | 'none' | 'friends' | 'outgoing' | 'incoming' | 'blocked';
+export interface Relationship { relation: Relation; retryAfter: string | null }
+
+function pageQuery(params: Record<string, string | null | undefined>): string {
+  const q = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value) q.set(key, value);
+  const text = q.toString();
+  return text ? `?${text}` : '';
+}
+
+export function fetchFriends(cursor: string | null, q: string): Promise<SocialPage> {
+  return apiFetch(`/api/friends${pageQuery({ cursor, q })}`);
+}
+
+export function fetchFriendRequests(direction: 'incoming' | 'outgoing', cursor: string | null): Promise<SocialPage> {
+  return apiFetch(`/api/friend-requests${pageQuery({ direction, cursor })}`);
+}
+
+export function fetchRequestSummary(): Promise<{ incoming: number }> {
+  return apiFetch('/api/friend-requests/summary');
+}
+
+export function fetchBlocks(cursor: string | null): Promise<SocialPage> {
+  return apiFetch(`/api/blocks${pageQuery({ cursor })}`);
+}
+
+export function fetchRelationship(userId: string): Promise<Relationship> {
+  return apiFetch(`/api/relationships/${encodeURIComponent(userId)}`);
+}
+
+export type FriendRequestOutcome = 'created' | 'already_friends' | 'already_pending' | 'pending_received';
+
+interface FriendRequestResponse { friendship: { status: string }; direction?: 'outgoing' | 'incoming' }
+
+/** Sends a request by exact username. The server answers 201/200 with the
+ * same body shape, so the outcome is derived from the body — `direction` says
+ * a request was already pending (either way), an accepted status says the two
+ * are already friends, anything else is a fresh request. */
+export async function sendFriendRequest(username: string): Promise<FriendRequestOutcome> {
+  const res = await apiFetch<FriendRequestResponse>('/api/friend-requests', { method: 'POST', body: JSON.stringify({ username }) });
+  if (res.direction === 'incoming') return 'pending_received';
+  if (res.direction === 'outgoing') return 'already_pending';
+  return res.friendship.status === 'accepted' ? 'already_friends' : 'created';
+}
+
+export function acceptFriendRequest(userId: string): Promise<unknown> {
+  return apiFetch(`/api/friend-requests/${encodeURIComponent(userId)}/accept`, { method: 'POST' });
+}
+
+export function declineFriendRequest(userId: string): Promise<unknown> {
+  return apiFetch(`/api/friend-requests/${encodeURIComponent(userId)}/decline`, { method: 'POST' });
+}
+
+export function cancelFriendRequest(userId: string): Promise<unknown> {
+  return apiFetch(`/api/friend-requests/${encodeURIComponent(userId)}/cancel`, { method: 'POST' });
+}
+
+export function removeFriend(userId: string): Promise<unknown> {
+  return apiFetch(`/api/friendships/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+}
+
+export function blockUser(userId: string): Promise<unknown> {
+  return apiFetch(`/api/blocks/${encodeURIComponent(userId)}`, { method: 'POST' });
+}
+
+export function unblockUser(userId: string): Promise<unknown> {
+  return apiFetch(`/api/blocks/${encodeURIComponent(userId)}`, { method: 'DELETE' });
 }

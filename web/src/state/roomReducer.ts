@@ -48,6 +48,8 @@ export type RoomAction =
       avatar: string; avatarPoster: string; avatarColor: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[];
       role: 'user' | 'admin'; participants: Participant[];
     }
+  // replaces the whole map — the server re-scoped who this connection may see
+  | { type: 'PARTICIPANTS_SYNC'; participants: Participant[] }
   | { type: 'PARTICIPANT_JOINED'; participant: Participant }
   | { type: 'PARTICIPANT_UPDATED'; participant: Participant }
   | { type: 'PARTICIPANT_LEFT'; id: string }
@@ -87,6 +89,13 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
         joined: true,
         roomError: null,
       };
+    }
+    case 'PARTICIPANTS_SYNC': {
+      const participants = new Map<string, Participant>();
+      for (const p of action.participants) participants.set(p.id, p);
+      const focusedOwner = state.focusedId?.split(':')[0];
+      const stillThere = focusedOwner ? participants.has(focusedOwner) || focusedOwner === state.me.id : true;
+      return { ...state, participants, focusedId: stillThere ? state.focusedId : null };
     }
     case 'PARTICIPANT_JOINED': {
       const participants = new Map(state.participants);

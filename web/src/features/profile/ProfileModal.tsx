@@ -6,6 +6,7 @@ import { ImageLightbox } from '@/features/media/ImageLightbox';
 import { BANNER_ASPECT_RATIO } from '@/features/profile/profileLinks';
 import { fetchUserProfile } from '@/shared/api/api';
 import type { PublicUser } from '@/shared/types/protocol';
+import { ProfileActions } from '@/features/friends/ProfileActions';
 import { ProfileCard } from './ProfileCard';
 
 interface ProfileModalProps {
@@ -83,6 +84,7 @@ export function ProfileModal({ userId, onClose }: ProfileModalProps) {
               onBannerClick={user.banner ? () => setLightboxImage({ src: user.banner, kind: 'banner' }) : undefined}
               onAvatarClick={user.avatar ? () => setLightboxImage({ src: user.avatar, kind: 'avatar' }) : undefined}
             />
+            <ProfileActions userId={user.id} username={user.username} displayName={user.displayName} onNavigate={onClose} />
           </div>
         </DialogContent>
       )}

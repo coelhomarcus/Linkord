@@ -176,6 +176,12 @@ export type ServerMessage =
   | { t: 'chat-reaction-updated'; conversationId: string; msgId: number; emoji: ReactionEmoji; userIds: string[] }
   | { t: 'typing'; conversationId: string; userId: string; value: boolean }
   | { t: 'chat-attachment-added'; conversationId: string; msgId: number; attachment: ChatAttachment }
+  // payload-free: "your friends/requests/blocks changed, refetch" — the data
+  // itself only ever travels over the authorized HTTP endpoints
+  | { t: 'social-changed' }
+  // the scoped snapshot re-sent when this connection's known peers change
+  // (same shape the welcome carries)
+  | { t: 'presence-sync'; knownUsers: PublicUser[]; participants: Participant[]; onlineUserIds: string[] }
   | { t: 'user-online'; userId: string }
   | { t: 'user-offline'; userId: string }
   | { t: 'user-deleted'; userId: string }

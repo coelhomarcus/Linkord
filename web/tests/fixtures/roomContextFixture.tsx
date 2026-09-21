@@ -80,6 +80,7 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     kickFromCall: noop,
     moderationError: null,
     groupActionError: null,
+    socialRevision: 0,
     clearGroupActionError: noop,
     clearModerationError: noop,
     sendChatMessage: noop,

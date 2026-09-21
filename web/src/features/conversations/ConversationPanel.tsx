@@ -15,6 +15,7 @@ import { conversationTitle, directUser, groupMembers } from './conversationUtils
 import { GroupAvatar } from './GroupAvatar';
 import { MessageRow } from '@/features/chat/MessageRow';
 import { MessageComposer } from '@/features/chat/MessageComposer';
+import { DirectComposerGate } from '@/features/friends/DirectComposerGate';
 import type { MessageComposerHandle } from '@/features/chat/MessageComposer';
 
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -393,7 +394,9 @@ export function MessageListBridge({ conversationId, onOpenProfile }: { conversat
         style={{ height: composerHeight + 48 }}
       />
       <div ref={composerWrapRef} className="absolute inset-x-0 bottom-0">
-        <MessageComposer ref={composerRef} conversationId={conversationId} />
+        <DirectComposerGate conversationId={conversationId}>
+          <MessageComposer ref={composerRef} conversationId={conversationId} />
+        </DirectComposerGate>
       </div>
       {dragActive && (
         <div className="pointer-events-none absolute inset-0 z-10 m-2 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary bg-bg-primary/90 text-text-primary">

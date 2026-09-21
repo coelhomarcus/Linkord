@@ -5,6 +5,10 @@ import type { PublicUser } from '@/shared/types/protocol';
 import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
 import { ProfileModal } from '@/features/profile/ProfileModal';
 
+// the relationship actions need the router and the friends provider — they
+// have their own tests (tests/features/friends/ProfileActions.test.tsx)
+vi.mock('@/features/friends/ProfileActions', () => ({ ProfileActions: () => null }));
+
 const user: PublicUser = {
   id: 'u1',
   username: 'marcus',

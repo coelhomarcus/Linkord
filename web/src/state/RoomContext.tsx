@@ -115,6 +115,7 @@ export interface RoomContextValue {
   moderationError: string | null;
   clearModerationError: () => void;
   groupActionError: string | null;
+  socialRevision: number;
   clearGroupActionError: () => void;
   sendChatMessage: (conversationId: string, text: string, replyTo?: number) => void;
   deleteChatMessage: (msgId: number) => void;
