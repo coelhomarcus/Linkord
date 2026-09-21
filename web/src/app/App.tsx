@@ -11,6 +11,7 @@ import { LoadingScreen } from '@/app/layout/LoadingScreen';
 import { ReconnectBanner } from '@/app/layout/ReconnectBanner';
 import { AccessNotice } from '@/app/layout/AccessNotice';
 import { ConversationSidebar } from '@/features/conversations/ConversationSidebar';
+import { AppNavigationRail } from '@/features/navigation/AppNavigationRail';
 import { ConversationPanel } from '@/features/conversations/ConversationPanel';
 import { GroupDetailsPanel } from '@/features/conversations/GroupDetailsPanel';
 import { ConversationMediaPanel } from '@/features/conversations/ConversationMediaPanel';
@@ -164,14 +165,14 @@ function Shell() {
         openMobile={mobileShowSidebar}
         onOpenMobileChange={setMobileShowSidebar}
         className="h-dvh bg-bg-primary text-text-primary"
-        style={{ '--sidebar-width': '22rem', '--sidebar-width-icon': '4.5rem' }}
+        style={{ '--sidebar-width': '18rem', '--sidebar-width-mobile': '24rem' }}
       >
         <ReconnectBanner />
         <AccessNotice />
+        <AppNavigationRail onOpenProfile={setProfileUserId} className="hidden md:flex" />
         <ConversationSidebar
-          onOpenSettings={() => navigate(ROUTES.settings)}
-          onOpenProfile={setProfileUserId}
           onOpenPalette={() => setPaletteOpen(true)}
+          mobileRail={<AppNavigationRail onOpenProfile={setProfileUserId} className="border-r border-white/10" />}
         />
         <AnimatedSidebarInset className="relative min-h-0 overflow-hidden bg-[rgb(10_10_12)] md:my-2 md:mr-2 md:ml-2 md:rounded-2xl md:border md:border-white/10">
           <Routes>

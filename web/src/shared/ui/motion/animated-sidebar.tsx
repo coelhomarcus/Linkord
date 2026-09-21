@@ -557,6 +557,7 @@ export const AnimatedSidebar = forwardRef<HTMLElement, AnimatedSidebarProps>(
       >
         <motion.div
           initial={false}
+          inert={offcanvas}
           animate={{
             opacity: offcanvas ? 0 : 1,
             x: offcanvas ? (side === "left" ? "-100%" : "100%") : "0%",
@@ -567,6 +568,8 @@ export const AnimatedSidebar = forwardRef<HTMLElement, AnimatedSidebarProps>(
           className={cn(
             "sticky top-0 flex h-svh w-full flex-col overflow-hidden bg-background",
             collapsible === "offcanvas" && "w-[var(--sidebar-width)]",
+            // slid away but still (sidebar-width) wide: it must not catch clicks or focus
+            offcanvas && "pointer-events-none",
             variant === "sidebar" &&
               (side === "left" ? "border-border border-r" : "border-border border-l"),
             variant === "floating" &&

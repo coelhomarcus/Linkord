@@ -26,7 +26,7 @@ export function TransitionNotice({ onOpenFriends }: { onOpenFriends: () => void 
           <ul className="mt-1.5 flex list-disc flex-col gap-1 pl-4 text-caption text-text-secondary">
             <li>Qualquer pessoa pode criar grupos e gerenciar os próprios.</li>
             <li>Ninguém é colocado num grupo: você entra ao aceitar um convite.</li>
-            <li>Amigos e solicitações ficam em <strong className="font-medium text-text-primary">Amigos</strong> e <strong className="font-medium text-text-primary">Solicitações</strong>.</li>
+            <li>Amigos, solicitações e convites ficam todos em <strong className="font-medium text-text-primary">Amigos</strong>, na barra à esquerda.</li>
             <li>Conversas antigas continuam aqui para ler; para escrever numa DM, vocês precisam ser amigos.</li>
           </ul>
           <div className="mt-2 flex items-center gap-2">
