@@ -26,7 +26,15 @@ export function useMediaDevices(room: LKRoom, kind: MediaDeviceKind): MediaDevic
   const appliedSavedRef = useRef(false);
 
   const refresh = useCallback(async (requestPermissions: boolean) => {
-    const list = await Room.getLocalDevices(kind, requestPermissions);
+    // no navigator.mediaDevices (an insecure page, an unsupported browser): the
+    // picker simply stays empty and disabled instead of throwing from an effect
+    let list: MediaDeviceInfo[];
+    try {
+      list = await Room.getLocalDevices(kind, requestPermissions);
+    } catch (err) {
+      log.warn('Failed to list media devices', { kind, err: String(err) });
+      return;
+    }
     setDevices(list.map((d) => ({ deviceId: d.deviceId, label: d.label })));
     setPermissionNeeded(list.length > 0 && list.every((d) => !d.label));
 
