@@ -1,6 +1,9 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { config } from '../config/env.js';
 import { sendError } from './respond.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child({ component: 'http' });
 
 // Origin validation (docs/plano-rede-social.md §8.2). The session cookie is
 // SameSite=Lax and bodies must be JSON, which already blocks the classic
@@ -42,6 +45,7 @@ export async function originGuard(request: FastifyRequest, reply: FastifyReply):
   if (SAFE_METHODS.has(request.method) || !request.url.startsWith('/api/')) return;
   const origin = typeof request.headers.origin === 'string' ? request.headers.origin : undefined;
   if (!isOriginAllowed(currentInput(origin, request.headers.host))) {
+    log.warn('request from a disallowed origin', { origin, method: request.method, url: request.url.split('?')[0] });
     sendError(reply, 403, 'forbidden_origin', 'Origem não permitida.');
   }
 }

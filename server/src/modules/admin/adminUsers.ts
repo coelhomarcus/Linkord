@@ -11,6 +11,9 @@ import { SOCIAL_PAGE_SIZE, decodeTimeCursor, encodeTimeCursor } from '../friends
 import { dropUserConnections } from './accountEnforcement.js';
 import { decideAdminRoleChange, decideUserAction, pickSuccessor, type AdminRoleAction, type AdminRoleDecision, type UserActionDecision } from './adminPolicy.js';
 import { listAudit, recordAudit, recordAuditFailure, type AuditActor } from './auditLog.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'admin' });
 
 export type UserActionResult<T = object> = ({ code: 'ok' } & T) | { code: 'not_found' | 'forbidden' | 'confirmation_mismatch' | Exclude<UserActionDecision, 'allow'> };
 
@@ -49,6 +52,7 @@ export async function suspendUser(ctx: Ctx, targetId: string): Promise<UserActio
   await destroyAllSessionsForUser(targetId);
   dropUserConnections(targetId);
   void announceRevocations(outcome.revokedInvitationIds);
+  log.warn('account suspended', { actorId: ctx.actor.id, targetId, reason: ctx.reason });
   return { code: 'ok' };
 }
 
@@ -80,6 +84,7 @@ export async function setAdminRole(ctx: Ctx, targetId: string, action: AdminRole
   invalidateSessionsForUser(targetId);
   for (const p of participants.values()) if (p.userId === targetId) p.role = role;
   sendToUser(targetId, { t: 'role-updated', role });
+  log.warn(action === 'grant' ? 'admin role granted' : 'admin role removed', { actorId: ctx.actor.id, targetId });
   return { code: 'ok' };
 }
 
@@ -92,6 +97,7 @@ export async function reactivateUser(ctx: Ctx, targetId: string): Promise<UserAc
     if (decision !== 'allow') return { code: decision };
     await tx.update(users).set({ status: 'active', statusReason: '', statusChangedAt: new Date(), updatedAt: new Date() }).where(eq(users.id, targetId));
     await recordAudit({ actor: ctx.actor, action: 'user.reactivate', targetType: 'user', targetId, targetLabel: target.username, reason: ctx.reason, requestId: ctx.requestId }, tx);
+    log.info('account reactivated', { actorId: ctx.actor.id, targetId });
     return { code: 'ok' };
   });
 }
@@ -174,6 +180,7 @@ export async function deleteUserAccount(ctx: Ctx, targetId: string, confirm: str
     if (row) await sendConversationUpdateToMembers('conversation-updated', row);
   }
   for (const groupId of outcome.groupIds) await reconcileGroupMembership(groupId, targetId);
+  log.warn('account deleted', { actorId: ctx.actor.id, targetId, groups: outcome.groupIds.length, successions: outcome.successions.length });
 
   if (outcome.avatar) {
     await deleteAvatarFile(outcome.avatar).catch((err) => recordAuditFailure(

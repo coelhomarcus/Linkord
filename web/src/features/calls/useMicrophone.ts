@@ -7,6 +7,9 @@ import { playSound } from '../../shared/sounds';
 import { loadDevicePreference } from '../settings/useDevicePreference';
 import { loadNoiseSuppression } from '../settings/useNoiseSuppressionPreference';
 import { getRnnoiseProcessor } from './rnnoiseAudioProcessor';
+import { logger } from '@/shared/lib/logger';
+
+const log = logger.child({ component: 'mic' });
 
 export interface MicrophoneApi {
   activateMic: () => Promise<void>;
@@ -41,12 +44,12 @@ async function applyNoiseSuppression(room: Room, enabled: boolean): Promise<void
       await track.setProcessor(getRnnoiseProcessor());
       await track.applyConstraints({ noiseSuppression: false });
     } catch (err) {
-      console.warn('Failed to enable noise suppression (RNNoise) — keeping the browser\'s native suppression', err);
+      log.warn('Failed to enable noise suppression (RNNoise); keeping the browser\'s native suppression', { err: String(err) });
     }
   } else {
     if (track.getProcessor()) await track.stopProcessor().catch(() => {});
     await track.applyConstraints({ noiseSuppression: true }).catch((err) => {
-      console.warn('Failed to apply noise suppression', err);
+      log.warn('Failed to apply noise suppression', { err: String(err) });
     });
   }
 }

@@ -9,6 +9,9 @@ import { deleteGroupCompletely } from '../conversations/groupDeletion.js';
 import { pageGroupMembers } from '../conversations/groupMembers.js';
 import { revokeCallAccess } from '../calls/callAccess.js';
 import { recordAudit, recordAuditFailure, listAudit, type AuditActor } from './auditLog.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'admin' });
 
 interface Ctx { actor: AuditActor; reason: string; requestId: string }
 
@@ -99,6 +102,7 @@ export async function suspendGroup(ctx: Ctx, groupId: string): Promise<GroupActi
   await announceGroup(groupId);
   // no access includes the call: cut every member's media connection
   for (const userId of await memberIdsOf(groupId)) void revokeCallAccess(userId, groupId);
+  log.warn('group suspended', { actorId: ctx.actor.id, groupId, reason: ctx.reason });
   return { code: 'ok' };
 }
 
@@ -143,6 +147,7 @@ export async function assignGroupOwner(ctx: Ctx, groupId: string, newOwnerId: st
   if (outcome.code !== 'ok') return outcome;
   await announceGroup(groupId);
   await announceRevocations(outcome.revoked ?? []);
+  log.warn('group owner assigned by an admin', { actorId: ctx.actor.id, groupId, newOwnerId });
   return { code: 'ok' };
 }
 
@@ -154,6 +159,7 @@ export async function deleteGroupAsAdmin(ctx: Ctx, groupId: string): Promise<Gro
   try {
     const deleted = await deleteGroupCompletely(groupId);
     if (!deleted) return { code: 'not_found' };
+    log.warn('group deleted by an admin', { actorId: ctx.actor.id, groupId, members: deleted.memberIds.length });
   } catch (err) {
     await recordAuditFailure({ actor: ctx.actor, action: 'group.delete', targetType: 'group', targetId: groupId, targetLabel: group.title, reason: ctx.reason, requestId: ctx.requestId }, err);
     throw err;

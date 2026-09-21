@@ -15,6 +15,9 @@ import { sendAuthCodeEmail } from './email.js';
 import * as ratelimit from './ratelimit.js';
 import { db } from '../../db/client.js';
 import { users } from '../../db/schema.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'auth' });
 
 // /api/auth/* routes — registration closed behind an invite code, login,
 // logout, and "who am I" (used by the frontend at boot to check if
@@ -76,6 +79,7 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
   if (!config.REGISTRATION_CODE) return sendError(reply, 403, 'registration_closed', 'Registro fechado.');
   if (!safeCompare(code, config.REGISTRATION_CODE)) {
     ratelimit.recordFailure(ipKey);
+    log.warn('registration with a wrong invite code', { ip: ipKey });
     return sendError(reply, 403, 'invalid_code', 'Código de convite inválido.');
   }
   ratelimit.reset(ipKey);
@@ -92,6 +96,7 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
   }
 
   const gate = await checkRegistrationAllowed(ipOfRequest(request));
+  if (gate !== 'ok') log.warn('registration refused', { gate, ip: ipOfRequest(request) });
   if (gate === 'paused') {
     reply.header('Retry-After', '900');
     return sendError(reply, 429, 'registration_paused', 'Muitos cadastros no momento. Tente novamente mais tarde.');
@@ -118,6 +123,7 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
 
   const { rawToken } = await createSession(user.id);
   setSessionCookie(request, reply, rawToken);
+  log.info('account registered', { userId: user.id, username: user.username });
   // Etapa 7: no more global 'user-registered' broadcast — a brand-new
   // account has zero friends and zero shared conversations by definition,
   // so its knownPeerIds is empty on every side; the event would reach
@@ -153,6 +159,7 @@ async function handleLogin(request: FastifyRequest, reply: FastifyReply): Promis
   if (!user || !ok) {
     ratelimit.recordFailure(ipKey);
     ratelimit.recordFailure(userKey);
+    log.warn('login failed', { username, ip: ipOfRequest(request) });
     return sendError(reply, 401, 'invalid_credentials', 'Usuário ou senha inválidos.');
   }
 
@@ -161,6 +168,7 @@ async function handleLogin(request: FastifyRequest, reply: FastifyReply): Promis
 
   // only reachable with the right password, so it leaks nothing about who exists
   if (user.status !== 'active') {
+    log.warn('login refused for a suspended account', { userId: user.id, username: user.username });
     return sendError(reply, 403, 'account_unavailable', 'Esta conta está indisponível. Fale com a administração.');
   }
 
@@ -172,6 +180,7 @@ async function handleLogin(request: FastifyRequest, reply: FastifyReply): Promis
 
   const { rawToken } = await createSession(user.id);
   setSessionCookie(request, reply, rawToken);
+  log.info('login', { userId: user.id, username: user.username });
   sendJson(reply, 200, { user: privateUser(user) });
 }
 
@@ -221,7 +230,7 @@ async function issueAndSendCode(userId: string, email: string, username: string,
   try {
     await sendAuthCodeEmail({ to: email, code, purpose, username });
   } catch (err) {
-    console.error('[auth] failed to send code:', err instanceof Error ? err.message : err);
+    log.error('failed to send code', err);
     throw err;
   }
 }

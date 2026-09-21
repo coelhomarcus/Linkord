@@ -18,6 +18,9 @@ import {
   reserveUpload, releaseUpload, getReservedBytes, getReservedBytesForUser, withInitLock, completingUploads,
 } from './uploadSession.js';
 import type { UploadManifest } from './uploadSession.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'attachments' });
 
 // The Fastify HTTP handlers for the chunked-upload lifecycle — the on-disk
 // session mechanics (manifest, chunk paths, quota reservation, the stale
@@ -71,9 +74,11 @@ export async function handleAttachmentInit(request: FastifyRequest, reply: Fasti
     return 'ok';
   });
   if (reserved === 'quota_exceeded') {
+    log.info('upload refused: account storage quota', { userId: sess.userId, totalSize });
     return sendError(reply, 400, 'quota_exceeded', 'Você atingiu o seu limite de armazenamento. Apague arquivos seus antes de enviar mais.');
   }
   if (reserved === 'storage_full') {
+    log.warn('upload refused: instance storage is full', { userId: sess.userId, totalSize });
     return sendError(reply, 400, 'storage_full', 'Armazenamento cheio (30GB no total). Apague arquivos antigos antes de enviar mais.');
   }
 
@@ -90,6 +95,7 @@ export async function handleAttachmentInit(request: FastifyRequest, reply: Fasti
     throw err;
   }
 
+  log.debug('upload started', { uploadId, userId: sess.userId, conversationId, totalSize, totalChunks });
   sendJson(reply, 201, { uploadId, chunkSize, totalChunks });
 }
 
@@ -222,7 +228,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
     // only deleted after a successful commit; a failed delete here just
     // logs — sweepStaleUploads cleans it up later.
     await fs.rm(tmpDirFor(uploadId), { recursive: true, force: true })
-      .catch((err) => console.error('[attachments] failed to delete chunks after assembly:', err instanceof Error ? err.stack : err));
+      .catch((err) => log.error('failed to delete chunks after assembly', err));
     releaseUpload(uploadId);
 
     // Best-effort: a thumbnail that fails to generate/save just means this
@@ -241,7 +247,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
           await db.update(attachmentsTable).set({ thumbId: newThumbId }).where(eq(attachmentsTable.id, row.id));
           thumbId = newThumbId;
         } catch (err) {
-          console.warn('[attachments] failed to save thumbnail:', err instanceof Error ? err.message : err);
+          log.warn('failed to save thumbnail', { err: err instanceof Error ? err.message : String(err) });
           await fs.unlink(filePathFor(newThumbId)).catch(() => {});
         }
       }
@@ -262,6 +268,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
       await touchConversation(message.conversationId, message.createdAt);
       await broadcastToConversationMembers(message.conversationId, { t: 'chat', message: chatMessage });
       await sendUsageToUser(sess.userId);
+      log.info('upload completed', { uploadId, userId: sess.userId, conversationId: manifest.conversationId, bytes: manifest.totalSize });
       sendJson(reply, 201, { message: chatMessage });
     } else {
       // an EXISTING message just got another attachment (2nd-4th file of a
@@ -275,6 +282,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
         attachment: attachmentPayload,
       });
       await sendUsageToUser(sess.userId);
+      log.info('upload completed', { uploadId, userId: sess.userId, conversationId: manifest.conversationId, bytes: manifest.totalSize, attachedTo: targetMsgId });
       sendJson(reply, 201, { attachment: attachmentPayload });
     }
   } finally {

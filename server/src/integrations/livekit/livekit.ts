@@ -1,6 +1,9 @@
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import { config } from '../../config/env.js';
 import type { Participant } from '../../types.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'livekit' });
 
 export function roomNameFor(conversationId: string): string {
   return `${config.LIVEKIT_ROOM_NAME}-${conversationId}`;
@@ -90,13 +93,16 @@ export async function evictFromCall(
         await api.removeParticipant(roomName, identity);
       } catch (err) {
         // "not found" just means they were already gone
-        if (!/not.?found|does not exist/i.test(err instanceof Error ? err.message : String(err))) failed.push(identity);
+        if (!/not.?found|does not exist/i.test(err instanceof Error ? err.message : String(err))) {
+          failed.push(identity);
+          log.warn('failed to remove a participant from the call', { roomName, identity, attempt, err: err instanceof Error ? err.message : String(err) });
+        }
       }
     }
     pending = failed;
     if (pending.length > 0 && attempt < EVICT_ATTEMPTS) await sleep(EVICT_BACKOFF_MS * attempt);
   }
   if (pending.length > 0) {
-    console.warn(`[livekit] could not evict ${pending.length} connection(s) of ${userId} from ${conversationId} after ${EVICT_ATTEMPTS} attempts`);
+    log.warn('could not evict connections from the call', { connections: pending.length, userId, conversationId, attempts: EVICT_ATTEMPTS });
   }
 }

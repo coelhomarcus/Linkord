@@ -9,6 +9,9 @@ import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
 import { newId, filePathFor } from '../attachments/attachmentStorage.js';
 import { fetchImageFromUrl, AVATAR_MIME_TYPES } from './imageFetch.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'avatar' });
 
 const MAX_CROP_DIMENSION = 4096; // sane ceiling, well under sharp's own decompression-bomb guard
 
@@ -110,7 +113,7 @@ export async function encodeAndStoreProfileImage(
         throw err;
       }
     } catch (err) {
-      console.warn(`[attachments] failed to generate avatar poster: ${err instanceof Error ? err.message : err}`);
+      log.warn('failed to generate avatar poster', { err: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -174,10 +177,10 @@ export async function handleAvatarUpload(request: FastifyRequest, reply: Fastify
     return sendJson(reply, 201, result);
   } catch (err) {
     if (err instanceof ProfileImageProcessingError) {
-      console.warn(`[attachments] failed to crop avatar: ${err.message}`);
+      log.warn('failed to crop avatar', { err: err.message });
       return sendError(reply, 400, err.code, err.message);
     }
-    console.warn(`[attachments] failed to crop avatar: ${err instanceof Error ? err.message : err}`);
+    log.warn('failed to crop avatar', { err: err instanceof Error ? err.message : String(err) });
     throw err;
   }
 }

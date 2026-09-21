@@ -6,6 +6,9 @@ import { loadIdentity } from '@/shared/lib/identitySession';
 import { PROTOCOL_VERSION } from '@/shared/types/protocol';
 import type { ClientMessage, ServerMessage } from '@/shared/types/protocol';
 import type { RoomAction } from '@/state/roomReducer';
+import { logger } from '@/shared/lib/logger';
+
+const log = logger.child({ component: 'socket' });
 
 interface SocketConnectionDeps {
   socketRef: MutableRefObject<Socket | null>;
@@ -40,18 +43,21 @@ export function useSocketConnection(deps: SocketConnectionDeps) {
     socketRef.current = socket;
 
     socket.on('connect', () => {
+      log.info('socket connected');
       const saved = loadIdentity();
       sendWs({ t: 'join', id: saved?.id, token: saved?.token, v: PROTOCOL_VERSION });
     });
 
     socket.onAny((_eventName: string, payload: ServerMessage) => onMessageRef.current(payload));
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason: string) => {
       if (intentionalCloseRef.current) return;
+      log.warn('socket disconnected unexpectedly', { reason });
       dispatch({ type: 'SET_RECONNECTING', value: true });
     });
 
-    socket.on('connect_error', () => {
+    socket.on('connect_error', (err: Error) => {
+      log.warn('socket connect error', { message: err.message });
       if (!socket.active) refreshAuth();
     });
 

@@ -1,4 +1,7 @@
 import { ApiError } from '@/shared/api/api';
+import { logger } from '@/shared/lib/logger';
+
+const log = logger.child({ component: 'upload' });
 
 
 interface InitResponse {
@@ -86,6 +89,7 @@ export async function uploadFileInChunks({ conversationId, file, caption, target
   try {
     await runWithConcurrency(totalChunks, MAX_CONCURRENT_CHUNKS, uploadChunk);
   } catch (err) {
+    log.error('upload failed', err, { uploadId, bytes: file.size, type: file.type, chunks: totalChunks });
     fetch(`/api/attachments/${uploadId}`, { method: 'DELETE', credentials: 'same-origin' }).catch(() => {});
     throw err;
   }

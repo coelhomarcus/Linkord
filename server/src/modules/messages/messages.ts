@@ -23,6 +23,9 @@ import * as reactions from './reactions.js';
 import { ERROR_CODES } from '../../http/errors.js';
 import { loadInvitationCards, type InvitationCard } from '../conversations/invitationCards.js';
 import type { AppSocket, HandlerTable, Participant } from '../../types.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'audit' });
 
 // Etapa 6 (docs/plano-rede-social.md §4.3): "não enviar, reagir, anexar,
 // digitar" while contact is restricted (not friends, or blocked) — this is
@@ -499,7 +502,7 @@ async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Pr
     await recordAudit({
       actor: { id: p.userId, username: p.name }, action: 'message.delete', targetType: 'message', targetId: String(msgId),
       detail: { conversationId: existing.conversationId, authorId: existing.authorId },
-    }).catch((err) => console.error('[audit] message.delete:', err instanceof Error ? err.message : err));
+    }).catch((err) => log.error('message.delete', err));
   }
   await broadcastToConversationMembers(existing.conversationId, {
     t: 'chat-deleted',

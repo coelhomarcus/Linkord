@@ -11,6 +11,9 @@ import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
 import { conversationExistsForUser } from '../conversations/conversationsRepository.js';
 import { filePathFor } from './attachmentStorage.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'attachments' });
 
 // Chat attachments are served (and previewed) from disk keyed by a uuid (no
 // extension — real mime type lives in the mime_type column, never trust the
@@ -106,7 +109,7 @@ async function tryCacheFromRemote(id: string, cookieHeader: string): Promise<boo
     await fs.rename(tmpPath, filePathFor(id));
     return true;
   } catch (err) {
-    console.warn(`[attachments] failed to fetch ${id} from UPLOADS_REMOTE_URL: ${err instanceof Error ? err.message : err}`);
+    log.warn('failed to fetch a file from UPLOADS_REMOTE_URL', { fileId: id, err: err instanceof Error ? err.message : String(err) });
     await fs.unlink(tmpPath).catch(() => {});
     return false;
   }

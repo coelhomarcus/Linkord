@@ -7,6 +7,9 @@ import { playSound } from '@/shared/sounds';
 import { useTrackSpeaking } from '@/features/calls/useLiveKitTrack';
 import type { RoomAction } from '@/state/roomReducer';
 import type { ClientMessage } from '@/shared/types/protocol';
+import { logger } from '@/shared/lib/logger';
+
+const log = logger.child({ component: 'call' });
 
 interface CallLifecycleDeps {
   livekitRoom: Room;
@@ -105,7 +108,7 @@ export function useCallLifecycle(deps: CallLifecycleDeps) {
     if (m.conversationId !== pendingCallConversationIdRef.current) return;
     livekitRoom.connect(m.livekitUrl, m.livekitToken)
       .then(() => activateMic())
-      .catch((err) => console.warn('LiveKit connect failed', err));
+      .catch((err) => log.error('LiveKit connect failed', err, { conversationId: m.conversationId }));
     setActiveCallConversationId(m.conversationId);
   }, [livekitRoom, activateMic, setActiveCallConversationId]);
 

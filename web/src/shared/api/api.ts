@@ -1,6 +1,9 @@
 
 import type { ChatAttachment, InvitationCard, PublicUser } from '@/shared/types/protocol';
 import type { DetectedEmbed } from '@/shared/lib/chatEmbeds';
+import { logger } from '@/shared/lib/logger';
+
+const log = logger.child({ component: 'api' });
 
 export interface ApiUser {
   id: string;
@@ -47,6 +50,9 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
   if (!res.ok) {
     const err = (body && typeof body === 'object' ? (body as { error?: { code?: string; message?: string; retryAfter?: string } }).error : null) || {};
+    // expected 4xx answers (validation, cooldowns, denials) are normal control flow;
+    // a server failure is worth a record, and a report
+    if (res.status >= 500) log.error('API request failed', undefined, { path: path.split('?')[0], method: init?.method ?? 'GET', status: res.status, code: err.code });
     throw new ApiError(res.status, err.code || 'unknown_error', err.message || 'Erro inesperado.', err.retryAfter);
   }
   return body as T;

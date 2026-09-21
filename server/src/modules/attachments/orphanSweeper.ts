@@ -4,6 +4,9 @@ import { db } from '../../db/client.js';
 import { attachments } from '../../db/schema.js';
 import { recordAudit, recordAuditFailure, type AuditActor } from '../admin/auditLog.js';
 import { filePathFor } from './attachmentStorage.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'audit' });
 
 // Files on disk that no `attachments` row points to. Deleting a group/account/
 // message removes rows and files in separate steps, and a failed unlink leaves
@@ -108,7 +111,7 @@ export async function sweepOrphans(opts: { dryRun: boolean; actor: AuditActor | 
     await recordAudit({
       actor: opts.actor, action: 'storage.sweep_orphans', targetType: 'system', reason: opts.reason ?? 'varredura agendada',
       detail: { deleted, failed, orphanBytes: result.orphanBytes, missingFiles }, requestId: opts.requestId,
-    }).catch((err) => console.error('[audit] sweep_orphans:', err instanceof Error ? err.message : err));
+    }).catch((err) => log.error('sweep_orphans', err));
   }
   return result;
 }

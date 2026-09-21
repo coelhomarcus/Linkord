@@ -4,6 +4,9 @@ import { conversations } from '../../db/schema.js';
 import { participants, setCallConversationId } from '../presence/participants.js';
 import { dmKeyFor } from '../conversations/conversationsRepository.js';
 import { evictFromCall } from '../../integrations/livekit/livekit.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'calls' });
 
 /** Cuts an account's live call access for one conversation after the
  * database already revoked it (removal, group deletion, block, unfriend,
@@ -21,7 +24,7 @@ export async function revokeCallAccess(userId: string, conversationId: string): 
   try {
     await evictFromCall(userId, conversationId, identities);
   } catch (err) {
-    console.error(`[calls] failed to revoke call access of ${userId} in ${conversationId}:`, err instanceof Error ? err.stack : err);
+    log.error('failed to revoke call access', err, { userId, conversationId });
   }
 }
 
@@ -32,6 +35,6 @@ export async function revokeDirectCallAccess(a: string, b: string): Promise<void
     if (!dm) return;
     await Promise.all([revokeCallAccess(a, dm.id), revokeCallAccess(b, dm.id)]);
   } catch (err) {
-    console.error('[calls] failed to revoke direct call access:', err instanceof Error ? err.stack : err);
+    log.error('failed to revoke direct call access', err);
   }
 }

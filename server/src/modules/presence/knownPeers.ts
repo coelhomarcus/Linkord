@@ -4,6 +4,9 @@ import { listBlockedEitherWayIds } from '../blocks/blocksRepository.js';
 import { listConversationMemberIds } from '../conversations/conversationsRepository.js';
 import { listUsersByIds } from '../users/users.js';
 import type { Participant } from '../../types.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'presence' });
 
 // "Known peers" = friends ∪ members of every conversation an account is in.
 // Presence is scoped to this set (participants.ts#broadcastToKnownPeers), but
@@ -66,7 +69,7 @@ export async function refreshKnownPeers(userIds: string[]): Promise<void> {
         send(p.socket, { t: 'presence-sync', ...(await buildPresenceSnapshot(p)) });
       }
     } catch (err) {
-      console.error(`[knownPeers] failed to refresh ${userId}:`, err instanceof Error ? err.stack : err);
+      log.error('failed to refresh known peers', err, { userId });
     }
   }
 }

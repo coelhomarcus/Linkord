@@ -25,6 +25,9 @@ import { useProfileUpdate } from '@/features/profile/useProfileUpdate';
 import { preloadSounds } from '@/shared/sounds';
 import { setNotificationClickHandler } from '@/shared/notifications';
 import type { ClientMessage, ServerMessage } from '@/shared/types/protocol';
+import { logger } from '@/shared/lib/logger';
+
+const log = logger.child({ component: 'room' });
 
 export { PartialAttachmentError } from '@/features/chat/useAttachmentsUpload';
 
@@ -285,6 +288,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           disconnectIntentionally();
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Sala cheia, tente mais tarde.' });
         } else if (m.code === 'client_outdated') {
+          log.warn('server refused this build (client_outdated)');
           // stop retrying: every reconnect would get the same answer
           disconnectIntentionally();
           dispatch({ type: 'SET_CLIENT_OUTDATED' });
@@ -302,7 +306,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           chatMessages.cancelPendingJump();
           messageSearch.setSearchErrorMessage(m.message);
         } else {
-          console.warn('[ws] unhandled server error:', m.code, m.message);
+          log.warn('unhandled server error', { code: m.code, message: m.message, report: true });
         }
         break;
     }

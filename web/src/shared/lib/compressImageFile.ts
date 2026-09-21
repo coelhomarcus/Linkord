@@ -1,3 +1,7 @@
+import { logger } from '@/shared/lib/logger';
+
+const log = logger.child({ component: 'image' });
+
 export interface CompressImageOptions {
   quality?: number;
 }
@@ -46,7 +50,7 @@ export async function compressImageFile(file: File, options?: CompressImageOptio
     if (blob.size >= file.size) return file;
     return new File([blob], swapExtensionToWebp(file.name), { type: 'image/webp', lastModified: file.lastModified });
   } catch (err) {
-    console.warn('[compressImageFile] falling back to original file', err);
+    log.warn('image compression failed; sending the original file', { err: String(err) });
     return file;
   } finally {
     bitmap?.close();

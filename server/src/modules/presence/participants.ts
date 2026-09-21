@@ -4,6 +4,9 @@ import { updateProfile } from '../profile/profileRepository.js';
 import { sanitizeAvatar, sanitizeBanner, sanitizeAvatarColor, sanitizeDisplayName, sanitizeBio, sanitizeProfileLinks } from '../profile/sanitize.js';
 import { deleteAvatarFile } from '../attachments/attachmentCleanup.js';
 import type { AppSocket, HandlerTable, Participant, PublicParticipant } from '../../types.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'presence' });
 
 // Presence for the single shared room. `id` is per-CONNECTION (used as the
 // LiveKit identity) — if it were per-account, a second tab would get the
@@ -154,6 +157,7 @@ export function join(socket: AppSocket, msg: JoinMessage): { participant: Partic
     p.socket = socket;
   } else {
     if (participants.size >= config.MAX_PARTICIPANTS) {
+      log.warn('join refused: room is full', { participants: participants.size, max: config.MAX_PARTICIPANTS });
       send(socket, { t: 'error', code: 'full', message: 'Sala cheia, tente mais tarde.' });
       return null;
     }
@@ -161,6 +165,7 @@ export function join(socket: AppSocket, msg: JoinMessage): { participant: Partic
     // one account can't hold more than a handful of live connections (tabs,
     // devices) — otherwise a single sign-up could fill the whole room
     if (countConnectionsOf(u.userId) >= config.MAX_CONNECTIONS_PER_USER) {
+      log.warn('join refused: too many connections', { userId: u.userId });
       send(socket, { t: 'error', code: 'too_many_connections', message: 'Você já tem conexões demais abertas. Feche alguma aba.' });
       return null;
     }
@@ -262,15 +267,15 @@ function handleProfile(socket: AppSocket, msg: { avatar?: string; avatarPoster?:
     bio: nextBio,
     profileLinks: nextProfileLinks,
   })
-    .catch((err) => console.error(`[${p.id}] failed to save profile:`, err instanceof Error ? err.stack : err));
+    .catch((err) => log.error('failed to save profile', err, { participantId: p.id }));
   // deletes the OLD photo file(s) if they were one of our uploads and
   // changed — otherwise each photo change would leave the previous one(s)
   // orphaned.
   if (oldAvatar && oldAvatar !== p.avatar) {
-    deleteAvatarFile(oldAvatar).catch((err) => console.error(`[${p.id}] failed to delete old profile photo:`, err instanceof Error ? err.stack : err));
+    deleteAvatarFile(oldAvatar).catch((err) => log.error('failed to delete old profile photo', err, { participantId: p.id }));
   }
   if (oldAvatarPoster && oldAvatarPoster !== p.avatarPoster) {
-    deleteAvatarFile(oldAvatarPoster).catch((err) => console.error(`[${p.id}] failed to delete old profile photo:`, err instanceof Error ? err.stack : err));
+    deleteAvatarFile(oldAvatarPoster).catch((err) => log.error('failed to delete old profile photo', err, { participantId: p.id }));
   }
 }
 

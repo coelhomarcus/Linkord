@@ -23,6 +23,9 @@ import { groupCreationBlockedBy } from '../limits/limits.js';
 import { revokeCallAccess } from '../calls/callAccess.js';
 import { deleteGroupCompletely } from './groupDeletion.js';
 import type { AppSocket, HandlerTable } from '../../types.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'conversations' });
 
 // The socket handlers for conversation/group actions (open a DM, create a
 // group, rename it, add/remove members...) — never imported individually,
@@ -135,7 +138,8 @@ async function handleGroupDelete(socket: AppSocket, msg: { conversationId?: stri
     send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Você não tem permissão para gerenciar esse grupo.' });
     return;
   }
-  await deleteGroupCompletely(conversationId);
+  const deleted = await deleteGroupCompletely(conversationId);
+  if (deleted) log.info('group deleted by its owner', { conversationId, ownerId: p.userId, members: deleted.memberIds.length });
 }
 
 /** Owner-only rename/re-avatar. `title` and `avatar` are each applied only
@@ -169,7 +173,7 @@ async function handleGroupUpdate(socket: AppSocket, msg: { conversationId?: stri
   // cleanup an account's own avatar change gets in handleProfile.
   if (updates.avatar !== undefined && conversation.avatar && conversation.avatar !== updates.avatar) {
     deleteAvatarFile(conversation.avatar).catch((err) => {
-      console.error(`[conversations] failed to delete old avatar for group ${conversationId}:`, err instanceof Error ? err.stack : err);
+      log.error('failed to delete old group avatar', err, { conversationId });
     });
   }
 
@@ -211,6 +215,7 @@ async function handleGroupTransferOwner(socket: AppSocket, msg: { conversationId
   const [conversation] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
   if (conversation) await sendConversationUpdateToMembers('conversation-updated', conversation);
   await announceRevocations(result.revokedInvitationIds);
+  log.info('group ownership transferred', { conversationId, from: p.userId, to: newOwnerId });
 }
 
 /** The group's owner removes anyone; a member can only remove THEMSELVES
@@ -245,6 +250,7 @@ async function handleGroupMembersRemove(socket: AppSocket, msg: { conversationId
 
   await reconcileGroupMembership(conversationId, targetUserId);
   await refreshKnownPeers([targetUserId, ...result.remainingIds]);
+  log.info(targetUserId === p.userId ? 'member left the group' : 'member removed from the group', { conversationId, actorId: p.userId, targetUserId });
 }
 
 export const handlers: HandlerTable = {

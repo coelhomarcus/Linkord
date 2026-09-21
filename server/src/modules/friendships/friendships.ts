@@ -14,6 +14,9 @@ import { onSocialChange } from '../presence/knownPeers.js';
 import { announceRevocations, countReceivedInvitations } from '../conversations/invitationsRepository.js';
 import { revokeDirectCallAccess } from '../calls/callAccess.js';
 import type { Friendship } from '../../db/schema.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'friendships' });
 
 type Params = { userId: string };
 
@@ -46,7 +49,7 @@ function respond(reply: FastifyReply, result: FriendshipResult): void {
     case 'not_found': return sendError(reply, 404, 'not_found', 'Solicitação não encontrada.');
     case 'forbidden': return sendError(reply, 403, 'forbidden', 'Você não pode fazer isso.');
     case 'invalid_state': return sendError(reply, 409, 'conflict', 'Essa solicitação não está mais nesse estado.');
-    case 'quota_exceeded': return sendJson(reply, 409, { error: { code: 'quota_exceeded', quota: result.quota, message: result.quota === 'friends' ? 'Limite de amigos atingido.' : 'Você tem solicitações pendentes demais.' } });
+    case 'quota_exceeded': log.info('friendship action blocked by a quota', { quota: result.quota }); return sendJson(reply, 409, { error: { code: 'quota_exceeded', quota: result.quota, message: result.quota === 'friends' ? 'Limite de amigos atingido.' : 'Você tem solicitações pendentes demais.' } });
   }
 }
 

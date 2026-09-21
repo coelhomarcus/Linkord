@@ -16,15 +16,35 @@ import { registerBlockRoutes } from '../modules/blocks/blocks.js';
 import { registerUserRoutes } from '../modules/users/usersRoutes.js';
 import { registerInvitationRoutes } from '../modules/conversations/invitations.js';
 import { registerNotificationRoutes } from '../modules/notifications/notificationsRoutes.js';
+import { registerClientLogRoutes } from '../modules/logs/clientLogs.js';
 import { registerLimitsRoutes } from '../modules/limits/limitsRoutes.js';
 import { registerReportRoutes } from '../modules/reports/reports.js';
 import { registerAdminRoutes } from '../modules/admin/adminRoutes.js';
 import { registerGroupMemberRoutes } from '../modules/conversations/groupMembers.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child({ component: 'http' });
 
 // compiled, this file becomes server/dist/http/app.js, hence the three
 // '..' up to the repo root, then into web/dist.
 const PUBLIC_DIR = path.join(import.meta.dirname, '..', '..', '..', 'web', 'dist');
 const ASSETS_DIR = path.join(PUBLIC_DIR, 'assets'); // Vite's hashed filenames: safe for long caching
+
+const SLOW_REQUEST_MS = 1000;
+
+/** One line per API call: quiet for ordinary reads, loud for what someone has to
+ * look at (failures, denials, rate limits, slow calls). Static files and the
+ * health check are skipped. */
+function logRequest(request: FastifyRequest, status: number, ms: number): void {
+  const route = request.routeOptions?.url ?? request.url.split('?')[0]!;
+  if (route === '/healthz' || !(route.startsWith('/api/') || route.startsWith('/uploads/'))) return;
+  const fields = { reqId: request.id, method: request.method, route, status, ms };
+  if (status >= 500) log.error('request failed', undefined, fields);
+  else if (status === 429 || status === 403 || (status === 401 && !route.startsWith('/api/auth/'))) log.warn('request denied', fields);
+  else if (ms >= SLOW_REQUEST_MS) log.warn('slow request', fields);
+  else if (request.method === 'GET' || request.method === 'HEAD') log.debug('request', fields);
+  else log.info('request', fields);
+}
 
 /** Creates the Fastify instance with all routes registered, but WITHOUT
  * calling listen() — whoever boots the server (src/index.ts) needs
@@ -43,7 +63,7 @@ export function createApp(): FastifyInstance {
   fastify.setErrorHandler((err: FastifyError, _request: FastifyRequest, reply: FastifyReply) => {
     const status = err.statusCode ?? 500;
     const code = err.code || 'internal_error';
-    if (status >= 500) console.error('[http] error in a route:', err.stack ?? err);
+    if (status >= 500) log.error('error in a route', err, { reqId: _request.id, method: _request.method, url: _request.routeOptions?.url ?? _request.url.split('?')[0] });
     sendError(reply, status, code, err.message || 'Erro interno.');
   });
 
@@ -57,6 +77,10 @@ export function createApp(): FastifyInstance {
   fastify.register(fastifyCompress);
 
   fastify.addHook('onRequest', originGuard);
+  // correlation id: the same value the request lines and errors carry, so a
+  // report from the client ("x-request-id: req-7") finds the server side
+  fastify.addHook('onRequest', async (request, reply) => { reply.header('x-request-id', request.id); });
+  fastify.addHook('onResponse', async (request, reply) => logRequest(request, reply.statusCode, Math.round(reply.elapsedTime)));
 
   fastify.get('/healthz', async () => ({ ok: true, participants: participants.size, uptime: process.uptime() }));
 
@@ -72,6 +96,7 @@ export function createApp(): FastifyInstance {
   registerGroupMemberRoutes(fastify);
   registerReportRoutes(fastify);
   registerLimitsRoutes(fastify);
+  registerClientLogRoutes(fastify);
   registerNotificationRoutes(fastify);
   registerAdminRoutes(fastify);
 

@@ -1,4 +1,7 @@
 import sharp from 'sharp';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'attachments' });
 
 // Chat images eligible for a generated thumbnail — same set the frontend
 // treats as "image" (web/src/features/chat/ChatAttachment.tsx). Video/audio/
@@ -34,7 +37,7 @@ export async function generateThumbnail(srcPath: string): Promise<{ buffer: Buff
     if (meta.hasAlpha) return { buffer: await resized.webp({ quality: 82 }).toBuffer(), mime: 'image/webp' };
     return { buffer: await resized.jpeg({ quality: 82 }).toBuffer(), mime: 'image/jpeg' };
   } catch (err) {
-    console.warn(`[attachments] failed to generate thumbnail: ${err instanceof Error ? err.message : err}`);
+    log.warn('failed to generate thumbnail', { err: err instanceof Error ? err.message : String(err) });
     return null;
   }
 }

@@ -9,6 +9,9 @@ import { isActiveAdmin } from '../admin/adminAuth.js';
 import { recordAudit } from '../admin/auditLog.js';
 import { ERROR_CODES } from '../../http/errors.js';
 import type { AppSocket, HandlerTable } from '../../types.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'audit' });
 
 // Kicking someone out of a group call (the owner of that group, or an instance
 // admin). Account deletion, suspension and the rest of the administrative
@@ -59,7 +62,7 @@ async function handleCallKick(socket: AppSocket, msg: { participantId?: string }
   try {
     await livekit.kickParticipant(roomName, target.id);
   } catch (err) {
-    console.warn(`[moderation] failed to kick ${target.id} from the call: ${err instanceof Error ? err.message : err}`);
+    log.warn('failed to kick from the call', { participantId: target.id, err: err instanceof Error ? err.message : String(err) });
     send(socket, { t: 'error', code: 'livekit-unavailable', message: 'Não foi possível remover da chamada agora.' });
     return;
   }
@@ -72,7 +75,7 @@ async function handleCallKick(socket: AppSocket, msg: { participantId?: string }
     await recordAudit({
       actor: { id: p.userId, username: p.name }, action: 'call.kick', targetType: 'user', targetId: target.userId, targetLabel: target.name,
       detail: { conversationId: callGroupId },
-    }).catch((err) => console.error('[audit] call.kick:', err instanceof Error ? err.message : err));
+    }).catch((err) => log.error('call.kick', err));
   }
 }
 

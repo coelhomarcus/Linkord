@@ -21,6 +21,9 @@ import { resolveSession } from '../modules/auth/session.js';
 import { isSocketOriginAllowed } from '../http/originGuard.js';
 import { isClientCompatible } from './protocolVersion.js';
 import type { AppSocket, HandlerTable } from '../types.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child({ component: 'socket' });
 
 // {message type: handler(socket, msg)} combining what each feature exports
 // — register a new feature's `handlers` here, no dispatch changes needed.
@@ -72,6 +75,7 @@ const ACTION_LIMITS: Record<string, { windowMs: number; max: number }> = {
 async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
   // before anything is looked up or sent: an outdated client gets nothing but the reason
   if (!isClientCompatible(msg.v)) {
+    log.warn('join refused: outdated client', { version: msg.v ?? null, ip: socket.ip });
     send(socket, { t: 'error', code: 'client_outdated', message: 'Há uma versão nova do Linkord. Atualize a página.' });
     setTimeout(() => { try { socket.disconnect(true); } catch { /* already gone */ } }, 100).unref();
     return;
@@ -109,7 +113,7 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
   });
   broadcastToKnownPeers(p.userId, { t: 'participant-joined', participant: publicParticipant(p) }, p.id);
   if (justCameOnline) broadcastToKnownPeers(p.userId, { t: 'user-online', userId: p.userId });
-  console.log(`[${p.id}] joined (${p.name}) from ${socket.ip}`);
+  log.info('joined', { participantId: p.id, username: p.name, ip: socket.ip });
 }
 
 /** Actually joins a call (group or 1:1 direct): mints a LiveKit token for
@@ -139,7 +143,7 @@ async function handleCallJoin(socket: AppSocket, msg: { conversationId?: string 
   try {
     livekitToken = await livekit.createToken(p, `${config.LIVEKIT_ROOM_NAME}-${conversationId}`);
   } catch (err) {
-    console.warn(`[${p.id}] failed to generate LiveKit token: ${err instanceof Error ? err.message : err}`);
+    log.warn('failed to generate LiveKit token', { participantId: p.id, err: err instanceof Error ? err.message : String(err) });
     send(socket, { t: 'error', code: 'livekit-unavailable', message: 'Vídeo/voz indisponível no momento.' });
     return;
   }
@@ -162,11 +166,11 @@ function safeHandle(eventName: string, socket: AppSocket, payload: unknown, hand
     const result = handler(socket, payload);
     if (result && typeof (result as Promise<unknown>).catch === 'function') {
       (result as Promise<unknown>).catch((err: unknown) => {
-        console.error(`[ws] error in handler '${eventName}' (participantId=${socket.participantId}): ${err instanceof Error ? err.stack : err}`);
+        log.error('error in socket handler', err, { event: eventName, participantId: socket.participantId });
       });
     }
   } catch (err) {
-    console.error(`[ws] error in handler '${eventName}' (participantId=${socket.participantId}): ${err instanceof Error ? err.stack : err}`);
+    log.error('error in socket handler', err, { event: eventName, participantId: socket.participantId });
   }
 }
 
@@ -186,6 +190,7 @@ export function createWsServer(httpServer: HttpServer): Server {
   // client-side) — RoomProvider uses that to fall back to the login screen.
   io.use(async (socket: Socket, next) => {
     if (!isSocketOriginAllowed(socket.handshake.headers)) {
+      log.warn('socket handshake from a disallowed origin', { origin: socket.handshake.headers.origin ?? null });
       return next(Object.assign(new Error('Origem não permitida.'), { data: { code: 'forbidden_origin' } }));
     }
     try {
@@ -221,6 +226,7 @@ export function createWsServer(httpServer: HttpServer): Server {
         // no participant yet (never joined) — the handler's own `p.socket
         // !== socket` guard already no-ops it, nothing to rate-limit.
         if (userId && !floodControl.allow(`${eventName}:${userId}`, rule)) {
+          log.warn('socket action rate limited', { event: eventName, userId });
           send(socket, { t: 'error', code: 'rate_limited', message: 'Você está enviando rápido demais. Espere um pouco.' });
           return;
         }
@@ -228,7 +234,10 @@ export function createWsServer(httpServer: HttpServer): Server {
       safeHandle(eventName, socket, payload || {}, handler);
     });
 
-    socket.on('disconnect', () => handleClose(socket));
+    socket.on('disconnect', (reason) => {
+      log.debug('disconnected', { participantId: socket.participantId, reason });
+      handleClose(socket);
+    });
   });
 
   return io;

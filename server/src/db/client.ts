@@ -2,6 +2,9 @@ import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { config } from '../config/env.js';
 import * as schema from './schema.js';
+import { logger } from '../lib/logger.js';
+
+const log = logger.child({ component: 'db' });
 
 // Single Postgres connection, shared by the whole server.
 if (!config.DATABASE_URL) {
@@ -30,7 +33,7 @@ export const pool = new Pool({
 // turns into an uncaughtException — taking down the whole room over one
 // stale connection.
 pool.on('error', (err) => {
-  console.error('[db] error on an idle pool connection:', err instanceof Error ? err.stack : err);
+  log.error('error on an idle pool connection', err);
 });
 
 export const db = drizzle(pool, { schema });

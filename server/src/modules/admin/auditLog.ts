@@ -4,6 +4,9 @@ import { db } from '../../db/client.js';
 import { adminAuditLogs } from '../../db/schema.js';
 import { SOCIAL_PAGE_SIZE, decodeTimeCursor, encodeTimeCursor } from '../friendships/cursor.js';
 import type { Tx } from '../users/userPairLock.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'audit' });
 
 // Append-only trail of administrative actions (docs/plano-rede-social.md
 // §6.5). Nothing in the application updates or deletes these rows, and there
@@ -48,7 +51,7 @@ export async function recordAuditFailure(entry: AuditEntry, error: unknown): Pro
   try {
     await recordAudit({ ...entry, result: 'failed', detail: { ...entry.detail, error: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300) } });
   } catch (err) {
-    console.error('[audit] could not record a failure entry:', err instanceof Error ? err.stack : err);
+    log.error('could not record a failure entry', err);
   }
 }
 

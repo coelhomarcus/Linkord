@@ -18,6 +18,9 @@ import {
   broadcastToConversationMembers, canManageGroup, getOrCreateDirect, sendConversationUpdateToMembers, touchConversation,
 } from './conversationsRepository.js';
 import { effectiveStatus, loadInvitationCards, type InvitationCard } from './invitationCards.js';
+import { logger } from '../../lib/logger.js';
+
+const log = logger.child({ component: 'invitations' });
 
 // Group invitations (docs/plano-rede-social.md §5.5, §5.6, §6.2, §7.2). An
 // invitation is NOT membership: the only thing that ever creates a member
@@ -93,7 +96,7 @@ export async function broadcastInvitationUpdates(invitationIds: string[]): Promi
       if (card) await broadcastToConversationMembers(row.conversationId, { t: 'invitation-updated', invitation: card });
     }
   } catch (err) {
-    console.error('[invitations] failed to broadcast card updates:', err instanceof Error ? err.stack : err);
+    log.error('failed to broadcast card updates', err);
   }
 }
 
@@ -176,7 +179,7 @@ async function inviteOne(inviterId: string, conversationId: string, inviteeId: s
       };
     });
   } catch (err) {
-    console.error(`[invitations] failed to invite ${inviteeId}:`, err instanceof Error ? err.stack : err);
+    log.error('failed to invite', err, { inviteeId });
     return { result: unavailable };
   }
 }
@@ -193,7 +196,7 @@ async function announceCard(inviter: User, sent: SentCard): Promise<void> {
     await onSocialChange(inviter.id, sent.invitation.inviteeId);
     await broadcastInvitationUpdates(sent.expiredIds);
   } catch (err) {
-    console.error('[invitations] failed to announce a card:', err instanceof Error ? err.stack : err);
+    log.error('failed to announce a card', err);
   }
 }
 
