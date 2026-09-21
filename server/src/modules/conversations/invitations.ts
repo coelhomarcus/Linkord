@@ -62,7 +62,7 @@ async function handleCreateGroup(request: FastifyRequest, reply: FastifyReply): 
   if (tooMany) return respondInviteError(reply, 'too_many');
 
   const conversation = await createGroup(sess.userId, title);
-  sendToUser(sess.userId, { t: 'conversation-opened', conversationId: conversation.id, conversation: rowToSummary(conversation, [sess.userId], null, 'owner') });
+  sendToUser(sess.userId, { t: 'conversation-opened', conversationId: conversation.id, conversation: rowToSummary(conversation, [sess.userId], null, 'owner', sess.userId) });
   let results: InviteResult[] = [];
   if (ids.length) {
     const invited = await createInvitations(sess.userId, conversation.id, ids);

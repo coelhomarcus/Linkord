@@ -7,6 +7,7 @@ import { findById } from '../users/users.js';
 import { blockUser, unblockUser, listBlocks } from './blocksRepository.js';
 import { onSocialChange } from '../presence/knownPeers.js';
 import { announceRevocations } from '../conversations/invitationsRepository.js';
+import { revokeDirectCallAccess } from '../calls/callAccess.js';
 
 type Params = { userId: string };
 
@@ -23,6 +24,7 @@ async function handleBlock(request: FastifyRequest<{ Params: Params }>, reply: F
   sendJson(reply, 200, { blocked: true });
   void onSocialChange(sess.userId, targetId);
   void announceRevocations(revokedIds);
+  void revokeDirectCallAccess(sess.userId, targetId);
 }
 
 async function handleUnblock(request: FastifyRequest<{ Params: Params }>, reply: FastifyReply): Promise<void> {

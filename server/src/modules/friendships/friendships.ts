@@ -12,6 +12,7 @@ import {
 import { normalizeSearchQuery } from './cursor.js';
 import { onSocialChange } from '../presence/knownPeers.js';
 import { announceRevocations, countReceivedInvitations } from '../conversations/invitationsRepository.js';
+import { revokeDirectCallAccess } from '../calls/callAccess.js';
 import type { Friendship } from '../../db/schema.js';
 
 type Params = { userId: string };
@@ -55,7 +56,10 @@ const STATE_CHANGING = new Set<FriendshipResult['code']>(['created', 'accepted',
  * tabs/accounts to get its own HTTP answer. */
 function afterMutation(me: string, other: string, result: FriendshipResult): void {
   if (STATE_CHANGING.has(result.code)) void onSocialChange(me, other);
-  if (result.code === 'removed' && result.revokedInvitationIds?.length) void announceRevocations(result.revokedInvitationIds);
+  if (result.code === 'removed') {
+    if (result.revokedInvitationIds?.length) void announceRevocations(result.revokedInvitationIds);
+    void revokeDirectCallAccess(me, other);
+  }
 }
 
 const otherSideOf = (f: Friendship, me: string): string => (f.userLowId === me ? f.userHighId : f.userLowId);

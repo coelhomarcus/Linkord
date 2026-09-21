@@ -35,6 +35,10 @@ export interface ConversationSummary {
   // (DMs have no owner). Lets the frontend gate group-management UI on real
   // per-group ownership instead of the account's global instance role.
   myRole: ConversationRole;
+  // derived from the owner's membership row, never stored twice (§6.3);
+  // null for a DM. `memberIds` stays for presence/mentions until etapa 14.
+  ownerId: string | null;
+  memberCount: number;
 }
 
 export function sanitizeConversationTitle(name: unknown): string | null {
@@ -49,7 +53,7 @@ function normalizeConversationType(type: string): ConversationType {
 // Exported (not just used by listForUser below) because conversations.ts's
 // own handlers (handleDirectOpen, handleGroupCreate, handleGroupMembersAdd)
 // build the same summary shape for the conversation they just acted on.
-export function rowToSummary(row: Conversation, memberIds: string[], pinnedAt: Date | null, myRole: ConversationRole): ConversationSummary {
+export function rowToSummary(row: Conversation, memberIds: string[], pinnedAt: Date | null, myRole: ConversationRole, ownerId: string | null): ConversationSummary {
   return {
     id: row.id,
     type: normalizeConversationType(row.type),
@@ -62,6 +66,8 @@ export function rowToSummary(row: Conversation, memberIds: string[], pinnedAt: D
     updatedAt: row.updatedAt.getTime(),
     pinnedAt: pinnedAt ? pinnedAt.getTime() : null,
     myRole,
+    ownerId,
+    memberCount: memberIds.length,
   };
 }
 
@@ -102,16 +108,18 @@ export async function listForUser(userId: string): Promise<ConversationSummary[]
 
   const ids = rows.map((r) => r.conversation.id);
   const members = new Map<string, string[]>();
+  const owners = new Map<string, string>();
   if (ids.length) {
     const memberRows = await db.select().from(conversationMembers).where(inArray(conversationMembers.conversationId, ids));
     for (const row of memberRows) {
       const list = members.get(row.conversationId) ?? [];
       list.push(row.userId);
       members.set(row.conversationId, list);
+      if (row.role === 'owner') owners.set(row.conversationId, row.userId);
     }
   }
 
-  return rows.map((r) => rowToSummary(r.conversation, members.get(r.conversation.id) ?? [], r.pinnedAt, r.role as ConversationRole));
+  return rows.map((r) => rowToSummary(r.conversation, members.get(r.conversation.id) ?? [], r.pinnedAt, r.role as ConversationRole, owners.get(r.conversation.id) ?? null));
 }
 
 /** Sends the CURRENT state of one conversation to every member who already
@@ -128,9 +136,10 @@ export async function sendConversationUpdateToMembers(t: 'conversation-created' 
   const memberRows = await db.select({ userId: conversationMembers.userId, pinnedAt: conversationMembers.pinnedAt, role: conversationMembers.role })
     .from(conversationMembers).where(eq(conversationMembers.conversationId, row.id));
   const memberIds = memberRows.map((r) => r.userId);
+  const ownerId = memberRows.find((r) => r.role === 'owner')?.userId ?? null;
   for (const { userId, pinnedAt, role } of memberRows) {
     for (const p of participants.values()) {
-      if (p.userId === userId) send(p.socket, { t, conversation: rowToSummary(row, memberIds, pinnedAt, role as ConversationRole) });
+      if (p.userId === userId) send(p.socket, { t, conversation: rowToSummary(row, memberIds, pinnedAt, role as ConversationRole, ownerId) });
     }
   }
 }

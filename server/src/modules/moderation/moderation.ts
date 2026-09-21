@@ -5,9 +5,11 @@ import { conversationMembers, conversations, users } from '../../db/schema.js';
 import { findById } from '../users/users.js';
 import { invalidateSessionsForUser } from '../auth/session.js';
 import { participants, broadcastToKnownPeers, send, removeParticipant, setCallConversationId } from '../presence/participants.js';
+import { revokeCallAccess } from '../calls/callAccess.js';
 import * as livekit from '../../integrations/livekit/livekit.js';
 import { deleteAvatarFile } from '../attachments/attachmentCleanup.js';
-import { reconcileGroupMembership } from '../conversations/conversationsRepository.js';
+import { canManageGroup, getMemberRole, reconcileGroupMembership } from '../conversations/conversationsRepository.js';
+import { ERROR_CODES } from '../../http/errors.js';
 import type { AppSocket, HandlerTable, Participant } from '../../types.js';
 
 // Admin-only moderation actions — account deletion (Settings "Moderation"
@@ -15,6 +17,14 @@ import type { AppSocket, HandlerTable, Participant } from '../../types.js';
 // their profile resolves to the neutral deleted-user fallback). Deleting an
 // account means "this person can't log in anymore," not "rewrite chat
 // history". Sessions vanish via CASCADE.
+
+/** Kick-from-call authority (docs/plano-rede-social.md §4.1): the OWNER of the
+ * group the call belongs to, for someone who is a member of it. Instance
+ * admins keep their existing power until the audited moderation flow (etapa
+ * 11) replaces it — global role still doesn't make anyone an owner. */
+export function canKickFromCall(input: { actorIsAdmin: boolean; actorOwnsGroup: boolean; targetIsMember: boolean }): boolean {
+  return input.actorIsAdmin || (input.actorOwnsGroup && input.targetIsMember);
+}
 
 function isAdmin(p: Participant | undefined): boolean {
   return !!p && p.role === 'admin';
@@ -73,6 +83,8 @@ async function handleUserDelete(socket: AppSocket, msg: { userId?: string }): Pr
   for (const other of [...participants.values()]) {
     if (other.userId !== targetId) continue;
     const otherSocket = other.socket;
+    // the media connection outlives the socket, so cut it at the SFU too
+    if (other.callConversationId) void revokeCallAccess(targetId, other.callConversationId);
     removeParticipant(other);
     try { otherSocket?.disconnect(true); } catch { /* socket dying */ }
   }
@@ -96,7 +108,7 @@ async function handleUserDelete(socket: AppSocket, msg: { userId?: string }): Pr
  * covers the natural 1:1 case. */
 async function handleCallKick(socket: AppSocket, msg: { participantId?: string }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
-  if (!p || p.socket !== socket || !isAdmin(p)) return;
+  if (!p || p.socket !== socket) return;
 
   const targetId = String(msg.participantId || '');
   if (!targetId || targetId === p.id) return;
@@ -106,6 +118,17 @@ async function handleCallKick(socket: AppSocket, msg: { participantId?: string }
 
   const [callConversation] = await db.select({ type: conversations.type }).from(conversations).where(eq(conversations.id, target.callConversationId)).limit(1);
   if (callConversation?.type !== 'group') return;
+
+  const callGroupId = target.callConversationId;
+  const allowed = canKickFromCall({
+    actorIsAdmin: isAdmin(p),
+    actorOwnsGroup: await canManageGroup(callGroupId, p.userId),
+    targetIsMember: (await getMemberRole(callGroupId, target.userId)) !== null,
+  });
+  if (!allowed) {
+    send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Você não tem permissão para remover essa pessoa da chamada.' });
+    return;
+  }
 
   const roomName = `${config.LIVEKIT_ROOM_NAME}-${target.callConversationId}`;
   try {

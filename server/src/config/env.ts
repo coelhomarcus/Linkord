@@ -105,6 +105,10 @@ const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || '';
 // prefix for each group call's LiveKit room name (see
 // realtime/livekit.ts) — one room per group, not a single shared one.
 const LIVEKIT_ROOM_NAME = process.env.LIVEKIT_ROOM_NAME || 'linkord-room';
+// A token only gates ENTERING a room; LiveKit can't recall one already issued,
+// so a short life bounds how long a removed member could still reconnect with
+// an old token (removal also evicts live connections, see evictFromCall).
+const LIVEKIT_TOKEN_TTL_SECONDS = Number(process.env.LIVEKIT_TOKEN_TTL_SECONDS || 300);
 
 // optional — notifies a Discord channel when someone joins the call or
 // starts sharing (see modules/discordWebhook.ts). Empty disables it silently.
@@ -131,7 +135,7 @@ export const config = {
   COOKIE_SECURE, MAX_BODY_BYTES,
   MIN_USERNAME_LEN, MAX_USERNAME_LEN, MAX_DISPLAY_NAME_LEN, MIN_PASSWORD_LEN, MAX_PASSWORD_LEN,
   RESEND_API_KEY, RESEND_FROM_EMAIL, APP_URL, AUTH_CODE_TTL_MS, AUTH_CODE_MAX_ATTEMPTS,
-  LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_ROOM_NAME,
+  LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_ROOM_NAME, LIVEKIT_TOKEN_TTL_SECONDS,
   DISCORD_WEBHOOK_URL,
   UPLOADS_REMOTE_URL,
 };

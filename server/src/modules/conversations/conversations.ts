@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { conversationMembers, conversations, users } from '../../db/schema.js';
 import { participants, send, sendToUser } from '../presence/participants.js';
@@ -12,14 +12,14 @@ import {
   createGroup,
   getOrCreateDirect,
   getConversationForUser,
-  getMemberRole,
   reconcileGroupMembership,
   rowToSummary,
   sanitizeConversationTitle,
   sendConversationUpdateToMembers,
 } from './conversationsRepository.js';
 import { createInvitations, announceRevocations } from './invitationsRepository.js';
-import { revokePendingForGroup } from './invitationRevocation.js';
+import { removeMember, transferOwnership } from './groupMembership.js';
+import { revokeCallAccess } from '../calls/callAccess.js';
 import type { AppSocket, HandlerTable } from '../../types.js';
 
 // The socket handlers for conversation/group actions (open a DM, create a
@@ -51,7 +51,7 @@ async function handleDirectOpen(socket: AppSocket, msg: { userId?: string }): Pr
   send(socket, {
     t: 'conversation-opened',
     conversationId: conversation.id,
-    conversation: rowToSummary(conversation, [p.userId, otherUserId], null, 'member'),
+    conversation: rowToSummary(conversation, [p.userId, otherUserId], null, 'member', null),
   });
   // a peer this connection has never had in its known set (a brand-new DM,
   // or one that predates the connection) — without this the client gets a
@@ -115,7 +115,7 @@ async function handleGroupCreate(socket: AppSocket, msg: { title?: string; membe
   if (!title) return;
 
   const conversation = await createGroup(p.userId, title);
-  send(socket, { t: 'conversation-opened', conversationId: conversation.id, conversation: rowToSummary(conversation, [p.userId], null, 'owner') });
+  send(socket, { t: 'conversation-opened', conversationId: conversation.id, conversation: rowToSummary(conversation, [p.userId], null, 'owner', p.userId) });
   if (Array.isArray(msg.memberIds) && msg.memberIds.length) {
     await createInvitations(p.userId, conversation.id, msg.memberIds);
   }
@@ -134,13 +134,9 @@ async function handleGroupDelete(socket: AppSocket, msg: { conversationId?: stri
   const memberRows = await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
   await deleteForConversation(conversationId);
   await db.delete(conversations).where(eq(conversations.id, conversationId));
-  for (const participant of participants.values()) {
-    if (participant.callConversationId === conversationId) participant.callConversationId = null;
-  }
   for (const member of memberRows) {
-    for (const participant of participants.values()) {
-      if (participant.userId === member.userId) send(participant.socket, { t: 'conversation-deleted', conversationId });
-    }
+    sendToUser(member.userId, { t: 'conversation-deleted', conversationId });
+    void revokeCallAccess(member.userId, conversationId);
   }
   await refreshKnownPeers(memberRows.map((row) => row.userId));
 }
@@ -192,9 +188,8 @@ async function handleGroupMembersAdd(socket: AppSocket): Promise<void> {
 }
 
 /** Owner-only. Hands the group to an existing member and demotes the
- * caller in the same transaction — the partial unique index on `role =
- * 'owner'` (see schema.ts#conversationMembers) means there's never a
- * moment with zero or two owners visible to a concurrent reader. Reuses
+ * caller, validated and applied under the group row lock (see
+ * groupMembership.ts#transferOwnership). Reuses
  * sendConversationUpdateToMembers so every recipient gets their own
  * correct `myRole` (the new owner's flips to 'owner', everyone else's
  * summary is unaffected but resent for consistency). */
@@ -204,31 +199,21 @@ async function handleGroupTransferOwner(socket: AppSocket, msg: { conversationId
   const conversationId = String(msg.conversationId || '');
   const newOwnerId = String(msg.userId || '');
   if (!conversationId || !newOwnerId || newOwnerId === p.userId) return;
-  if (!(await canManageGroup(conversationId, p.userId))) {
+
+  const result = await transferOwnership(conversationId, p.userId, newOwnerId);
+  if (result.code === 'forbidden') {
     send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Você não tem permissão para gerenciar esse grupo.' });
     return;
   }
-  const [conversation] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
-  if (!conversation || conversation.type !== 'group') return;
-  if ((await getMemberRole(conversationId, newOwnerId)) !== 'member') {
+  if (result.code === 'not_member') {
     send(socket, { t: 'error', code: ERROR_CODES.notFound, message: 'Essa pessoa não é membro do grupo.' });
     return;
   }
+  if (result.code !== 'ok') return;
 
-  const revokedInvitationIds = await db.transaction(async (tx) => {
-    // group row first — the same order every invitation operation takes its
-    // locks in (see invitationsRepository.ts), so a concurrent accept can't deadlock with this
-    await tx.execute(sql`select id from conversations where id = ${conversationId} for update`);
-    await tx.update(conversationMembers).set({ role: 'member' })
-      .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, p.userId)));
-    await tx.update(conversationMembers).set({ role: 'owner' })
-      .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, newOwnerId)));
-    // whatever the previous owner still had pending dies with their ownership
-    return revokePendingForGroup(tx, conversationId);
-  });
-
-  await sendConversationUpdateToMembers('conversation-updated', conversation);
-  await announceRevocations(revokedInvitationIds);
+  const [conversation] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
+  if (conversation) await sendConversationUpdateToMembers('conversation-updated', conversation);
+  await announceRevocations(result.revokedInvitationIds);
 }
 
 /** The group's owner removes anyone; a member can only remove THEMSELVES
@@ -241,40 +226,27 @@ async function handleGroupMembersRemove(socket: AppSocket, msg: { conversationId
   const conversationId = String(msg.conversationId || '');
   const targetUserId = String(msg.userId || '');
   if (!conversationId || !targetUserId) return;
-  const isSelf = targetUserId === p.userId;
-  if (!isSelf && !(await canManageGroup(conversationId, p.userId))) {
+
+  const result = await removeMember(conversationId, p.userId, targetUserId);
+  if (result.code === 'forbidden') {
     send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Você não tem permissão para remover esse membro.' });
     return;
   }
-
-  const [conversation] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
-  if (!conversation || conversation.type !== 'group') return;
-
-  if (isSelf && (await getMemberRole(conversationId, p.userId)) === 'owner') {
-    const memberCount = (await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId))).length;
-    if (memberCount > 1) {
-      send(socket, { t: 'error', code: ERROR_CODES.conflict, message: 'Transfira a propriedade do grupo antes de sair.' });
-      return;
-    }
+  if (result.code === 'owner_must_transfer') {
+    send(socket, { t: 'error', code: ERROR_CODES.conflict, message: 'Transfira a propriedade do grupo antes de sair.' });
+    return;
   }
-
-  const deleted = await db.delete(conversationMembers)
-    .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, targetUserId)))
-    .returning({ userId: conversationMembers.userId });
-  if (!deleted.length) return;
+  if (result.code !== 'ok') return;
 
   // the removed account loses access immediately — from their client's POV
   // this is the same as the conversation disappearing (RoomProvider already
   // clears messages/unread and leaves an active call on 'conversation-deleted').
-  for (const participant of participants.values()) {
-    if (participant.userId !== targetUserId) continue;
-    if (participant.callConversationId === conversationId) participant.callConversationId = null;
-    send(participant.socket, { t: 'conversation-deleted', conversationId });
-  }
+  sendToUser(targetUserId, { t: 'conversation-deleted', conversationId });
+  // a client that ignores the event still gets cut off from the media itself
+  void revokeCallAccess(targetUserId, conversationId);
 
-  const remainingIds = (await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId))).map((row) => row.userId);
   await reconcileGroupMembership(conversationId, targetUserId);
-  await refreshKnownPeers([targetUserId, ...remainingIds]);
+  await refreshKnownPeers([targetUserId, ...result.remainingIds]);
 }
 
 export const handlers: HandlerTable = {
