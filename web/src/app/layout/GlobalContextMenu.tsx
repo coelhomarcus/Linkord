@@ -6,6 +6,7 @@ import { ReportDialog } from '@/features/reports/ReportDialog';
 import type { ReportTarget } from '@/features/reports/reportCategories';
 import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/shared/ui/primitives/context-menu';
 import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/shared/ui/primitives/emoji-picker';
+import { QuickReactionRow } from '@/features/chat/QuickReactionRow';
 import { useRoom } from '@/state/RoomContext';
 import { downloadFile } from '@/shared/lib/download';
 
@@ -35,6 +36,8 @@ export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenu
   const [conversationTarget, setConversationTarget] = useState<string | null>(null);
   const [userTarget, setUserTarget] = useState<string | null>(null);
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+  // the full picker only replaces the quick row after "+"; every open starts on the row
+  const [fullEmojiPicker, setFullEmojiPicker] = useState(false);
   const contextMenuActionsRef = useRef<ContextMenuRootActions | null>(null);
   const isAdmin = state.me.role === 'admin';
   const targetMessage = messageTarget != null
@@ -107,6 +110,11 @@ export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenu
     };
   }, [activeConversationId, messagesByConversation]);
 
+  function handleReact(msgId: number, emoji: string) {
+    reactToChatMessage(msgId, emoji);
+    contextMenuActionsRef.current?.close();
+  }
+
   function handleCopy() {
     const text = window.getSelection()?.toString();
     if (text) navigator.clipboard.writeText(text).catch(() => {});
@@ -124,23 +132,30 @@ export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenu
     <>
       <ContextMenu
         actionsRef={contextMenuActionsRef}
-        onOpenChange={(open) => { if (open) setHasSelection(!!window.getSelection()?.toString()); }}
+        onOpenChange={(open) => { if (open) { setHasSelection(!!window.getSelection()?.toString()); setFullEmojiPicker(false); } }}
       >
         <ContextMenuTrigger className="contents">{children}</ContextMenuTrigger>
-        {/* Only the message block's emoji picker needs a wide, fixed viewport
-            — every other block (conversation actions, download, selection,
-            stage) is a handful of short text items, so leave those at the
-            component's own natural (min-w-48, content-sized) width instead of
-            forcing them as wide as the emoji picker. */}
+        {/* The message block is fixed at picker width so the menu doesn't
+            resize when "+" swaps the quick reactions for the full picker;
+            every other block is a handful of short text items, so those keep
+            the component's own natural width. */}
         <ContextMenuContent className={showMessageBlock && !targetIsInvite ? 'w-75' : undefined}>
           {showMessageBlock && targetMessage && (
             <>
               {!targetIsInvite && (
                 <>
-                  <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => reactToChatMessage(targetMessage.msgId, emoji)}>
-                    <EmojiPickerSearch />
-                    <EmojiPickerContent />
-                  </EmojiPicker>
+                  {fullEmojiPicker ? (
+                    <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => handleReact(targetMessage.msgId, emoji)}>
+                      <EmojiPickerSearch />
+                      <EmojiPickerContent />
+                    </EmojiPicker>
+                  ) : (
+                    <QuickReactionRow
+                      className="justify-between px-1 py-0.5"
+                      onPick={(emoji) => handleReact(targetMessage.msgId, emoji)}
+                      onMore={() => setFullEmojiPicker(true)}
+                    />
+                  )}
                   <ContextMenuSeparator />
                   <ContextMenuItem onClick={() => setReplyingTo(targetMessage)}>
                     <Reply size={14} />
