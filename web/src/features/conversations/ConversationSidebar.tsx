@@ -17,6 +17,7 @@ import { useFriends } from '@/features/friends/FriendsContext';
 import { conversationTitle, directUser, groupMembers } from './conversationUtils';
 import { GroupAvatar } from './GroupAvatar';
 import { GroupCreateDialog } from './GroupCreateDialog';
+import { TransitionNotice } from '@/features/onboarding/TransitionNotice';
 
 interface ConversationSidebarProps {
   onOpenSettings: () => void;
@@ -377,6 +378,7 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto">
+                <TransitionNotice onOpenFriends={() => goTo(ROUTES.friends)} />
                 <div className="flex flex-col gap-1">
                   {filteredConversations.length === 0 ? (
                     <p className="px-3 py-8 text-center text-label text-text-muted">Nenhuma conversa.</p>

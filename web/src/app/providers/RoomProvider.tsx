@@ -284,6 +284,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         if (m.code === 'full') {
           disconnectIntentionally();
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Sala cheia, tente mais tarde.' });
+        } else if (m.code === 'client_outdated') {
+          // stop retrying: every reconnect would get the same answer
+          disconnectIntentionally();
+          dispatch({ type: 'SET_CLIENT_OUTDATED' });
         } else if (m.code === 'too_many_connections') {
           disconnectIntentionally();
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Você já tem conexões demais abertas. Feche alguma aba.' });

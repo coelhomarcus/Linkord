@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from '@/state/AuthContext';
 import { AuthScreen } from '@/features/auth/AuthScreen';
 import { EmailRequiredModal } from '@/features/auth/EmailRequiredModal';
 import { RoomErrorScreen } from '@/app/layout/RoomErrorScreen';
+import { OutdatedClientScreen } from '@/app/layout/OutdatedClientScreen';
 import { LoadingScreen } from '@/app/layout/LoadingScreen';
 import { ReconnectBanner } from '@/app/layout/ReconnectBanner';
 import { AccessNotice } from '@/app/layout/AccessNotice';
@@ -151,6 +152,7 @@ function Shell() {
     };
   }, [publishing, livekitRoom, closeTileMenu, state.focusedId, dispatch, sendWs]);
 
+  if (state.clientOutdated) return <OutdatedClientScreen />;
   if (roomError) return <RoomErrorScreen message={roomError} />;
   if (!state.joined) return <LoadingScreen />;
 

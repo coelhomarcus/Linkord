@@ -25,6 +25,8 @@ export interface RoomState {
   reconnecting: boolean;
   joined: boolean;
   roomError: string | null;
+  // the server told this build it speaks an old protocol (client_outdated): only a reload fixes it
+  clientOutdated: boolean;
   shareError: string | null;
 }
 
@@ -39,6 +41,7 @@ export const initialRoomState: RoomState = {
   reconnecting: false,
   joined: false,
   roomError: null,
+  clientOutdated: false,
   shareError: null,
 };
 
@@ -59,6 +62,7 @@ export type RoomAction =
   | { type: 'SET_ROOM_ERROR'; message: string | null }
   | { type: 'SET_LOCAL_SHARING'; sharing: boolean }
   | { type: 'SET_ROLE'; role: 'user' | 'admin' }
+  | { type: 'SET_CLIENT_OUTDATED' }
   | { type: 'SET_LOCAL_CAMERA'; on: boolean }
   | { type: 'SET_FOCUSED'; id: string | null }
   | { type: 'SET_SHARE_ERROR'; message: string | null };
@@ -140,6 +144,8 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       };
     case 'SET_ROOM_ERROR':
       return { ...state, roomError: action.message };
+    case 'SET_CLIENT_OUTDATED':
+      return { ...state, clientOutdated: true };
     case 'SET_ROLE':
       return { ...state, me: { ...state.me, role: action.role } };
     case 'SET_LOCAL_SHARING':

@@ -192,3 +192,12 @@ describe('roomReducer — SET_ROLE', () => {
     expect(roomReducer(next, { type: 'SET_ROLE', role: 'user' }).me.role).toBe('user');
   });
 });
+
+describe('roomReducer — SET_CLIENT_OUTDATED', () => {
+  it('marca o cliente como desatualizado sem tocar em roomError (a tela propria assume)', () => {
+    expect(initialRoomState.clientOutdated).toBe(false);
+    const next = roomReducer(initialRoomState, { type: 'SET_CLIENT_OUTDATED' });
+    expect(next.clientOutdated).toBe(true);
+    expect(next.roomError).toBeNull();
+  });
+});
