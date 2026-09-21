@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { ApiError } from '@/shared/api/api';
 import { Button } from '@/shared/ui/primitives/button';
@@ -129,7 +129,7 @@ function InvitationList({ onOpenProfile }: { onOpenProfile: (userId: string) => 
               <p className="truncate text-caption text-text-muted">
                 de{' '}
                 <button type="button" onClick={() => onOpenProfile(entry.inviter.id)} className="hover:underline">{entry.inviter.displayName}</button>
-                {` · ${entry.group.memberCount} ${entry.group.memberCount === 1 ? 'membro' : 'membros'} · vence em ${formatWhen(new Date(entry.expiresAt).toISOString())}`}
+                {` · ${entry.group.memberCount} ${entry.group.memberCount === 1 ? 'membro' : 'membros'}}`}
               </p>
             </div>
             <div className="flex flex-none items-center gap-1.5">
@@ -151,7 +151,6 @@ function InvitationList({ onOpenProfile }: { onOpenProfile: (userId: string) => 
 function describeInvitationError(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.code === 'group_full') return 'O grupo está cheio.';
-    if (err.code === 'invitation_expired') return 'Este convite expirou.';
     if (err.code === 'quota_exceeded') return 'Você já participa do máximo de grupos permitido.';
   }
   return 'Não foi possível concluir a ação. Tente de novo.';
@@ -162,8 +161,13 @@ export function RequestsPage({ onOpenProfile }: { onOpenProfile: (userId: string
   const [searchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab') === 'invitations' ? 'invitations' : null;
   const [tab, setTab] = useState<Tab>(requestedTab ?? 'incoming');
-  // a notification can point here while the page is already open
-  useEffect(() => { if (requestedTab) setTab(requestedTab); }, [requestedTab]);
+  // a notification can point here while the page is already open; adjusting
+  // during render avoids an extra effect-driven render
+  const [seenRequestedTab, setSeenRequestedTab] = useState(requestedTab);
+  if (requestedTab !== seenRequestedTab) {
+    setSeenRequestedTab(requestedTab);
+    if (requestedTab) setTab(requestedTab);
+  }
   return (
     <SocialPageLayout title="Solicitações" subtitle={pendingIncomingCount > 0 ? `${pendingIncomingCount} pendente${pendingIncomingCount === 1 ? '' : 's'}` : undefined}>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">

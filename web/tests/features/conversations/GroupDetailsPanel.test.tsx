@@ -63,7 +63,7 @@ describe('GroupDetailsPanel — convites', () => {
 
   it('lista convites pendentes, esconde quem ja foi convidado e revoga', async () => {
     const user = userEvent.setup();
-    mocked.fetchGroupInvitations.mockResolvedValue({ items: [{ id: 'inv-9', at: '2026-01-01T00:00:00.000Z', expiresAt: Date.now() + 1e8, invitee: bea }], nextCursor: null });
+    mocked.fetchGroupInvitations.mockResolvedValue({ items: [{ id: 'inv-9', at: '2026-01-01T00:00:00.000Z', invitee: bea }], nextCursor: null });
     mocked.revokeInvitation.mockResolvedValue({ invitation: {} as never });
     setup('owner');
 
@@ -76,12 +76,12 @@ describe('GroupDetailsPanel — convites', () => {
 
   it('falha individual aparece com o motivo', async () => {
     const user = userEvent.setup();
-    mocked.inviteToGroup.mockResolvedValue({ results: [{ userId: 'u-bea', outcome: 'cooldown' }] });
+    mocked.inviteToGroup.mockResolvedValue({ results: [{ userId: 'u-bea', outcome: 'not_friends' }] });
     setup('owner');
     await user.click(await screen.findByRole('button', { name: /Convidar amigos/ }));
     await user.click(await screen.findByRole('button', { name: /Bea/ }));
     await user.click(screen.getByRole('button', { name: 'Convidar (1)' }));
-    expect(await screen.findByText(/Bea: recusou há pouco/)).toBeInTheDocument();
+    expect(await screen.findByText(/Bea: não é mais seu amigo/)).toBeInTheDocument();
   });
 
   it('membro comum nao ve convidar nem convites enviados (e nada e buscado)', async () => {

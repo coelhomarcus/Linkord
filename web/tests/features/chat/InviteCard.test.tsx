@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { initialRoomState } from '@/state/roomReducer';
 import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
@@ -15,7 +15,7 @@ const mocked = vi.mocked(api);
 
 const card = (over: Partial<InvitationCard> = {}): InvitationCard => ({
   id: 'inv-1', status: 'pending', groupId: 'g1', groupTitle: 'Squad', groupAvatar: '', memberCount: 3,
-  inviterId: 'owner', inviteeId: 'me', expiresAt: Date.now() + 86_400_000, version: 1, ...over,
+  inviterId: 'owner', inviteeId: 'me', version: 1, ...over,
 });
 const group = (over: Partial<Conversation> = {}): Conversation => ({
   id: 'g1', type: 'group', title: 'Squad', avatar: '', createdBy: 'owner', memberIds: ['owner'],
@@ -101,19 +101,10 @@ describe('InviteCard', () => {
     expect(screen.queryByRole('button', { name: 'Entrar no grupo' })).not.toBeInTheDocument();
   });
 
-  it('convite com prazo vencido no relogio local ja abre como Expirado', () => {
-    render(card({ expiresAt: Date.now() - 1000 }));
-    expect(screen.getByText('Expirado')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Entrar no grupo' })).not.toBeInTheDocument();
-  });
-
-  it('expira sozinho ao passar do prazo, sem novo evento do servidor', () => {
-    vi.useFakeTimers();
-    render(card({ expiresAt: Date.now() + 5000 }));
-    expect(screen.getByRole('button', { name: 'Entrar no grupo' })).toBeInTheDocument();
-    act(() => { vi.advanceTimersByTime(5100); });
-    expect(screen.getByText('Expirado')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Entrar no grupo' })).not.toBeInTheDocument();
+  it('pendente nao mostra prazo: convite nominal nao expira', () => {
+    render(card());
+    expect(screen.getByText('Entrar no grupo')).toBeInTheDocument();
+    expect(screen.queryByText(/vence/)).not.toBeInTheDocument();
   });
 
   it('tombstone quando o grupo foi apagado', () => {

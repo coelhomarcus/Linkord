@@ -36,8 +36,8 @@ export interface ChatReplyRef {
 export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'revoked' | 'expired';
 
 /** The live state of a group invitation, as embedded in a `group_invite`
- * message. `status` already accounts for expiry on the server; the client
- * additionally flips a pending card to expired at `expiresAt` (InviteCard). */
+ * message. `expired` only appears on invitations that lapsed before they
+ * stopped expiring. */
 export interface InvitationCard {
   id: string;
   status: InvitationStatus;
@@ -47,7 +47,6 @@ export interface InvitationCard {
   memberCount: number;
   inviterId: string;
   inviteeId: string;
-  expiresAt: number;
   version: number;
 }
 

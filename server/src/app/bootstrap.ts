@@ -5,7 +5,6 @@ import { createWsServer } from '../realtime/socket.js';
 import { describeBlockedMigration, runMigrations } from '../db/migrate.js';
 import { sweepExpiredSessions } from '../modules/auth/session.js';
 import { ensureUploadDir, sweepStaleUploads } from '../modules/attachments/uploadSession.js';
-import { sweepExpiredInvitations } from '../modules/conversations/invitationsRepository.js';
 import { sweepOrphans } from '../modules/attachments/orphanSweeper.js';
 import { drainOutbox, pruneNotifications } from '../modules/notifications/outboxWorker.js';
 import { OUTBOX_POLL_MS } from '../modules/notifications/notificationsPolicy.js';
@@ -77,17 +76,6 @@ export async function bootstrap(): Promise<void> {
     sweepStaleUploads().catch((err) => log.error('failed to clean up abandoned uploads', err));
   }, 60 * 60 * 1000);
   uploadSweepTimer.unref();
-
-  // Pending invitations past their deadline already READ as expired
-  // (effectiveStatus); this persists it and updates the cards on screen.
-  // Once now, then every 5 minutes — short, because a card that outlives its
-  // deadline for long looks broken to whoever is watching it.
-  const sweepInvitations = () => sweepExpiredInvitations()
-    .then((n) => { if (n > 0) log.info('invitations expired', { count: n }); })
-    .catch((err) => log.error('failed to expire old invitations', err));
-  void sweepInvitations();
-  const invitationSweepTimer = setInterval(sweepInvitations, 5 * 60 * 1000);
-  invitationSweepTimer.unref();
 
   // Transactional outbox: drain the events written with each social change
   // (safety net for a lost live emit), and prune what no longer needs to live.

@@ -31,13 +31,8 @@ const ATTACH_TO_MESSAGE_WINDOW_MS = 5 * 60 * 1000;
 // teste"), not a validated product decision. Doesn't gate the other side
 // requesting back right away, only a repeat from whoever just got turned down.
 const FRIEND_REQUEST_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-// Group invitations (docs/plano-rede-social.md §3/§6.2). First guesses like the
-// cooldown above, not validated product numbers.
-const GROUP_INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-// after a DECLINE only — a revoked or expired invite can be re-sent right away
-const GROUP_INVITATION_RESEND_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 // gates NEW acceptances only: an existing group already above this keeps every member
-const MAX_GROUP_MEMBERS = Number(process.env.MAX_GROUP_MEMBERS || 50);
+const MAX_GROUP_MEMBERS = Number(process.env.MAX_GROUP_MEMBERS || 100);
 const MAX_INVITEES_PER_REQUEST = 20;
 
 // anchored to the repo root (not cwd) — inside Docker this is /app/uploads
@@ -145,7 +140,7 @@ export const config = {
   PORT, HOST_BIND, MAX_PARTICIPANTS, TRUST_PROXY, MAX_MSG_BYTES, RECONNECT_GRACE_MS,
   MAX_AVATAR_LEN, MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINKS, MAX_PROFILE_LINK_LEN,
   MAX_CHAT_LEN, CHAT_HISTORY_LIMIT, SEARCH_RESULT_LIMIT, MAX_SEARCH_QUERY_LEN, MAX_ATTACHMENTS_PER_MESSAGE, ATTACH_TO_MESSAGE_WINDOW_MS,
-  FRIEND_REQUEST_COOLDOWN_MS, GROUP_INVITATION_TTL_MS, GROUP_INVITATION_RESEND_COOLDOWN_MS, MAX_GROUP_MEMBERS, MAX_INVITEES_PER_REQUEST,
+  FRIEND_REQUEST_COOLDOWN_MS, MAX_GROUP_MEMBERS, MAX_INVITEES_PER_REQUEST,
   UPLOAD_DIR, MAX_ATTACHMENT_BYTES, MAX_STORAGE_BYTES, MAX_AVATAR_BYTES,
   UPLOAD_CHUNK_BYTES, UPLOAD_SESSION_TTL_MS,
   DATABASE_URL, DATABASE_SSL, DATABASE_SSL_CA, MIGRATE_ON_BOOT,

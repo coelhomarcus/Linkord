@@ -24,7 +24,7 @@ async function pendingFriendship(requester: string, other: string): Promise<stri
 
 async function invite(groupId: string, inviter: string, invitee: string): Promise<string> {
   const id = crypto.randomUUID();
-  await db.insert(groupInvitations).values({ id, conversationId: groupId, inviterId: inviter, inviteeId: invitee, expiresAt: new Date(Date.now() + 86_400_000) });
+  await db.insert(groupInvitations).values({ id, conversationId: groupId, inviterId: inviter, inviteeId: invitee });
   return id;
 }
 

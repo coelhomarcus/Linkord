@@ -5,7 +5,7 @@ import type { ChatMessage, InvitationCard } from '@/shared/types/protocol';
 
 const card = (over: Partial<InvitationCard> = {}): InvitationCard => ({
   id: 'inv-1', status: 'pending', groupId: 'g', groupTitle: 'Grupo', groupAvatar: '', memberCount: 2,
-  inviterId: 'a', inviteeId: 'b', expiresAt: 9e12, version: 1, ...over,
+  inviterId: 'a', inviteeId: 'b', version: 1, ...over,
 });
 const message = (msgId: number, over: Partial<ChatMessage> = {}): ChatMessage => ({
   msgId, conversationId: 'dm', id: 'a', name: 'A', avatar: '', text: '', ts: 1, ...over,

@@ -8,16 +8,11 @@ import { conversations, groupInvitations } from '../../db/schema.js';
 
 export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'revoked' | 'expired';
 
-/** `pending` past its deadline reads as `expired` everywhere — on read and on
- * accept — without waiting for the sweeper to persist it (the index can't
- * depend on now(), so validity is checked in code: docs/plano-rede-social.md §6.2). */
-export function effectiveStatus(status: string, expiresAt: Date, now = new Date()): InvitationStatus {
-  if (status === 'pending' && expiresAt.getTime() <= now.getTime()) return 'expired';
-  return status as InvitationStatus;
-}
+// `expired` is legacy: invitations no longer lapse, but rows from before that
+// keep the state they had.
 
 /** Everything the card in a DM may show BEFORE the person joins — group name
- * and photo, member COUNT, who invited, validity. Never the member list,
+ * and photo, member COUNT, who invited. Never the member list,
  * messages or call activity (§5.6). */
 export interface InvitationCard {
   id: string;
@@ -28,7 +23,6 @@ export interface InvitationCard {
   memberCount: number;
   inviterId: string;
   inviteeId: string;
-  expiresAt: number;
   version: number;
 }
 
@@ -40,7 +34,7 @@ export async function loadInvitationCards(ids: string[]): Promise<Map<string, In
   if (!ids.length) return cards;
   const rows = await db
     .select({
-      id: groupInvitations.id, status: groupInvitations.status, expiresAt: groupInvitations.expiresAt,
+      id: groupInvitations.id, status: groupInvitations.status,
       conversationId: groupInvitations.conversationId, inviterId: groupInvitations.inviterId,
       inviteeId: groupInvitations.inviteeId, version: groupInvitations.version,
       groupTitle: conversations.title, groupAvatar: conversations.avatar,
@@ -49,12 +43,11 @@ export async function loadInvitationCards(ids: string[]): Promise<Map<string, In
     .from(groupInvitations)
     .innerJoin(conversations, sql`${conversations.id} = ${groupInvitations.conversationId}`)
     .where(inArray(groupInvitations.id, ids));
-  const now = new Date();
   for (const r of rows) {
     cards.set(r.id, {
-      id: r.id, status: effectiveStatus(r.status, r.expiresAt, now), groupId: r.conversationId,
+      id: r.id, status: r.status as InvitationStatus, groupId: r.conversationId,
       groupTitle: r.groupTitle, groupAvatar: r.groupAvatar, memberCount: r.memberCount,
-      inviterId: r.inviterId, inviteeId: r.inviteeId, expiresAt: r.expiresAt.getTime(), version: r.version,
+      inviterId: r.inviterId, inviteeId: r.inviteeId, version: r.version,
     });
   }
   return cards;

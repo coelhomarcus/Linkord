@@ -17,7 +17,7 @@ import { notifySocialChanged, onSocialChange, refreshKnownPeers } from '../prese
 import {
   broadcastToConversationMembers, canManageGroup, getOrCreateDirect, sendConversationUpdateToMembers, touchConversation,
 } from './conversationsRepository.js';
-import { effectiveStatus, loadInvitationCards, type InvitationCard } from './invitationCards.js';
+import { loadInvitationCards, type InvitationCard } from './invitationCards.js';
 import { logger } from '../../lib/logger.js';
 
 const log = logger.child({ component: 'invitations' });
@@ -32,27 +32,19 @@ const log = logger.child({ component: 'invitations' });
 //   3. the invitation row  (`for update`)
 // Accept reads the invitation UNLOCKED first, only to learn the pair and the
 // group. Transferring ownership locks the group before touching invitations
-// (conversations.ts); the expiry sweeper is one UPDATE that never waits on a
-// second lock while holding a first.
+// (conversations.ts).
 
-export type InviteOutcome = 'sent' | 'already_pending' | 'already_member' | 'not_friends' | 'cooldown' | 'group_full' | 'unavailable';
-export interface InviteResult { userId: string; outcome: InviteOutcome; invitationId?: string; retryAfter?: string }
+export type InviteOutcome = 'sent' | 'already_pending' | 'already_member' | 'not_friends' | 'group_full' | 'unavailable';
+export interface InviteResult { userId: string; outcome: InviteOutcome; invitationId?: string }
 
 // distributes over the union so `code` stays a real discriminant
 type Code<T extends string> = T extends string ? { code: T } : never;
 
 export type InvitationAction =
   | { code: 'ok'; card: InvitationCard }
-  | Code<'not_found' | 'forbidden' | 'invalid_state' | 'expired' | 'group_full' | 'quota_exceeded'>;
+  | Code<'not_found' | 'forbidden' | 'invalid_state' | 'group_full' | 'quota_exceeded'>;
 
 // ---- pure helpers (unit-tested) ---------------------------------------------
-
-/** When a declined invitation can be sent again, or null if it already can. */
-export function resendAvailableAt(respondedAt: Date | null, now = new Date()): Date | null {
-  if (!respondedAt) return null;
-  const at = new Date(respondedAt.getTime() + config.GROUP_INVITATION_RESEND_COOLDOWN_MS);
-  return at.getTime() > now.getTime() ? at : null;
-}
 
 /** Deduplicates, drops non-strings and the inviter themself, and reports a
  * batch over the server-fixed cap instead of silently truncating it. */
@@ -113,7 +105,7 @@ async function recordInvitationEvent(tx: Tx, invitation: GroupInvitation): Promi
 
 // ---- create -----------------------------------------------------------------
 
-interface SentCard { invitation: GroupInvitation; message: Message; dm: Conversation; expiredIds: string[] }
+interface SentCard { invitation: GroupInvitation; message: Message; dm: Conversation }
 
 /** One invitee, in its own transaction — a failure for one person never takes
  * the rest of the batch down (per-recipient results, §5.5). */
@@ -143,29 +135,15 @@ async function inviteOne(inviterId: string, conversationId: string, inviteeId: s
       if (memberRows.some((m) => m.userId === inviteeId)) return { result: { userId: inviteeId, outcome: 'already_member' } };
       if (memberRows.length >= config.MAX_GROUP_MEMBERS) return { result: { userId: inviteeId, outcome: 'group_full' } };
 
-      const expiredIds: string[] = [];
-      const [latest] = await tx.select().from(groupInvitations)
-        .where(and(eq(groupInvitations.conversationId, conversationId), eq(groupInvitations.inviteeId, inviteeId)))
-        .orderBy(desc(groupInvitations.createdAt)).limit(1);
-      if (latest?.status === 'pending') {
-        if (effectiveStatus(latest.status, latest.expiresAt) === 'pending') {
-          return { result: { userId: inviteeId, outcome: 'already_pending', invitationId: latest.id } };
-        }
-        // an expired-but-still-marked-pending invite is resolved in THIS
-        // transaction before a new one is issued (§6.2), or the partial
-        // unique index would reject the new row
-        await tx.update(groupInvitations)
-          .set({ status: 'expired', respondedAt: new Date(), version: sql`${groupInvitations.version} + 1` })
-          .where(eq(groupInvitations.id, latest.id));
-        expiredIds.push(latest.id);
-      } else if (latest?.status === 'declined') {
-        const retryAt = resendAvailableAt(latest.respondedAt);
-        if (retryAt) return { result: { userId: inviteeId, outcome: 'cooldown', retryAfter: retryAt.toISOString() } };
-      }
+      // a declined, revoked or legacy-expired invite can be sent again right
+      // away; only a still-pending one blocks (the partial unique index agrees)
+      const [pending] = await tx.select({ id: groupInvitations.id }).from(groupInvitations)
+        .where(and(eq(groupInvitations.conversationId, conversationId), eq(groupInvitations.inviteeId, inviteeId), eq(groupInvitations.status, 'pending')))
+        .limit(1);
+      if (pending) return { result: { userId: inviteeId, outcome: 'already_pending', invitationId: pending.id } };
 
       const [invitation] = await tx.insert(groupInvitations).values({
         id: crypto.randomUUID(), conversationId, inviterId, inviteeId,
-        expiresAt: new Date(Date.now() + config.GROUP_INVITATION_TTL_MS),
       }).returning();
       await recordInvitationEvent(tx, invitation!);
 
@@ -175,7 +153,7 @@ async function inviteOne(inviterId: string, conversationId: string, inviteeId: s
       }).returning();
       return {
         result: { userId: inviteeId, outcome: 'sent', invitationId: invitation!.id },
-        sent: { invitation: invitation!, message: message!, dm, expiredIds },
+        sent: { invitation: invitation!, message: message!, dm },
       };
     });
   } catch (err) {
@@ -194,7 +172,6 @@ async function announceCard(inviter: User, sent: SentCard): Promise<void> {
     await touchConversation(sent.dm.id, sent.message.createdAt);
     await broadcastToConversationMembers(sent.dm.id, { t: 'chat', message: cardMessagePayload(sent.message, inviter, card) });
     await onSocialChange(inviter.id, sent.invitation.inviteeId);
-    await broadcastInvitationUpdates(sent.expiredIds);
   } catch (err) {
     log.error('failed to announce a card', err);
   }
@@ -250,7 +227,7 @@ async function withInvitationLocks<T>(
   });
 }
 
-const markStatus = async (tx: Tx, id: string, status: 'accepted' | 'declined' | 'revoked' | 'expired') => {
+const markStatus = async (tx: Tx, id: string, status: 'accepted' | 'declined' | 'revoked') => {
   await tx.update(groupInvitations)
     .set({ status, respondedAt: new Date(), version: sql`${groupInvitations.version} + 1` })
     .where(eq(groupInvitations.id, id));
@@ -262,9 +239,9 @@ const markStatus = async (tx: Tx, id: string, status: 'accepted' | 'declined' | 
  * membership, capacity — because any of it can have changed since the card
  * was sent. Idempotent: a second tab accepting just gets the current state. */
 export async function acceptInvitation(inviteeId: string, id: string): Promise<InvitationAction> {
-  let announce: { conversation: Conversation; memberIds: string[]; inviterId: string; expired: boolean; revoked: boolean } | null = null;
+  let announce: { conversation: Conversation; memberIds: string[]; inviterId: string; revoked: boolean } | null = null;
 
-  const outcome = await withInvitationLocks<Code<'ok' | 'invalid_state' | 'expired' | 'group_full' | 'quota_exceeded'>>(
+  const outcome = await withInvitationLocks<Code<'ok' | 'invalid_state' | 'group_full' | 'quota_exceeded'>>(
     id,
     (pre) => pre.inviteeId === inviteeId,
     async (tx, invitation, group) => {
@@ -274,11 +251,6 @@ export async function acceptInvitation(inviteeId: string, id: string): Promise<I
 
       if (invitation.status === 'accepted') return { code: 'ok' as const };
       if (invitation.status !== 'pending') return { code: 'invalid_state' as const };
-      if (effectiveStatus(invitation.status, invitation.expiresAt) === 'expired') {
-        await markStatus(tx, id, 'expired');
-        announce = { conversation: group, memberIds: [], inviterId: invitation.inviterId, expired: true, revoked: false };
-        return { code: 'expired' as const };
-      }
 
       const inviterIsOwner = memberRows.some((m) => m.userId === invitation.inviterId && m.role === 'owner');
       const friendship = await getFriendship(invitation.inviterId, inviteeId, tx);
@@ -287,7 +259,7 @@ export async function acceptInvitation(inviteeId: string, id: string): Promise<I
       if (!stillAllowed) {
         // never leave a pending invitation that can no longer be honored
         await markStatus(tx, id, 'revoked');
-        announce = { conversation: group, memberIds: [], inviterId: invitation.inviterId, expired: false, revoked: true };
+        announce = { conversation: group, memberIds: [], inviterId: invitation.inviterId, revoked: true };
         return { code: 'invalid_state' as const };
       }
       if (!alreadyMember && memberRows.length >= config.MAX_GROUP_MEMBERS) return { code: 'group_full' as const };
@@ -297,16 +269,16 @@ export async function acceptInvitation(inviteeId: string, id: string): Promise<I
       await tx.insert(conversationMembers).values({ conversationId: group.id, userId: inviteeId, role: 'member' }).onConflictDoNothing();
       await markStatus(tx, id, 'accepted');
       announce = {
-        conversation: group, inviterId: invitation.inviterId, expired: false, revoked: false,
+        conversation: group, inviterId: invitation.inviterId, revoked: false,
         memberIds: alreadyMember ? memberRows.map((m) => m.userId) : [...memberRows.map((m) => m.userId), inviteeId],
       };
       return { code: 'ok' as const };
     },
   );
 
-  const a = announce as { conversation: Conversation; memberIds: string[]; inviterId: string; expired: boolean; revoked: boolean } | null;
+  const a = announce as { conversation: Conversation; memberIds: string[]; inviterId: string; revoked: boolean } | null;
   if (a) {
-    if (a.expired || a.revoked) {
+    if (a.revoked) {
       await broadcastInvitationUpdates([id]);
       notifySocialChanged([a.inviterId, inviteeId]);
     } else {
@@ -330,18 +302,13 @@ export async function acceptInvitation(inviteeId: string, id: string): Promise<I
 export async function declineInvitation(inviteeId: string, id: string): Promise<InvitationAction> {
   let changed = false;
   let inviterId = '';
-  const outcome = await withInvitationLocks<Code<'ok' | 'invalid_state' | 'expired'>>(
+  const outcome = await withInvitationLocks<Code<'ok' | 'invalid_state'>>(
     id,
     (pre) => pre.inviteeId === inviteeId,
     async (tx, invitation) => {
       inviterId = invitation.inviterId;
       if (invitation.status === 'declined') return { code: 'ok' as const };
       if (invitation.status !== 'pending') return { code: 'invalid_state' as const };
-      if (effectiveStatus(invitation.status, invitation.expiresAt) === 'expired') {
-        await markStatus(tx, id, 'expired');
-        changed = true;
-        return { code: 'expired' as const };
-      }
       await markStatus(tx, id, 'declined');
       changed = true;
       return { code: 'ok' as const };
@@ -388,6 +355,21 @@ export async function revokeInvitation(actorId: string, id: string): Promise<Inv
   return outcome;
 }
 
+/** Deleting the card message takes the invitation back, so the chat and the
+ * invitation can never disagree about whether the person may still join. Only a
+ * PENDING invitation is affected: someone who already accepted stays a member.
+ * The card itself is not broadcast — its message is about to be deleted. */
+export async function revokeInvitationForDeletedCard(id: string): Promise<void> {
+  let parties: [string, string] | null = null;
+  await withInvitationLocks<Code<'ok'>>(id, () => true, async (tx, invitation) => {
+    if (invitation.status !== 'pending') return { code: 'ok' as const };
+    await markStatus(tx, id, 'revoked');
+    parties = [invitation.inviterId, invitation.inviteeId];
+    return { code: 'ok' as const };
+  });
+  if (parties) notifySocialChanged(parties);
+}
+
 /** Pushes the card update and the list-refresh signal for ids that were
  * revoked inside someone else's transaction (block, unfriend, ownership
  * transfer) — those callers get the ids back from invitationRevocation.ts. */
@@ -399,21 +381,6 @@ export async function announceRevocations(ids: string[]): Promise<void> {
   for (const r of rows) notifySocialChanged([r.inviterId, r.inviteeId]);
 }
 
-/** Persists `expired` for everything past its deadline and tells the cards.
- * Reads already treat these as expired (effectiveStatus); this only makes the
- * stored state, the lists and other clients catch up. */
-export async function sweepExpiredInvitations(): Promise<number> {
-  const rows = await db.update(groupInvitations)
-    .set({ status: 'expired', respondedAt: new Date(), version: sql`${groupInvitations.version} + 1` })
-    .where(and(eq(groupInvitations.status, 'pending'), sql`${groupInvitations.expiresAt} <= now()`))
-    .returning({ id: groupInvitations.id, inviterId: groupInvitations.inviterId, inviteeId: groupInvitations.inviteeId });
-  if (!rows.length) return 0;
-  await markNotificationsRead(db, { invitationIds: rows.map((r) => r.id) });
-  await broadcastInvitationUpdates(rows.map((r) => r.id));
-  for (const r of rows) notifySocialChanged([r.inviterId, r.inviteeId]);
-  return rows.length;
-}
-
 // ---- lists ------------------------------------------------------------------
 
 const microsecondIso = sql<string>`to_char(${groupInvitations.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
@@ -421,19 +388,18 @@ const microsecondIso = sql<string>`to_char(${groupInvitations.createdAt} at time
 export interface ReceivedInvitationEntry {
   id: string;
   at: string;
-  expiresAt: number;
   group: { id: string; title: string; avatar: string; memberCount: number };
   inviter: SocialUser;
 }
 
-export interface SentInvitationEntry { id: string; at: string; expiresAt: number; invitee: SocialUser }
+export interface SentInvitationEntry { id: string; at: string; invitee: SocialUser }
 
 export async function listReceivedInvitations(userId: string, cursorRaw?: string): Promise<{ items: ReceivedInvitationEntry[]; nextCursor: string | null } | 'invalid_cursor'> {
   const cursor = cursorRaw ? decodeTimeCursor(cursorRaw) : null;
   if (cursorRaw && !cursor) return 'invalid_cursor';
   const rows = await db
     .select({
-      id: groupInvitations.id, ts: microsecondIso, expiresAt: groupInvitations.expiresAt,
+      id: groupInvitations.id, ts: microsecondIso,
       groupId: conversations.id, groupTitle: conversations.title, groupAvatar: conversations.avatar,
       memberCount: sql<number>`(select count(*)::int from conversation_members m where m.conversation_id = ${conversations.id})`,
       inviter: users,
@@ -444,7 +410,6 @@ export async function listReceivedInvitations(userId: string, cursorRaw?: string
     .where(and(
       eq(groupInvitations.inviteeId, userId),
       eq(groupInvitations.status, 'pending'),
-      sql`${groupInvitations.expiresAt} > now()`,
       cursor ? sql`(${groupInvitations.createdAt}, ${groupInvitations.id}) < (${cursor.ts}::timestamptz, ${cursor.id})` : undefined,
     ))
     .orderBy(desc(groupInvitations.createdAt), desc(groupInvitations.id))
@@ -453,7 +418,7 @@ export async function listReceivedInvitations(userId: string, cursorRaw?: string
   const last = page[page.length - 1];
   return {
     items: page.map((r) => ({
-      id: r.id, at: r.ts, expiresAt: r.expiresAt.getTime(),
+      id: r.id, at: r.ts,
       group: { id: r.groupId, title: r.groupTitle, avatar: r.groupAvatar, memberCount: r.memberCount },
       inviter: toSocialUser(r.inviter),
     })),
@@ -467,13 +432,12 @@ export async function listGroupInvitations(ownerId: string, conversationId: stri
   const cursor = cursorRaw ? decodeTimeCursor(cursorRaw) : null;
   if (cursorRaw && !cursor) return 'invalid_cursor';
   const rows = await db
-    .select({ id: groupInvitations.id, ts: microsecondIso, expiresAt: groupInvitations.expiresAt, invitee: users })
+    .select({ id: groupInvitations.id, ts: microsecondIso, invitee: users })
     .from(groupInvitations)
     .innerJoin(users, eq(users.id, groupInvitations.inviteeId))
     .where(and(
       eq(groupInvitations.conversationId, conversationId),
       eq(groupInvitations.status, 'pending'),
-      sql`${groupInvitations.expiresAt} > now()`,
       cursor ? sql`(${groupInvitations.createdAt}, ${groupInvitations.id}) < (${cursor.ts}::timestamptz, ${cursor.id})` : undefined,
     ))
     .orderBy(desc(groupInvitations.createdAt), desc(groupInvitations.id))
@@ -481,13 +445,13 @@ export async function listGroupInvitations(ownerId: string, conversationId: stri
   const page = rows.slice(0, SOCIAL_PAGE_SIZE);
   const last = page[page.length - 1];
   return {
-    items: page.map((r) => ({ id: r.id, at: r.ts, expiresAt: r.expiresAt.getTime(), invitee: toSocialUser(r.invitee) })),
+    items: page.map((r) => ({ id: r.id, at: r.ts, invitee: toSocialUser(r.invitee) })),
     nextCursor: rows.length > SOCIAL_PAGE_SIZE && last ? encodeTimeCursor(last.ts, last.id) : null,
   };
 }
 
 export async function countReceivedInvitations(userId: string): Promise<number> {
   const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(groupInvitations)
-    .where(and(eq(groupInvitations.inviteeId, userId), eq(groupInvitations.status, 'pending'), sql`${groupInvitations.expiresAt} > now()`));
+    .where(and(eq(groupInvitations.inviteeId, userId), eq(groupInvitations.status, 'pending')));
   return row?.n ?? 0;
 }

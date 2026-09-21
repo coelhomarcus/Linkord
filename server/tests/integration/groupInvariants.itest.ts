@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
 import { config } from '../../src/config/env.js';
 import { removeMember, transferOwnership } from '../../src/modules/conversations/groupMembership.js';
-import { acceptInvitation, createInvitations } from '../../src/modules/conversations/invitationsRepository.js';
+import { acceptInvitation, createInvitations, declineInvitation, revokeInvitationForDeletedCard } from '../../src/modules/conversations/invitationsRepository.js';
 import { deleteUserAccount } from '../../src/modules/admin/adminUsers.js';
 import { getOrCreateDirect } from '../../src/modules/conversations/conversationsRepository.js';
 import { befriend, db, makeGroupWithMembers, makeUser, memberCount, ownersOf, pool } from './helpers.js';
-import { adminAuditLogs, conversations, conversationMembers } from '../../src/db/schema.js';
+import { adminAuditLogs, conversations, conversationMembers, groupInvitations } from '../../src/db/schema.js';
 import { and, eq, sql } from 'drizzle-orm';
 
 after(() => pool.end());
@@ -98,5 +98,44 @@ describe('invariantes de grupo sob concorrencia (Postgres real)', () => {
       if (members > 0) assert.equal(owners.length, 1, `rodada ${round}: ${members} membros e ${owners.length} donos`);
       else assert.equal(owners.length, 0);
     }
+  });
+});
+
+describe('convite nominal sem validade e sem cooldown (Postgres real)', () => {
+  it('convite pendente nao expira e recusar nao bloqueia o reenvio', async () => {
+    const owner = await makeUser('iv'); const guest = await makeUser('ig');
+    await befriend(owner.id, guest.id);
+    const g = await makeGroupWithMembers(owner.id, []);
+    const first = await createInvitations(owner.id, g, [guest.id]);
+    assert.ok('results' in first);
+    const id = first.results[0]!.invitationId!;
+    const [row] = await db.select().from(groupInvitations).where(eq(groupInvitations.id, id));
+    assert.equal(row!.expiresAt, null);
+
+    const declined = await declineInvitation(guest.id, id);
+    assert.equal(declined.code, 'ok');
+    const again = await createInvitations(owner.id, g, [guest.id]);
+    assert.ok('results' in again);
+    assert.equal(again.results[0]!.outcome, 'sent');
+  });
+
+  it('apagar o card revoga o convite pendente; quem ja entrou continua membro', async () => {
+    const owner = await makeUser('dc'); const pending = await makeUser('dp'); const joined = await makeUser('dj');
+    await befriend(owner.id, pending.id); await befriend(owner.id, joined.id);
+    const g = await makeGroupWithMembers(owner.id, []);
+    const sent = await createInvitations(owner.id, g, [pending.id, joined.id]);
+    assert.ok('results' in sent);
+    const [invPending, invJoined] = sent.results.map((r) => r.invitationId!);
+    assert.equal((await acceptInvitation(joined.id, invJoined!)).code, 'ok');
+
+    await revokeInvitationForDeletedCard(invPending!);
+    await revokeInvitationForDeletedCard(invJoined!);
+
+    const [p] = await db.select().from(groupInvitations).where(eq(groupInvitations.id, invPending!));
+    const [j] = await db.select().from(groupInvitations).where(eq(groupInvitations.id, invJoined!));
+    assert.equal(p!.status, 'revoked');
+    assert.equal(j!.status, 'accepted');
+    assert.equal((await acceptInvitation(pending.id, invPending!)).code, 'invalid_state');
+    assert.equal(await memberCount(g), 2);
   });
 });

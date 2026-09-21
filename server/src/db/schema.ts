@@ -206,7 +206,8 @@ export const groupInvitations = pgTable('group_invitations', {
   status: varchar('status', { length: 16 }).notNull().default('pending'), // 'pending' | 'accepted' | 'declined' | 'revoked' | 'expired'
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  // legacy: invitations no longer expire (null); old rows may still carry one
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
   respondedAt: timestamp('responded_at', { withTimezone: true }),
 }, (t) => [
   // at most one PENDING invite per (group, invitee) — a re-invite after
@@ -214,9 +215,6 @@ export const groupInvitations = pgTable('group_invitations', {
   uniqueIndex('group_invitations_pending_unique').on(t.conversationId, t.inviteeId).where(sql`${t.status} = 'pending'`),
   index('group_invitations_invitee_status_idx').on(t.inviteeId, t.status),
   index('group_invitations_conversation_id_idx').on(t.conversationId),
-  // expiry sweep — deliberately NOT `where(expiresAt > now())`: that's not
-  // a stable index predicate, validity is checked at read/accept time.
-  index('group_invitations_expires_at_idx').on(t.expiresAt),
   check('group_invitations_status_check', sql`${t.status} IN ('pending','accepted','declined','revoked','expired')`),
 ]);
 

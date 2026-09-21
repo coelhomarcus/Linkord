@@ -22,6 +22,7 @@ import { deleteForMessage } from '../attachments/attachmentCleanup.js';
 import * as reactions from './reactions.js';
 import { ERROR_CODES } from '../../http/errors.js';
 import { loadInvitationCards, type InvitationCard } from '../conversations/invitationCards.js';
+import { revokeInvitationForDeletedCard } from '../conversations/invitationsRepository.js';
 import type { AppSocket, HandlerTable, Participant } from '../../types.js';
 import { logger } from '../../lib/logger.js';
 
@@ -480,7 +481,7 @@ async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Pr
   const msgId = Number(msg.msgId);
   if (!Number.isFinite(msgId)) return;
   const [existing] = await db
-    .select({ conversationId: messages.conversationId, authorId: messages.authorId })
+    .select({ conversationId: messages.conversationId, authorId: messages.authorId, kind: messages.kind, groupInvitationId: messages.groupInvitationId })
     .from(messages)
     .where(eq(messages.id, msgId))
     .limit(1);
@@ -489,6 +490,11 @@ async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Pr
   const isAuthor = existing.authorId === p.userId;
   // admin authority is re-read, not taken from the connection's frozen role (§7.5)
   if (!isAuthor && !(await isActiveAdmin(p.userId))) return;
+  // before the row goes: a card that vanished while its invitation stayed
+  // acceptable is exactly the desync this prevents
+  if (existing.kind === 'group_invite' && existing.groupInvitationId) {
+    await revokeInvitationForDeletedCard(existing.groupInvitationId);
+  }
   // delete the file on disk before the row — after the delete below, the
   // attachments row disappears via CASCADE, but nothing would know which
   // file to delete anymore (see attachments/attachmentCleanup.ts).

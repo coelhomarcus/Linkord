@@ -176,6 +176,13 @@
       "when": 1790021695661,
       "tag": "0024_loud_annihilus",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790025596613,
+      "tag": "0025_invitations_never_expire",
+      "breakpoints": true
     }
   ]
 }

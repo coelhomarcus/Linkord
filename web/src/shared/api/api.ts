@@ -236,17 +236,16 @@ export function unblockUser(userId: string): Promise<unknown> {
 
 // ---- group invitations (Etapa 9) --------------------------------------------
 
-export type InviteOutcome = 'sent' | 'already_pending' | 'already_member' | 'not_friends' | 'cooldown' | 'group_full' | 'unavailable';
-export interface InviteResult { userId: string; outcome: InviteOutcome; invitationId?: string; retryAfter?: string }
+export type InviteOutcome = 'sent' | 'already_pending' | 'already_member' | 'not_friends' | 'group_full' | 'unavailable';
+export interface InviteResult { userId: string; outcome: InviteOutcome; invitationId?: string }
 
 export interface ReceivedInvitationEntry {
   id: string;
   at: string;
-  expiresAt: number;
   group: { id: string; title: string; avatar: string; memberCount: number };
   inviter: SocialUser;
 }
-export interface SentInvitationEntry { id: string; at: string; expiresAt: number; invitee: SocialUser }
+export interface SentInvitationEntry { id: string; at: string; invitee: SocialUser }
 
 export function createGroup(title: string, inviteeIds: string[]): Promise<{ conversationId: string; results: InviteResult[] }> {
   return apiFetch('/api/groups', { method: 'POST', body: JSON.stringify({ title, inviteeIds }) });

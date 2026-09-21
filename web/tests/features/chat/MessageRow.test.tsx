@@ -196,7 +196,7 @@ describe('MessageRow — cartão de convite', () => {
     kind: 'group_invite', text: '',
     invitation: {
       id: 'inv', status: 'pending', groupId: 'g', groupTitle: 'Squad', groupAvatar: '', memberCount: 2,
-      inviterId: 'user-1', inviteeId: 'user-2', expiresAt: Date.now() + 1e6, version: 1,
+      inviterId: 'user-1', inviteeId: 'user-2', version: 1,
     },
   });
 

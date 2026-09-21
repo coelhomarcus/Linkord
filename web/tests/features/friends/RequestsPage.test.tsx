@@ -82,7 +82,7 @@ describe('RequestsPage', () => {
   });
 
   describe('aba Convites', () => {
-    const entry = { id: 'inv-1', at: '2026-01-01T00:00:00.000Z', expiresAt: Date.now() + 86_400_000, group: { id: 'g', title: 'Squad', avatar: '', memberCount: 3 }, inviter: ana };
+    const entry = { id: 'inv-1', at: '2026-01-01T00:00:00.000Z', group: { id: 'g', title: 'Squad', avatar: '', memberCount: 3 }, inviter: ana };
 
     it('lista convites de grupo e aceita/recusa por id do convite', async () => {
       const user = userEvent.setup();
@@ -100,16 +100,16 @@ describe('RequestsPage', () => {
       expect(mocked.declineInvitation).toHaveBeenCalledWith('inv-1');
     });
 
-    it('convite expirado no aceite mostra o motivo', async () => {
+    it('grupo cheio no aceite mostra o motivo', async () => {
       const user = userEvent.setup();
       mocked.fetchFriendRequests.mockResolvedValue(page());
       mocked.fetchReceivedInvitations.mockResolvedValue({ items: [entry], nextCursor: null });
-      mocked.acceptInvitation.mockRejectedValue(new api.ApiError(409, 'invitation_expired', 'x'));
+      mocked.acceptInvitation.mockRejectedValue(new api.ApiError(409, 'group_full', 'x'));
       renderSocial(<RequestsPage onOpenProfile={vi.fn()} />);
 
       await user.click(await screen.findByRole('button', { name: 'Convites' }));
       await user.click(await screen.findByRole('button', { name: 'Entrar' }));
-      expect(await screen.findByRole('alert')).toHaveTextContent('Este convite expirou.');
+      expect(await screen.findByRole('alert')).toHaveTextContent('O grupo está cheio.');
     });
 
     it('sem convites diz isso', async () => {

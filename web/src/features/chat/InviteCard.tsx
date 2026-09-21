@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Users } from 'lucide-react';
 import { GroupAvatar } from '@/features/conversations/GroupAvatar';
 import { Button } from '@/shared/ui/primitives/button';
@@ -6,10 +6,7 @@ import { acceptInvitation, ApiError, declineInvitation, revokeInvitation } from 
 import { useRoom } from '@/state/RoomContext';
 import type { InvitationCard, InvitationStatus } from '@/shared/types/protocol';
 
-// setTimeout stores its delay in a signed 32-bit int; anything above fires immediately.
-const MAX_TIMER_MS = 2 ** 31 - 1;
-
-type LocalOutcome = 'group_full' | 'expired' | null;
+type LocalOutcome = 'group_full' | null;
 
 const STATUS_LABEL: Record<Exclude<InvitationStatus, 'pending'>, string> = {
   accepted: 'Aceito',
@@ -17,26 +14,6 @@ const STATUS_LABEL: Record<Exclude<InvitationStatus, 'pending'>, string> = {
   revoked: 'Cancelado',
   expired: 'Expirado',
 };
-
-function formatExpiry(expiresAt: number): string {
-  return new Date(expiresAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-}
-
-/** Flips to `true` once `expiresAt` passes, without waiting for the server's
- * sweeper — the card must not offer "Entrar" for an invitation that is
- * already dead. */
-function useExpired(expiresAt: number, active: boolean): boolean {
-  const [mountedAt] = useState(() => Date.now());
-  const [fired, setFired] = useState(false);
-  useEffect(() => {
-    if (!active) return;
-    const remaining = expiresAt - Date.now();
-    if (remaining <= 0) return;
-    const timer = setTimeout(() => setFired(true), Math.min(remaining, MAX_TIMER_MS));
-    return () => clearTimeout(timer);
-  }, [expiresAt, active]);
-  return active && (fired || expiresAt <= mountedAt);
-}
 
 export function InviteCard({ invitation }: { invitation: InvitationCard | null | undefined }) {
   if (!invitation) {
@@ -58,8 +35,7 @@ function LiveInviteCard({ invitation }: { invitation: InvitationCard }) {
   const myId = state.me.userId;
   const isInvitee = invitation.inviteeId === myId;
   const isInviter = invitation.inviterId === myId;
-  const expiredNow = useExpired(invitation.expiresAt, invitation.status === 'pending');
-  const status: InvitationStatus = expiredNow || outcome === 'expired' ? 'expired' : invitation.status;
+  const status: InvitationStatus = invitation.status;
   const group = conversations.find((c) => c.id === invitation.groupId);
   const isMember = !!group;
   const canRevoke = isInviter && group?.myRole === 'owner';
@@ -72,7 +48,6 @@ function LiveInviteCard({ invitation }: { invitation: InvitationCard }) {
       // the card itself updates from the server's `invitation-updated`
     } catch (err) {
       if (err instanceof ApiError && err.code === 'group_full') setOutcome('group_full');
-      else if (err instanceof ApiError && err.code === 'invitation_expired') setOutcome('expired');
       else if (err instanceof ApiError && err.code === 'quota_exceeded') setError('Você já participa do máximo de grupos permitido.');
       else setError('Não foi possível concluir a ação. Tente de novo.');
     } finally {
@@ -99,7 +74,7 @@ function LiveInviteCard({ invitation }: { invitation: InvitationCard }) {
   } else if (status === 'pending') {
     footer = (
       <div className="flex items-center gap-2">
-        <span className="text-label text-text-muted">Aguardando resposta · vence em {formatExpiry(invitation.expiresAt)}</span>
+        <span className="text-label text-text-muted">Aguardando resposta</span>
         {canRevoke && (
           <Button type="button" size="xs" variant="ghost" disabled={busy !== null} onClick={() => run('revoke', revokeInvitation)}>
             Revogar

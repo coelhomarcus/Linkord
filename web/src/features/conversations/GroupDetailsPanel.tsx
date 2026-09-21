@@ -440,7 +440,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-label font-medium">{entry.invitee.displayName}</span>
                     <span className="block truncate text-caption text-text-muted">
-                      vence em {new Date(entry.expiresAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                      enviado em {new Date(entry.at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
                     </span>
                   </span>
                   <Button type="button" variant="ghost" size="xs" disabled={revokingId === entry.id} onClick={() => void handleRevoke(entry.id)}>

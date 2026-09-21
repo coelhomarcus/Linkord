@@ -38,7 +38,6 @@ function respondAction(reply: FastifyReply, result: InvitationAction): void {
     case 'not_found': return sendError(reply, 404, 'not_found', 'Convite não encontrado.');
     case 'forbidden': return sendError(reply, 403, 'forbidden', 'Você não pode fazer isso.');
     case 'invalid_state': return sendError(reply, 409, 'conflict', 'Esse convite não está mais nesse estado.');
-    case 'expired': return sendError(reply, 409, 'invitation_expired', 'Esse convite expirou.');
     case 'group_full': log.info('invitation accept blocked: group is full'); return sendError(reply, 409, 'group_full', 'O grupo já está cheio.');
     case 'quota_exceeded': log.info('invitation accept blocked by the group quota'); return sendError(reply, 409, 'quota_exceeded', 'Você já participa do máximo de grupos permitido.');
   }
