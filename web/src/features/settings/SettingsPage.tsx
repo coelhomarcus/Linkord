@@ -16,6 +16,7 @@ import { DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../../shared/Avatar'
 import { BANNER_ASPECT_RATIO } from '@/features/profile/profileLinks';
 import { UploadProgressModal } from '../../shared/UploadProgressModal';
 import { SectionLabel, sectionLabelClass } from './SectionLabel';
+import { SettingsGrid, SettingsPanelHeader } from './SettingsLayout';
 import { cn } from '@/shared/lib/utils';
 import { formatMB } from '../../shared/lib/formatBytes';
 import { AVATAR_MIME_TYPES, MAX_AVATAR_BYTES, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '@/shared/types/protocol';
@@ -364,9 +365,9 @@ export function SettingsPage({ onOpenProfile }: SettingsPageProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader title="Ajustes" />
-      <div ref={pageRef} className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col">
-        <Tabs value={tab} onValueChange={(next) => navigate(ROUTES.settingsTab(next as typeof tab))} orientation="vertical" className="min-h-0 min-w-0 flex-1 flex-col items-stretch md:flex-row">
-          <TabsList className="h-auto w-full min-w-0 flex-none flex-row items-stretch gap-1 overflow-x-auto rounded-none border-b border-white/10 bg-transparent p-2 md:w-48 md:flex-col md:overflow-visible md:border-b-0 md:border-r md:p-3">
+      <div ref={pageRef} className="flex min-h-0 w-full flex-1 flex-col">
+        <Tabs value={tab} onValueChange={(next) => navigate(ROUTES.settingsTab(next as typeof tab))} orientation="vertical" className="min-h-0 min-w-0 flex-1 flex-col items-stretch lg:flex-row">
+          <TabsList className="h-auto w-full min-w-0 flex-none flex-row items-stretch gap-1 overflow-x-auto rounded-none border-b border-white/10 bg-transparent p-2 lg:w-64 lg:flex-col lg:overflow-visible lg:border-b-0 lg:border-r lg:p-3">
             <TabsIndicator className="rounded-lg bg-primary/12" />
             <TabsTrigger value="profile" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><User size={16} /><span>Perfil</span></TabsTrigger>
             <TabsTrigger value="account" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><IdCard size={16} /><span>Conta</span></TabsTrigger>
@@ -379,64 +380,76 @@ export function SettingsPage({ onOpenProfile }: SettingsPageProps) {
             )}
           </TabsList>
 
-          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
-            <TabsPanel value="profile" className="flex flex-col gap-3">
-              <p className="select-none text-label text-text-muted">
-                Edite direto no seu perfil — o que você vê aqui é exatamente o que os outros vão ver.
-              </p>
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 md:p-6 xl:p-8">
+            <TabsPanel value="profile" className="flex flex-col gap-5">
+              <SettingsPanelHeader
+                title="Perfil"
+                description="Edite direto no seu perfil — o que você vê aqui é exatamente o que os outros vão ver."
+              />
 
-              <form onSubmit={handleProfileSubmit} className="flex flex-col gap-3">
-                <ProfileCard
-                  user={{
-                    id: state.me.id || 'preview',
-                    displayName: displayName || state.me.name,
-                    username: state.me.name,
-                    avatar, avatarColor, banner, bio,
-                    profileLinks: profileLinksForSubmit(),
-                    role: state.me.role,
-                  }}
-                  online
-                  onAvatarUpload={() => avatarFileInputRef.current?.click()}
-                  onAvatarUploadUrl={() => setUrlDialogField('avatar')}
-                  onAvatarRemove={handleRemoveAvatar}
-                  avatarUploading={uploadingAvatar}
-                  onBannerUpload={() => bannerFileInputRef.current?.click()}
-                  onBannerUploadUrl={() => setUrlDialogField('banner')}
-                  onBannerRemove={handleRemoveBanner}
-                  bannerUploading={uploadingBanner}
-                  onDisplayNameChange={setDisplayName}
-                  onBioChange={setBio}
-                  onAvatarColorChange={setAvatarColor}
-                  editableLinks={profileLinks}
-                  onLinkChange={updateProfileLink}
-                  onAddLink={addProfileLink}
-                  onRemoveLink={removeProfileLink}
-                />
-                <input
-                  ref={avatarFileInputRef}
-                  aria-label="Selecionar foto de perfil"
-                  type="file"
-                  accept={AVATAR_MIME_TYPES.join(',')}
-                  hidden
-                  onChange={(e) => handleFilePicked('avatar', e)}
-                />
-                <input
-                  ref={bannerFileInputRef}
-                  aria-label="Selecionar banner"
-                  type="file"
-                  accept={AVATAR_MIME_TYPES.join(',')}
-                  hidden
-                  onChange={(e) => handleFilePicked('banner', e)}
-                />
-                {avatarError && <p className="text-label text-red">{avatarError}</p>}
-                {bannerError && <p className="text-label text-red">{bannerError}</p>}
+              <form onSubmit={handleProfileSubmit} className="grid gap-6 lg:grid-cols-[minmax(0,30rem)_minmax(0,1fr)] lg:items-start">
+                <div className="flex min-w-0 flex-col gap-3">
+                  <ProfileCard
+                    user={{
+                      id: state.me.id || 'preview',
+                      displayName: displayName || state.me.name,
+                      username: state.me.name,
+                      avatar, avatarColor, banner, bio,
+                      profileLinks: profileLinksForSubmit(),
+                      role: state.me.role,
+                    }}
+                    online
+                    onAvatarUpload={() => avatarFileInputRef.current?.click()}
+                    onAvatarUploadUrl={() => setUrlDialogField('avatar')}
+                    onAvatarRemove={handleRemoveAvatar}
+                    avatarUploading={uploadingAvatar}
+                    onBannerUpload={() => bannerFileInputRef.current?.click()}
+                    onBannerUploadUrl={() => setUrlDialogField('banner')}
+                    onBannerRemove={handleRemoveBanner}
+                    bannerUploading={uploadingBanner}
+                    onDisplayNameChange={setDisplayName}
+                    onBioChange={setBio}
+                    onAvatarColorChange={setAvatarColor}
+                    editableLinks={profileLinks}
+                    onLinkChange={updateProfileLink}
+                    onAddLink={addProfileLink}
+                    onRemoveLink={removeProfileLink}
+                  />
+                  <input
+                    ref={avatarFileInputRef}
+                    aria-label="Selecionar foto de perfil"
+                    type="file"
+                    accept={AVATAR_MIME_TYPES.join(',')}
+                    hidden
+                    onChange={(e) => handleFilePicked('avatar', e)}
+                  />
+                  <input
+                    ref={bannerFileInputRef}
+                    aria-label="Selecionar banner"
+                    type="file"
+                    accept={AVATAR_MIME_TYPES.join(',')}
+                    hidden
+                    onChange={(e) => handleFilePicked('banner', e)}
+                  />
+                  {avatarError && <p className="text-label text-red">{avatarError}</p>}
+                  {bannerError && <p className="text-label text-red">{bannerError}</p>}
+                </div>
 
-                <div className="flex items-center justify-between gap-2">
-                  <p className="select-none text-caption text-text-muted">PNG, JPEG, GIF ou WEBP, até {formatMB(MAX_AVATAR_BYTES)}.</p>
-                  <Button type="submit" size="sm" className="flex-none">
-                    {profileSaved && <Check size={15} />}
-                    <span>{profileSaved ? 'Perfil salvo' : 'Salvar perfil'}</span>
-                  </Button>
+                <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-0">
+                  <div className={settingsCardClass}>
+                    <SectionLabel>Salvar alterações</SectionLabel>
+                    <p className="select-none text-label text-text-muted">
+                      Foto e banner valem assim que você confirma o recorte. Nome de exibição, cor, bio e links só depois de salvar.
+                    </p>
+                    <Button type="submit" size="sm" className="w-fit">
+                      {profileSaved && <Check size={15} />}
+                      <span>{profileSaved ? 'Perfil salvo' : 'Salvar perfil'}</span>
+                    </Button>
+                  </div>
+                  <div className={settingsCardClass}>
+                    <SectionLabel>Imagens</SectionLabel>
+                    <p className="select-none text-label text-text-muted">PNG, JPEG, GIF ou WEBP, até {formatMB(MAX_AVATAR_BYTES)}. Você recorta a imagem ao enviar.</p>
+                  </div>
                 </div>
               </form>
 
@@ -469,138 +482,152 @@ export function SettingsPage({ onOpenProfile }: SettingsPageProps) {
               />
             </TabsPanel>
 
-            <TabsPanel value="account" className="flex flex-col gap-4">
-              <EmailSettings currentEmail={user?.email ?? null} />
-              <div className={settingsCardClass}>
-                <SectionLabel>Identificação</SectionLabel>
-                <div className="flex flex-col gap-1">
-                  <Label className="text-label text-text-muted">Nome de usuário</Label>
-                  <p className="select-none text-body text-text-primary">@{state.me.name}</p>
-                  <p className="select-none text-caption text-text-muted">Fixo, não pode ser trocado. O nome de exibição (aba Perfil) é o que aparece para todo mundo.</p>
+            <TabsPanel value="account" className="flex flex-col gap-5">
+              <SettingsPanelHeader title="Conta" description="E-mail, identificação, armazenamento e sessão." />
+              <SettingsGrid>
+                <EmailSettings currentEmail={user?.email ?? null} />
+                <div className={settingsCardClass}>
+                  <SectionLabel>Identificação</SectionLabel>
+                  <div className="flex flex-col gap-1">
+                    <Label className="text-label text-text-muted">Nome de usuário</Label>
+                    <p className="select-none text-body text-text-primary">@{state.me.name}</p>
+                    <p className="select-none text-caption text-text-muted">Fixo, não pode ser trocado. O nome de exibição (aba Perfil) é o que aparece para todo mundo.</p>
+                  </div>
+                  {state.me.role === 'admin' && (
+                    <span className="flex w-fit items-center gap-1 rounded-sm bg-primary/15 px-1.5 py-0.5 text-caption font-medium text-primary">
+                      <ShieldCheck size={14} /> Admin
+                    </span>
+                  )}
                 </div>
-                {state.me.role === 'admin' && (
-                  <span className="flex w-fit items-center gap-1 rounded-sm bg-primary/15 px-1.5 py-0.5 text-caption font-medium text-primary">
-                    <ShieldCheck size={14} /> Admin
-                  </span>
-                )}
-              </div>
 
-              <div className={settingsCardClass}>
-                <span className={cn(sectionLabelClass, 'flex items-center gap-1.5')}>
-                  <HardDrive size={14} /> Seu armazenamento de anexos
-                </span>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-bg-hover">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${storageUsage.maxBytes ? Math.min(100, (storageUsage.totalBytes / storageUsage.maxBytes) * 100) : 0}%` }}
-                  />
-                </div>
-                <p className="select-none text-label text-text-muted">
-                  {formatGB(storageUsage.totalBytes)} de {formatGB(storageUsage.maxBytes)} da sua cota usados, {storageUsage.totalFiles} arquivo{storageUsage.totalFiles === 1 ? '' : 's'} enviado{storageUsage.totalFiles === 1 ? '' : 's'}.
-                </p>
-              </div>
-
-              <div className={settingsCardClass}>
-                <SectionLabel>Sessao</SectionLabel>
-                <Button type="button" variant="outline" size="sm" className="w-fit text-red hover:bg-red/12" onClick={logout}>
-                  <LogOut size={14} />
-                  <span>Sair da conta</span>
-                </Button>
-              </div>
-            </TabsPanel>
-
-            <TabsPanel value="av" className="flex flex-col gap-4">
-              <div className={settingsCardClass}>
-                <DevicePicker label="Microfone" room={livekitRoom} kind="audioinput" />
-              </div>
-
-              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
-                <div className="min-w-0">
-                  <p className="select-none text-body font-medium text-text-primary">Supressão de ruído</p>
-                  <p className="select-none text-label text-text-muted">Usa um modelo de IA local pra reduzir ruído de fundo (teclado, ventilador, trânsito) no seu microfone.</p>
-                </div>
-                <Switch
-                  checked={noiseSuppressionEnabled}
-                  onCheckedChange={setNoiseSuppressionEnabled}
-                  aria-label="Supressão de ruído"
-                  className="mt-0.5 flex-none"
-                />
-              </div>
-
-              <div className={settingsCardClass}>
-                <DevicePicker label="Câmera" room={livekitRoom} kind="videoinput" />
-              </div>
-
-              <div className={settingsCardClass}>
-                <DevicePicker label="Alto-falante" room={livekitRoom} kind="audiooutput" />
-              </div>
-            </TabsPanel>
-
-            <TabsPanel value="notifications" className="flex flex-col gap-4">
-              <div className={settingsCardClass}>
-                <div className="flex items-center justify-between gap-3">
+                <div className={settingsCardClass}>
                   <span className={cn(sectionLabelClass, 'flex items-center gap-1.5')}>
-                    {notifyVolume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />} Volume das notificações
+                    <HardDrive size={14} /> Seu armazenamento de anexos
                   </span>
-                  <span className="flex-none text-label tabular-nums text-text-muted">{Math.round(notifyVolume * 100)}%</span>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-bg-hover">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all"
+                      style={{ width: `${storageUsage.maxBytes ? Math.min(100, (storageUsage.totalBytes / storageUsage.maxBytes) * 100) : 0}%` }}
+                    />
+                  </div>
+                  <p className="select-none text-label text-text-muted">
+                    {formatGB(storageUsage.totalBytes)} de {formatGB(storageUsage.maxBytes)} da sua cota usados, {storageUsage.totalFiles} arquivo{storageUsage.totalFiles === 1 ? '' : 's'} enviado{storageUsage.totalFiles === 1 ? '' : 's'}.
+                  </p>
                 </div>
-                <Slider value={[Math.round(notifyVolume * 100)]} onValueChange={handleVolumeChange} min={0} max={100} />
-                <p className="select-none text-label text-text-muted">
-                  Mutar/desmutar, ensurdecer, entrar/sair da chamada, câmera, tela e mensagem nova.
-                </p>
-              </div>
 
-              <div className={settingsCardClass}>
-                <div className="flex flex-row items-start justify-between gap-3">
+                <div className={settingsCardClass}>
+                  <SectionLabel>Sessao</SectionLabel>
+                  <Button type="button" variant="outline" size="sm" className="w-fit text-red hover:bg-red/12" onClick={logout}>
+                    <LogOut size={14} />
+                    <span>Sair da conta</span>
+                  </Button>
+                </div>
+              </SettingsGrid>
+            </TabsPanel>
+
+            <TabsPanel value="av" className="flex flex-col gap-5">
+              <SettingsPanelHeader title="Áudio e vídeo" description="Dispositivos e o processamento do seu microfone." />
+              <SettingsGrid>
+                <div className={settingsCardClass}>
+                  <DevicePicker label="Microfone" room={livekitRoom} kind="audioinput" />
+                </div>
+
+                <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
                   <div className="min-w-0">
-                    <p className="select-none text-body font-medium text-text-primary">Notificações de mensagens</p>
-                    <p className="select-none text-label text-text-muted">Avisa no sistema quando chegar mensagem em uma conversa que você não está vendo.</p>
+                    <p className="select-none text-body font-medium text-text-primary">Supressão de ruído</p>
+                    <p className="select-none text-label text-text-muted">Usa um modelo de IA local pra reduzir ruído de fundo (teclado, ventilador, trânsito) no seu microfone.</p>
                   </div>
                   <Switch
-                    checked={notificationsEnabled}
-                    onCheckedChange={handleToggleNotifications}
-                    aria-label="Notificações de mensagens"
+                    checked={noiseSuppressionEnabled}
+                    onCheckedChange={setNoiseSuppressionEnabled}
+                    aria-label="Supressão de ruído"
                     className="mt-0.5 flex-none"
                   />
                 </div>
-                {notificationsError && <p className="text-label text-red">{notificationsError}</p>}
-              </div>
+
+                <div className={settingsCardClass}>
+                  <DevicePicker label="Câmera" room={livekitRoom} kind="videoinput" />
+                </div>
+
+                <div className={settingsCardClass}>
+                  <DevicePicker label="Alto-falante" room={livekitRoom} kind="audiooutput" />
+                </div>
+              </SettingsGrid>
             </TabsPanel>
 
-            <TabsPanel value="prefs" className="flex flex-col gap-4">
-              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
-                <div className="min-w-0">
-                  <p className="select-none text-body font-medium text-text-primary">Mostrar banners nos tiles</p>
-                  <p className="select-none text-label text-text-muted">Exibe o banner do perfil como fundo dos tiles da chamada.</p>
+            <TabsPanel value="notifications" className="flex flex-col gap-5">
+              <SettingsPanelHeader title="Notificações" description="Sons do app e avisos do sistema." />
+              <SettingsGrid>
+                <div className={settingsCardClass}>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className={cn(sectionLabelClass, 'flex items-center gap-1.5')}>
+                      {notifyVolume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />} Volume das notificações
+                    </span>
+                    <span className="flex-none text-label tabular-nums text-text-muted">{Math.round(notifyVolume * 100)}%</span>
+                  </div>
+                  <Slider value={[Math.round(notifyVolume * 100)]} onValueChange={handleVolumeChange} min={0} max={100} />
+                  <p className="select-none text-label text-text-muted">
+                    Mutar/desmutar, ensurdecer, entrar/sair da chamada, câmera, tela e mensagem nova.
+                  </p>
                 </div>
-                <Switch
-                  checked={showTileBanners}
-                  onCheckedChange={setShowTileBanners}
-                  aria-label="Mostrar banners nos tiles"
-                  className="mt-0.5 flex-none"
-                />
-              </div>
 
-              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
-                <div className="min-w-0">
-                  <p className="select-none text-body font-medium text-text-primary">Mostrar estatísticas</p>
-                  <p className="select-none text-label text-text-muted">Bitrate e tempo no ar no menu de cada transmissão.</p>
+                <div className={settingsCardClass}>
+                  <div className="flex flex-row items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="select-none text-body font-medium text-text-primary">Notificações de mensagens</p>
+                      <p className="select-none text-label text-text-muted">Avisa no sistema quando chegar mensagem em uma conversa que você não está vendo.</p>
+                    </div>
+                    <Switch
+                      checked={notificationsEnabled}
+                      onCheckedChange={handleToggleNotifications}
+                      aria-label="Notificações de mensagens"
+                      className="mt-0.5 flex-none"
+                    />
+                  </div>
+                  {notificationsError && <p className="text-label text-red">{notificationsError}</p>}
                 </div>
-                <Switch
-                  checked={showStats}
-                  onCheckedChange={setShowStats}
-                  aria-label="Mostrar estatísticas"
-                  className="mt-0.5 flex-none"
-                />
-              </div>
+              </SettingsGrid>
             </TabsPanel>
 
-            <TabsPanel value="privacy">
+            <TabsPanel value="prefs" className="flex flex-col gap-5">
+              <SettingsPanelHeader title="Preferências" description="Como a chamada aparece para você." />
+              <SettingsGrid>
+                <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
+                  <div className="min-w-0">
+                    <p className="select-none text-body font-medium text-text-primary">Mostrar banners nos tiles</p>
+                    <p className="select-none text-label text-text-muted">Exibe o banner do perfil como fundo dos tiles da chamada.</p>
+                  </div>
+                  <Switch
+                    checked={showTileBanners}
+                    onCheckedChange={setShowTileBanners}
+                    aria-label="Mostrar banners nos tiles"
+                    className="mt-0.5 flex-none"
+                  />
+                </div>
+
+                <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
+                  <div className="min-w-0">
+                    <p className="select-none text-body font-medium text-text-primary">Mostrar estatísticas</p>
+                    <p className="select-none text-label text-text-muted">Bitrate e tempo no ar no menu de cada transmissão.</p>
+                  </div>
+                  <Switch
+                    checked={showStats}
+                    onCheckedChange={setShowStats}
+                    aria-label="Mostrar estatísticas"
+                    className="mt-0.5 flex-none"
+                  />
+                </div>
+              </SettingsGrid>
+            </TabsPanel>
+
+            <TabsPanel value="privacy" className="flex flex-col gap-5">
+              <SettingsPanelHeader title="Privacidade" />
               <PrivacyTab onOpenProfile={onOpenProfile} />
             </TabsPanel>
 
             {isAdmin && (
-              <TabsPanel value="moderation">
+              <TabsPanel value="moderation" className="flex flex-col gap-5">
+                <SettingsPanelHeader title="Administração" />
                 <AdminLinkTab />
               </TabsPanel>
             )}

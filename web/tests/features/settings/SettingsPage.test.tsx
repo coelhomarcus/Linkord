@@ -251,4 +251,18 @@ describe('SettingsPage — abas pela rota', () => {
     await user.click(screen.getByRole('tab', { name: /Privacidade/ }));
     expect(screen.getByText('lista de bloqueados')).toBeInTheDocument();
   });
+
+  it('o botao de salvar fica no painel lateral mas continua no mesmo formulario do cartao', () => {
+    renderSettings({ state: userState });
+    const form = screen.getByRole('button', { name: 'Salvar perfil' }).closest('form');
+    expect(form).not.toBeNull();
+    expect(form!.contains(screen.getByLabelText('Nome de exibição'))).toBe(true);
+  });
+
+  it.each([
+    ['account', 'Conta'], ['av', 'Áudio e vídeo'], ['notifications', 'Notificações'], ['prefs', 'Preferências'], ['privacy', 'Privacidade'],
+  ])('a aba %s abre com o proprio titulo', (tab, title) => {
+    renderSettings({ state: userState }, `/app/settings/${tab}`);
+    expect(screen.getByRole('heading', { level: 2, name: title })).toBeInTheDocument();
+  });
 });
