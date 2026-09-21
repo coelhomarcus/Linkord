@@ -222,7 +222,7 @@ describe('MessageComposer — menções (@)', () => {
 
   const conversation: Conversation = {
     id: 'conv-1', type: 'group', title: 'Squad', avatar: '', createdBy: null,
-    memberIds: ['u-ana', 'u-andre'], lastMessageAt: null, createdAt: 1, updatedAt: 1, pinnedAt: null, myRole: 'member',
+    memberIds: ['u-ana', 'u-andre'], lastMessageAt: null, createdAt: 1, updatedAt: 1, pinnedAt: null, myRole: 'member', ownerId: null, memberCount: 0,
   };
 
   function renderComposer(overrides: Partial<Parameters<typeof renderWithRoom>[1]> = {}) {

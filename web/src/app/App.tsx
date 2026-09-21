@@ -8,6 +8,7 @@ import { EmailRequiredModal } from '@/features/auth/EmailRequiredModal';
 import { RoomErrorScreen } from '@/app/layout/RoomErrorScreen';
 import { LoadingScreen } from '@/app/layout/LoadingScreen';
 import { ReconnectBanner } from '@/app/layout/ReconnectBanner';
+import { AccessNotice } from '@/app/layout/AccessNotice';
 import { ConversationSidebar } from '@/features/conversations/ConversationSidebar';
 import { ConversationPanel } from '@/features/conversations/ConversationPanel';
 import { GroupDetailsPanel } from '@/features/conversations/GroupDetailsPanel';
@@ -161,6 +162,7 @@ function Shell() {
         style={{ '--sidebar-width': '22rem', '--sidebar-width-icon': '4.5rem' }}
       >
         <ReconnectBanner />
+        <AccessNotice />
         <ConversationSidebar
           onOpenSettings={() => navigate(ROUTES.settings)}
           onOpenProfile={setProfileUserId}

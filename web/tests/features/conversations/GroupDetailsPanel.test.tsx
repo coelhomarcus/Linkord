@@ -10,19 +10,26 @@ import type { Conversation, PublicUser } from '@/shared/types/protocol';
 
 vi.mock('@/shared/api/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/api/api')>()),
-  fetchFriends: vi.fn(), fetchRequestSummary: vi.fn(), fetchGroupInvitations: vi.fn(), inviteToGroup: vi.fn(), revokeInvitation: vi.fn(),
+  fetchFriends: vi.fn(), fetchGroupMembers: vi.fn(), fetchRequestSummary: vi.fn(), fetchGroupInvitations: vi.fn(), inviteToGroup: vi.fn(), revokeInvitation: vi.fn(),
 }));
 const mocked = vi.mocked(api);
 
 const pub = (u: typeof ana): PublicUser => ({ ...u, banner: '', bio: '', profileLinks: [] } as unknown as PublicUser);
 const group = (myRole: 'owner' | 'member'): Conversation => ({
   id: 'g1', type: 'group', title: 'Squad', avatar: '', createdBy: 'me', memberIds: ['me', 'u-ana'],
-  lastMessageAt: null, createdAt: 1, updatedAt: 1, pinnedAt: null, myRole,
+  lastMessageAt: null, createdAt: 1, updatedAt: 1, pinnedAt: null, myRole, ownerId: 'me', memberCount: 2,
 });
 const friends = (...users: (typeof ana)[]) => ({ items: users.map((user) => ({ user, at: '2026-01-01T00:00:00.000Z' })), nextCursor: null });
 
+const me = { id: 'me', username: 'eu', displayName: 'Eu', avatar: '', avatarColor: 'green' };
+const memberPage = (nextCursor: string | null = null) => ({
+  items: [{ user: me, role: 'owner' as const, at: '2026-01-01T00:00:00.000Z' }, { user: ana, role: 'member' as const, at: '2026-01-02T00:00:00.000Z' }],
+  nextCursor,
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
+  mocked.fetchGroupMembers.mockResolvedValue(memberPage());
   mocked.fetchRequestSummary.mockResolvedValue({ incoming: 0, invitations: 0 });
   mocked.fetchFriends.mockResolvedValue(friends(ana, bea));
   mocked.fetchGroupInvitations.mockResolvedValue({ items: [], nextCursor: null });
@@ -83,5 +90,42 @@ describe('GroupDetailsPanel — convites', () => {
     expect(screen.queryByRole('button', { name: /Convidar amigos/ })).not.toBeInTheDocument();
     expect(screen.queryByText('Convites enviados')).not.toBeInTheDocument();
     expect(mocked.fetchGroupInvitations).not.toHaveBeenCalled();
+  });
+
+  it('a lista de membros vem paginada do servidor, com o dono marcado', async () => {
+    const user = userEvent.setup();
+    mocked.fetchGroupMembers.mockResolvedValueOnce(memberPage('cursor-2')).mockResolvedValueOnce({
+      items: [{ user: bea, role: 'member', at: '2026-01-03T00:00:00.000Z' }], nextCursor: null,
+    });
+    setup('owner');
+
+    expect(await screen.findByText('dono')).toBeInTheDocument();
+    expect(screen.getByText('2 membros')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Carregar mais' }));
+    expect(mocked.fetchGroupMembers).toHaveBeenLastCalledWith('g1', 'cursor-2');
+    expect(await screen.findByText('Bea')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Carregar mais' })).not.toBeInTheDocument();
+  });
+
+  it('dono ve transferir/remover nos outros; membro comum nao ve nenhum controle de gestao', async () => {
+    const { unmount } = setup('owner');
+    expect(await screen.findByRole('button', { name: 'Remover Ana' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Transferir propriedade para Ana' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Remover Eu/ })).not.toBeInTheDocument();
+    unmount();
+
+    setup('member');
+    await screen.findByText('Ana');
+    expect(screen.queryByRole('button', { name: /Remover/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Transferir/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Sair do grupo/ })).toBeInTheDocument();
+  });
+
+  it('erro ao carregar membros oferece nova tentativa', async () => {
+    const user = userEvent.setup();
+    mocked.fetchGroupMembers.mockRejectedValueOnce(new Error('x'));
+    setup('member');
+    await user.click(await screen.findByRole('button', { name: 'Tentar de novo' }));
+    expect(await screen.findByText('Ana')).toBeInTheDocument();
   });
 });

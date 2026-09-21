@@ -5,7 +5,7 @@ import { useConversationsList } from '@/features/conversations/useConversationsL
 
 const conv = (id: string, over: Partial<Conversation> = {}): Conversation => ({
   id, type: 'direct', title: '', avatar: '', createdBy: null, memberIds: ['me', 'peer'],
-  lastMessageAt: null, createdAt: 1, updatedAt: 1, pinnedAt: null, myRole: 'member', ...over,
+  lastMessageAt: null, createdAt: 1, updatedAt: 1, pinnedAt: null, myRole: 'member', ownerId: null, memberCount: 0, ...over,
 });
 
 describe('useConversationsList — conversation-updated', () => {

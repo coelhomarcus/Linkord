@@ -115,6 +115,9 @@ export interface Conversation {
   // the viewer's own role in this conversation — 'member' for every DM (DMs
   // have no owner). Real per-group authority, not the account's global role.
   myRole: 'owner' | 'member';
+  // derived on the server from the owner's membership row; null for a DM
+  ownerId: string | null;
+  memberCount: number;
 }
 
 export interface PublicUser {
@@ -183,7 +186,7 @@ export type ServerMessage =
   | { t: 'conversation-history'; conversationId: string; messages: ChatMessage[]; hasMore: boolean }
   | { t: 'conversation-history-more'; conversationId: string; messages: ChatMessage[]; hasMore: boolean }
   | { t: 'conversation-history-around'; conversationId: string; msgId: number; messages: ChatMessage[]; hasMoreBefore: boolean; hasMoreAfter: boolean }
-  | { t: 'conversation-deleted'; conversationId: string }
+  | { t: 'conversation-deleted'; conversationId: string; reason?: 'removed' | 'deleted' }
   | { t: 'participant-joined'; participant: Participant }
   | { t: 'participant-updated'; participant: Participant }
   | { t: 'participant-left'; id: string }

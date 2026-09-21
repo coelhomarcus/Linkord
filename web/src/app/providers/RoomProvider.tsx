@@ -66,6 +66,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   // the socket later, this needs to get more specific (e.g. carry which
   // action it was about) instead of assuming "group action" like it does now.
   const [groupActionError, setGroupActionError] = useState<string | null>(null);
+  const [accessNotice, setAccessNotice] = useState<string | null>(null);
   // bumped whenever the server says friends/requests/blocks changed — the
   // friends feature refetches its own lists off this, so social state never
   // has to live inside the room reducer
@@ -246,11 +247,18 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'chat-reaction-updated':
         chatMessages.onChatReactionUpdated(m);
         break;
-      case 'conversation-deleted':
+      case 'conversation-deleted': {
+        // read the title BEFORE the list drops it; a voluntary leave carries no reason
+        const gone = conversationsList.conversationsRef.current.find((c) => c.id === m.conversationId);
+        if (gone?.type === 'group' && m.reason) {
+          const name = gone.title || 'grupo';
+          setAccessNotice(m.reason === 'removed' ? `Você foi removido do grupo "${name}".` : `O grupo "${name}" foi excluído.`);
+        }
         conversationsList.onConversationDeleted(m);
         chatMessages.onConversationDeleted(m);
         callLifecycle.onConversationDeleted(m.conversationId);
         break;
+      }
       case 'social-changed':
         setSocialRevision((n) => n + 1);
         break;
@@ -345,6 +353,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         allUsers: presence.allUsers, onlineUserIds: presence.onlineUserIds,
         deleteUserAccount, moderationError, clearModerationError: () => setModerationError(null), kickFromCall: callLifecycle.kickFromCall,
         groupActionError, clearGroupActionError: () => setGroupActionError(null),
+        accessNotice, clearAccessNotice: () => setAccessNotice(null),
         socialRevision,
         sendChatMessage: chatMessages.sendChatMessage, deleteChatMessage: chatMessages.deleteChatMessage,
         editChatMessage: chatMessages.editChatMessage, reactToChatMessage: chatMessages.reactToChatMessage,

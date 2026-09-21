@@ -278,3 +278,11 @@ export function declineInvitation(id: string): Promise<{ invitation: InvitationC
 export function revokeInvitation(id: string): Promise<{ invitation: InvitationCard }> {
   return apiFetch(`/api/group-invitations/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
+
+// ---- group members (Etapa 10) -----------------------------------------------
+
+export interface GroupMemberEntry { user: SocialUser; role: 'owner' | 'member'; at: string }
+
+export function fetchGroupMembers(conversationId: string, cursor: string | null): Promise<{ items: GroupMemberEntry[]; nextCursor: string | null }> {
+  return apiFetch(`/api/groups/${encodeURIComponent(conversationId)}/members${pageQuery({ cursor })}`);
+}

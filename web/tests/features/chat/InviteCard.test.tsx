@@ -19,7 +19,7 @@ const card = (over: Partial<InvitationCard> = {}): InvitationCard => ({
 });
 const group = (over: Partial<Conversation> = {}): Conversation => ({
   id: 'g1', type: 'group', title: 'Squad', avatar: '', createdBy: 'owner', memberIds: ['owner'],
-  lastMessageAt: null, createdAt: 1, updatedAt: 1, pinnedAt: null, myRole: 'member', ...over,
+  lastMessageAt: null, createdAt: 1, updatedAt: 1, pinnedAt: null, myRole: 'member', ownerId: null, memberCount: 0, ...over,
 });
 const asUser = (userId: string, conversations: Conversation[] = [], openConversation = vi.fn()) => renderWithRoom(<Slot />, {
   state: { ...initialRoomState, me: { ...initialRoomState.me, userId } }, conversations, openConversation,

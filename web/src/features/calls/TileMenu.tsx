@@ -7,6 +7,7 @@ import { useParticipantMedia } from './useLiveKitTrack';
 import { useMuteForMe } from './useMuteForMe';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/shared/ui/primitives/dropdown-menu';
 import { Slider } from '@/shared/ui/primitives/slider';
+import { canKickFromTile } from './canKickFromTile';
 
 type StatsCapableTrack = { getRTCStatsReport?: () => Promise<RTCStatsReport | undefined> };
 
@@ -97,8 +98,12 @@ export function TileMenu() {
   // "Remove from call" is a group-moderation power — not offered for 1:1
   // direct calls, where "leave call" already covers it (mirrors the
   // server-side check in modules/moderation.ts#handleCallKick).
-  const isGroupCall = conversations.find((c) => c.id === activeCallConversationId)?.type === 'group';
-  const canKick = !isMe && isGroupCall && state.me.role === 'admin';
+  const canKick = canKickFromTile({
+    isMe,
+    conversation: conversations.find((c) => c.id === activeCallConversationId),
+    meIsAdmin: state.me.role === 'admin',
+    targetUserId: participantId ? state.participants.get(participantId)?.userId : undefined,
+  });
   const pipSupported = typeof document !== 'undefined' && document.pictureInPictureEnabled
     && !!handle?.video && !handle.video.disablePictureInPicture;
   const inPip = pipSupported && document.pictureInPictureElement === handle?.video;

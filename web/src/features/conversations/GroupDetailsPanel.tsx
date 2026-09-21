@@ -19,14 +19,12 @@ import { uploadWithProgress } from '@/shared/lib/uploadWithProgress';
 import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
 import { AVATAR_MIME_TYPES, MAX_AVATAR_BYTES } from '@/shared/types/protocol';
-import type { PublicUser } from '@/shared/types/protocol';
-import { groupMembers } from './conversationUtils';
 import { GroupAvatar } from './GroupAvatar';
 import { FriendPicker } from './FriendPicker';
 import { describeInviteOutcome } from './inviteOutcome';
 import { useFriends } from '@/features/friends/FriendsContext';
 import { useCursorList } from '@/features/friends/useCursorList';
-import { fetchGroupInvitations, inviteToGroup, revokeInvitation } from '@/shared/api/api';
+import { fetchGroupInvitations, fetchGroupMembers, inviteToGroup, revokeInvitation } from '@/shared/api/api';
 import type { SocialUser } from '@/shared/api/api';
 
 const PANEL_WIDTH = 360;
@@ -42,7 +40,7 @@ interface GroupDetailsPanelProps {
 
 export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenProfile }: GroupDetailsPanelProps) {
   const {
-    state, conversations, allUsers, onlineUserIds,
+    state, conversations, onlineUserIds,
     updateGroupTitle, updateGroupAvatar, removeGroupMember, deleteGroup, transferGroupOwnership,
     groupActionError, clearGroupActionError,
   } = useRoom();
@@ -51,8 +49,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
   // real per-group ownership, not the account's global instance role — see
   // conversationsRepository.ts#canManageGroup on the server.
   const isOwner = conversation?.myRole === 'owner';
-  const members = useMemo(() => groupMembers(conversation, allUsers), [conversation, allUsers]);
-  const memberIds = useMemo(() => new Set(members.map((m) => m.id)), [members]);
+  const memberIds = useMemo(() => new Set(conversation?.memberIds ?? []), [conversation?.memberIds]);
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
@@ -63,8 +60,8 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [removeTarget, setRemoveTarget] = useState<PublicUser | null>(null);
-  const [transferTarget, setTransferTarget] = useState<PublicUser | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<SocialUser | null>(null);
+  const [transferTarget, setTransferTarget] = useState<SocialUser | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const [cropTarget, setCropTarget] = useState<{ kind: 'file'; file: File; src: string } | null>(null);
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
@@ -94,6 +91,13 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
     });
   }, [open, clearGroupActionError]);
 
+  // Paged from the server (§6.3). The membership snapshot in the summary is
+  // only used as a reset key: any join/leave/ownership change alters it.
+  const membersKey = `${conversation?.id}|${conversation?.ownerId}|${conversation?.memberIds.join(',')}`;
+  const fetchMembers = useCallback((cursor: string | null) => (
+    conversationId ? fetchGroupMembers(conversationId, cursor) : Promise.resolve({ items: [], nextCursor: null })
+  ), [conversationId]);
+  const memberList = useCursorList(open && conversation ? fetchMembers : fetchNothing, `${membersKey}|${open}`);
   const { revision, bump } = useFriends();
   const fetchSent = useCallback((cursor: string | null) => (
     conversationId ? fetchGroupInvitations(conversationId, cursor) : Promise.resolve({ items: [], nextCursor: null })
@@ -336,7 +340,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
               {isOwner && <Pencil size={13} className="text-text-muted" />}
             </button>
           )}
-          <p className="text-caption text-text-muted">{members.length} membros</p>
+          <p className="text-caption text-text-muted">{conversation.memberCount} {conversation.memberCount === 1 ? 'membro' : 'membros'}</p>
         </div>
 
         <div className="flex flex-col gap-2">
@@ -362,7 +366,7 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
           {inviteMessage && <p role="status" className="px-1 text-caption text-text-muted">{inviteMessage}</p>}
 
           <div className="flex flex-col gap-1">
-            {members.map((member) => {
+            {memberList.items.map(({ user: member, role }) => {
               const online = onlineUserIds.has(member.id);
               const isMe = member.id === state.me.userId;
               return (
@@ -373,7 +377,10 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
                       <span className={cn('absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-[rgb(14_14_16)]', online ? 'bg-green' : 'bg-text-muted')} />
                     </div>
                     <span className="min-w-0">
-                      <span className="block truncate text-label font-medium">{member.displayName}{isMe ? ' (você)' : ''}</span>
+                      <span className="block truncate text-label font-medium">
+                        {member.displayName}{isMe ? ' (você)' : ''}
+                        {role === 'owner' && <span className="ml-1.5 rounded bg-primary/15 px-1 py-px align-middle text-[10px] font-medium text-primary">dono</span>}
+                      </span>
                       <span className="block truncate text-caption text-text-muted">@{member.username}</span>
                     </span>
                   </button>
@@ -404,6 +411,20 @@ export function GroupDetailsPanel({ conversationId, open, onOpenChange, onOpenPr
                 </div>
               );
             })}
+            {memberList.status === 'loading' && memberList.items.length === 0 && (
+              <p className="px-2 py-3 text-center text-caption text-text-muted">Carregando membros…</p>
+            )}
+            {memberList.status === 'error' && (
+              <div className="flex flex-col items-center gap-2 px-2 py-3">
+                <p className="text-caption text-text-muted">Não foi possível carregar os membros.</p>
+                <Button type="button" variant="secondary" size="sm" onClick={memberList.retry}>Tentar de novo</Button>
+              </div>
+            )}
+            {memberList.hasMore && (
+              <Button type="button" variant="ghost" size="sm" className="self-center" disabled={memberList.loadingMore} onClick={memberList.loadMore}>
+                {memberList.loadingMore ? 'Carregando…' : 'Carregar mais'}
+              </Button>
+            )}
           </div>
         </div>
 

@@ -135,7 +135,7 @@ async function handleGroupDelete(socket: AppSocket, msg: { conversationId?: stri
   await deleteForConversation(conversationId);
   await db.delete(conversations).where(eq(conversations.id, conversationId));
   for (const member of memberRows) {
-    sendToUser(member.userId, { t: 'conversation-deleted', conversationId });
+    sendToUser(member.userId, { t: 'conversation-deleted', conversationId, reason: 'deleted' });
     void revokeCallAccess(member.userId, conversationId);
   }
   await refreshKnownPeers(memberRows.map((row) => row.userId));
@@ -241,7 +241,8 @@ async function handleGroupMembersRemove(socket: AppSocket, msg: { conversationId
   // the removed account loses access immediately — from their client's POV
   // this is the same as the conversation disappearing (RoomProvider already
   // clears messages/unread and leaves an active call on 'conversation-deleted').
-  sendToUser(targetUserId, { t: 'conversation-deleted', conversationId });
+  // leaving on your own needs no notice; being removed does
+  sendToUser(targetUserId, { t: 'conversation-deleted', conversationId, ...(targetUserId !== p.userId ? { reason: 'removed' } : {}) });
   // a client that ignores the event still gets cut off from the media itself
   void revokeCallAccess(targetUserId, conversationId);
 

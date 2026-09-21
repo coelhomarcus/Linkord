@@ -115,6 +115,10 @@ export interface RoomContextValue {
   groupActionError: string | null;
   socialRevision: number;
   clearGroupActionError: () => void;
+  // "you were removed from / the group was deleted" — shown app-wide, since
+  // the conversation (and any panel about it) is already gone by then
+  accessNotice: string | null;
+  clearAccessNotice: () => void;
   sendChatMessage: (conversationId: string, text: string, replyTo?: number) => void;
   deleteChatMessage: (msgId: number) => void;
   editChatMessage: (msgId: number, text: string) => void;
