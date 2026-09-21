@@ -1,5 +1,6 @@
 import { participants, send, publicParticipant, listOnlineUserIds } from './participants.js';
 import { listFriendIds } from '../friendships/friendshipsRepository.js';
+import { listBlockedEitherWayIds } from '../blocks/blocksRepository.js';
 import { listConversationMemberIds } from '../conversations/conversationsRepository.js';
 import { listUsersByIds } from '../users/users.js';
 import type { Participant } from '../../types.js';
@@ -12,12 +13,20 @@ import type { Participant } from '../../types.js';
 // not in realtime/socket.ts, because HTTP handlers (friendships/blocks) need
 // it too and must not import the socket composition root.
 
-export async function computeKnownPeerIds(userId: string): Promise<Set<string>> {
-  const [friendIds, memberIds] = await Promise.all([
+export async function computePeerVisibility(userId: string): Promise<{ known: Set<string>; blocked: Set<string> }> {
+  const [friendIds, memberIds, blockedIds] = await Promise.all([
     listFriendIds(userId),
     listConversationMemberIds(userId),
+    listBlockedEitherWayIds(userId),
   ]);
-  return new Set([...friendIds, ...memberIds]);
+  return { known: new Set([...friendIds, ...memberIds]), blocked: new Set(blockedIds) };
+}
+
+/** Recomputes both sets on a connection in place. */
+export async function applyPeerVisibility(p: Participant): Promise<void> {
+  const { known, blocked } = await computePeerVisibility(p.userId);
+  p.knownPeerIds = known;
+  p.blockedPeerIds = blocked;
 }
 
 /** What one connection is allowed to know about everyone else — the same
@@ -27,10 +36,12 @@ export async function computeKnownPeerIds(userId: string): Promise<Set<string>> 
 export async function buildPresenceSnapshot(p: Participant) {
   return {
     knownUsers: await listUsersByIds([p.userId, ...p.knownPeerIds]),
+    // knownUsers keeps blocked peers (shared history still needs their
+    // names); everything LIVE about them is withheld
     participants: [...participants.values()]
-      .filter((o) => o.id !== p.id && p.knownPeerIds.has(o.userId))
+      .filter((o) => o.id !== p.id && p.knownPeerIds.has(o.userId) && !p.blockedPeerIds.has(o.userId))
       .map(publicParticipant),
-    onlineUserIds: listOnlineUserIds().filter((id) => p.knownPeerIds.has(id)),
+    onlineUserIds: listOnlineUserIds().filter((id) => p.knownPeerIds.has(id) && !p.blockedPeerIds.has(id)),
   };
 }
 
@@ -48,9 +59,10 @@ export async function refreshKnownPeers(userIds: string[]): Promise<void> {
     try {
       const connections = connectionsOf(userId);
       if (!connections.length) continue;
-      const known = await computeKnownPeerIds(userId);
+      const { known, blocked } = await computePeerVisibility(userId);
       for (const p of connections) {
         p.knownPeerIds = known;
+        p.blockedPeerIds = blocked;
         send(p.socket, { t: 'presence-sync', ...(await buildPresenceSnapshot(p)) });
       }
     } catch (err) {

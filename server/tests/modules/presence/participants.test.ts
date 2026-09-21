@@ -342,6 +342,30 @@ describe('broadcastToKnownPeers (Etapa 7 — presence scoping)', () => {
     assert.equal(strangerConn.emitted.includes('participant-updated'), false);
   });
 
+  test('par bloqueado (em qualquer direcao) nao recebe presenca, mesmo dividindo uma conversa', () => {
+    const subjectId = `u-${Math.random()}`;
+    const subjectConn = fakeSocketWithSpy(subjectId);
+    createdIds.push(joinP(subjectConn.socket, {})!.id);
+
+    const friendConn = fakeSocketWithSpy(`u-${Math.random()}`);
+    const friend = joinP(friendConn.socket, {})!;
+    createdIds.push(friend.id);
+    friend.knownPeerIds.add(subjectId);
+
+    const blockedConn = fakeSocketWithSpy(`u-${Math.random()}`);
+    const blocked = joinP(blockedConn.socket, {})!;
+    createdIds.push(blocked.id);
+    blocked.knownPeerIds.add(subjectId);   // shares a conversation with the subject...
+    blocked.blockedPeerIds.add(subjectId); // ...but there is a block between them
+
+    friendConn.emitted.length = 0;
+    blockedConn.emitted.length = 0;
+    broadcastToKnownPeers(subjectId, { t: 'participant-updated' });
+
+    assert.ok(friendConn.emitted.includes('participant-updated'));
+    assert.equal(blockedConn.emitted.includes('participant-updated'), false);
+  });
+
   test('sempre entrega as outras abas da PROPRIA conta, mesmo sem knownPeerIds', () => {
     const userId = `u-${Math.random()}`;
 

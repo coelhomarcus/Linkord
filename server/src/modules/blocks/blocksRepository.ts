@@ -11,6 +11,13 @@ export async function isBlocked(blockerId: string, blockedId: string): Promise<b
   return !!row;
 }
 
+/** Every account with a block against `userId` in either direction. */
+export async function listBlockedEitherWayIds(userId: string): Promise<string[]> {
+  const rows = await db.select({ blockerId: userBlocks.blockerId, blockedId: userBlocks.blockedId }).from(userBlocks)
+    .where(or(eq(userBlocks.blockerId, userId), eq(userBlocks.blockedId, userId)));
+  return rows.map((r) => (r.blockerId === userId ? r.blockedId : r.blockerId));
+}
+
 export async function isBlockedEitherWay(a: string, b: string): Promise<boolean> {
   const [row] = await db.select({ blockerId: userBlocks.blockerId }).from(userBlocks)
     .where(or(

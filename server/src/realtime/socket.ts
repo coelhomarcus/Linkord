@@ -5,7 +5,7 @@ import {
   participants as participantsMap, join, send, broadcastToKnownPeers, publicParticipant, handleClose, ipOf,
   setCallConversationId, handlers as participantHandlers,
 } from '../modules/presence/participants.js';
-import { computeKnownPeerIds, buildPresenceSnapshot } from '../modules/presence/knownPeers.js';
+import { applyPeerVisibility, buildPresenceSnapshot } from '../modules/presence/knownPeers.js';
 import * as livekit from '../integrations/livekit/livekit.js';
 import * as reactions from '../modules/calls/reactions.js';
 import * as floodControl from './floodControl.js';
@@ -72,7 +72,7 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
   const joined = join(socket, msg);
   if (!joined) return;
   const { participant: p, justCameOnline } = joined;
-  p.knownPeerIds = await computeKnownPeerIds(p.userId);
+  await applyPeerVisibility(p);
   // LiveKit token is NOT minted here anymore — just having the tab open/
   // logged in shouldn't open a real call session. That now only happens
   // in handleCallJoin, when someone joins a group call.

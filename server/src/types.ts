@@ -68,6 +68,11 @@ export interface Participant {
   // new friend's live presence only starts showing up after either side
   // reconnects, not immediately.
   knownPeerIds: Set<string>;
+  // Accounts with a block against this one in EITHER direction. Still in
+  // knownPeerIds when they share a conversation (their profile is needed to
+  // render the shared history), but presence — online, call/mic/camera state,
+  // reactions — never flows between the two (docs/plano-rede-social.md §7.3).
+  blockedPeerIds: Set<string>;
 }
 
 /** Public shape of a Participant — what goes to the client (never `token`). */

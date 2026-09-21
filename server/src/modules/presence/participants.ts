@@ -69,7 +69,7 @@ export function broadcast(obj: { t: string; [key: string]: unknown }, exceptId?:
 export function broadcastToKnownPeers(subjectUserId: string, obj: { t: string; [key: string]: unknown }, exceptId?: string): void {
   for (const p of participants.values()) {
     if (p.id === exceptId) continue;
-    if (p.userId !== subjectUserId && !p.knownPeerIds.has(subjectUserId)) continue;
+    if (p.userId !== subjectUserId && (!p.knownPeerIds.has(subjectUserId) || p.blockedPeerIds.has(subjectUserId))) continue;
     if (p.socket && p.socket.connected) { try { p.socket.emit(obj.t, obj); } catch { /* socket dying */ } }
   }
 }
@@ -174,6 +174,7 @@ export function join(socket: AppSocket, msg: JoinMessage): { participant: Partic
       speaking: false,
       graceTimer: null,
       knownPeerIds: new Set(),
+      blockedPeerIds: new Set(),
     };
     participants.set(p.id, p);
   }
