@@ -14,6 +14,7 @@ import { useRoom } from '@/state/RoomContext';
 import type { Conversation } from '@/shared/types/protocol';
 import { ROUTES, isConversationsPath } from '@/shared/lib/routes';
 import { useFriends } from '@/features/friends/FriendsContext';
+import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { conversationTitle, directUser, groupMembers } from './conversationUtils';
 import { GroupAvatar } from './GroupAvatar';
 import { GroupCreateDialog } from './GroupCreateDialog';
@@ -292,6 +293,7 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
               <CollapsedNavButton label="Solicitações" active={requestsActive} badge={pendingIncomingCount} onClick={() => goTo(ROUTES.requests)}>
                 <UserPlus size={18} />
               </CollapsedNavButton>
+              <NotificationBell collapsed />
               <Tooltip>
                 <TooltipTrigger
                   onClick={() => setGroupOpen(true)}
@@ -340,6 +342,7 @@ export function ConversationSidebar({ onOpenSettings, onOpenProfile, onOpenPalet
               <Button type="button" size="icon-sm" aria-label="Criar grupo" onClick={() => setGroupOpen(true)} className="flex-none">
                 <Plus size={16} />
               </Button>
+              <NotificationBell onNavigate={() => { if (isMobile) setOpenMobile(false); }} />
               <Button type="button" variant="ghost" size="icon-sm" aria-label="Ajustes" onClick={onOpenSettings} className="flex-none text-text-muted hover:text-text-primary">
                 <Settings size={16} />
               </Button>

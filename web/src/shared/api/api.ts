@@ -264,6 +264,32 @@ export function fetchReceivedInvitations(cursor: string | null): Promise<{ items
   return apiFetch(`/api/group-invitations${pageQuery({ cursor })}`);
 }
 
+// ---- notifications (bell) ----------------------------------------------------
+
+export type NotificationKind = 'friend_request' | 'friend_accepted' | 'group_invitation';
+export interface NotificationEntry {
+  id: string;
+  kind: NotificationKind;
+  at: string;
+  read: boolean;
+  friendshipId: string | null;
+  invitationId: string | null;
+  actor: SocialUser | null;
+  group: { id: string; title: string; avatar: string } | null;
+}
+
+export function fetchNotifications(cursor: string | null): Promise<{ items: NotificationEntry[]; nextCursor: string | null }> {
+  return apiFetch(`/api/notifications${pageQuery({ cursor })}`);
+}
+
+export function fetchUnreadNotificationCount(): Promise<{ unread: number }> {
+  return apiFetch('/api/notifications/summary');
+}
+
+export function markNotificationsRead(input: { ids: string[] } | { all: true }): Promise<{ marked: number }> {
+  return apiFetch('/api/notifications/read', { method: 'POST', body: JSON.stringify(input) });
+}
+
 export function acceptInvitation(id: string): Promise<{ invitation: InvitationCard }> {
   return apiFetch(`/api/group-invitations/${encodeURIComponent(id)}/accept`, { method: 'POST' });
 }

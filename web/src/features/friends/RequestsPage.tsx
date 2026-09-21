@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { ApiError } from '@/shared/api/api';
 import { Button } from '@/shared/ui/primitives/button';
 import {
@@ -158,7 +159,11 @@ function describeInvitationError(err: unknown): string {
 
 export function RequestsPage({ onOpenProfile }: { onOpenProfile: (userId: string) => void }) {
   const { pendingIncomingCount } = useFriends();
-  const [tab, setTab] = useState<Tab>('incoming');
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab') === 'invitations' ? 'invitations' : null;
+  const [tab, setTab] = useState<Tab>(requestedTab ?? 'incoming');
+  // a notification can point here while the page is already open
+  useEffect(() => { if (requestedTab) setTab(requestedTab); }, [requestedTab]);
   return (
     <SocialPageLayout title="Solicitações" subtitle={pendingIncomingCount > 0 ? `${pendingIncomingCount} pendente${pendingIncomingCount === 1 ? '' : 's'}` : undefined}>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">

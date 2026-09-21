@@ -20,6 +20,13 @@ beforeEach(() => {
 });
 
 describe('RequestsPage', () => {
+  it('?tab=invitations abre direto na aba Convites', async () => {
+    mocked.fetchReceivedInvitations.mockResolvedValue({ items: [], nextCursor: null });
+    renderSocial(<RequestsPage onOpenProfile={vi.fn()} />, { path: '/app/requests?tab=invitations' });
+    expect(await screen.findByText('Nenhum convite de grupo pendente.')).toBeInTheDocument();
+    expect(mocked.fetchFriendRequests).not.toHaveBeenCalled();
+  });
+
   it('abre nas recebidas e aceita sem pedir confirmacao', async () => {
     const user = userEvent.setup();
     mocked.fetchFriendRequests.mockResolvedValue(page(ana));
