@@ -10,6 +10,8 @@ import { withUserPairLock, type Tx } from '../users/userPairLock.js';
 import { findById, resolveDisplayName, toSocialUser, type SocialUser } from '../users/users.js';
 import { getFriendship } from '../friendships/friendshipsRepository.js';
 import { isBlockedEitherWay } from '../blocks/blocksRepository.js';
+import { markNotificationsRead } from '../notifications/notificationsRepository.js';
+import { countGroupMemberships, exceedsLimit, limitMax } from '../limits/limits.js';
 import { SOCIAL_PAGE_SIZE, decodeTimeCursor, encodeTimeCursor } from '../friendships/cursor.js';
 import { notifySocialChanged, onSocialChange, refreshKnownPeers } from '../presence/knownPeers.js';
 import {
@@ -38,7 +40,7 @@ type Code<T extends string> = T extends string ? { code: T } : never;
 
 export type InvitationAction =
   | { code: 'ok'; card: InvitationCard }
-  | Code<'not_found' | 'forbidden' | 'invalid_state' | 'expired' | 'group_full'>;
+  | Code<'not_found' | 'forbidden' | 'invalid_state' | 'expired' | 'group_full' | 'quota_exceeded'>;
 
 // ---- pure helpers (unit-tested) ---------------------------------------------
 
@@ -245,10 +247,12 @@ async function withInvitationLocks<T>(
   });
 }
 
-const markStatus = (tx: Tx, id: string, status: 'accepted' | 'declined' | 'revoked' | 'expired') =>
-  tx.update(groupInvitations)
+const markStatus = async (tx: Tx, id: string, status: 'accepted' | 'declined' | 'revoked' | 'expired') => {
+  await tx.update(groupInvitations)
     .set({ status, respondedAt: new Date(), version: sql`${groupInvitations.version} + 1` })
     .where(eq(groupInvitations.id, id));
+  await markNotificationsRead(tx, { invitationIds: [id] });
+};
 
 /** The one path that creates a member. Re-validates EVERYTHING under the
  * locks — validity, authority of the inviter, friendship, blocks, existing
@@ -257,7 +261,7 @@ const markStatus = (tx: Tx, id: string, status: 'accepted' | 'declined' | 'revok
 export async function acceptInvitation(inviteeId: string, id: string): Promise<InvitationAction> {
   let announce: { conversation: Conversation; memberIds: string[]; inviterId: string; expired: boolean; revoked: boolean } | null = null;
 
-  const outcome = await withInvitationLocks<Code<'ok' | 'invalid_state' | 'expired' | 'group_full'>>(
+  const outcome = await withInvitationLocks<Code<'ok' | 'invalid_state' | 'expired' | 'group_full' | 'quota_exceeded'>>(
     id,
     (pre) => pre.inviteeId === inviteeId,
     async (tx, invitation, group) => {
@@ -284,6 +288,8 @@ export async function acceptInvitation(inviteeId: string, id: string): Promise<I
         return { code: 'invalid_state' as const };
       }
       if (!alreadyMember && memberRows.length >= config.MAX_GROUP_MEMBERS) return { code: 'group_full' as const };
+      // the invitee's OWN limit on how many groups they can belong to
+      if (!alreadyMember && exceedsLimit(await countGroupMemberships(inviteeId, tx), limitMax('groupMemberships'))) return { code: 'quota_exceeded' as const };
 
       await tx.insert(conversationMembers).values({ conversationId: group.id, userId: inviteeId, role: 'member' }).onConflictDoNothing();
       await markStatus(tx, id, 'accepted');
@@ -399,6 +405,7 @@ export async function sweepExpiredInvitations(): Promise<number> {
     .where(and(eq(groupInvitations.status, 'pending'), sql`${groupInvitations.expiresAt} <= now()`))
     .returning({ id: groupInvitations.id, inviterId: groupInvitations.inviterId, inviteeId: groupInvitations.inviteeId });
   if (!rows.length) return 0;
+  await markNotificationsRead(db, { invitationIds: rows.map((r) => r.id) });
   await broadcastInvitationUpdates(rows.map((r) => r.id));
   for (const r of rows) notifySocialChanged([r.inviterId, r.inviteeId]);
   return rows.length;

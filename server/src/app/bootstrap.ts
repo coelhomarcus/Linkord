@@ -6,6 +6,9 @@ import { runMigrations } from '../db/migrate.js';
 import { sweepExpiredSessions } from '../modules/auth/session.js';
 import { ensureUploadDir, sweepStaleUploads } from '../modules/attachments/uploadSession.js';
 import { sweepExpiredInvitations } from '../modules/conversations/invitationsRepository.js';
+import { sweepOrphans } from '../modules/attachments/orphanSweeper.js';
+import { drainOutbox, pruneNotifications } from '../modules/notifications/outboxWorker.js';
+import { OUTBOX_POLL_MS } from '../modules/notifications/notificationsPolicy.js';
 
 // backstop behind the try/catch in each handler in realtime/socket.ts —
 // covers any async error escaping the normal message cycle (a timer, a
@@ -82,6 +85,27 @@ export async function bootstrap(): Promise<void> {
   void sweepInvitations();
   const invitationSweepTimer = setInterval(sweepInvitations, 5 * 60 * 1000);
   invitationSweepTimer.unref();
+
+  // Transactional outbox: drain the events written with each social change
+  // (safety net for a lost live emit), and prune what no longer needs to live.
+  const pumpOutbox = () => drainOutbox()
+    .catch((err) => console.error('[outbox] failed to drain:', err instanceof Error ? err.stack : err));
+  const outboxTimer = setInterval(pumpOutbox, OUTBOX_POLL_MS);
+  outboxTimer.unref();
+  const pruneTimer = setInterval(() => {
+    pruneNotifications().catch((err) => console.error('[notifications] failed to prune:', err instanceof Error ? err.stack : err));
+  }, 24 * 60 * 60 * 1000);
+  pruneTimer.unref();
+
+  // Files on disk with no row behind them (a failed unlink, a crash mid-commit).
+  // The scheduled run only reports unless ORPHAN_SWEEP_DRY_RUN=0; an admin can
+  // run a real one from /admin/system.
+  const sweepOrphanFiles = () => sweepOrphans({ dryRun: config.ORPHAN_SWEEP_DRY_RUN, actor: null })
+    .then((r) => { if (r.orphanCount > 0) console.log(`[storage] orphan files: ${r.orphanCount} (${r.orphanBytes} bytes)${r.dryRun ? ' — report only' : `, deleted ${r.deleted}`}`); })
+    .catch((err) => console.error('[storage] orphan sweep failed:', err instanceof Error ? err.stack : err));
+  setTimeout(sweepOrphanFiles, 60_000).unref();
+  const orphanTimer = setInterval(sweepOrphanFiles, 24 * 60 * 60 * 1000);
+  orphanTimer.unref();
 
   for (const sig of ['SIGINT', 'SIGTERM'] as const) {
     process.on(sig, () => {

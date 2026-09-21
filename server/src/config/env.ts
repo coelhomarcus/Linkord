@@ -78,9 +78,8 @@ const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS || 30);
 // closed by default: fail-closed so a deploy that forgot to set this
 // doesn't become open registration.
 const REGISTRATION_CODE = process.env.REGISTRATION_CODE || '';
-// registering with this username becomes admin; a unique index makes it a
-// one-time claim.
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'lune';
+// (ADMIN_USERNAME is gone: registering never grants admin anymore. Admins are
+// provisioned explicitly — `npm run admin:grant -- <username>` or the /admin area.)
 // 'auto' reads X-Forwarded-Proto (set by Caddy/nginx); '1'/'0' force it —
 // otherwise the Secure cookie attribute breaks local http:// dev.
 const COOKIE_SECURE = process.env.COOKIE_SECURE || 'auto';
@@ -123,6 +122,31 @@ const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || '';
 // stripped so `${UPLOADS_REMOTE_URL}/uploads/<id>` doesn't double up.
 const UPLOADS_REMOTE_URL = (process.env.UPLOADS_REMOTE_URL || '').trim().replace(/\/+$/, '');
 
+// ---- abuse limits (etapa 12). Initial values are starting guesses, not
+// measured capacity — tune them against real use (docs/plano-rede-social.md §10.2.8).
+const REGISTRATIONS_PER_IP_PER_HOUR = Number(process.env.REGISTRATIONS_PER_IP_PER_HOUR || 5);
+const MAX_NEW_ACCOUNTS_PER_HOUR = Number(process.env.MAX_NEW_ACCOUNTS_PER_HOUR || 30);
+const MAX_CONNECTIONS_PER_USER = Number(process.env.MAX_CONNECTIONS_PER_USER || 5);
+// per-account quotas
+const MAX_USER_STORAGE_BYTES = Number(process.env.MAX_USER_STORAGE_BYTES || 5 * 1024 * 1024 * 1024);
+const MAX_OWNED_GROUPS_PER_USER = Number(process.env.MAX_OWNED_GROUPS_PER_USER || 20);
+const MAX_GROUP_MEMBERSHIPS_PER_USER = Number(process.env.MAX_GROUP_MEMBERSHIPS_PER_USER || 100);
+const MAX_FRIENDS = Number(process.env.MAX_FRIENDS || 500);
+const MAX_PENDING_OUTGOING_REQUESTS = Number(process.env.MAX_PENDING_OUTGOING_REQUESTS || 50);
+// extra browser origins allowed to call the API/socket (comma-separated), on
+// top of APP_URL and the request's own host — see http/originGuard.ts.
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '').split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean);
+// production-like unless NODE_ENV says otherwise; only used to allow the Vite dev origin.
+const IS_DEV = process.env.NODE_ENV === 'development' || (!process.env.NODE_ENV && !process.env.APP_URL);
+// Discord posts call activity ONLY for this one conversation (opt-in); empty = off.
+const DISCORD_WEBHOOK_CONVERSATION_ID = (process.env.DISCORD_WEBHOOK_CONVERSATION_ID || '').trim();
+// files on disk with no `attachments` row are only collected after this long,
+// so an upload that is still being committed is never mistaken for an orphan.
+const ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000;
+// the scheduled orphan sweep only REPORTS unless this is '0' (an admin can still
+// run a real one by hand from /admin). Deleting files is opt-in on purpose.
+const ORPHAN_SWEEP_DRY_RUN = process.env.ORPHAN_SWEEP_DRY_RUN !== '0';
+
 export const config = {
   PORT, HOST_BIND, MAX_PARTICIPANTS, TRUST_PROXY, MAX_MSG_BYTES, RECONNECT_GRACE_MS,
   MAX_AVATAR_LEN, MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINKS, MAX_PROFILE_LINK_LEN,
@@ -131,11 +155,14 @@ export const config = {
   UPLOAD_DIR, MAX_ATTACHMENT_BYTES, MAX_STORAGE_BYTES, MAX_AVATAR_BYTES,
   UPLOAD_CHUNK_BYTES, UPLOAD_SESSION_TTL_MS,
   DATABASE_URL, DATABASE_SSL, DATABASE_SSL_CA, MIGRATE_ON_BOOT,
-  SESSION_COOKIE, SESSION_TTL_DAYS, REGISTRATION_CODE, ADMIN_USERNAME,
+  SESSION_COOKIE, SESSION_TTL_DAYS, REGISTRATION_CODE,
   COOKIE_SECURE, MAX_BODY_BYTES,
   MIN_USERNAME_LEN, MAX_USERNAME_LEN, MAX_DISPLAY_NAME_LEN, MIN_PASSWORD_LEN, MAX_PASSWORD_LEN,
   RESEND_API_KEY, RESEND_FROM_EMAIL, APP_URL, AUTH_CODE_TTL_MS, AUTH_CODE_MAX_ATTEMPTS,
   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_ROOM_NAME, LIVEKIT_TOKEN_TTL_SECONDS,
   DISCORD_WEBHOOK_URL,
   UPLOADS_REMOTE_URL,
+  REGISTRATIONS_PER_IP_PER_HOUR, MAX_NEW_ACCOUNTS_PER_HOUR, MAX_CONNECTIONS_PER_USER,
+  MAX_USER_STORAGE_BYTES, MAX_OWNED_GROUPS_PER_USER, MAX_GROUP_MEMBERSHIPS_PER_USER, MAX_FRIENDS, MAX_PENDING_OUTGOING_REQUESTS,
+  ALLOWED_ORIGINS, IS_DEV, DISCORD_WEBHOOK_CONVERSATION_ID, ORPHAN_GRACE_MS, ORPHAN_SWEEP_DRY_RUN,
 };

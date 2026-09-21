@@ -5,6 +5,7 @@ import fastifyCompress from '@fastify/compress';
 import { config } from '../config/env.js';
 import { participants } from '../modules/presence/participants.js';
 import { sendError } from './respond.js';
+import { originGuard } from './originGuard.js';
 import { registerAuthRoutes } from '../modules/auth/routes.js';
 import { registerAttachmentRoutes } from '../modules/attachments/attachments.js';
 import { registerProfileRoutes } from '../modules/profile/profile.js';
@@ -14,6 +15,8 @@ import { registerFriendshipRoutes } from '../modules/friendships/friendships.js'
 import { registerBlockRoutes } from '../modules/blocks/blocks.js';
 import { registerUserRoutes } from '../modules/users/usersRoutes.js';
 import { registerInvitationRoutes } from '../modules/conversations/invitations.js';
+import { registerNotificationRoutes } from '../modules/notifications/notificationsRoutes.js';
+import { registerLimitsRoutes } from '../modules/limits/limitsRoutes.js';
 import { registerReportRoutes } from '../modules/reports/reports.js';
 import { registerAdminRoutes } from '../modules/admin/adminRoutes.js';
 import { registerGroupMemberRoutes } from '../modules/conversations/groupMembers.js';
@@ -53,6 +56,8 @@ export function createApp(): FastifyInstance {
   // static/JSON responses, which previously relied on a CDN's own gzip.
   fastify.register(fastifyCompress);
 
+  fastify.addHook('onRequest', originGuard);
+
   fastify.get('/healthz', async () => ({ ok: true, participants: participants.size, uptime: process.uptime() }));
 
   registerAuthRoutes(fastify);
@@ -66,6 +71,8 @@ export function createApp(): FastifyInstance {
   registerInvitationRoutes(fastify);
   registerGroupMemberRoutes(fastify);
   registerReportRoutes(fastify);
+  registerLimitsRoutes(fastify);
+  registerNotificationRoutes(fastify);
   registerAdminRoutes(fastify);
 
   // static files from the frontend build (web/dist) — wildcard:false so it

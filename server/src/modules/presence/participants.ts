@@ -109,6 +109,12 @@ export function removeParticipant(p: Participant): void {
   if (!isUserOnline(p.userId)) broadcastToKnownPeers(p.userId, { t: 'user-offline', userId: p.userId });
 }
 
+function countConnectionsOf(userId: string): number {
+  let n = 0;
+  for (const p of participants.values()) if (p.userId === userId && p.socket) n++;
+  return n;
+}
+
 /** Removes ghosts (socket=null, stuck in the reconnect grace window) for
  * the SAME account before creating a new connection — otherwise a crashed
  * tab would hold the slot for up to RECONNECT_GRACE_MS. */
@@ -152,6 +158,12 @@ export function join(socket: AppSocket, msg: JoinMessage): { participant: Partic
       return null;
     }
     evictGhostsForUser(u.userId);
+    // one account can't hold more than a handful of live connections (tabs,
+    // devices) — otherwise a single sign-up could fill the whole room
+    if (countConnectionsOf(u.userId) >= config.MAX_CONNECTIONS_PER_USER) {
+      send(socket, { t: 'error', code: 'too_many_connections', message: 'Você já tem conexões demais abertas. Feche alguma aba.' });
+      return null;
+    }
     p = {
       id: newId(),
       token: newToken(),

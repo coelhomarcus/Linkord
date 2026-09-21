@@ -24,6 +24,26 @@ export function decideUserAction(input: {
   return 'allow';
 }
 
+export type AdminRoleAction = 'grant' | 'revoke';
+export type AdminRoleDecision = 'allow' | 'self' | 'last_admin' | 'already_admin' | 'not_admin' | 'target_inactive';
+
+/** Granting or removing the admin role. Granting needs an active, non-admin
+ * account. Removing needs an admin, is never done on yourself (no lockout by
+ * accident) and can never take the last ACTIVE admin. */
+export function decideAdminRoleChange(input: {
+  action: AdminRoleAction; actorId: string; targetId: string; targetRole: string; targetStatus: string; activeAdminCount: number;
+}): AdminRoleDecision {
+  const { action, actorId, targetId, targetRole, targetStatus, activeAdminCount } = input;
+  if (action === 'grant') {
+    if (targetStatus !== 'active') return 'target_inactive';
+    return targetRole === 'admin' ? 'already_admin' : 'allow';
+  }
+  if (targetRole !== 'admin') return 'not_admin';
+  if (actorId === targetId) return 'self';
+  if (targetStatus === 'active' && activeAdminCount <= 1) return 'last_admin';
+  return 'allow';
+}
+
 /** Successor when a group's owner disappears (§7.4): oldest membership first,
  * ties broken by user id, never the departing owner. null = nobody left. */
 export function pickSuccessor(members: { userId: string; joinedAt: Date }[], departingId: string): string | null {

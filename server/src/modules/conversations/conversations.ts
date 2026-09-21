@@ -19,6 +19,7 @@ import {
 } from './conversationsRepository.js';
 import { createInvitations, announceRevocations } from './invitationsRepository.js';
 import { removeMember, transferOwnership } from './groupMembership.js';
+import { groupCreationBlockedBy } from '../limits/limits.js';
 import { revokeCallAccess } from '../calls/callAccess.js';
 import { deleteGroupCompletely } from './groupDeletion.js';
 import type { AppSocket, HandlerTable } from '../../types.js';
@@ -115,6 +116,10 @@ async function handleGroupCreate(socket: AppSocket, msg: { title?: string; membe
   const title = sanitizeConversationTitle(msg.title);
   if (!title) return;
 
+  if (await groupCreationBlockedBy(p.userId)) {
+    send(socket, { t: 'error', code: 'quota_exceeded', message: 'Você atingiu o limite de grupos.' });
+    return;
+  }
   const conversation = await createGroup(p.userId, title);
   send(socket, { t: 'conversation-opened', conversationId: conversation.id, conversation: rowToSummary(conversation, [p.userId], null, 'owner', p.userId) });
   if (Array.isArray(msg.memberIds) && msg.memberIds.length) {

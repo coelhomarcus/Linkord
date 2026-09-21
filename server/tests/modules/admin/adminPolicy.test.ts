@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { decideUserAction, normalizeReason, pickSuccessor } from '../../../src/modules/admin/adminPolicy.js';
+import { decideAdminRoleChange, decideUserAction, normalizeReason, pickSuccessor } from '../../../src/modules/admin/adminPolicy.js';
 
 const base = { actorId: 'admin-1', targetId: 'user-1', targetRole: 'user', targetStatus: 'active', activeAdminCount: 2 };
 
@@ -70,5 +70,39 @@ describe('normalizeReason', () => {
     assert.equal(normalizeReason(undefined), null);
     assert.equal(normalizeReason('x'.repeat(501)), null);
     assert.equal(normalizeReason('x'.repeat(500)), 'x'.repeat(500));
+  });
+});
+
+describe('decideAdminRoleChange', () => {
+  const t = { actorId: 'admin-1', targetId: 'user-1', targetRole: 'user', targetStatus: 'active', activeAdminCount: 2 };
+
+  it('concede admin a uma conta ativa comum', () => {
+    assert.equal(decideAdminRoleChange({ ...t, action: 'grant' }), 'allow');
+  });
+
+  it('nao concede a quem ja e admin nem a conta suspensa', () => {
+    assert.equal(decideAdminRoleChange({ ...t, action: 'grant', targetRole: 'admin' }), 'already_admin');
+    assert.equal(decideAdminRoleChange({ ...t, action: 'grant', targetStatus: 'suspended' }), 'target_inactive');
+  });
+
+  it('remove admin de outro admin quando sobra outro ativo', () => {
+    assert.equal(decideAdminRoleChange({ ...t, action: 'revoke', targetRole: 'admin' }), 'allow');
+  });
+
+  it('nunca remove o proprio admin (sem se trancar para fora por engano)', () => {
+    assert.equal(decideAdminRoleChange({ ...t, action: 'revoke', targetRole: 'admin', targetId: 'admin-1' }), 'self');
+  });
+
+  it('protege o ultimo administrador ativo, mas remover um ja suspenso e livre', () => {
+    assert.equal(decideAdminRoleChange({ ...t, action: 'revoke', targetRole: 'admin', activeAdminCount: 1 }), 'last_admin');
+    assert.equal(decideAdminRoleChange({ ...t, action: 'revoke', targetRole: 'admin', targetStatus: 'suspended', activeAdminCount: 1 }), 'allow');
+  });
+
+  it('remover de quem nao e admin e recusado', () => {
+    assert.equal(decideAdminRoleChange({ ...t, action: 'revoke' }), 'not_admin');
+  });
+
+  it('a CLI (ator "cli") nunca colide com "self"', () => {
+    assert.equal(decideAdminRoleChange({ ...t, action: 'revoke', targetRole: 'admin', actorId: 'cli' }), 'allow');
   });
 });

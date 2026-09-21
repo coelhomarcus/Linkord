@@ -1,34 +1,41 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { attachments, conversationMembers, conversations, messages, users } from '../../db/schema.js';
-import { destroyAllSessionsForUser } from '../auth/session.js';
-import { broadcastToKnownPeers } from '../presence/participants.js';
+import { destroyAllSessionsForUser, invalidateSessionsForUser } from '../auth/session.js';
+import { broadcastToKnownPeers, participants, sendToUser } from '../presence/participants.js';
 import { deleteAvatarFile } from '../attachments/attachmentCleanup.js';
 import { reconcileGroupMembership, sendConversationUpdateToMembers } from '../conversations/conversationsRepository.js';
 import { announceRevocations } from '../conversations/invitationsRepository.js';
 import { revokePendingForUser } from '../conversations/invitationRevocation.js';
 import { SOCIAL_PAGE_SIZE, decodeTimeCursor, encodeTimeCursor } from '../friendships/cursor.js';
 import { dropUserConnections } from './accountEnforcement.js';
-import { decideUserAction, pickSuccessor, type UserActionDecision } from './adminPolicy.js';
+import { decideAdminRoleChange, decideUserAction, pickSuccessor, type AdminRoleAction, type AdminRoleDecision, type UserActionDecision } from './adminPolicy.js';
 import { listAudit, recordAudit, recordAuditFailure, type AuditActor } from './auditLog.js';
 
-export type UserActionResult<T = object> = ({ code: 'ok' } & T) | { code: 'not_found' | 'confirmation_mismatch' | Exclude<UserActionDecision, 'allow'> };
+export type UserActionResult<T = object> = ({ code: 'ok' } & T) | { code: 'not_found' | 'forbidden' | 'confirmation_mismatch' | Exclude<UserActionDecision, 'allow'> };
+
+export const CLI_ACTOR_ID = 'cli';
 
 interface Ctx { actor: AuditActor; reason: string; requestId: string }
 
 /** Locks every admin row (stable order) and then the target — so two admins
  * suspending/deleting each other, or the last two admins racing, serialize
  * and each sees the other's effect. */
-async function lockAdminsAndTarget(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], targetId: string) {
+async function lockAdminsAndTarget(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], targetId: string, actorId: string) {
   const admins = (await tx.execute(sql`select id, status from users where role = 'admin' order by id for update`)).rows as { id: string; status: string }[];
   const [target] = (await tx.execute(sql`select id, username, role, status, avatar from users where id = ${targetId} for update`)).rows as
     { id: string; username: string; role: string; status: string; avatar: string }[];
-  return { activeAdminCount: admins.filter((a) => a.status === 'active').length, target };
+  // The actor was checked as an admin BEFORE this transaction; a concurrent
+  // demotion or suspension may have landed since, so it is re-checked under the
+  // lock. The CLI is not an account and is exempt.
+  const actorStillAdmin = actorId === CLI_ACTOR_ID || admins.some((a) => a.id === actorId && a.status === 'active');
+  return { activeAdminCount: admins.filter((a) => a.status === 'active').length, target, actorStillAdmin };
 }
 
 export async function suspendUser(ctx: Ctx, targetId: string): Promise<UserActionResult> {
   const outcome = await db.transaction(async (tx): Promise<UserActionResult<{ revokedInvitationIds: string[] }>> => {
-    const { activeAdminCount, target } = await lockAdminsAndTarget(tx, targetId);
+    const { activeAdminCount, target, actorStillAdmin } = await lockAdminsAndTarget(tx, targetId, ctx.actor.id);
+    if (!actorStillAdmin) return { code: 'forbidden' };
     if (!target) return { code: 'not_found' };
     const decision = decideUserAction({ action: 'suspend', actorId: ctx.actor.id, targetId, targetRole: target.role, targetStatus: target.status, activeAdminCount });
     if (decision !== 'allow') return { code: decision };
@@ -45,9 +52,41 @@ export async function suspendUser(ctx: Ctx, targetId: string): Promise<UserActio
   return { code: 'ok' };
 }
 
+export type AdminRoleResult = { code: 'ok' } | { code: 'not_found' | 'forbidden' | Exclude<AdminRoleDecision, 'allow'> };
+
+/** Grants or removes the admin role — the ONLY way an admin comes to exist
+ * (a username at sign-up is no longer enough). Same locks as suspend/delete,
+ * so the last-admin protection holds under races; the trail is written in the
+ * same transaction. */
+export async function setAdminRole(ctx: Ctx, targetId: string, action: AdminRoleAction): Promise<AdminRoleResult> {
+  const outcome = await db.transaction(async (tx): Promise<AdminRoleResult> => {
+    const { activeAdminCount, target, actorStillAdmin } = await lockAdminsAndTarget(tx, targetId, ctx.actor.id);
+    if (!actorStillAdmin) return { code: 'forbidden' };
+    if (!target) return { code: 'not_found' };
+    const decision = decideAdminRoleChange({ action, actorId: ctx.actor.id, targetId, targetRole: target.role, targetStatus: target.status, activeAdminCount });
+    if (decision !== 'allow') return { code: decision };
+    await tx.update(users).set({ role: action === 'grant' ? 'admin' : 'user', updatedAt: new Date() }).where(eq(users.id, targetId));
+    await recordAudit({
+      actor: ctx.actor, action: action === 'grant' ? 'user.grant_admin' : 'user.revoke_admin', targetType: 'user', targetId,
+      targetLabel: target.username, reason: ctx.reason, requestId: ctx.requestId,
+    }, tx);
+    return { code: 'ok' };
+  });
+  if (outcome.code !== 'ok') return outcome;
+
+  // the server always re-reads the role for admin decisions; this only keeps the
+  // session cache and the live connections (and so the UI) in step
+  const role = action === 'grant' ? 'admin' : 'user';
+  invalidateSessionsForUser(targetId);
+  for (const p of participants.values()) if (p.userId === targetId) p.role = role;
+  sendToUser(targetId, { t: 'role-updated', role });
+  return { code: 'ok' };
+}
+
 export async function reactivateUser(ctx: Ctx, targetId: string): Promise<UserActionResult> {
   return db.transaction(async (tx): Promise<UserActionResult> => {
-    const { activeAdminCount, target } = await lockAdminsAndTarget(tx, targetId);
+    const { activeAdminCount, target, actorStillAdmin } = await lockAdminsAndTarget(tx, targetId, ctx.actor.id);
+    if (!actorStillAdmin) return { code: 'forbidden' };
     if (!target) return { code: 'not_found' };
     const decision = decideUserAction({ action: 'reactivate', actorId: ctx.actor.id, targetId, targetRole: target.role, targetStatus: target.status, activeAdminCount });
     if (decision !== 'allow') return { code: decision };
@@ -80,7 +119,8 @@ export async function deleteUserAccount(ctx: Ctx, targetId: string, confirm: str
   const outcome = await db.transaction(async (tx): Promise<UserActionResult<{
     username: string; avatar: string; groupIds: string[]; successions: { groupId: string; newOwnerId: string }[];
   }>> => {
-    const { activeAdminCount, target } = await lockAdminsAndTarget(tx, targetId);
+    const { activeAdminCount, target, actorStillAdmin } = await lockAdminsAndTarget(tx, targetId, ctx.actor.id);
+    if (!actorStillAdmin) return { code: 'forbidden' };
     if (!target) return { code: 'not_found' };
     const decision = decideUserAction({ action: 'delete', actorId: ctx.actor.id, targetId, targetRole: target.role, targetStatus: target.status, activeAdminCount });
     if (decision !== 'allow') return { code: decision };

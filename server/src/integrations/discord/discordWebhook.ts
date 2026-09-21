@@ -7,6 +7,12 @@ const KIND_MESSAGE: Record<string, (name: string) => string> = {
   screenshare: (name) => `🖥️ **${name}** começou a compartilhar a tela.`,
 };
 
+/** Private conversations never reach the channel: a call is announced only if
+ * it is the single conversation the operator explicitly opted in. */
+export function shouldAnnounceCall(callConversationId: string | null, optedInConversationId: string): boolean {
+  return !!optedInConversationId && callConversationId === optedInConversationId;
+}
+
 /** Sends a notification to the configured Discord channel
  * (`DISCORD_WEBHOOK_URL` — optional, see config/env.ts). Never throws: a
  * network failure/revoked webhook can't take down the connection of
@@ -37,6 +43,9 @@ async function handleCallEvent(socket: AppSocket, msg: { kind?: string }): Promi
   if (!p || p.socket !== socket) return;
   const build = msg.kind ? KIND_MESSAGE[msg.kind] : undefined;
   if (!build) return;
+  // opt-in: the server knows which call this is (the client doesn't get to say),
+  // and only the one configured conversation is ever announced
+  if (!shouldAnnounceCall(p.callConversationId, config.DISCORD_WEBHOOK_CONVERSATION_ID)) return;
   await notify(build(p.name));
 }
 

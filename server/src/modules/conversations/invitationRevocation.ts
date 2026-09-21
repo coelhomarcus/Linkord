@@ -1,6 +1,7 @@
 import { and, eq, or, sql } from 'drizzle-orm';
 import { groupInvitations } from '../../db/schema.js';
 import type { Tx } from '../users/userPairLock.js';
+import { markNotificationsRead } from '../notifications/notificationsRepository.js';
 
 // Leaf module (db/schema only) on purpose: blocks/ and friendships/ must
 // invalidate pending invitations INSIDE their own transaction, while
@@ -21,7 +22,9 @@ export async function revokePendingBetween(tx: Tx, a: string, b: string): Promis
       ),
     ))
     .returning({ id: groupInvitations.id });
-  return rows.map((r) => r.id);
+  const ids = rows.map((r) => r.id);
+  await markNotificationsRead(tx, { invitationIds: ids });
+  return ids;
 }
 
 /** A change of owner revokes what the previous owner had pending (§7.2.5) —
@@ -31,7 +34,9 @@ export async function revokePendingForGroup(tx: Tx, conversationId: string): Pro
     .set({ status: 'revoked', respondedAt: new Date(), version: sql`${groupInvitations.version} + 1` })
     .where(and(eq(groupInvitations.conversationId, conversationId), eq(groupInvitations.status, 'pending')))
     .returning({ id: groupInvitations.id });
-  return rows.map((r) => r.id);
+  const ids = rows.map((r) => r.id);
+  await markNotificationsRead(tx, { invitationIds: ids });
+  return ids;
 }
 
 /** A suspended or deleted account can neither send nor answer an invitation. */
@@ -43,5 +48,7 @@ export async function revokePendingForUser(tx: Tx, userId: string): Promise<stri
       or(eq(groupInvitations.inviterId, userId), eq(groupInvitations.inviteeId, userId)),
     ))
     .returning({ id: groupInvitations.id });
-  return rows.map((r) => r.id);
+  const ids = rows.map((r) => r.id);
+  await markNotificationsRead(tx, { invitationIds: ids });
+  return ids;
 }

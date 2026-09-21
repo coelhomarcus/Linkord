@@ -1,3 +1,4 @@
+import { sendUsageToUser } from '../attachments/attachmentQuota.js';
 import { isActiveAdmin } from '../admin/adminAuth.js';
 import { recordAudit } from '../admin/auditLog.js';
 import { eq, and, desc, asc, lt, gte, sql } from 'drizzle-orm';
@@ -490,6 +491,8 @@ async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Pr
   // file to delete anymore (see attachments/attachmentCleanup.ts).
   await deleteForMessage(msgId);
   await db.delete(messages).where(eq(messages.id, msgId));
+  // the author's quota just got room back
+  if (existing.authorId) void sendUsageToUser(existing.authorId).catch(() => {});
   await recordConversationActivity(existing.conversationId);
   if (!isAuthor) {
     // moderation, so it leaves a trail — ids only, never the message body

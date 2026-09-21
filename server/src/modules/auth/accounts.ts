@@ -2,7 +2,6 @@ import crypto from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { users, type User } from '../../db/schema.js';
-import { config } from '../../config/env.js';
 import type { Role } from '../../types.js';
 import { invalidateSessionsForUser } from './session.js';
 import { normalizeEmail } from '../users/users.js';
@@ -55,6 +54,3 @@ export async function updatePassword(id: string, passwordHash: string): Promise<
   return row || null;
 }
 
-export function isAdminUsername(username: string): boolean {
-  return username.trim().toLowerCase() === config.ADMIN_USERNAME.trim().toLowerCase();
-}

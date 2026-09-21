@@ -5,6 +5,7 @@ import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
 import * as floodControl from '../../realtime/floodControl.js';
 import { sendToUser } from '../presence/participants.js';
+import { groupCreationBlockedBy } from '../limits/limits.js';
 import { createGroup, rowToSummary, sanitizeConversationTitle } from './conversationsRepository.js';
 import {
   acceptInvitation, createInvitations, declineInvitation, listGroupInvitations, listReceivedInvitations,
@@ -36,6 +37,7 @@ function respondAction(reply: FastifyReply, result: InvitationAction): void {
     case 'invalid_state': return sendError(reply, 409, 'conflict', 'Esse convite não está mais nesse estado.');
     case 'expired': return sendError(reply, 409, 'invitation_expired', 'Esse convite expirou.');
     case 'group_full': return sendError(reply, 409, 'group_full', 'O grupo já está cheio.');
+    case 'quota_exceeded': return sendError(reply, 409, 'quota_exceeded', 'Você já participa do máximo de grupos permitido.');
   }
 }
 
@@ -61,6 +63,9 @@ async function handleCreateGroup(request: FastifyRequest, reply: FastifyReply): 
   const { ids, tooMany } = normalizeInviteeIds(body.inviteeIds, sess.userId);
   if (tooMany) return respondInviteError(reply, 'too_many');
 
+  if (await groupCreationBlockedBy(sess.userId)) {
+    return sendError(reply, 409, 'quota_exceeded', 'Você atingiu o limite de grupos. Saia ou apague algum antes de criar outro.');
+  }
   const conversation = await createGroup(sess.userId, title);
   sendToUser(sess.userId, { t: 'conversation-opened', conversationId: conversation.id, conversation: rowToSummary(conversation, [sess.userId], null, 'owner', sess.userId) });
   let results: InviteResult[] = [];

@@ -14,11 +14,12 @@ import * as conversations from '../modules/conversations/conversations.js';
 import { listForUser, getConversationForUser, getDirectPeerId } from '../modules/conversations/conversationsRepository.js';
 import { canSendDirectMessage } from '../modules/friendships/friendshipsRepository.js';
 import { ERROR_CODES } from '../http/errors.js';
-import { getUsage } from '../modules/attachments/attachmentQuota.js';
+import { getUserUsage } from '../modules/attachments/attachmentQuota.js';
 import * as discordWebhook from '../integrations/discord/discordWebhook.js';
 import * as moderation from '../modules/moderation/moderation.js';
 import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from '../modules/auth/session.js';
+import { isSocketOriginAllowed } from '../http/originGuard.js';
 import type { AppSocket, HandlerTable } from '../types.js';
 
 // {message type: handler(socket, msg)} combining what each feature exports
@@ -97,7 +98,7 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
     // re-sent as `presence-sync` when that set changes mid-connection.
     ...(await buildPresenceSnapshot(p)),
     conversations: await listForUser(p.userId),
-    storageUsage: await getUsage(),
+    storageUsage: await getUserUsage(p.userId),
     livekitUrl: config.LIVEKIT_URL,
   });
   broadcastToKnownPeers(p.userId, { t: 'participant-joined', participant: publicParticipant(p) }, p.id);
@@ -178,6 +179,9 @@ export function createWsServer(httpServer: HttpServer): Server {
   // kills the socket without reconnecting (socket.active becomes false
   // client-side) — RoomProvider uses that to fall back to the login screen.
   io.use(async (socket: Socket, next) => {
+    if (!isSocketOriginAllowed(socket.handshake.headers)) {
+      return next(Object.assign(new Error('Origem não permitida.'), { data: { code: 'forbidden_origin' } }));
+    }
     try {
       const cookies = parseCookies(socket.handshake.headers.cookie || '');
       const sess = await resolveSession(cookies[config.SESSION_COOKIE]);

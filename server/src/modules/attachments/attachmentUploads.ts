@@ -11,10 +11,11 @@ import { broadcastToConversationMembers, conversationExistsForUser, getDirectPee
 import { canSendDirectMessage } from '../friendships/friendshipsRepository.js';
 import { newId, filePathFor } from './attachmentStorage.js';
 import { generateThumbnail, THUMBNAIL_SOURCE_MIME_TYPES } from './attachmentThumbnails.js';
-import { getUsage, broadcastUsage } from './attachmentQuota.js';
+import { getUsage, sendUsageToUser } from './attachmentQuota.js';
+import { exceedsLimit, getUserStorageBytes, limitMax } from '../limits/limits.js';
 import {
   tmpDirFor, manifestPathFor, chunkPathFor, readManifest, expectedChunkLength, assembleChunks, sanitizeFileName,
-  pendingUploadBytes, getReservedBytes, withInitLock, completingUploads,
+  reserveUpload, releaseUpload, getReservedBytes, getReservedBytesForUser, withInitLock, completingUploads,
 } from './uploadSession.js';
 import type { UploadManifest } from './uploadSession.js';
 
@@ -59,13 +60,20 @@ export async function handleAttachmentInit(request: FastifyRequest, reply: Fasti
   // bytes can be sent — see uploadSession.ts#pendingUploadBytes for why this
   // has to be check-then-reserve, atomically, rather than just checking
   // getUsage().
-  const reserved = await withInitLock(async () => {
+  const reserved = await withInitLock(async (): Promise<'ok' | 'storage_full' | 'quota_exceeded'> => {
+    // the account's own quota first: what it already stored + what it already
+    // has in flight + this file. Then the instance-wide ceiling.
+    const own = (await getUserStorageBytes(sess.userId)) + getReservedBytesForUser(sess.userId);
+    if (exceedsLimit(own, limitMax('storage'), totalSize)) return 'quota_exceeded';
     const usage = await getUsage();
-    if (usage.totalBytes + getReservedBytes() + totalSize > config.MAX_STORAGE_BYTES) return false;
-    pendingUploadBytes.set(uploadId, totalSize);
-    return true;
+    if (usage.totalBytes + getReservedBytes() + totalSize > config.MAX_STORAGE_BYTES) return 'storage_full';
+    reserveUpload(uploadId, totalSize, sess.userId);
+    return 'ok';
   });
-  if (!reserved) {
+  if (reserved === 'quota_exceeded') {
+    return sendError(reply, 400, 'quota_exceeded', 'Você atingiu o seu limite de armazenamento. Apague arquivos seus antes de enviar mais.');
+  }
+  if (reserved === 'storage_full') {
     return sendError(reply, 400, 'storage_full', 'Armazenamento cheio (30GB no total). Apague arquivos antigos antes de enviar mais.');
   }
 
@@ -78,7 +86,7 @@ export async function handleAttachmentInit(request: FastifyRequest, reply: Fasti
       chunkSize, totalChunks, createdAt: new Date().toISOString(),
     } satisfies UploadManifest));
   } catch (err) {
-    pendingUploadBytes.delete(uploadId);
+    releaseUpload(uploadId);
     throw err;
   }
 
@@ -215,7 +223,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
     // logs — sweepStaleUploads cleans it up later.
     await fs.rm(tmpDirFor(uploadId), { recursive: true, force: true })
       .catch((err) => console.error('[attachments] failed to delete chunks after assembly:', err instanceof Error ? err.stack : err));
-    pendingUploadBytes.delete(uploadId);
+    releaseUpload(uploadId);
 
     // Best-effort: a thumbnail that fails to generate/save just means this
     // attachment serves its full original for the inline preview too — never
@@ -253,7 +261,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
       };
       await touchConversation(message.conversationId, message.createdAt);
       await broadcastToConversationMembers(message.conversationId, { t: 'chat', message: chatMessage });
-      await broadcastUsage();
+      await sendUsageToUser(sess.userId);
       sendJson(reply, 201, { message: chatMessage });
     } else {
       // an EXISTING message just got another attachment (2nd-4th file of a
@@ -266,7 +274,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
         msgId: targetMsgId!,
         attachment: attachmentPayload,
       });
-      await broadcastUsage();
+      await sendUsageToUser(sess.userId);
       sendJson(reply, 201, { attachment: attachmentPayload });
     }
   } finally {
@@ -285,7 +293,7 @@ export async function handleAttachmentCancel(request: FastifyRequest<{ Params: {
   const manifest = await readManifest(uploadId);
   if (manifest && manifest.userId === sess.userId) {
     await fs.rm(tmpDirFor(uploadId), { recursive: true, force: true }).catch(() => {});
-    pendingUploadBytes.delete(uploadId);
+    releaseUpload(uploadId);
   }
   sendJson(reply, 200, { ok: true });
 }

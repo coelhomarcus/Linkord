@@ -103,6 +103,27 @@ export async function assembleChunks(uploadId: string, manifest: UploadManifest,
 // chunks already written.
 export const pendingUploadBytes = new Map<string, number>();
 
+// uploadId -> the account that reserved it, so a per-account storage quota can
+// count what that account already has in flight (etapa 12). Always changed
+// together with pendingUploadBytes, through reserveUpload/releaseUpload.
+const pendingUploadOwners = new Map<string, string>();
+
+export function reserveUpload(uploadId: string, bytes: number, userId: string): void {
+  pendingUploadBytes.set(uploadId, bytes);
+  pendingUploadOwners.set(uploadId, userId);
+}
+
+export function releaseUpload(uploadId: string): void {
+  pendingUploadBytes.delete(uploadId);
+  pendingUploadOwners.delete(uploadId);
+}
+
+export function getReservedBytesForUser(userId: string): number {
+  let sum = 0;
+  for (const [id, owner] of pendingUploadOwners) if (owner === userId) sum += pendingUploadBytes.get(id) ?? 0;
+  return sum;
+}
+
 export function getReservedBytes(): number {
   let sum = 0;
   for (const bytes of pendingUploadBytes.values()) sum += bytes;
@@ -145,10 +166,12 @@ export async function sweepStaleUploads(): Promise<void> {
     const dir = path.join(tmpRoot, id);
     let createdAtMs: number;
     let totalSize: number | undefined;
+    let ownerId: string | undefined;
     try {
       const manifest: UploadManifest = JSON.parse(await fs.readFile(path.join(dir, 'manifest.json'), 'utf8'));
       createdAtMs = new Date(manifest.createdAt).getTime();
       totalSize = manifest.totalSize;
+      ownerId = manifest.userId;
     } catch {
       // manifest missing/corrupt — fall back to the folder's creation time
       // so it can still be swept.
@@ -160,9 +183,9 @@ export async function sweepStaleUploads(): Promise<void> {
     }
     if (Date.now() - createdAtMs > config.UPLOAD_SESSION_TTL_MS) {
       await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
-      pendingUploadBytes.delete(id);
-    } else if (totalSize != null) {
-      pendingUploadBytes.set(id, totalSize);
+      releaseUpload(id);
+    } else if (totalSize != null && ownerId) {
+      reserveUpload(id, totalSize, ownerId);
     }
   }
 }

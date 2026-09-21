@@ -7,7 +7,8 @@ import { parseCookies, serializeCookie, clearCookie, isSecureRequest } from '../
 import { hashPassword, verifyPassword, needsRehash, DUMMY_HASH } from './password.js';
 import { createSession, resolveSession, destroyAllSessionsForUser, destroySession } from './session.js';
 import { findByEmailLower, findByUsernameLower, isValidEmail, normalizeEmail, privateUser } from '../users/users.js';
-import { createUser, isAdminUsername, updateEmail, updatePassword } from './accounts.js';
+import { createUser, updateEmail, updatePassword } from './accounts.js';
+import { checkRegistrationAllowed } from './registrationLimits.js';
 import type { User } from '../../db/schema.js';
 import { issueAuthCode, verifyAuthCode, type AuthCodePurpose } from './codes.js';
 import { sendAuthCodeEmail } from './email.js';
@@ -90,8 +91,20 @@ async function handleRegister(request: FastifyRequest, reply: FastifyReply): Pro
     return sendError(reply, 400, 'password_mismatch', 'As senhas não coincidem.');
   }
 
+  const gate = await checkRegistrationAllowed(ipOfRequest(request));
+  if (gate === 'paused') {
+    reply.header('Retry-After', '900');
+    return sendError(reply, 429, 'registration_paused', 'Muitos cadastros no momento. Tente novamente mais tarde.');
+  }
+  if (gate === 'ip_limited') {
+    reply.header('Retry-After', '3600');
+    return sendError(reply, 429, 'rate_limited', 'Muitos cadastros deste endereço. Tente novamente mais tarde.');
+  }
+
   const passwordHash = await hashPassword(password);
-  const role = isAdminUsername(username) ? 'admin' : 'user';
+  // never 'admin' from a sign-up: administrators are provisioned explicitly
+  // (`npm run admin:grant`, or the /admin area) — a username is not a credential.
+  const role = 'user';
 
   if (await findByEmailLower(email)) return sendError(reply, 409, 'email_taken', 'Esse e-mail já está em uso.');
 

@@ -1,3 +1,5 @@
+import { markNotificationsRead } from '../notifications/notificationsRepository.js';
+import { countFriends, countPendingOutgoing, exceedsLimit, limitMax } from '../limits/limits.js';
 import crypto from 'node:crypto';
 import { and, desc, eq, or, sql } from 'drizzle-orm';
 import { config } from '../../config/env.js';
@@ -22,6 +24,7 @@ export type FriendshipResult =
   // ids of pending group invitations the removal invalidated (§7.2.5) — the
   // HTTP layer announces them once the transaction has committed
   | { code: 'removed'; friendship: Friendship; revokedInvitationIds?: string[] }
+  | { code: 'quota_exceeded'; quota: 'pendingRequests' | 'friends' }
   | { code: 'not_found' }
   | { code: 'forbidden' }
   | { code: 'invalid_state' };
@@ -196,6 +199,15 @@ export async function requestFriendship(fromUserId: string, toUsername: string):
   const toUserId = target.id;
   return withUserPairLock(fromUserId, toUserId, async (tx) => {
     const existing = await getFriendship(fromUserId, toUserId, tx);
+    // Only a request that would actually add a new pending one counts against
+    // the limits; retries and "already friends" answers stay free. The counts
+    // are per-account, not per-pair, so two racing requests to DIFFERENT people
+    // can overshoot by a few — a soft cap, not an invariant.
+    const opensNewRequest = !existing || !['accepted', 'pending'].includes(existing.status);
+    if (opensNewRequest && !(existing && isWithinCooldown(existing.retryAfter))) {
+      if (exceedsLimit(await countPendingOutgoing(fromUserId, tx), limitMax('pendingRequests'))) return { code: 'quota_exceeded', quota: 'pendingRequests' };
+      if (exceedsLimit(await countFriends(fromUserId, tx), limitMax('friends'))) return { code: 'quota_exceeded', quota: 'friends' };
+    }
     if (!existing) {
       const [low, high] = canonicalUserPair(fromUserId, toUserId);
       const [row] = await tx.insert(friendships).values({
@@ -239,10 +251,15 @@ export async function acceptFriendRequest(userId: string, otherUserId: string): 
     if (existing.status === 'accepted') return { code: 'already_friends', friendship: existing };
     if (existing.status !== 'pending') return { code: 'invalid_state' };
     if (existing.requestedBy !== otherUserId) return { code: 'forbidden' };
+    // accepting adds a friend on BOTH sides
+    if (exceedsLimit(await countFriends(userId, tx), limitMax('friends')) || exceedsLimit(await countFriends(otherUserId, tx), limitMax('friends'))) {
+      return { code: 'quota_exceeded', quota: 'friends' };
+    }
     const [row] = await tx.update(friendships).set({
       status: 'accepted', acceptedAt: new Date(), respondedAt: new Date(),
       version: sql`${friendships.version} + 1`, updatedAt: new Date(),
     }).where(eq(friendships.id, existing.id)).returning();
+    await markNotificationsRead(tx, { friendshipId: existing.id });
     await recordFriendshipEvent(tx, otherUserId, 'friend_accepted', row!, 'friend_request_accepted');
     return { code: 'accepted', friendship: row! };
   });
@@ -261,6 +278,7 @@ export async function declineFriendRequest(userId: string, otherUserId: string):
       status: 'declined', respondedAt: new Date(), retryAfter: new Date(Date.now() + config.FRIEND_REQUEST_COOLDOWN_MS),
       version: sql`${friendships.version} + 1`, updatedAt: new Date(),
     }).where(eq(friendships.id, existing.id)).returning();
+    await markNotificationsRead(tx, { friendshipId: existing.id });
     return { code: 'declined', friendship: row! };
   });
 }
@@ -277,6 +295,7 @@ export async function cancelFriendRequest(userId: string, otherUserId: string): 
       status: 'cancelled', respondedAt: new Date(), retryAfter: new Date(Date.now() + config.FRIEND_REQUEST_COOLDOWN_MS),
       version: sql`${friendships.version} + 1`, updatedAt: new Date(),
     }).where(eq(friendships.id, existing.id)).returning();
+    await markNotificationsRead(tx, { friendshipId: existing.id });
     return { code: 'cancelled', friendship: row! };
   });
 }

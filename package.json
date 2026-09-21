@@ -17,6 +17,8 @@
     "test:server:coverage": "node --env-file-if-exists=.env.test --import tsx --experimental-test-coverage --test \"server/tests/**/*.test.ts\"",
     "test:web": "npm run test --prefix web",
     "typecheck:server:tests": "tsc -p server/tsconfig.tests.json",
+    "admin:grant": "node --env-file-if-exists=.env --import tsx server/src/scripts/adminRole.ts grant",
+    "admin:revoke": "node --env-file-if-exists=.env --import tsx server/src/scripts/adminRole.ts revoke",
     "db:generate": "node --env-file-if-exists=.env ./node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "node --env-file-if-exists=.env --import tsx server/src/db/migrate.ts",
     "db:studio": "node --env-file-if-exists=.env ./node_modules/drizzle-kit/bin.cjs studio"
