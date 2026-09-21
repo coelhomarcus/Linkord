@@ -31,7 +31,9 @@ function resolveSafePublicIp(hostname: string): Promise<string | null> {
 const MAX_IMAGE_URL_REDIRECTS = 5;
 const IMAGE_URL_FETCH_TIMEOUT_MS = 10_000;
 
-type FetchImageResult = { buffer: Buffer } | { error: string; message: string };
+// '__redirect__' is internal: it carries the next URL in `message` and never leaves this file
+type FetchImageError = 'invalid_url' | 'too_many_redirects' | 'fetch_failed' | 'invalid_type' | 'file_too_large' | '__redirect__';
+type FetchImageResult = { buffer: Buffer } | { error: FetchImageError; message: string };
 
 /** Downloads an image from a user-supplied URL for the "usar URL" avatar/
  * banner flow. Guards against SSRF (fetching internal services/cloud

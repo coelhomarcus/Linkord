@@ -159,7 +159,7 @@ export async function handleAvatarUpload(request: FastifyRequest, reply: Fastify
       return sendError(reply, 400, 'invalid_url', 'URL inválida.');
     }
     const fetched = await fetchImageFromUrl(sourceUrl.trim(), config.MAX_AVATAR_BYTES);
-    if ('error' in fetched) return sendError(reply, 400, fetched.error, fetched.message);
+    if ('error' in fetched) return sendError(reply, 400, fetched.error === '__redirect__' ? 'fetch_failed' : fetched.error, fetched.message);
     buffer = fetched.buffer;
   } else {
     if (!AVATAR_MIME_TYPES.has(mimeType)) {

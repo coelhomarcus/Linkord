@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { conversationMembers, conversations, users } from '../../db/schema.js';
-import { participants, send, sendToUser } from '../presence/participants.js';
+import { participants, send, sendSocketError, sendToUser } from '../presence/participants.js';
 import { refreshKnownPeers } from '../presence/knownPeers.js';
 import { sanitizeAvatar } from '../profile/sanitize.js';
 import { deleteAvatarFile } from '../attachments/attachmentCleanup.js';
@@ -120,7 +120,7 @@ async function handleGroupCreate(socket: AppSocket, msg: { title?: string; membe
   if (!title) return;
 
   if (await groupCreationBlockedBy(p.userId)) {
-    send(socket, { t: 'error', code: 'quota_exceeded', message: 'Você atingiu o limite de grupos.' });
+    sendSocketError(socket, 'quota_exceeded', 'Você atingiu o limite de grupos.');
     return;
   }
   const conversation = await createGroup(p.userId, title);
@@ -135,7 +135,7 @@ async function handleGroupDelete(socket: AppSocket, msg: { conversationId?: stri
   if (!p || p.socket !== socket) return;
   const conversationId = String(msg.conversationId || '');
   if (!(await canManageGroup(conversationId, p.userId))) {
-    send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Você não tem permissão para gerenciar esse grupo.' });
+    sendSocketError(socket, ERROR_CODES.forbidden, 'Você não tem permissão para gerenciar esse grupo.');
     return;
   }
   const deleted = await deleteGroupCompletely(conversationId);
@@ -153,7 +153,7 @@ async function handleGroupUpdate(socket: AppSocket, msg: { conversationId?: stri
   const conversationId = String(msg.conversationId || '');
   if (!conversationId) return;
   if (!(await canManageGroup(conversationId, p.userId))) {
-    send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Você não tem permissão para gerenciar esse grupo.' });
+    sendSocketError(socket, ERROR_CODES.forbidden, 'Você não tem permissão para gerenciar esse grupo.');
     return;
   }
   const [conversation] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
@@ -185,7 +185,7 @@ async function handleGroupUpdate(socket: AppSocket, msg: { conversationId?: stri
  * client that still sends this gets a clear refusal instead of silence —
  * nothing here writes to conversation_members. */
 async function handleGroupMembersAdd(socket: AppSocket): Promise<void> {
-  send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Convide amigos para o grupo — eles entram ao aceitar o convite.' });
+  sendSocketError(socket, ERROR_CODES.forbidden, 'Convide amigos para o grupo — eles entram ao aceitar o convite.');
 }
 
 /** Owner-only. Hands the group to an existing member and demotes the
@@ -203,11 +203,11 @@ async function handleGroupTransferOwner(socket: AppSocket, msg: { conversationId
 
   const result = await transferOwnership(conversationId, p.userId, newOwnerId);
   if (result.code === 'forbidden') {
-    send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Você não tem permissão para gerenciar esse grupo.' });
+    sendSocketError(socket, ERROR_CODES.forbidden, 'Você não tem permissão para gerenciar esse grupo.');
     return;
   }
   if (result.code === 'not_member') {
-    send(socket, { t: 'error', code: ERROR_CODES.notFound, message: 'Essa pessoa não é membro do grupo.' });
+    sendSocketError(socket, ERROR_CODES.notFound, 'Essa pessoa não é membro do grupo.');
     return;
   }
   if (result.code !== 'ok') return;
@@ -231,11 +231,11 @@ async function handleGroupMembersRemove(socket: AppSocket, msg: { conversationId
 
   const result = await removeMember(conversationId, p.userId, targetUserId);
   if (result.code === 'forbidden') {
-    send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Você não tem permissão para remover esse membro.' });
+    sendSocketError(socket, ERROR_CODES.forbidden, 'Você não tem permissão para remover esse membro.');
     return;
   }
   if (result.code === 'owner_must_transfer') {
-    send(socket, { t: 'error', code: ERROR_CODES.conflict, message: 'Transfira a propriedade do grupo antes de sair.' });
+    sendSocketError(socket, ERROR_CODES.conflict, 'Transfira a propriedade do grupo antes de sair.');
     return;
   }
   if (result.code !== 'ok') return;

@@ -26,6 +26,7 @@ import { preloadSounds } from '@/shared/sounds';
 import { setNotificationClickHandler } from '@/shared/notifications';
 import type { ClientMessage, ServerMessage } from '@/shared/types/protocol';
 import { logger } from '@/shared/lib/logger';
+import { ERROR_CODES } from '@/shared/api/errorCodes';
 
 const log = logger.child({ component: 'room' });
 
@@ -284,25 +285,25 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         attachmentsUpload.onStorageUsage(m);
         break;
       case 'error':
-        if (m.code === 'full') {
+        if (m.code === ERROR_CODES.full) {
           disconnectIntentionally();
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Sala cheia, tente mais tarde.' });
-        } else if (m.code === 'client_outdated') {
+        } else if (m.code === ERROR_CODES.client_outdated) {
           log.warn('server refused this build (client_outdated)');
           // stop retrying: every reconnect would get the same answer
           disconnectIntentionally();
           dispatch({ type: 'SET_CLIENT_OUTDATED' });
-        } else if (m.code === 'too_many_connections') {
+        } else if (m.code === ERROR_CODES.too_many_connections) {
           disconnectIntentionally();
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Você já tem conexões demais abertas. Feche alguma aba.' });
-        } else if (m.code === 'quota_exceeded') {
+        } else if (m.code === ERROR_CODES.quota_exceeded) {
           setGroupActionError(m.message);
-        } else if (m.code === 'forbidden' || m.code === 'conflict' || m.code === 'not_found') {
+        } else if (m.code === ERROR_CODES.forbidden || m.code === ERROR_CODES.conflict || m.code === ERROR_CODES.not_found) {
           setGroupActionError(m.message);
-        } else if (m.code === 'livekit-unavailable') {
+        } else if (m.code === ERROR_CODES['livekit-unavailable']) {
           callLifecycle.onLivekitUnavailable();
           dispatch({ type: 'SET_SHARE_ERROR', message: m.message });
-        } else if (m.code === 'message-not-found') {
+        } else if (m.code === ERROR_CODES['message-not-found']) {
           chatMessages.cancelPendingJump();
           messageSearch.setSearchErrorMessage(m.message);
         } else {

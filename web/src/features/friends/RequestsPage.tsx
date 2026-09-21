@@ -11,6 +11,7 @@ import { SocialPageLayout } from './SocialPageLayout';
 import { SocialUserRow } from './SocialUserRow';
 import { useFriends } from './FriendsContext';
 import { useCursorList } from './useCursorList';
+import { ERROR_CODES } from '@/shared/api/errorCodes';
 
 type Direction = 'incoming' | 'outgoing';
 type Tab = Direction | 'invitations';
@@ -150,8 +151,8 @@ function InvitationList({ onOpenProfile }: { onOpenProfile: (userId: string) => 
 
 function describeInvitationError(err: unknown): string {
   if (err instanceof ApiError) {
-    if (err.code === 'group_full') return 'O grupo está cheio.';
-    if (err.code === 'quota_exceeded') return 'Você já participa do máximo de grupos permitido.';
+    if (err.code === ERROR_CODES.group_full) return 'O grupo está cheio.';
+    if (err.code === ERROR_CODES.quota_exceeded) return 'Você já participa do máximo de grupos permitido.';
   }
   return 'Não foi possível concluir a ação. Tente de novo.';
 }

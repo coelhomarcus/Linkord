@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { config } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { conversations } from '../../db/schema.js';
-import { participants, send, setCallConversationId } from '../presence/participants.js';
+import { participants, sendSocketError, setCallConversationId } from '../presence/participants.js';
 import * as livekit from '../../integrations/livekit/livekit.js';
 import { canManageGroup, getMemberRole } from '../conversations/conversationsRepository.js';
 import { isActiveAdmin } from '../admin/adminAuth.js';
@@ -54,7 +54,7 @@ async function handleCallKick(socket: AppSocket, msg: { participantId?: string }
     targetIsMember: (await getMemberRole(callGroupId, target.userId)) !== null,
   });
   if (!allowed) {
-    send(socket, { t: 'error', code: ERROR_CODES.forbidden, message: 'Você não tem permissão para remover essa pessoa da chamada.' });
+    sendSocketError(socket, ERROR_CODES.forbidden, 'Você não tem permissão para remover essa pessoa da chamada.');
     return;
   }
 
@@ -63,7 +63,7 @@ async function handleCallKick(socket: AppSocket, msg: { participantId?: string }
     await livekit.kickParticipant(roomName, target.id);
   } catch (err) {
     log.warn('failed to kick from the call', { participantId: target.id, err: err instanceof Error ? err.message : String(err) });
-    send(socket, { t: 'error', code: 'livekit-unavailable', message: 'Não foi possível remover da chamada agora.' });
+    sendSocketError(socket, 'livekit-unavailable', 'Não foi possível remover da chamada agora.');
     return;
   }
   // resets callConversationId + all self-reported media flags and broadcasts

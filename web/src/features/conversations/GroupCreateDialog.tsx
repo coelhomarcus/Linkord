@@ -8,6 +8,7 @@ import { ApiError, createGroup } from '@/shared/api/api';
 import type { InviteResult, SocialUser } from '@/shared/api/api';
 import { FriendPicker } from './FriendPicker';
 import { describeInviteOutcome } from './inviteOutcome';
+import { ERROR_CODES } from '@/shared/api/errorCodes';
 
 interface GroupCreateDialogProps {
   open: boolean;
@@ -62,7 +63,7 @@ export function GroupCreateDialog({ open, onOpenChange, onCreated }: GroupCreate
       if (failed.length === 0) close();
       else setFailures(failed);
     } catch (err) {
-      setError(err instanceof ApiError && err.code === 'quota_exceeded' ? err.message : 'Não foi possível criar o grupo. Tente de novo.');
+      setError(err instanceof ApiError && err.code === ERROR_CODES.quota_exceeded ? err.message : 'Não foi possível criar o grupo. Tente de novo.');
     } finally {
       setSubmitting(false);
     }

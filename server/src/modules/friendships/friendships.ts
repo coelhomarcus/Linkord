@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { config } from '../../config/env.js';
 import { sendJson, sendError, jsonBody } from '../../http/respond.js';
+import { errorBody } from '../../http/errors.js';
 import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
 import * as floodControl from '../../realtime/floodControl.js';
@@ -44,12 +45,12 @@ function respond(reply: FastifyReply, result: FriendshipResult): void {
     case 'cancelled': return sendJson(reply, 200, { friendship: result.friendship });
     case 'removed': return sendJson(reply, 200, { friendship: result.friendship });
     case 'cooldown':
-      return sendJson(reply, 409, { error: { code: 'cooldown', message: 'Espere antes de tentar novamente.', retryAfter: result.retryAfter.toISOString() } });
+      return sendJson(reply, 409, errorBody('cooldown', 'Espere antes de tentar novamente.', { retryAfter: result.retryAfter.toISOString() }));
     case 'user_unavailable': return sendError(reply, 404, 'user_unavailable', 'Não foi possível enviar a solicitação.');
     case 'not_found': return sendError(reply, 404, 'not_found', 'Solicitação não encontrada.');
     case 'forbidden': return sendError(reply, 403, 'forbidden', 'Você não pode fazer isso.');
     case 'invalid_state': return sendError(reply, 409, 'conflict', 'Essa solicitação não está mais nesse estado.');
-    case 'quota_exceeded': log.info('friendship action blocked by a quota', { quota: result.quota }); return sendJson(reply, 409, { error: { code: 'quota_exceeded', quota: result.quota, message: result.quota === 'friends' ? 'Limite de amigos atingido.' : 'Você tem solicitações pendentes demais.' } });
+    case 'quota_exceeded': log.info('friendship action blocked by a quota', { quota: result.quota }); return sendJson(reply, 409, errorBody('quota_exceeded', result.quota === 'friends' ? 'Limite de amigos atingido.' : 'Você tem solicitações pendentes demais.', { quota: result.quota }));
   }
 }
 

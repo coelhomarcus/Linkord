@@ -4,7 +4,7 @@ import fastifyStatic from '@fastify/static';
 import fastifyCompress from '@fastify/compress';
 import { config } from '../config/env.js';
 import { participants } from '../modules/presence/participants.js';
-import { sendError } from './respond.js';
+import { sendError, sendJson } from './respond.js';
 import { originGuard } from './originGuard.js';
 import { registerAuthRoutes } from '../modules/auth/routes.js';
 import { registerAttachmentRoutes } from '../modules/attachments/attachments.js';
@@ -64,7 +64,9 @@ export function createApp(): FastifyInstance {
     const status = err.statusCode ?? 500;
     const code = err.code || 'internal_error';
     if (status >= 500) log.error('error in a route', err, { reqId: _request.id, method: _request.method, url: _request.routeOptions?.url ?? _request.url.split('?')[0] });
-    sendError(reply, status, code, err.message || 'Erro interno.');
+    // Fastify's own errors (FST_ERR_*, body parsing) keep their code as-is; only
+    // this handler is allowed to put a code outside the registry on the wire
+    sendJson(reply, status, { error: { code, message: err.message || 'Erro interno.' } });
   });
 
   // Registered once, applies fastify-wide (it self-wraps with fastify-plugin,

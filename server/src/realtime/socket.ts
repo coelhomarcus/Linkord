@@ -2,7 +2,7 @@ import type { Server as HttpServer } from 'node:http';
 import { Server, type Socket } from 'socket.io';
 import { config } from '../config/env.js';
 import {
-  participants as participantsMap, join, send, broadcastToKnownPeers, publicParticipant, handleClose, ipOf,
+  participants as participantsMap, join, send, sendSocketError, broadcastToKnownPeers, publicParticipant, handleClose, ipOf,
   setCallConversationId, handlers as participantHandlers,
 } from '../modules/presence/participants.js';
 import { applyPeerVisibility, buildPresenceSnapshot } from '../modules/presence/knownPeers.js';
@@ -13,7 +13,7 @@ import * as chat from '../modules/messages/messages.js';
 import * as conversations from '../modules/conversations/conversations.js';
 import { listForUser, getConversationForUser, getDirectPeerId } from '../modules/conversations/conversationsRepository.js';
 import { canSendDirectMessage } from '../modules/friendships/friendshipsRepository.js';
-import { ERROR_CODES } from '../http/errors.js';
+import { ERROR_CODES, type ErrorCode } from '../http/errors.js';
 import { getUserUsage } from '../modules/attachments/attachmentQuota.js';
 import * as moderation from '../modules/moderation/moderation.js';
 import { parseCookies } from '../http/cookies.js';
@@ -76,7 +76,7 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
   // before anything is looked up or sent: an outdated client gets nothing but the reason
   if (!isClientCompatible(msg.v)) {
     log.warn('join refused: outdated client', { version: msg.v ?? null, ip: socket.ip });
-    send(socket, { t: 'error', code: 'client_outdated', message: 'Há uma versão nova do Linkord. Atualize a página.' });
+    sendSocketError(socket, 'client_outdated', 'Há uma versão nova do Linkord. Atualize a página.');
     setTimeout(() => { try { socket.disconnect(true); } catch { /* already gone */ } }, 100).unref();
     return;
   }
@@ -127,7 +127,7 @@ async function handleCallJoin(socket: AppSocket, msg: { conversationId?: string 
   if (!conversationId) return;
   const conversation = await getConversationForUser(conversationId, p.userId);
   if (!conversation) {
-    send(socket, { t: 'error', code: 'call-not-allowed', message: 'Você não tem acesso a essa conversa.' });
+    sendSocketError(socket, 'call-not-allowed', 'Você não tem acesso a essa conversa.');
     return;
   }
   // §4.3: "iniciar chamada privada" is explicitly in the restricted-contact
@@ -136,7 +136,7 @@ async function handleCallJoin(socket: AppSocket, msg: { conversationId?: string 
   // returns null there).
   const peerId = await getDirectPeerId(conversationId, p.userId);
   if (peerId && !(await canSendDirectMessage(p.userId, peerId))) {
-    send(socket, { t: 'error', code: ERROR_CODES.relationshipRequired, message: 'Vocês precisam ser amigos pra iniciar essa chamada.' });
+    sendSocketError(socket, ERROR_CODES.relationshipRequired, 'Vocês precisam ser amigos pra iniciar essa chamada.');
     return;
   }
   let livekitToken: string;
@@ -144,7 +144,7 @@ async function handleCallJoin(socket: AppSocket, msg: { conversationId?: string 
     livekitToken = await livekit.createToken(p, `${config.LIVEKIT_ROOM_NAME}-${conversationId}`);
   } catch (err) {
     log.warn('failed to generate LiveKit token', { participantId: p.id, err: err instanceof Error ? err.message : String(err) });
-    send(socket, { t: 'error', code: 'livekit-unavailable', message: 'Vídeo/voz indisponível no momento.' });
+    sendSocketError(socket, 'livekit-unavailable', 'Vídeo/voz indisponível no momento.');
     return;
   }
   setCallConversationId(p, conversationId);
@@ -191,16 +191,16 @@ export function createWsServer(httpServer: HttpServer): Server {
   io.use(async (socket: Socket, next) => {
     if (!isSocketOriginAllowed(socket.handshake.headers)) {
       log.warn('socket handshake from a disallowed origin', { origin: socket.handshake.headers.origin ?? null });
-      return next(Object.assign(new Error('Origem não permitida.'), { data: { code: 'forbidden_origin' } }));
+      return next(Object.assign(new Error('Origem não permitida.'), { data: { code: 'forbidden_origin' satisfies ErrorCode } }));
     }
     try {
       const cookies = parseCookies(socket.handshake.headers.cookie || '');
       const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
-      if (!sess) return next(Object.assign(new Error('Sessão inválida ou expirada.'), { data: { code: 'unauthorized' } }));
+      if (!sess) return next(Object.assign(new Error('Sessão inválida ou expirada.'), { data: { code: 'unauthorized' satisfies ErrorCode } }));
       (socket as AppSocket).user = sess;
       next();
     } catch {
-      next(Object.assign(new Error('Erro de autenticação.'), { data: { code: 'auth_error' } }));
+      next(Object.assign(new Error('Erro de autenticação.'), { data: { code: 'auth_error' satisfies ErrorCode } }));
     }
   });
 
@@ -227,7 +227,7 @@ export function createWsServer(httpServer: HttpServer): Server {
         // !== socket` guard already no-ops it, nothing to rate-limit.
         if (userId && !floodControl.allow(`${eventName}:${userId}`, rule)) {
           log.warn('socket action rate limited', { event: eventName, userId });
-          send(socket, { t: 'error', code: 'rate_limited', message: 'Você está enviando rápido demais. Espere um pouco.' });
+          sendSocketError(socket, 'rate_limited', 'Você está enviando rápido demais. Espere um pouco.');
           return;
         }
       }

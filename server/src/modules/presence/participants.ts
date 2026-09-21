@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import type { ErrorCode } from '../../http/errors.js';
 import { config } from '../../config/env.js';
 import { updateProfile } from '../profile/profileRepository.js';
 import { sanitizeAvatar, sanitizeBanner, sanitizeAvatarColor, sanitizeDisplayName, sanitizeBio, sanitizeProfileLinks } from '../profile/sanitize.js';
@@ -53,6 +54,11 @@ export function send(socket: AppSocket | null | undefined, obj: { t: string; [ke
   if (socket && socket.connected) {
     try { socket.emit(obj.t, obj); } catch { /* socket dying */ }
   }
+}
+
+/** The one way to put an `error` message on a socket, so its code is always a registered one. */
+export function sendSocketError(socket: AppSocket | null | undefined, code: ErrorCode, message: string): void {
+  send(socket, { t: 'error', code, message });
 }
 
 export function broadcast(obj: { t: string; [key: string]: unknown }, exceptId?: string): void {
@@ -158,7 +164,7 @@ export function join(socket: AppSocket, msg: JoinMessage): { participant: Partic
   } else {
     if (participants.size >= config.MAX_PARTICIPANTS) {
       log.warn('join refused: room is full', { participants: participants.size, max: config.MAX_PARTICIPANTS });
-      send(socket, { t: 'error', code: 'full', message: 'Sala cheia, tente mais tarde.' });
+      sendSocketError(socket, 'full', 'Sala cheia, tente mais tarde.');
       return null;
     }
     evictGhostsForUser(u.userId);
@@ -166,7 +172,7 @@ export function join(socket: AppSocket, msg: JoinMessage): { participant: Partic
     // devices) — otherwise a single sign-up could fill the whole room
     if (countConnectionsOf(u.userId) >= config.MAX_CONNECTIONS_PER_USER) {
       log.warn('join refused: too many connections', { userId: u.userId });
-      send(socket, { t: 'error', code: 'too_many_connections', message: 'Você já tem conexões demais abertas. Feche alguma aba.' });
+      sendSocketError(socket, 'too_many_connections', 'Você já tem conexões demais abertas. Feche alguma aba.');
       return null;
     }
     p = {
