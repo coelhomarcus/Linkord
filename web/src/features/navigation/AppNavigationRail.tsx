@@ -10,6 +10,7 @@ import { useRoom } from '@/state/RoomContext';
 import { useFriends } from '@/features/friends/FriendsContext';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { conversationTitle } from '@/features/conversations/conversationUtils';
+import { CountBadge } from '@/shared/CountBadge';
 
 const itemClass = 'relative grid size-11 place-items-center rounded-xl outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring';
 
@@ -24,9 +25,9 @@ function ActiveMarker() {
 
 function RailBadge({ count }: { count: number }) {
   return (
-    <span aria-hidden className="absolute -right-0.5 -top-0.5 grid min-w-4.5 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground">
+    <CountBadge decorative className="absolute -right-0.5 -top-0.5">
       {count > 99 ? '99+' : count}
-    </span>
+    </CountBadge>
   );
 }
 

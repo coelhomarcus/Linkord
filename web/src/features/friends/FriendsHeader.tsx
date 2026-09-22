@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { friendsView } from '@/shared/lib/routes';
 import type { FriendsView } from '@/shared/lib/routes';
 import { cn } from '@/shared/lib/utils';
+import { CountBadge } from '@/shared/CountBadge';
 import { useFriends } from './FriendsContext';
 
 export type FriendsHeaderLayout = 'inline' | 'row' | 'select';
@@ -23,11 +24,7 @@ function useModeCounts(): Partial<Record<FriendsView, number>> {
 }
 
 function ModeBadge({ count, label }: { count: number; label: string }) {
-  return (
-    <span aria-label={`${count} ${label}`} className="grid min-w-4.5 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground">
-      {count > 99 ? '99+' : count}
-    </span>
-  );
+  return <CountBadge label={`${count} ${label}`}>{count > 99 ? '99+' : count}</CountBadge>;
 }
 
 const BADGE_LABEL: Partial<Record<FriendsView, string>> = { pending: 'solicitações aguardando resposta', invitations: 'convites aguardando resposta' };

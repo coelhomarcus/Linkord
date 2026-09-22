@@ -9,6 +9,7 @@ import { Avatar } from '@/shared/Avatar';
 import { formatTime } from '@/shared/lib/formatChatTime';
 import { formatTypingLabel } from '@/shared/lib/formatTypingLabel';
 import { cn } from '@/shared/lib/utils';
+import { CountBadge } from '@/shared/CountBadge';
 import { useRoom } from '@/state/RoomContext';
 import type { Conversation } from '@/shared/types/protocol';
 import { ROUTES, isConversationsPath } from '@/shared/lib/routes';
@@ -107,9 +108,9 @@ function ConversationRow({ conversation, active, onClick }: {
             {time && <span className="text-[11px] leading-none text-text-muted">{time}</span>}
           </span>
           {unread > 0 && (
-            <span className="grid min-w-5 place-items-center rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-bold leading-none text-primary-foreground">
+            <CountBadge className="h-5 min-w-5 px-1.5 text-[11px]">
               {unread > 99 ? '99+' : unread}
-            </span>
+            </CountBadge>
           )}
         </span>
       </button>
