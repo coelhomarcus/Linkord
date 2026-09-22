@@ -4,8 +4,7 @@ import { renderSocial } from '@tests/fixtures/socialFixture';
 import { AnimatedSidebarProvider } from '@/shared/ui/motion/animated-sidebar';
 import { ConversationSidebar } from '@/features/conversations/ConversationSidebar';
 import { initialRoomState } from '@/state/roomReducer';
-import { formatTime } from '@/shared/lib/formatChatTime';
-import type { Conversation, ChatMessage, PublicUser } from '@/shared/types/protocol';
+import type { Conversation, ChatMessage, Participant, PublicUser } from '@/shared/types/protocol';
 
 const meState = { ...initialRoomState, me: { ...initialRoomState.me, id: 'c', userId: 'me', name: 'fulana', displayName: 'Fulana' } };
 const bea: PublicUser = { id: 'u-bea', username: 'bea', displayName: 'Bea', avatar: '', avatarColor: 'green', banner: '', bio: '', profileLinks: [], role: 'user' as const };
@@ -28,7 +27,16 @@ function lastMessage(conversationId: string): ChatMessage {
   return { msgId: 1, conversationId, id: 'u-bea', name: 'Bea', avatar: '', text: 'oi, tudo bem?', ts: Date.now() };
 }
 
-function renderSidebar() {
+function callParticipant(): Participant {
+  return {
+    id: 'p-bea', userId: 'u-bea',
+    name: 'bea', displayName: 'Bea', avatar: '', avatarPoster: '', avatarColor: 'green', banner: '', bannerPoster: '', bio: '', profileLinks: [],
+    role: 'user', deafened: false, callConversationId: 'conv-group', micActivated: true, micMuted: false, cameraOn: false,
+    sharing: false, speaking: false,
+  };
+}
+
+function renderSidebar(overrides: { activeCallConversationId?: string | null; participants?: Map<string, Participant> } = {}) {
   const dm = directConversation();
   const group = groupConversation();
   return renderSocial(
@@ -37,10 +45,11 @@ function renderSidebar() {
     </AnimatedSidebarProvider>,
     {
       room: {
-        state: meState,
+        state: { ...meState, participants: overrides.participants ?? new Map() },
         conversations: [dm, group],
         allUsers: new Map([['u-bea', bea]]),
         messagesByConversation: new Map([['conv-dm', [lastMessage('conv-dm')]]]),
+        activeCallConversationId: overrides.activeCallConversationId ?? null,
       },
       path: '/app/conversations',
     },
@@ -61,13 +70,28 @@ describe('ConversationSidebar — linha da conversa so mostra o nome (sem @, sem
     expect(screen.queryByText(/membros/)).not.toBeInTheDocument();
   });
 
-  it('o horario fica embaixo do nome (onde era a previa), nao mais do lado direito', () => {
+  it('nao mostra mais o horario da ultima mensagem — so avatar e nome, igual Discord', () => {
     renderSidebar();
-    const expectedTime = formatTime(lastMessage('conv-dm').ts);
-    const title = screen.getByText('Bea');
-    const time = screen.getByText(expectedTime);
-    // time's parent is the SAME column that wraps the title's own row —
-    // not the trailing column (pin/unread), which now only has those two.
-    expect(time.parentElement).toBe(title.parentElement!.parentElement);
+    // 17:32-shaped or similar — any DM/group row's time text is gone entirely.
+    expect(screen.queryByText(/^\d{1,2}:\d{2}$/)).not.toBeInTheDocument();
+  });
+
+  it('sem chamada ativa: a linha da conversa tem so uma linha (nome), nada embaixo', () => {
+    renderSidebar();
+    const title = screen.getByText('os xerecas');
+    // title's own wrapping <span> has no sibling below it (no second line) —
+    // the row only grows a second line when there's a call to show.
+    expect(title.parentElement?.children).toHaveLength(1);
+  });
+
+  it('grupo com chamada ativa: aparece uma segunda linha com quem esta na chamada, no lugar onde era a data', () => {
+    const participants = new Map([['p-bea', callParticipant()]]);
+    renderSidebar({ participants });
+    const title = screen.getByText('os xerecas');
+    // title's row now has a sibling block below it — the call indicator, in
+    // the exact slot the removed timestamp used to occupy.
+    expect(title.parentElement?.children).toHaveLength(2);
+    expect(title.nextElementSibling).not.toBeNull();
+    expect(title.nextElementSibling?.textContent).not.toContain('os xerecas');
   });
 });

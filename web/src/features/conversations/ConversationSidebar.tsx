@@ -5,7 +5,6 @@ import { PanelLeftClose, Pin, Plus, Search, Users, PhoneCall } from 'lucide-reac
 import { AnimatedSidebar, useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { Button } from '@/shared/ui/primitives/button';
 import { Avatar } from '@/shared/Avatar';
-import { formatTime } from '@/shared/lib/formatChatTime';
 import { cn } from '@/shared/lib/utils';
 import { shortcutHint } from '@/shared/lib/platform';
 import { CountBadge } from '@/shared/CountBadge';
@@ -27,11 +26,10 @@ function ConversationRow({ conversation, active, onClick }: {
   active: boolean;
   onClick: () => void;
 }) {
-  const { state, allUsers, onlineUserIds, messagesByConversation, unreadByConversation, activeCallConversationId } = useRoom();
+  const { state, allUsers, onlineUserIds, unreadByConversation, activeCallConversationId } = useRoom();
   const title = conversationTitle(conversation, state.me.userId, allUsers);
   const other = directUser(conversation, state.me.userId, allUsers);
   const unread = unreadByConversation.get(conversation.id) ?? 0;
-  const lastMessage = messagesByConversation.get(conversation.id)?.at(-1);
   // `state.participants` never includes yourself (server excludes you from
   // it) — same "prepend me if it's my active call" pattern as
   // ConversationPanel.tsx's header avatar stack.
@@ -40,7 +38,6 @@ function ConversationRow({ conversation, active, onClick }: {
     ? [{ id: state.me.userId ?? 'me', displayName: state.me.displayName, avatar: state.me.avatar, avatarColor: state.me.avatarColor }, ...otherCallParticipants]
     : otherCallParticipants;
   const hasActiveCall = callParticipants.length > 0;
-  const time = (lastMessage?.ts ?? conversation.lastMessageAt) ? formatTime(lastMessage?.ts ?? conversation.lastMessageAt!) : '';
   const online = other ? onlineUserIds.has(other.id) : false;
 
   return (
@@ -69,25 +66,25 @@ function ConversationRow({ conversation, active, onClick }: {
           </div>
         )}
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span className="truncate text-label font-semibold">{title}</span>
-            {hasActiveCall && (
-              <span className="flex flex-none items-center gap-1">
-                <PhoneCall size={13} className="flex-none text-green" />
-                <span className="flex items-center -space-x-1.5">
-                  {callParticipants.slice(0, 4).map((p) => (
-                    <Avatar key={p.id} id={p.id} name={p.displayName} avatar={p.avatar} avatarColor={p.avatarColor} size={18} className="ring-2 ring-[rgb(14_14_16)]" />
-                  ))}
-                  {callParticipants.length > 4 && (
-                    <span className="grid size-4.5 place-items-center rounded-full bg-bg-tertiary text-[9px] font-semibold text-text-secondary ring-2 ring-[rgb(14_14_16)]">
-                      +{callParticipants.length - 4}
-                    </span>
-                  )}
-                </span>
+          <span className="block truncate text-label font-semibold">{title}</span>
+          {/* Discord-style: just the avatar and name — no last-message time.
+              The only thing that goes in this second line is who's on a
+              call right now, same spot the time used to sit in. */}
+          {hasActiveCall && (
+            <span className="mt-0.5 flex items-center gap-1.5">
+              <PhoneCall size={12} className="flex-none text-green" />
+              <span className="flex items-center -space-x-1.5">
+                {callParticipants.slice(0, 4).map((p) => (
+                  <Avatar key={p.id} id={p.id} name={p.displayName} avatar={p.avatar} avatarColor={p.avatarColor} size={16} className="ring-2 ring-[rgb(14_14_16)]" />
+                ))}
+                {callParticipants.length > 4 && (
+                  <span className="grid size-4 place-items-center rounded-full bg-bg-tertiary text-[9px] font-semibold text-text-secondary ring-2 ring-[rgb(14_14_16)]">
+                    +{callParticipants.length - 4}
+                  </span>
+                )}
               </span>
-            )}
-          </span>
-          {time && <span className="mt-0.5 block truncate text-caption text-text-muted">{time}</span>}
+            </span>
+          )}
         </span>
         <span className="flex flex-none flex-col items-end gap-1">
           {!!conversation.pinnedAt && (
