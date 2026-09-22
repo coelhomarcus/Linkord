@@ -27,17 +27,26 @@ function fakeParticipant(overrides: Partial<Participant> & { id: string; userId:
 const me = 'user-me';
 const ana = fakeUser('user-ana', 'ana', 'Ana');
 const bruno = fakeUser('user-bruno', 'bruno', 'Bruno');
+// Carla: a co-member of the group below, but NOT a friend — allUsers
+// carries her (her profile is needed to render the shared group), but
+// she must not be offered as a DM target (docs/plano-rede-social.md §3).
 const carla = fakeUser('user-carla', 'carla', 'Carla');
-const allUsers = new Map([[ana.id, ana], [bruno.id, bruno], [carla.id, carla]]);
+const dara = fakeUser('user-dara', 'dara', 'Dara'); // a friend with no conversation at all yet
+const allUsers = new Map([[ana.id, ana], [bruno.id, bruno], [carla.id, carla], [dara.id, dara]]);
 
 const dmWithAna = fakeConversation({ id: 'conv-dm-ana', type: 'direct', memberIds: [me, ana.id] });
-const group = fakeConversation({ id: 'conv-group', type: 'group', title: 'Squad', memberIds: [me, bruno.id] });
+const group = fakeConversation({ id: 'conv-group', type: 'group', title: 'Squad', memberIds: [me, bruno.id, carla.id] });
 const conversations = [dmWithAna, group];
+
+// Ana (has a DM already) and Bruno (group member) are friends; Carla (also a
+// group member) is not; Dara is a friend with no conversation yet.
+const defaultFriendUserIds = new Set([ana.id, bruno.id, dara.id]);
 
 const noFriendsSummary = { pendingFriendRequestCount: 0, pendingInvitationCount: 0 };
 const noopActions = { onOpenConversation: vi.fn(), onMessageUser: vi.fn(), onCall: vi.fn(), onNavigate: vi.fn(), onOpenProfile: vi.fn() };
 
 function build(overrides: Partial<{
+  friendUserIds: Set<string>;
   participants: Map<string, Participant>;
   activeCallConversationId: string | null;
   friends: typeof noFriendsSummary;
@@ -48,6 +57,7 @@ function build(overrides: Partial<{
     conversations, allUsers, me,
     overrides.participants ?? new Map(),
     overrides.activeCallConversationId ?? null,
+    overrides.friendUserIds ?? defaultFriendUserIds,
     overrides.friends ?? noFriendsSummary,
     overrides.isAdmin ?? false,
     overrides.actions ?? noopActions
@@ -97,18 +107,29 @@ describe('buildCommandItems', () => {
     }
   });
 
-  it('a etapa "Conversar com…" só lista quem ainda não tem uma DM (evita duplicar com "Conversas")', () => {
+  it('a etapa "Conversar com…" só lista amigos — nao um co-membro de grupo que nao e amigo', () => {
     const items = build();
     const peopleItems = messageStage(items);
-    // Ana already has a DM (dmWithAna) — doesn't show up here. Bruno is only
-    // a group member, no DM — shows up. Carla has no conversation at all — shows up.
-    expect(peopleItems.map((it) => it.label).sort()).toEqual(['Bruno', 'Carla']);
+    // Carla is a group co-member but NOT a friend — must not appear, even
+    // though she's in allUsers (her profile is needed to render the group).
+    expect(peopleItems.map((it) => it.label).sort()).toEqual(['Ana', 'Bruno', 'Dara']);
+  });
+
+  it('lista um amigo mesmo se ja tenho uma DM com ele — escolher so reabre a conversa', () => {
+    const items = build();
+    expect(messageStage(items).map((it) => it.label)).toContain('Ana');
+  });
+
+  it('nao lista quem nao e amigo, mesmo sendo co-membro de um grupo comum', () => {
+    const items = build();
+    expect(messageStage(items).some((it) => it.label === 'Carla')).toBe(false);
   });
 
   it('não lista eu mesmo na etapa "Conversar com…"', () => {
     const meAsUser = fakeUser(me, 'eu', 'Eu Mesmo');
     const withMe = new Map([...allUsers, [me, meAsUser]]);
-    const items = buildCommandItems(conversations, withMe, me, new Map(), null, noFriendsSummary, false, noopActions);
+    const friendUserIds = new Set([...defaultFriendUserIds, me]);
+    const items = buildCommandItems(conversations, withMe, me, new Map(), null, friendUserIds, noFriendsSummary, false, noopActions);
     expect(messageStage(items).some((it) => it.label.includes('Eu Mesmo'))).toBe(false);
   });
 
@@ -122,8 +143,8 @@ describe('buildCommandItems', () => {
   it('selecionar uma pessoa na etapa "Conversar com…" chama onMessageUser com o id certo', () => {
     const actions = { ...noopActions, onMessageUser: vi.fn() };
     const items = build({ actions });
-    messageStage(items).find((it) => it.label === 'Carla')?.onSelect?.();
-    expect(actions.onMessageUser).toHaveBeenCalledWith(carla.id);
+    messageStage(items).find((it) => it.label === 'Dara')?.onSelect?.();
+    expect(actions.onMessageUser).toHaveBeenCalledWith(dara.id);
   });
 
   it('conversa com participante em chamada vira "Entrar na chamada" na raiz, e some da etapa "Ligar para…"', () => {

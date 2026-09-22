@@ -206,6 +206,7 @@ export function join(socket: AppSocket, msg: JoinMessage): { participant: Partic
       speaking: false,
       graceTimer: null,
       knownPeerIds: new Set(),
+      friendPeerIds: new Set(),
       blockedPeerIds: new Set(),
     };
     participants.set(p.id, p);

@@ -64,17 +64,12 @@ export function buildCommandItems(
   meUserId: string | null,
   participants: Map<string, Participant>,
   activeCallConversationId: string | null,
+  friendUserIds: Set<string>,
   friends: FriendsSummary,
   isAdmin: boolean,
   actions: CommandPaletteActions
 ): CommandItem[] {
   const items: CommandItem[] = [];
-
-  const directUserIds = new Set<string>();
-  for (const conversation of conversations) {
-    const other = directUser(conversation, meUserId, allUsers);
-    if (other) directUserIds.add(other.id);
-  }
 
   // Which conversations currently have someone actually in a call, other
   // than the one I'm already in myself — that one gets its own "iniciar"
@@ -102,11 +97,15 @@ export function buildCommandItems(
     });
   }
 
-  // "Conversar com…" stage — one entry per person who doesn't have a DM
-  // with me yet (same dedup as the old flat "Pessoas" group).
+  // "Conversar com…" stage — one entry per FRIEND (DMs are friends-only,
+  // docs/plano-rede-social.md §3). allUsers also carries non-friend
+  // conversation co-members — friendUserIds is the subset that's actually
+  // allowed here. Includes friends I already have a DM with too: picking
+  // one just reopens that conversation (getOrCreateDirect on the server),
+  // it's not a duplicate of "Conversas" — a different, searchable way in.
   const messageStageItems: CommandItem[] = [];
   for (const user of allUsers.values()) {
-    if (user.id === meUserId || directUserIds.has(user.id)) continue;
+    if (user.id === meUserId || !friendUserIds.has(user.id)) continue;
     messageStageItems.push({
       id: `person:${user.id}`,
       label: user.displayName,

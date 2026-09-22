@@ -268,7 +268,7 @@ function CommandPaletteMount({ open, onOpenChange, onCall, onMobileNavigated, on
   onMobileNavigated: () => void;
   onOpenProfile: (userId: string) => void;
 }) {
-  const { state, conversations, allUsers, activeCallConversationId, openConversation, openDirect, requestChatView } = useRoom();
+  const { state, conversations, allUsers, friendUserIds, activeCallConversationId, openConversation, openDirect, requestChatView } = useRoom();
   const { pendingFriendRequestCount, pendingInvitationCount } = useFriends();
   const { isOverlay } = useAnimatedSidebar();
   const navigate = useNavigate();
@@ -276,6 +276,7 @@ function CommandPaletteMount({ open, onOpenChange, onCall, onMobileNavigated, on
 
   const commandItems = useMemo(() => buildCommandItems(
     conversations, allUsers, state.me.userId, state.participants, activeCallConversationId,
+    friendUserIds,
     { pendingFriendRequestCount, pendingInvitationCount },
     isAdmin,
     {
@@ -304,7 +305,7 @@ function CommandPaletteMount({ open, onOpenChange, onCall, onMobileNavigated, on
       },
     }
   ), [
-    conversations, allUsers, state.me.userId, state.participants, activeCallConversationId,
+    conversations, allUsers, state.me.userId, state.participants, activeCallConversationId, friendUserIds,
     pendingFriendRequestCount, pendingInvitationCount, isAdmin,
     isOverlay, openConversation, openDirect, requestChatView, onCall, onMobileNavigated, onOpenProfile, navigate,
   ]);

@@ -16,19 +16,20 @@ const log = logger.child({ component: 'presence' });
 // not in realtime/socket.ts, because HTTP handlers (friendships/blocks) need
 // it too and must not import the socket composition root.
 
-export async function computePeerVisibility(userId: string): Promise<{ known: Set<string>; blocked: Set<string> }> {
+export async function computePeerVisibility(userId: string): Promise<{ known: Set<string>; friends: Set<string>; blocked: Set<string> }> {
   const [friendIds, memberIds, blockedIds] = await Promise.all([
     listFriendIds(userId),
     listConversationMemberIds(userId),
     listBlockedEitherWayIds(userId),
   ]);
-  return { known: new Set([...friendIds, ...memberIds]), blocked: new Set(blockedIds) };
+  return { known: new Set([...friendIds, ...memberIds]), friends: new Set(friendIds), blocked: new Set(blockedIds) };
 }
 
 /** Recomputes both sets on a connection in place. */
 export async function applyPeerVisibility(p: Participant): Promise<void> {
-  const { known, blocked } = await computePeerVisibility(p.userId);
+  const { known, friends, blocked } = await computePeerVisibility(p.userId);
   p.knownPeerIds = known;
+  p.friendPeerIds = friends;
   p.blockedPeerIds = blocked;
 }
 
@@ -45,6 +46,10 @@ export async function buildPresenceSnapshot(p: Participant) {
       .filter((o) => o.id !== p.id && p.knownPeerIds.has(o.userId) && !p.blockedPeerIds.has(o.userId))
       .map(publicParticipant),
     onlineUserIds: listOnlineUserIds().filter((id) => p.knownPeerIds.has(id) && !p.blockedPeerIds.has(id)),
+    // the friend SUBSET of knownUsers — lets the client offer "message this
+    // person" only for an actual friend, not every conversation co-member
+    // knownUsers also carries (see Participant#friendPeerIds).
+    friendIds: [...p.friendPeerIds],
   };
 }
 
@@ -62,9 +67,10 @@ export async function refreshKnownPeers(userIds: string[]): Promise<void> {
     try {
       const connections = connectionsOf(userId);
       if (!connections.length) continue;
-      const { known, blocked } = await computePeerVisibility(userId);
+      const { known, friends, blocked } = await computePeerVisibility(userId);
       for (const p of connections) {
         p.knownPeerIds = known;
+        p.friendPeerIds = friends;
         p.blockedPeerIds = blocked;
         send(p.socket, { t: 'presence-sync', ...(await buildPresenceSnapshot(p)) });
       }

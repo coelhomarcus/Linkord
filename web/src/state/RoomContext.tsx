@@ -111,6 +111,8 @@ export interface RoomContextValue {
   loadOlderMessages: (conversationId: string) => void;
   allUsers: Map<string, PublicUser>;
   onlineUserIds: Set<string>;
+  /** The friend subset of allUsers — see usePresence.ts's own comment. */
+  friendUserIds: Set<string>;
   kickFromCall: (participantId: string) => void;
   groupActionError: string | null;
   socialRevision: number;
