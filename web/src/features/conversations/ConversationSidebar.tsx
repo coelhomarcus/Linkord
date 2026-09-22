@@ -1,19 +1,17 @@
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { messagePreviewText } from '@/features/chat/messagePreview';
 import { PanelLeftClose, Pin, Plus, Search, Users, PhoneCall } from 'lucide-react';
 import { AnimatedSidebar, useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { Button } from '@/shared/ui/primitives/button';
 import { Avatar } from '@/shared/Avatar';
 import { formatTime } from '@/shared/lib/formatChatTime';
-import { formatTypingLabel } from '@/shared/lib/formatTypingLabel';
 import { cn } from '@/shared/lib/utils';
 import { CountBadge } from '@/shared/CountBadge';
 import { useRoom } from '@/state/RoomContext';
 import type { Conversation } from '@/shared/types/protocol';
 import { ROUTES, isConversationsPath } from '@/shared/lib/routes';
-import { conversationTitle, directUser, groupMembers } from './conversationUtils';
+import { conversationTitle, directUser } from './conversationUtils';
 import { GroupAvatar } from './GroupAvatar';
 import { GroupCreateDialog } from './GroupCreateDialog';
 
@@ -28,16 +26,11 @@ function ConversationRow({ conversation, active, onClick }: {
   active: boolean;
   onClick: () => void;
 }) {
-  const { state, allUsers, onlineUserIds, messagesByConversation, unreadByConversation, typingByConversation, activeCallConversationId } = useRoom();
+  const { state, allUsers, onlineUserIds, messagesByConversation, unreadByConversation, activeCallConversationId } = useRoom();
   const title = conversationTitle(conversation, state.me.userId, allUsers);
   const other = directUser(conversation, state.me.userId, allUsers);
-  const members = groupMembers(conversation, allUsers);
   const unread = unreadByConversation.get(conversation.id) ?? 0;
   const lastMessage = messagesByConversation.get(conversation.id)?.at(-1);
-  const typingUserIds = typingByConversation.get(conversation.id);
-  const typingLabel = typingUserIds?.size
-    ? formatTypingLabel([...typingUserIds].map((id) => allUsers.get(id)?.displayName ?? '???'))
-    : null;
   // `state.participants` never includes yourself (server excludes you from
   // it) — same "prepend me if it's my active call" pattern as
   // ConversationPanel.tsx's header avatar stack.
@@ -46,13 +39,6 @@ function ConversationRow({ conversation, active, onClick }: {
     ? [{ id: state.me.userId ?? 'me', displayName: state.me.displayName, avatar: state.me.avatar, avatarColor: state.me.avatarColor }, ...otherCallParticipants]
     : otherCallParticipants;
   const hasActiveCall = callParticipants.length > 0;
-  const subtitle = conversation.status === 'suspended'
-    ? 'Suspenso pela administração'
-    : lastMessage
-    ? `${lastMessage.id === state.me.userId ? 'Você' : lastMessage.name}: ${messagePreviewText(lastMessage)}`
-    : conversation.type === 'group'
-      ? `${members.length} membros`
-      : other?.username ? `@${other.username}` : 'Conversa direta';
   const time = (lastMessage?.ts ?? conversation.lastMessageAt) ? formatTime(lastMessage?.ts ?? conversation.lastMessageAt!) : '';
   const online = other ? onlineUserIds.has(other.id) : false;
 
@@ -100,7 +86,6 @@ function ConversationRow({ conversation, active, onClick }: {
               </span>
             )}
           </span>
-          <span className="mt-0.5 block truncate text-caption text-text-muted">{typingLabel ?? subtitle}</span>
         </span>
         <span className="flex flex-none flex-col items-end gap-1">
           <span className="flex items-center gap-1">
