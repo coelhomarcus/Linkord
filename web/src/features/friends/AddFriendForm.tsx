@@ -52,6 +52,7 @@ export function AddFriendForm({ onSent, autoFocus }: { onSent: () => void; autoF
           spellCheck={false}
           autoFocus={autoFocus}
           maxLength={40}
+          className="border-input"
         />
         <Button type="submit" disabled={pending || !normalizeUsernameInput(value)} className="flex-none">
           {pending ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
