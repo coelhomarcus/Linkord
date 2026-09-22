@@ -8,7 +8,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/primitives/
 import { Avatar } from '@/shared/Avatar';
 import { ChatSurfaceWidthProvider, useMeasuredWidth } from '@/shared/lib/chatSurfaceWidth';
 import { formatDateHeading } from '@/shared/lib/formatChatTime';
-import { formatTypingLabel } from '@/shared/lib/formatTypingLabel';
 import { buildMentionLookup } from '@/shared/lib/mentions';
 import { useRoom } from '@/state/RoomContext';
 import type { ChatMessage } from '@/shared/types/protocol';
@@ -16,6 +15,7 @@ import { conversationTitle, directUser, groupMembers } from './conversationUtils
 import { GroupAvatar } from './GroupAvatar';
 import { MessageRow } from '@/features/chat/MessageRow';
 import { MessageComposer } from '@/features/chat/MessageComposer';
+import { TypingIndicator } from '@/features/chat/TypingIndicator';
 import { DirectComposerGate } from '@/features/friends/DirectComposerGate';
 import type { MessageComposerHandle } from '@/features/chat/MessageComposer';
 
@@ -227,7 +227,7 @@ interface ConversationPanelProps {
 }
 
 export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onOpenDetails, onOpenMedia }: ConversationPanelProps) {
-  const { state, conversations, activeConversationId, allUsers, onlineUserIds, typingByConversation, activeCallConversationId } = useRoom();
+  const { state, conversations, activeConversationId, allUsers, onlineUserIds, activeCallConversationId } = useRoom();
   const { setOpenMobile } = useAnimatedSidebar();
   const conversation = conversations.find((item) => item.id === activeConversationId) ?? null;
   const title = conversationTitle(conversation, state.me.userId, allUsers);
@@ -237,10 +237,6 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
   const subtitle = conversation?.type === 'group'
     ? `${members.length} membros`
     : other ? (online ? 'Online' : 'Offline') : '';
-  const typingUserIds = activeConversationId ? typingByConversation.get(activeConversationId) : undefined;
-  const typingLabel = typingUserIds?.size
-    ? formatTypingLabel([...typingUserIds].map((id) => allUsers.get(id)?.displayName ?? '???'))
-    : null;
   // `state.participants` only ever holds OTHER people (the server excludes
   // yourself from it) — my own row in this list has to come from `state.me`
   // instead, gated on whether I'm actually the one in this call.
@@ -284,7 +280,7 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
               className="min-w-0 flex-1 text-left"
             >
               <h2 className="truncate text-title font-semibold">{title}</h2>
-              {(typingLabel ?? subtitle) && <p className="truncate text-caption text-text-muted">{typingLabel ?? subtitle}</p>}
+              {subtitle && <p className="truncate text-caption text-text-muted">{subtitle}</p>}
             </button>
             {callParticipants.length > 0 && (
               <Tooltip>
@@ -408,6 +404,7 @@ export function MessageListBridge({ conversationId, onOpenProfile }: { conversat
         style={{ height: composerHeight + 48 }}
       />
       <div ref={composerWrapRef} className="absolute inset-x-0 bottom-0">
+        <TypingIndicator conversationId={conversationId} />
         <DirectComposerGate conversationId={conversationId}>
           <MessageComposer ref={composerRef} conversationId={conversationId} />
         </DirectComposerGate>
