@@ -28,7 +28,7 @@ import { TileMenu } from '@/features/calls/TileMenu';
 import { ReactionsOverlay } from '@/features/reactions/ReactionsOverlay';
 import { GlobalContextMenu } from '@/app/layout/GlobalContextMenu';
 import { ProfileModal } from '@/features/profile/ProfileModal';
-import { FriendsProvider } from '@/features/friends/FriendsContext';
+import { FriendsProvider, useFriends } from '@/features/friends/FriendsContext';
 import { FriendsPage } from '@/features/friends/FriendsPage';
 import { RequestsRedirect } from '@/features/friends/RequestsRedirect';
 import { SettingsPage } from '@/features/settings/SettingsPage';
@@ -243,6 +243,7 @@ function Shell() {
           onOpenChange={setPaletteOpen}
           onCall={handleOpenCall}
           onMobileNavigated={() => setMobileShowSidebar(false)}
+          onOpenProfile={setProfileUserId}
         />
         <ChatSearchDialog
           open={searchOpen}
@@ -260,18 +261,23 @@ function Shell() {
  * same as ConversationSidebar's own row clicks) — a hook that only works
  * inside the AnimatedSidebarProvider Shell itself renders, so Shell (the
  * provider's parent, not a descendant of it) can't call it directly. */
-function CommandPaletteMount({ open, onOpenChange, onCall, onMobileNavigated }: {
+function CommandPaletteMount({ open, onOpenChange, onCall, onMobileNavigated, onOpenProfile }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCall: (conversationId: string) => void;
   onMobileNavigated: () => void;
+  onOpenProfile: (userId: string) => void;
 }) {
   const { state, conversations, allUsers, activeCallConversationId, openConversation, openDirect, requestChatView } = useRoom();
+  const { pendingFriendRequestCount, pendingInvitationCount } = useFriends();
   const { isOverlay } = useAnimatedSidebar();
   const navigate = useNavigate();
+  const isAdmin = state.me.role === 'admin';
 
   const commandItems = useMemo(() => buildCommandItems(
     conversations, allUsers, state.me.userId, state.participants, activeCallConversationId,
+    { pendingFriendRequestCount, pendingInvitationCount },
+    isAdmin,
     {
       onOpenConversation: (id) => {
         openConversation(id);
@@ -288,8 +294,20 @@ function CommandPaletteMount({ open, onOpenChange, onCall, onMobileNavigated }: 
         openConversation(id);
         onCall(id);
       },
+      onNavigate: (path) => {
+        navigate(path);
+        if (isOverlay) onMobileNavigated();
+      },
+      onOpenProfile: (userId) => {
+        onOpenProfile(userId);
+        if (isOverlay) onMobileNavigated();
+      },
     }
-  ), [conversations, allUsers, state.me.userId, state.participants, activeCallConversationId, isOverlay, openConversation, openDirect, requestChatView, onCall, onMobileNavigated, navigate]);
+  ), [
+    conversations, allUsers, state.me.userId, state.participants, activeCallConversationId,
+    pendingFriendRequestCount, pendingInvitationCount, isAdmin,
+    isOverlay, openConversation, openDirect, requestChatView, onCall, onMobileNavigated, onOpenProfile, navigate,
+  ]);
 
   return (
     <CommandPalette

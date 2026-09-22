@@ -10,7 +10,7 @@ export function ListSearch({ value, onChange, label }: { value: string; onChange
         onChange={(event) => onChange(event.target.value)}
         placeholder={label}
         aria-label={label}
-        className="w-full pl-9"
+        className="w-full border-input pl-9"
       />
     </div>
   );

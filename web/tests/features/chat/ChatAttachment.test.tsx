@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatAttachment } from '@/features/chat/ChatAttachment';
+import { __resetCachedImageSrcForTests } from '@/shared/hooks/useCachedImageSrc';
+import { __resetPreviewCacheForTests } from '@/features/media/TextPreviewCard';
 
 // Keeps this test off the real shiki/WASM init path — highlightCode's own
 // correctness isn't this file's concern, just that ChatAttachment routes to
@@ -11,16 +13,22 @@ vi.mock('@/shared/lib/highlightCode', () => ({ highlightCode: vi.fn(async () => 
 describe('ChatAttachment', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    __resetCachedImageSrcForTests();
+    __resetPreviewCacheForTests();
   });
 
-  it('imagem usa a miniatura (thumbId) quando existe, nao o original', () => {
+  it('imagem usa a miniatura (thumbId) quando existe, nao o original', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, blob: async () => new Blob() })));
     const { container } = render(<ChatAttachment attachment={{ id: 'img-id', thumbId: 'thumb-id', name: 'foto.png', mime: 'image/png', size: 789 }} />);
-    expect(container.querySelector('img')).toHaveAttribute('src', '/uploads/thumb-id');
+    await waitFor(() => expect(container.querySelector('img')).toHaveAttribute('src'));
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/uploads/thumb-id', expect.objectContaining({ credentials: 'same-origin' }));
   });
 
-  it('imagem sem thumbId cai pro original', () => {
-    const { container } = render(<ChatAttachment attachment={{ id: 'img-id', name: 'foto.png', mime: 'image/png', size: 789 }} />);
-    expect(container.querySelector('img')).toHaveAttribute('src', '/uploads/img-id');
+  it('imagem sem thumbId cai pro original', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, blob: async () => new Blob() })));
+    render(<ChatAttachment attachment={{ id: 'img-id', name: 'foto.png', mime: 'image/png', size: 789 }} />);
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledWith('/uploads/img-id', expect.objectContaining({ credentials: 'same-origin' })));
   });
 
   it('arquivo generico (nao previsualizavel) vira link de download simples', () => {

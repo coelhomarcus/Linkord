@@ -13,10 +13,16 @@ function ContextMenuTrigger({ ...props }: ContextMenuPrimitive.Trigger.Props) {
 
 function ContextMenuContent({
   className,
+  keepMounted,
   ...props
-}: ContextMenuPrimitive.Popup.Props) {
+}: ContextMenuPrimitive.Popup.Props & {
+  /** Keeps the content in the DOM (hidden via the primitive's own closed
+   * styling) instead of unmounting it on every close — see
+   * shared/hooks/useKeepPopoverWarm for when this is worth the trade. */
+  keepMounted?: boolean;
+}) {
   return (
-    <ContextMenuPrimitive.Portal>
+    <ContextMenuPrimitive.Portal keepMounted={keepMounted}>
       <ContextMenuPrimitive.Positioner className="isolate z-50 outline-none">
         <ContextMenuPrimitive.Popup
           data-slot="context-menu-content"

@@ -11,6 +11,7 @@ import { Textarea } from '@/shared/ui/primitives/textarea';
 import { Avatar } from '@/shared/Avatar';
 import { DocumentAttachmentCard } from '@/features/media/DocumentAttachmentCard';
 import { UploadProgressBar } from '@/shared/UploadProgressBar';
+import { useKeepPopoverWarm } from '@/shared/hooks/useKeepPopoverWarm';
 import { compressImageFile } from '@/shared/lib/compressImageFile';
 import { formatFileSize, formatSizeLimit } from '@/shared/lib/formatBytes';
 import { cn } from '@/shared/lib/utils';
@@ -58,6 +59,9 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  // once opened, keeps the picker mounted (hidden) instead of paying its
+  // dataset fetch/measure cost again on every open — see useKeepPopoverWarm.
+  const emojiPickerWarmed = useKeepPopoverWarm(emojiPickerOpen);
   // active "@query" under the cursor, or null when not mentioning anyone
   // right now (see getMentionQuery) — drives the autocomplete dropdown.
   const [mentionQuery, setMentionQuery] = useState<{ start: number; query: string } | null>(null);
@@ -448,7 +452,7 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
             >
               <Smile size={18} />
             </PopoverTrigger>
-            <PopoverContent className="w-75 p-0" side="top" align="end">
+            <PopoverContent keepMounted={emojiPickerWarmed} className="w-75 p-0" side="top" align="end">
               <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => insertEmoji(emoji)}>
                 <EmojiPickerSearch />
                 <EmojiPickerContent />

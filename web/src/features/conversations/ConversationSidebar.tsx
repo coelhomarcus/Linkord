@@ -7,6 +7,7 @@ import { Button } from '@/shared/ui/primitives/button';
 import { Avatar } from '@/shared/Avatar';
 import { formatTime } from '@/shared/lib/formatChatTime';
 import { cn } from '@/shared/lib/utils';
+import { shortcutHint } from '@/shared/lib/platform';
 import { CountBadge } from '@/shared/CountBadge';
 import { useRoom } from '@/state/RoomContext';
 import type { Conversation } from '@/shared/types/protocol';
@@ -86,12 +87,14 @@ function ConversationRow({ conversation, active, onClick }: {
               </span>
             )}
           </span>
+          {time && <span className="mt-0.5 block truncate text-caption text-text-muted">{time}</span>}
         </span>
         <span className="flex flex-none flex-col items-end gap-1">
-          <span className="flex items-center gap-1">
-            {!!conversation.pinnedAt && <Pin size={11} className="fill-text-muted text-text-muted" />}
-            {time && <span className="text-[11px] leading-none text-text-muted">{time}</span>}
-          </span>
+          {!!conversation.pinnedAt && (
+            <span className="flex items-center">
+              <Pin size={11} className="fill-text-muted text-text-muted" />
+            </span>
+          )}
           {unread > 0 && (
             <CountBadge className="h-5 min-w-5 px-1.5 text-[11px]">
               {unread > 99 ? '99+' : unread}
@@ -108,6 +111,7 @@ export function ConversationSidebar({ onOpenPalette, mobileRail }: ConversationS
   const { isMobile, isOverlay, setOpenMobile, toggleSidebar } = useAnimatedSidebar();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const shortcutK = shortcutHint('K');
   const [query, setQuery] = useState('');
   const [groupOpen, setGroupOpen] = useState(false);
   const normalized = query.trim().toLowerCase();
@@ -166,10 +170,10 @@ export function ConversationSidebar({ onOpenPalette, mobileRail }: ConversationS
                 <button
                   type="button"
                   onClick={onOpenPalette}
-                  aria-label="Abrir busca rápida (Ctrl+K)"
+                  aria-label={`Abrir busca rápida (${shortcutK})`}
                   className="flex-none rounded border border-white/10 bg-black/20 px-1.5 py-0.5 text-[10px] font-medium text-text-muted transition-colors hover:text-text-secondary"
                 >
-                  ⌘K
+                  {shortcutK}
                 </button>
               </div>
 

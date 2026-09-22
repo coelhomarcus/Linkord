@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { TextPreviewCard } from '@/features/media/TextPreviewCard';
+import { TextPreviewCard, __resetPreviewCacheForTests } from '@/features/media/TextPreviewCard';
 
 vi.mock('@/shared/lib/highlightCode', () => ({ highlightCode: vi.fn(async () => null) }));
 
@@ -13,6 +13,7 @@ describe('TextPreviewCard', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    __resetPreviewCacheForTests();
   });
 
   it('renderiza markdown (titulo vira <h1>, nao aparece como texto cru)', async () => {

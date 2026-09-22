@@ -5,25 +5,25 @@
 <h1 align="center">Linkord</h1>
 
 <p align="center">
-  Chat em tempo real, canais e chamadas de voz/tela.
+  Comunicação em tempo real, self-hosted — amigos, grupos e chamadas.
 </p>
 
 <p align="center">
-  <a href="https://github.com/coelhomarcus/Linkord/actions/workflows/test.yml?query=branch%3Amain">
-    <img src="https://github.com/coelhomarcus/Linkord/actions/workflows/test.yml/badge.svg?branch=main" alt="CI" />
+  <a href="https://github.com/coelhomarcus/Linkord/actions/workflows/test.yml">
+    <img src="https://github.com/coelhomarcus/Linkord/actions/workflows/test.yml/badge.svg" alt="CI" />
   </a>
 </p>
 
 ## O que é
 
-Linkord é uma plataforma de comunicação em tempo real com chamadas de voz, vídeo, texto e compartilhamento de tela — self-hosted, estilo Discord.
+Linkord é uma plataforma de chat e chamadas self-hosted, no estilo Discord — mas organizada por **amigos e grupos**, não por servidores/canais públicos. Cada conta adiciona amigos por `@username` exato, conversa por DM ou cria grupos próprios (com convite e aceite), e chama por voz/vídeo/tela dentro dessas conversas.
 
-- Categorias e múltiplos canais de texto e voz, com reordenação por drag-and-drop (admin)
-- Chat: anexos (upload em chunks, até 2GB), embeds automáticos de YouTube/Twitch/mídia direta e Open Graph, reações, respostas, editar/apagar mensagem
-- Canais de voz com câmera e tela compartilhada (LiveKit)
-- Diretório de usuários (online/offline) e painel de moderação (apagar conta)
-- Aba de mídias — todo anexo/embed do projeto, de todos os canais
-- Preferências salvas por usuário (volume por chamada/pessoa, volume de notificações)
+- **Amigos**: pedido de amizade, aceitar/recusar, bloqueio
+- **Conversas**: DMs e grupos — qualquer conta pode criar um grupo e é dona dele (renomear, convidar, remover membro, transferir posse)
+- **Chat**: anexos (upload em chunks, até 2GB), embeds automáticos (YouTube/Twitch/mídia direta/Open Graph), reações, respostas, editar/apagar mensagem, busca
+- **Chamadas**: voz, câmera e compartilhamento de tela por conversa (LiveKit)
+- **Administração** (`/admin`): usuários, grupos, denúncias, log de auditoria e limpeza de arquivos órfãos
+- **Ajustes**: perfil, conta/segurança, dispositivos de áudio/vídeo, notificações, preferências, privacidade (bloqueados)
 
 ## Stack
 
@@ -44,12 +44,18 @@ Isso sobe em `localhost:5432` com usuário/senha/banco `linkord`/`linkord`/`link
 
 ```bash
 npm install
-cp .env.example .env   # preencha DATABASE_URL, LIVEKIT_*, etc.
+cp .env.example .env   # preencha DATABASE_URL, LIVEKIT_*, REGISTRATION_CODE, etc.
 npm run db:migrate
 npm run dev             # server (watch) + web (Vite) juntos
 ```
 
 O frontend sobe em `http://localhost:5173` (proxy pro backend em `:3000`).
+
+Cadastro é fechado por padrão (`REGISTRATION_CODE` vazio = ninguém se cadastra). Depois de criar sua conta, vire admin com:
+
+```bash
+npm run admin:grant -- <seu-username>
+```
 
 ### Scripts principais
 
@@ -61,6 +67,7 @@ O frontend sobe em `http://localhost:5173` (proxy pro backend em `:3000`).
 | `npm test` | Testes do backend (`node --test`) e do frontend (`vitest`) |
 | `npm run db:generate` | Gera uma migration nova a partir de `server/src/db/schema.ts` |
 | `npm run db:migrate` | Aplica as migrations pendentes |
+| `npm run admin:grant -- <username>` | Concede papel de admin a uma conta existente |
 
 ## Testes
 
@@ -77,7 +84,7 @@ Roda automaticamente em todo push/PR pra `main`/`develop` ([`.github/workflows/t
 
 ## Variáveis de ambiente
 
-Veja [`.env.example`](.env.example) — cobre servidor, banco, contas/sessão, LiveKit, upload e limites.
+Veja [`.env.example`](.env.example) — cobre servidor, banco, contas/sessão, LiveKit, upload e limites de abuso.
 
 ## Deploy
 
