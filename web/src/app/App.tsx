@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
+import { Navigate, Route, Routes, createBrowserRouter, RouterProvider, useLocation, useNavigate } from 'react-router';
 import { RoomProvider } from '@/app/providers/RoomProvider';
 import { useRoom } from '@/state/RoomContext';
 import { AuthProvider, useAuth } from '@/state/AuthContext';
@@ -312,17 +312,26 @@ function AuthGate() {
   );
 }
 
-export function App() {
+// The router sits ABOVE the auth gate but only its <Routes> (inside Shell)
+// ever swap — RoomProvider, and with it the LiveKit call, never remounts on
+// navigation.
+function AppProviders() {
   return (
-    // The router sits ABOVE the auth gate but only its <Routes> (inside Shell)
-    // ever swap — RoomProvider, and with it the LiveKit call, never remounts
-    // on navigation.
-    <BrowserRouter>
-      <AuthProvider>
-        <TooltipProvider>
-          <AuthGate />
-        </TooltipProvider>
-      </AuthProvider>
-    </BrowserRouter>
+    <AuthProvider>
+      <TooltipProvider>
+        <AuthGate />
+      </TooltipProvider>
+    </AuthProvider>
   );
+}
+
+// A single splat route whose element owns its own nested <Routes> (in Shell).
+// This "descendant routes" setup is the smallest step from BrowserRouter to a
+// data router: every route, guard and provider lifecycle stays identical —
+// the only reason to make the change at all is that useBlocker (settings'
+// unsaved-changes guard) requires a data router to exist somewhere above it.
+const router = createBrowserRouter([{ path: '*', element: <AppProviders /> }]);
+
+export function App() {
+  return <RouterProvider router={router} />;
 }
