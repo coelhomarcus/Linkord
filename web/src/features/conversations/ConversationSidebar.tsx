@@ -11,11 +11,10 @@ import { formatTypingLabel } from '@/shared/lib/formatTypingLabel';
 import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
 import type { Conversation } from '@/shared/types/protocol';
-import { ROUTES, friendsView, isConversationsPath } from '@/shared/lib/routes';
+import { ROUTES, isConversationsPath } from '@/shared/lib/routes';
 import { conversationTitle, directUser, groupMembers } from './conversationUtils';
 import { GroupAvatar } from './GroupAvatar';
 import { GroupCreateDialog } from './GroupCreateDialog';
-import { TransitionNotice } from '@/features/onboarding/TransitionNotice';
 
 interface ConversationSidebarProps {
   onOpenPalette: () => void;
@@ -189,7 +188,6 @@ export function ConversationSidebar({ onOpenPalette, mobileRail }: ConversationS
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto">
-                <TransitionNotice onOpenFriends={() => { navigate(friendsView('all')); if (isOverlay) setOpenMobile(false); }} />
                 <div className="flex flex-col gap-1">
                   {filteredConversations.length === 0 ? (
                     <p className="px-3 py-8 text-center text-label text-text-muted">Nenhuma conversa.</p>
