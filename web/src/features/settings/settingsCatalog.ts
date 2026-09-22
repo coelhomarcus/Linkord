@@ -33,7 +33,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     categories: [
       { id: 'av', label: 'Áudio e vídeo', description: 'Dispositivos e o processamento do seu microfone.', icon: SlidersHorizontal },
       { id: 'notifications', label: 'Notificações', description: 'Avisos do sistema e sons do app.', icon: Bell },
-      { id: 'prefs', label: 'Preferências', description: 'Como a chamada aparece para você.', icon: Settings2 },
+      { id: 'prefs', label: 'Preferências', description: 'Como a chamada aparece e como imagens são enviadas — só neste navegador, não acompanha a conta entre dispositivos.', icon: Settings2 },
     ],
   },
   {
