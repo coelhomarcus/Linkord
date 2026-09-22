@@ -4,6 +4,7 @@ import { renderSocial } from '@tests/fixtures/socialFixture';
 import { AnimatedSidebarProvider } from '@/shared/ui/motion/animated-sidebar';
 import { ConversationSidebar } from '@/features/conversations/ConversationSidebar';
 import { initialRoomState } from '@/state/roomReducer';
+import { formatTime } from '@/shared/lib/formatChatTime';
 import type { Conversation, ChatMessage, PublicUser } from '@/shared/types/protocol';
 
 const meState = { ...initialRoomState, me: { ...initialRoomState.me, id: 'c', userId: 'me', name: 'fulana', displayName: 'Fulana' } };
@@ -58,5 +59,15 @@ describe('ConversationSidebar — linha da conversa so mostra o nome (sem @, sem
     renderSidebar();
     expect(screen.getByText('os xerecas')).toBeInTheDocument();
     expect(screen.queryByText(/membros/)).not.toBeInTheDocument();
+  });
+
+  it('o horario fica embaixo do nome (onde era a previa), nao mais do lado direito', () => {
+    renderSidebar();
+    const expectedTime = formatTime(lastMessage('conv-dm').ts);
+    const title = screen.getByText('Bea');
+    const time = screen.getByText(expectedTime);
+    // time's parent is the SAME column that wraps the title's own row —
+    // not the trailing column (pin/unread), which now only has those two.
+    expect(time.parentElement).toBe(title.parentElement!.parentElement);
   });
 });
