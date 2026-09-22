@@ -352,6 +352,27 @@ describe('SettingsPage — navegacao por categorias', () => {
     expect(screen.getByText('lista de bloqueados')).toBeInTheDocument();
   });
 
+  it('buscar e escolher um resultado navega pro destino e move o foco pra la (nao so rola)', async () => {
+    const user = userEvent.setup();
+    renderRouted({ state: userState });
+    await user.type(screen.getByLabelText('Buscar nas configurações'), 'camera');
+    await user.click(screen.getByText('Câmera'));
+
+    expect(screen.getByTestId('where')).toHaveTextContent('/app/settings/av');
+    expect(document.activeElement?.id).toBe('camera');
+  });
+
+  it('busca sem resultado mostra o estado vazio, com botao de limpar', async () => {
+    const user = userEvent.setup();
+    renderRouted({ state: userState });
+    await user.type(screen.getByLabelText('Buscar nas configurações'), 'xyzxyzxyz');
+    expect(screen.getByText(/Nada encontrado/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Limpar busca' }));
+    expect(screen.getByLabelText('Buscar nas configurações')).toHaveValue('');
+    expect(screen.getByRole('link', { name: 'Privacidade' })).toBeInTheDocument();
+  });
+
   it('o botao de salvar fica junto do cartao, no mesmo formulario, sem painel lateral', async () => {
     const user = userEvent.setup();
     renderSettings({ state: userState });

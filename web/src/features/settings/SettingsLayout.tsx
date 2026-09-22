@@ -42,7 +42,10 @@ export function SettingsSection({ id, title, description, children, className }:
     <section
       id={id}
       aria-labelledby={headingId}
-      className={cn('flex scroll-mt-20 flex-col gap-3 border-t border-white/10 pt-6 first:border-t-0 first:pt-0', className)}
+      // Not natively focusable — a search result landing here (SettingsPage's
+      // hash effect) needs somewhere real to move focus to, not just scroll.
+      tabIndex={id ? -1 : undefined}
+      className={cn('flex scroll-mt-20 flex-col gap-3 border-t border-white/10 pt-6 first:border-t-0 first:pt-0 outline-none', className)}
     >
       <div className="flex flex-col gap-0.5">
         <h3 id={headingId} className="text-title font-semibold text-text-primary">{title}</h3>
