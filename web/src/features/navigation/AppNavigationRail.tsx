@@ -101,10 +101,6 @@ export function AppNavigationRail({ onOpenProfile, onReturnToCall, className }: 
             className={cn(itemClass, 'text-green hover:bg-green/12')}
           >
             <PhoneCall size={20} aria-hidden />
-            <span aria-hidden className="absolute -right-0.5 -top-0.5 flex size-2.5">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-green opacity-75" />
-              <span className="relative inline-flex size-2.5 rounded-full bg-green" />
-            </span>
           </TooltipTrigger>
           <TooltipContent side="right">{returnToCallLabel}</TooltipContent>
         </Tooltip>
