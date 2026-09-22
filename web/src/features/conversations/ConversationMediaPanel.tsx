@@ -12,6 +12,7 @@ import { LinkPreview } from '@/features/media/LinkPreview';
 import { fetchMedia, ApiError } from '@/shared/api/api';
 import type { MediaItem, MediaKind } from '@/shared/api/api';
 import { SPRING_LAYOUT } from '@/shared/lib/ease';
+import { useCachedImageSrc } from '@/shared/hooks/useCachedImageSrc';
 import { IMAGE_MIME_TYPES, VIDEO_MIME_TYPES } from '../chat/ChatAttachment';
 
 const PANEL_WIDTH = 360;
@@ -24,9 +25,15 @@ interface ConversationMediaPanelProps {
 
 function UploadItemCard({ item, onOpenImage }: { item: MediaItem; onOpenImage: (src: string, alt: string) => void }) {
   const attachment = item.attachment;
+  const url = attachment ? `/uploads/${attachment.id}` : '';
+  const thumbUrl = attachment ? (attachment.thumbId ? `/uploads/${attachment.thumbId}` : url) : null;
+  // Left unset while the cache warms — see useCachedImageSrc, a fallback src
+  // here would fire a second, concurrent request for the same image. Called
+  // unconditionally (rules-of-hooks) even when there's no attachment to look
+  // up yet — thumbUrl is null in that case, which the hook treats as
+  // "nothing to fetch".
+  const cachedThumbUrl = useCachedImageSrc(thumbUrl);
   if (!attachment) return null;
-  const url = `/uploads/${attachment.id}`;
-  const thumbUrl = attachment.thumbId ? `/uploads/${attachment.thumbId}` : url;
 
   if (IMAGE_MIME_TYPES.has(attachment.mime)) {
     return (
@@ -43,7 +50,7 @@ function UploadItemCard({ item, onOpenImage }: { item: MediaItem; onOpenImage: (
             against the 0-height guess) ends up overlapping it. A fixed
             ratio makes the box's real height known at layout time, same
             fix already applied to the video card's aspect-video below. */}
-        <img src={thumbUrl} alt={attachment.name} loading="lazy" className="block aspect-square w-full object-cover" />
+        <img src={cachedThumbUrl ?? undefined} alt={attachment.name} loading="lazy" className="block aspect-square w-full object-cover" />
       </button>
     );
   }

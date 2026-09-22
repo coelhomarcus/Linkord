@@ -5,6 +5,7 @@ import { DocumentAttachmentCard } from '@/features/media/DocumentAttachmentCard'
 import { ImageLightbox } from '@/features/media/ImageLightbox';
 import { AudioPlayer, VideoPlayer } from '@/features/media/MediaPlayers';
 import { TextPreviewCard } from '@/features/media/TextPreviewCard';
+import { useCachedImageSrc } from '@/shared/hooks/useCachedImageSrc';
 import { availableAttachmentWidth, useChatSurfaceWidth } from '../../shared/lib/chatSurfaceWidth';
 import { cn } from '../../shared/lib/utils';
 
@@ -50,13 +51,17 @@ export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) 
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const surfaceWidth = useChatSurfaceWidth(384 + 120);
   const maxWidth = availableAttachmentWidth(surfaceWidth, 384);
+  // Left unset (not thumbUrl) while the cache warms — see useCachedImageSrc,
+  // a fallback src here would fire a second, concurrent request for the
+  // same image.
+  const cachedThumbUrl = useCachedImageSrc(thumbUrl);
 
   if (IMAGE_MIME_TYPES.has(attachment.mime)) {
     return (
       <>
         <button type="button" onClick={() => setLightboxOpen(true)} className={cn('block max-w-full cursor-zoom-in', !edgeToEdge && 'mt-1.5')}>
           <img
-            src={thumbUrl}
+            src={cachedThumbUrl ?? undefined}
             alt={attachment.name}
             loading="lazy"
             style={{ maxWidth }}

@@ -38,17 +38,36 @@ function isMarkdownFile(name: string): boolean {
   return /\.(md|markdown)$/i.test(name);
 }
 
+// The API is served with Cache-Control: no-store (server/src/http/respond.ts
+// — a blanket policy for every /api/* JSON response), so nothing below the
+// component would ever remember this across a remount on its own. Message
+// rows remount on every conversation switch, and without this the preview
+// block used to fully disappear (back to `preview === null`, no border-t
+// section at all) and pop back in a moment later — a more jarring version of
+// the same "reloads on every switch" issue useCachedImageSrc fixes for
+// images. Just the small JSON response, so a plain Map is enough (no blob/
+// object-URL lifecycle to manage).
+const previewCache = new Map<string, PreviewResponse>();
+
+/** Test-only: without this, two tests mocking different responses for the
+ * same attachment id leak into each other through the module-level cache. */
+export function __resetPreviewCacheForTests(): void {
+  previewCache.clear();
+}
+
 export function TextPreviewCard({ attachment, maxWidth }: { attachment: ChatAttachmentData; maxWidth?: number }) {
-  const [preview, setPreview] = useState<PreviewResponse | null>(null);
+  const [preview, setPreview] = useState<PreviewResponse | null>(() => previewCache.get(attachment.id) ?? null);
   const [expanded, setExpanded] = useState(false);
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const fetchedRef = useRef(false);
+  const fetchedRef = useRef(previewCache.has(attachment.id));
   const markdown = isMarkdownFile(attachment.name);
   const url = `/uploads/${attachment.id}`;
 
   // Lazy fetch — only once the card actually scrolls into view, same spirit
-  // as the `loading="lazy"` already used for image thumbnails.
+  // as the `loading="lazy"` already used for image thumbnails. Skipped
+  // entirely on a cache hit (fetchedRef already true), which is what makes
+  // a remount instant instead of re-running the intersection check at all.
   useEffect(() => {
     const el = rootRef.current;
     if (!el || fetchedRef.current) return;
@@ -58,8 +77,8 @@ export function TextPreviewCard({ attachment, maxWidth }: { attachment: ChatAtta
       observer.disconnect();
       fetch(`/api/attachments/${attachment.id}/preview`, { credentials: 'same-origin' })
         .then((res) => (res.ok ? res.json() as Promise<PreviewResponse> : { previewable: false }))
-        .then(setPreview)
-        .catch(() => setPreview({ previewable: false }));
+        .then((data) => { previewCache.set(attachment.id, data); setPreview(data); })
+        .catch(() => { const fallback: PreviewResponse = { previewable: false }; previewCache.set(attachment.id, fallback); setPreview(fallback); });
     }, { rootMargin: '200px' });
     observer.observe(el);
     return () => observer.disconnect();
