@@ -173,7 +173,7 @@ function Shell() {
         openMobile={mobileShowSidebar}
         onOpenMobileChange={setMobileShowSidebar}
         className="h-dvh bg-bg-primary text-text-primary"
-        style={{ '--sidebar-width': '18rem', '--sidebar-width-mobile': '24rem', '--sidebar-overlay-offset': '4rem' }}
+        style={{ '--sidebar-width': '20rem', '--sidebar-width-mobile': '24rem', '--sidebar-overlay-offset': '4rem' }}
       >
         <ReconnectBanner />
         <AccessNotice />
