@@ -13,9 +13,10 @@ function formatGB(bytes: number): string {
 }
 
 export function AccountSettings() {
-  const { state, storageUsage } = useRoom();
+  const { state, storageUsage, activeCallConversationId } = useRoom();
   const { logout, user } = useAuth();
   const usedPercent = storageUsage.maxBytes ? Math.min(100, (storageUsage.totalBytes / storageUsage.maxBytes) * 100) : 0;
+  const inCall = activeCallConversationId !== null;
 
   return (
     <SettingsSections>
@@ -55,7 +56,10 @@ export function AccountSettings() {
       </SettingsSection>
 
       <SettingsSection id="session" title="Sessão">
-        <SettingsRow label="Sair da conta" description="Encerra a sessão neste navegador.">
+        <SettingsRow
+          label="Sair da conta"
+          description={inCall ? 'Encerra a sessão neste navegador e também sai da chamada em andamento.' : 'Encerra a sessão neste navegador.'}
+        >
           <Button type="button" variant="outline" size="sm" className="text-red hover:bg-red/12" onClick={logout}>
             <LogOut size={14} aria-hidden />
             <span>Sair da conta</span>
