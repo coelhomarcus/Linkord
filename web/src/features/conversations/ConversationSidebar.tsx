@@ -7,6 +7,7 @@ import { Button } from '@/shared/ui/primitives/button';
 import { Avatar } from '@/shared/Avatar';
 import { formatTime } from '@/shared/lib/formatChatTime';
 import { cn } from '@/shared/lib/utils';
+import { shortcutHint } from '@/shared/lib/platform';
 import { CountBadge } from '@/shared/CountBadge';
 import { useRoom } from '@/state/RoomContext';
 import type { Conversation } from '@/shared/types/protocol';
@@ -110,6 +111,7 @@ export function ConversationSidebar({ onOpenPalette, mobileRail }: ConversationS
   const { isMobile, isOverlay, setOpenMobile, toggleSidebar } = useAnimatedSidebar();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const shortcutK = shortcutHint('K');
   const [query, setQuery] = useState('');
   const [groupOpen, setGroupOpen] = useState(false);
   const normalized = query.trim().toLowerCase();
@@ -168,10 +170,10 @@ export function ConversationSidebar({ onOpenPalette, mobileRail }: ConversationS
                 <button
                   type="button"
                   onClick={onOpenPalette}
-                  aria-label="Abrir busca rápida (Ctrl+K)"
+                  aria-label={`Abrir busca rápida (${shortcutK})`}
                   className="flex-none rounded border border-white/10 bg-black/20 px-1.5 py-0.5 text-[10px] font-medium text-text-muted transition-colors hover:text-text-secondary"
                 >
-                  ⌘K
+                  {shortcutK}
                 </button>
               </div>
 
