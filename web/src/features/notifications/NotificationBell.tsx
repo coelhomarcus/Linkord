@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/primitives/
 import { clearNotifications, deleteNotification, markNotificationsRead } from '@/shared/api/api';
 import type { NotificationEntry } from '@/shared/api/api';
 import { cn } from '@/shared/lib/utils';
+import { CountBadge } from '@/shared/CountBadge';
 import { useFriends } from '@/features/friends/FriendsContext';
 import { NotificationList } from './NotificationList';
 import { formatUnread, notificationTarget } from './notificationText';
@@ -67,9 +68,9 @@ export function NotificationBell({ collapsed = false, onNavigate }: { collapsed?
       >
         <Bell size={collapsed ? 18 : 16} />
         {unread > 0 && (
-          <span className="absolute -right-1 -top-1 grid min-w-4.5 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground">
+          <CountBadge decorative className="absolute -right-1 -top-1">
             {formatUnread(unread)}
-          </span>
+          </CountBadge>
         )}
       </PopoverTrigger>
       <PopoverContent side={collapsed ? 'right' : 'bottom'} align="start" className="w-[min(22rem,calc(100vw-1.5rem))] bg-bg-modal">

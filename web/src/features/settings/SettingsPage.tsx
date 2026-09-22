@@ -55,14 +55,19 @@ export function SettingsPage({ onOpenProfile }: SettingsPageProps) {
   const category = findCategory(current);
 
   // opening another category starts at its top, with its title focused; a hash
-  // (/app/settings/av#camera) wins and scrolls to that section instead
+  // (/app/settings/av#camera) wins and scrolls to — and focuses — that
+  // section instead (a search result is exactly this: SettingsSection
+  // carries tabIndex={-1} on purpose for this to land somewhere real, not
+  // just scroll past it).
   useEffect(() => {
     if (firstRender.current) {
       firstRender.current = false;
       if (!location.hash) return;
     }
     if (location.hash) {
-      document.getElementById(location.hash.slice(1))?.scrollIntoView?.({ block: 'start' });
+      const target = document.getElementById(location.hash.slice(1));
+      target?.scrollIntoView?.({ block: 'start' });
+      target?.focus?.({ preventScroll: true });
       return;
     }
     scrollerRef.current?.scrollTo?.({ top: 0 });

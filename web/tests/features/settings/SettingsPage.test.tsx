@@ -246,6 +246,31 @@ describe('SettingsPage — perfil', () => {
     expect(screen.queryByRole('button', { name: 'Descartar' })).not.toBeInTheDocument();
   });
 
+  it('com chamada ativa, a barra de salvar sobe para nao ficar atras do PiP flutuante', async () => {
+    const user = userEvent.setup();
+    const state = { ...initialRoomState, me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana' } };
+    renderSettings({ state, activeCallConversationId: 'conv-1' });
+
+    await user.type(screen.getByLabelText('Bio'), 'editando durante a chamada');
+    // button -> the "flex gap-2" buttons row -> the bar itself
+    const bar = screen.getByRole('button', { name: 'Salvar perfil' }).parentElement?.parentElement;
+    // FloatingPip sits fixed at the viewport's bottom-4 left-4 corner —
+    // bottom-0 would put this bar's own buttons right under it.
+    expect(bar?.className).toContain('bottom-20');
+    expect(bar?.className).not.toContain('bottom-0');
+  });
+
+  it('sem chamada ativa, a barra de salvar fica no rodape normal', async () => {
+    const user = userEvent.setup();
+    const state = { ...initialRoomState, me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana' } };
+    renderSettings({ state, activeCallConversationId: null });
+
+    await user.type(screen.getByLabelText('Bio'), 'editando sem chamada');
+    const bar = screen.getByRole('button', { name: 'Salvar perfil' }).parentElement?.parentElement;
+    expect(bar?.className).toContain('bottom-0');
+    expect(bar?.className).not.toContain('bottom-20');
+  });
+
   it('descartar volta os campos aos ultimos valores confirmados e esconde a barra', async () => {
     const user = userEvent.setup();
     const state = {
@@ -325,6 +350,27 @@ describe('SettingsPage — navegacao por categorias', () => {
     await user.click(screen.getByRole('link', { name: 'Privacidade' }));
     expect(screen.getByTestId('where')).toHaveTextContent('/app/settings/privacy');
     expect(screen.getByText('lista de bloqueados')).toBeInTheDocument();
+  });
+
+  it('buscar e escolher um resultado navega pro destino e move o foco pra la (nao so rola)', async () => {
+    const user = userEvent.setup();
+    renderRouted({ state: userState });
+    await user.type(screen.getByLabelText('Buscar nas configurações'), 'camera');
+    await user.click(screen.getByText('Câmera'));
+
+    expect(screen.getByTestId('where')).toHaveTextContent('/app/settings/av');
+    expect(document.activeElement?.id).toBe('camera');
+  });
+
+  it('busca sem resultado mostra o estado vazio, com botao de limpar', async () => {
+    const user = userEvent.setup();
+    renderRouted({ state: userState });
+    await user.type(screen.getByLabelText('Buscar nas configurações'), 'xyzxyzxyz');
+    expect(screen.getByText(/Nada encontrado/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Limpar busca' }));
+    expect(screen.getByLabelText('Buscar nas configurações')).toHaveValue('');
+    expect(screen.getByRole('link', { name: 'Privacidade' })).toBeInTheDocument();
   });
 
   it('o botao de salvar fica junto do cartao, no mesmo formulario, sem painel lateral', async () => {
