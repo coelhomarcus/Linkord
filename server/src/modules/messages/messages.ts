@@ -5,7 +5,7 @@ import { eq, and, desc, asc, lt, gte, sql } from 'drizzle-orm';
 import { config } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { messages, conversationMembers, users, type Message, type Attachment } from '../../db/schema.js';
-import { participants, send } from '../presence/participants.js';
+import { participants, send, sendSocketError } from '../presence/participants.js';
 import { isSingleEmoji } from './emoji.js';
 import {
   broadcastToConversationMembers,
@@ -37,7 +37,7 @@ const log = logger.child({ component: 'audit' });
 async function assertCanWriteToConversation(socket: AppSocket, conversationId: string, userId: string): Promise<boolean> {
   const peerId = await getDirectPeerId(conversationId, userId);
   if (peerId && !(await canSendDirectMessage(userId, peerId))) {
-    send(socket, { t: 'error', code: ERROR_CODES.relationshipRequired, message: 'Vocês precisam ser amigos pra conversar por aqui.' });
+    sendSocketError(socket, ERROR_CODES.relationshipRequired, 'Vocês precisam ser amigos pra conversar por aqui.');
     return false;
   }
   return true;
@@ -319,7 +319,7 @@ async function handleLoadMessagesAround(socket: AppSocket, msg: { conversationId
   const [target] = await db.select({ id: messages.id }).from(messages)
     .where(and(eq(messages.id, msgId), eq(messages.conversationId, conversationId))).limit(1);
   if (!target) {
-      send(socket, { t: 'error', code: 'message-not-found', message: 'Essa mensagem não existe mais.' });
+      sendSocketError(socket, 'message-not-found', 'Essa mensagem não existe mais.');
     return;
   }
 

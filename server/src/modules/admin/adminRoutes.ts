@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { sendJson, sendError, jsonBody } from '../../http/respond.js';
+import type { ErrorCode } from '../../http/errors.js';
 import * as floodControl from '../../realtime/floodControl.js';
 import { requireAdmin } from './adminAuth.js';
 import { normalizeReason } from './adminPolicy.js';
@@ -21,7 +22,7 @@ import type { ReportAction } from '../reports/reportsPolicy.js';
 type Query = Record<string, string | undefined>;
 type IdParams = { id: string };
 
-const ERRORS: Record<string, [number, string, string]> = {
+const ERRORS: Record<string, [number, ErrorCode, string]> = {
   not_found: [404, 'not_found', 'Não encontrado.'],
   forbidden: [403, 'forbidden', 'Você não tem mais permissão de administrador.'],
   self: [409, 'self_action', 'Você não pode fazer isso na própria conta.'],

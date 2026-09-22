@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { PageHeader } from '@/shared/PageHeader';
 import type { DragEvent } from 'react';
 import { ArrowLeft, ImageIcon, Info, Phone, Search, Upload } from 'lucide-react';
 import { useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
@@ -329,12 +330,16 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
           </ChatSurfaceWidthProvider>
         </>
       ) : (
-        <div className="grid flex-1 place-items-center px-6 text-center">
-          <div>
-            <p className="text-title font-semibold text-text-primary">Abra uma conversa</p>
-            <p className="mt-1 text-label text-text-muted">Escolha uma pessoa ou grupo na sidebar.</p>
+        <>
+          {/* the header carries the button that reopens the drawer on a phone, where nothing else can */}
+          <PageHeader title="Conversas" />
+          <div className="grid flex-1 place-items-center px-6 text-center">
+            <div>
+              <p className="text-title font-semibold text-text-primary">Abra uma conversa</p>
+              <p className="mt-1 text-label text-text-muted">Escolha uma pessoa ou grupo na sidebar.</p>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </main>
   );

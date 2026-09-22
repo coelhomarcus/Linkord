@@ -5,7 +5,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@/shared/lib/utils"
 import { Button } from "@/shared/ui/primitives/button"
-import { XIcon } from "lucide-react"
+import { CloseButton } from "@/shared/ui/primitives/close-button"
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
@@ -43,9 +43,12 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  closeButtonVariant = "ghost",
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
+  /** `overlay` when the dialog opens on an image or banner the X would blend into */
+  closeButtonVariant?: "ghost" | "overlay"
 }) {
   return (
     <DialogPortal>
@@ -62,18 +65,8 @@ function DialogContent({
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            render={
-              <Button
-                variant="ghost"
-                className="absolute top-2 right-2 text-muted-foreground hover:bg-red/12 hover:text-red"
-                size="icon-sm"
-              />
-            }
-          >
-            <XIcon
-            />
-            <span className="sr-only">Close</span>
-          </DialogPrimitive.Close>
+            render={<CloseButton variant={closeButtonVariant} className="absolute top-2.5 right-2.5 z-10" />}
+          />
         )}
       </DialogPrimitive.Popup>
     </DialogPortal>

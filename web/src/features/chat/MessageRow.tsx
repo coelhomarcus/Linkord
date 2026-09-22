@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Flag, MoreHorizontal, Pencil, Plus, Reply, SmilePlus, Trash2 } from 'lucide-react';
+import { Flag, MoreHorizontal, Pencil, Reply, SmilePlus, Trash2 } from 'lucide-react';
 import { Avatar } from '@/shared/Avatar';
 import { ChatAttachment, IMAGE_MIME_TYPES } from '@/features/chat/ChatAttachment';
 import { ImageAttachmentGrid } from '@/features/chat/ImageAttachmentGrid';
 import { InviteCard } from '@/features/chat/InviteCard';
+import { QuickReactionRow } from '@/features/chat/QuickReactionRow';
 import { ChatMessageText } from '@/features/chat/ChatMessageText';
 import { Button } from '@/shared/ui/primitives/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/shared/ui/primitives/dropdown-menu';
@@ -19,12 +20,6 @@ import { useRoom } from '@/state/RoomContext';
 import type { ChatMessage, PublicUser, ReactionEmoji } from '@/shared/types/protocol';
 
 const DELETED_AUTHOR_NAME = 'Usuário apagado';
-
-// A short fixed set shown first, instead of mounting the full picker (and
-// triggering its emoji-dataset fetch, see components/ui/emoji-picker.tsx)
-// on every single open — most reactions are one of these anyway. The full
-// picker only mounts once "+" below is actually clicked.
-const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const;
 
 function ReactionButton({ onPick }: { onPick: (emoji: string) => void }) {
   const [open, setOpen] = useState(false);
@@ -57,27 +52,7 @@ function ReactionButton({ onPick }: { onPick: (emoji: string) => void }) {
         </PopoverContent>
       ) : (
         <PopoverContent className="w-auto p-1.5" side="top" align="center">
-          <div className="flex items-center gap-1">
-            {QUICK_REACTIONS.map((emoji) => (
-              <button
-                key={emoji}
-                type="button"
-                onClick={() => pick(emoji)}
-                aria-label={`Reagir com ${emoji}`}
-                className="rounded-md p-1.5 text-[20px] leading-none transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                {emoji}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => setFullPickerOpen(true)}
-              aria-label="Mais emojis"
-              className="rounded-md p-1.5 text-text-muted transition-colors hover:bg-muted hover:text-text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            >
-              <Plus size={18} />
-            </button>
-          </div>
+          <QuickReactionRow onPick={pick} onMore={() => setFullPickerOpen(true)} />
         </PopoverContent>
       )}
     </Popover>

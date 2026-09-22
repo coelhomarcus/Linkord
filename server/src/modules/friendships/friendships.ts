@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { config } from '../../config/env.js';
 import { sendJson, sendError, jsonBody } from '../../http/respond.js';
+import { errorBody } from '../../http/errors.js';
 import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
 import * as floodControl from '../../realtime/floodControl.js';
@@ -44,12 +45,12 @@ function respond(reply: FastifyReply, result: FriendshipResult): void {
     case 'cancelled': return sendJson(reply, 200, { friendship: result.friendship });
     case 'removed': return sendJson(reply, 200, { friendship: result.friendship });
     case 'cooldown':
-      return sendJson(reply, 409, { error: { code: 'cooldown', message: 'Espere antes de tentar novamente.', retryAfter: result.retryAfter.toISOString() } });
+      return sendJson(reply, 409, errorBody('cooldown', 'Espere antes de tentar novamente.', { retryAfter: result.retryAfter.toISOString() }));
     case 'user_unavailable': return sendError(reply, 404, 'user_unavailable', 'Não foi possível enviar a solicitação.');
     case 'not_found': return sendError(reply, 404, 'not_found', 'Solicitação não encontrada.');
     case 'forbidden': return sendError(reply, 403, 'forbidden', 'Você não pode fazer isso.');
     case 'invalid_state': return sendError(reply, 409, 'conflict', 'Essa solicitação não está mais nesse estado.');
-    case 'quota_exceeded': log.info('friendship action blocked by a quota', { quota: result.quota }); return sendJson(reply, 409, { error: { code: 'quota_exceeded', quota: result.quota, message: result.quota === 'friends' ? 'Limite de amigos atingido.' : 'Você tem solicitações pendentes demais.' } });
+    case 'quota_exceeded': log.info('friendship action blocked by a quota', { quota: result.quota }); return sendJson(reply, 409, errorBody('quota_exceeded', result.quota === 'friends' ? 'Limite de amigos atingido.' : 'Você tem solicitações pendentes demais.', { quota: result.quota }));
   }
 }
 
@@ -118,22 +119,35 @@ async function handleRemove(request: FastifyRequest<{ Params: Params }>, reply: 
   afterMutation(sess.userId, otherId, result);
 }
 
-async function handleListFriends(request: FastifyRequest<{ Querystring: { cursor?: string; q?: string } }>, reply: FastifyReply): Promise<void> {
-  const sess = await requireSession(request, reply);
-  if (!sess) return;
-  const page = await listFriends(sess.userId, { cursor: request.query.cursor, q: normalizeSearchQuery(request.query.q) || undefined });
-  if (page === 'invalid_cursor') return sendError(reply, 400, 'invalid_cursor', 'Cursor inválido.');
-  sendJson(reply, 200, page);
+/** Where "who is online right now" comes from. Injected by the composition root so
+ * this module never imports the socket layer. */
+export interface FriendshipRouteDeps { onlineUserIds: () => string[] }
+
+function makeListFriends(deps: FriendshipRouteDeps) {
+  return async function handleListFriends(request: FastifyRequest<{ Querystring: { cursor?: string; q?: string; status?: string } }>, reply: FastifyReply): Promise<void> {
+    const sess = await requireSession(request, reply);
+    if (!sess) return;
+    const { status } = request.query;
+    if (status !== undefined && status !== 'online') return sendError(reply, 400, 'invalid_request', 'Filtro inválido.');
+    const page = await listFriends(sess.userId, {
+      cursor: request.query.cursor,
+      q: normalizeSearchQuery(request.query.q) || undefined,
+      // the repository intersects these with THIS account's accepted friends
+      onlineIds: status === 'online' ? deps.onlineUserIds() : undefined,
+    });
+    if (page === 'invalid_cursor') return sendError(reply, 400, 'invalid_cursor', 'Cursor inválido.');
+    sendJson(reply, 200, page);
+  };
 }
 
-async function handleListRequests(request: FastifyRequest<{ Querystring: { direction?: string; cursor?: string } }>, reply: FastifyReply): Promise<void> {
+async function handleListRequests(request: FastifyRequest<{ Querystring: { direction?: string; cursor?: string; q?: string } }>, reply: FastifyReply): Promise<void> {
   const sess = await requireSession(request, reply);
   if (!sess) return;
   const { direction, cursor } = request.query;
   if (direction !== 'incoming' && direction !== 'outgoing') {
     return sendError(reply, 400, 'invalid_direction', 'Direção inválida.');
   }
-  const page = await listFriendRequests(sess.userId, direction, cursor);
+  const page = await listFriendRequests(sess.userId, direction, cursor, normalizeSearchQuery(request.query.q) || undefined);
   if (page === 'invalid_cursor') return sendError(reply, 400, 'invalid_cursor', 'Cursor inválido.');
   sendJson(reply, 200, page);
 }
@@ -153,8 +167,8 @@ async function handleRelationship(request: FastifyRequest<{ Params: Params }>, r
   sendJson(reply, 200, await getRelationship(sess.userId, String(request.params.userId || '')));
 }
 
-export function registerFriendshipRoutes(fastify: FastifyInstance): void {
-  fastify.get('/api/friends', handleListFriends);
+export function registerFriendshipRoutes(fastify: FastifyInstance, deps: FriendshipRouteDeps): void {
+  fastify.get('/api/friends', makeListFriends(deps));
   fastify.get('/api/friend-requests', handleListRequests);
   fastify.get('/api/friend-requests/summary', handleRequestSummary);
   fastify.get('/api/relationships/:userId', handleRelationship);

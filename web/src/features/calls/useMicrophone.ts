@@ -11,12 +11,19 @@ import { logger } from '@/shared/lib/logger';
 
 const log = logger.child({ component: 'mic' });
 
+/** `applied`: the requested state (on RNNoise, or off it) is really what's
+ * running now. `no-active-track`: not in a call — nothing to apply, the
+ * preference is just persisted for the next activateMic(). `failed`: tried
+ * to attach RNNoise and it didn't work; the caller should not represent the
+ * switch as on when it isn't. */
+export type NoiseSuppressionResult = 'applied' | 'no-active-track' | 'failed';
+
 export interface MicrophoneApi {
   activateMic: () => Promise<void>;
   toggleMicMuted: () => Promise<void>;
   setMicMuted: (muted: boolean) => Promise<void>;
   leaveMic: () => Promise<void>;
-  setNoiseSuppressionEnabled: (enabled: boolean) => Promise<void>;
+  setNoiseSuppressionEnabled: (enabled: boolean) => Promise<NoiseSuppressionResult>;
 }
 
 const CONNECT_TIMEOUT_MS = 15000;
@@ -29,10 +36,10 @@ const CONNECT_TIMEOUT_MS = 15000;
 // actually attached (running both would double-process the signal), and
 // re-asserted if RNNoise fails or gets turned off, so the mic is never left
 // with NEITHER — same discipline that had to be fixed for Krisp.
-async function applyNoiseSuppression(room: Room, enabled: boolean): Promise<void> {
+async function applyNoiseSuppression(room: Room, enabled: boolean): Promise<NoiseSuppressionResult> {
   const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
   const track = pub?.track as LocalAudioTrack | undefined;
-  if (!track) return;
+  if (!track) return 'no-active-track';
 
   if (enabled) {
     try {
@@ -43,15 +50,23 @@ async function applyNoiseSuppression(room: Room, enabled: boolean): Promise<void
       // internally, so this order is what keeps it targeting the real mic.
       await track.setProcessor(getRnnoiseProcessor());
       await track.applyConstraints({ noiseSuppression: false });
+      return 'applied';
     } catch (err) {
       log.warn('Failed to enable noise suppression (RNNoise); keeping the browser\'s native suppression', { err: String(err) });
+      // setProcessor can succeed and the applyConstraints right after it
+      // still throw — without this, RNNoise stays attached AND the native
+      // suppression stays on too, the exact double-processing the "off"
+      // branch below is careful to avoid.
+      if (track.getProcessor()) await track.stopProcessor().catch(() => {});
+      return 'failed';
     }
-  } else {
-    if (track.getProcessor()) await track.stopProcessor().catch(() => {});
-    await track.applyConstraints({ noiseSuppression: true }).catch((err) => {
-      log.warn('Failed to apply noise suppression', { err: String(err) });
-    });
   }
+
+  if (track.getProcessor()) await track.stopProcessor().catch(() => {});
+  await track.applyConstraints({ noiseSuppression: true }).catch((err) => {
+    log.warn('Failed to apply noise suppression', { err: String(err) });
+  });
+  return 'applied';
 }
 
 function waitForConnection(room: Room): Promise<void> {
@@ -133,7 +148,17 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
   // Called when the "Supressão de ruído" switch in Settings changes while a
   // mic track already exists — activateMic only reads the saved preference
   // on (re)activation, so a live toggle needs to reach the running track too.
-  const setNoiseSuppressionEnabled = useCallback((enabled: boolean) => applyNoiseSuppression(room, enabled), [room]);
+  // Chained off the last call (not fired in parallel): flipping the switch
+  // twice quickly must apply in order, not race two setProcessor calls on
+  // the same track against each other.
+  const noiseSuppressionQueueRef = useRef<Promise<NoiseSuppressionResult>>(Promise.resolve('applied'));
+  const setNoiseSuppressionEnabled = useCallback((enabled: boolean) => {
+    const next = noiseSuppressionQueueRef.current
+      .catch(() => 'failed' as const)
+      .then(() => applyNoiseSuppression(room, enabled));
+    noiseSuppressionQueueRef.current = next;
+    return next;
+  }, [room]);
 
   return { activateMic, toggleMicMuted, setMicMuted, leaveMic, setNoiseSuppressionEnabled };
 }

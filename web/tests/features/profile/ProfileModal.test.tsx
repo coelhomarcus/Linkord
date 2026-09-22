@@ -52,4 +52,15 @@ describe('ProfileModal', () => {
     await interaction.click(screen.getByRole('button', { name: 'Ver banner em tela cheia' }));
     expect(screen.getByRole('img', { name: 'Banner' })).toHaveAttribute('src', sameUrlUser.banner);
   });
+
+  it('o cartao dentro do modal nao tem borda propria (so a do modal) e o X fica legivel sobre o banner', () => {
+    renderWithRoom(<ProfileModal userId="u1" onClose={vi.fn()} />, {
+      allUsers: new Map([[user.id, user]]),
+    });
+
+    const content = document.querySelector('[data-slot="dialog-content"]')!;
+    expect(content.querySelector('.border-strong')).toBeNull();
+    expect(content.querySelector('.rounded-xl.border')).toBeNull();
+    expect(content.querySelector('[data-slot="dialog-close"]')!.className).toContain('bg-black/60');
+  });
 });

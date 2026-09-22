@@ -9,15 +9,39 @@ export function isSettingsTab(value: string | undefined): value is SettingsTab {
   return !!value && (SETTINGS_TABS as readonly string[]).includes(value);
 }
 
+/** The views of the unified Friends page. The view lives in the URL
+ * (`?tab=`), so history, links and notifications all mean the same thing. */
+export const FRIENDS_VIEWS = ['all', 'online', 'pending', 'invitations', 'add'] as const;
+export type FriendsView = (typeof FRIENDS_VIEWS)[number];
+export type FriendsSection = 'received' | 'sent';
+
+/** An unknown or missing value is "everyone" — never an empty page. */
+export function parseFriendsView(raw: string | null | undefined): FriendsView {
+  return (FRIENDS_VIEWS as readonly string[]).includes(raw ?? '') ? (raw as FriendsView) : 'all';
+}
+
 export const ROUTES = {
   conversations: '/app/conversations',
   conversation: (id: string) => `/app/conversations/${encodeURIComponent(id)}`,
   friends: '/app/friends',
+  /** legacy: redirects to the pending view of Friends; new links use friendsView/friendsSection */
   requests: '/app/requests',
   settings: '/app/settings',
   admin: '/admin/users',
   settingsTab: (tab: SettingsTab) => `/app/settings/${tab}`,
 } as const;
+
+export function friendsView(view: FriendsView, query?: string): string {
+  const params = new URLSearchParams();
+  if (view !== 'all') params.set('tab', view);
+  if (query) params.set('q', query);
+  const text = params.toString();
+  return text ? `${ROUTES.friends}?${text}` : ROUTES.friends;
+}
+
+export function friendsSection(section: FriendsSection): string {
+  return `${friendsView('pending')}#${section}`;
+}
 
 /** The conversation id in a `/app/conversations/:id` path, or null on any
  * other page (or on the bare list route). */

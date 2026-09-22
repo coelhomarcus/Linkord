@@ -8,6 +8,7 @@ import {
 import { Button } from '@/shared/ui/primitives/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/shared/ui/primitives/dropdown-menu';
 import { ROUTES } from '@/shared/lib/routes';
+import { cn } from '@/shared/lib/utils';
 import { describeSendError, formatRetryAfter } from './friendsText';
 import { SocialConfirmDialog } from './SocialConfirmDialog';
 import type { SocialConfirm } from './SocialConfirmDialog';
@@ -18,12 +19,14 @@ import { useRelationship } from './useRelationship';
  * the viewer's relation to them (docs/plano-rede-social.md §5.4). Composed
  * next to ProfileCard rather than inside it, so a card drawn elsewhere (the
  * settings preview) never grows relationship rules. */
-export function ProfileActions({ userId, username, displayName, onNavigate }: {
+export function ProfileActions({ userId, username, displayName, onNavigate, className }: {
   userId: string;
   username: string;
   displayName: string;
   /** called when an action moves the user to another page, so the modal can close */
   onNavigate?: () => void;
+  /** overrides the default padding (`px-4 pb-4`) when the parent lays it out */
+  className?: string;
 }) {
   const { openDirect, requestChatView } = useRoom();
   const { bump } = useFriends();
@@ -48,11 +51,11 @@ export function ProfileActions({ userId, username, displayName, onNavigate }: {
   }
 
   if (state.status === 'loading') {
-    return <p className="px-4 pb-4 text-label text-text-muted" aria-live="polite">Carregando…</p>;
+    return <p className={cn('px-4 pb-4 text-label text-text-muted', className)} aria-live="polite">Carregando…</p>;
   }
   if (state.status === 'error') {
     return (
-      <div className="flex items-center gap-2 px-4 pb-4 text-label text-text-muted">
+      <div className={cn('flex items-center gap-2 px-4 pb-4 text-label text-text-muted', className)}>
         <span>Não foi possível carregar as ações.</span>
         <Button type="button" variant="ghost" size="sm" onClick={retry}>Tentar de novo</Button>
       </div>
@@ -124,7 +127,7 @@ export function ProfileActions({ userId, username, displayName, onNavigate }: {
   }
 
   return (
-    <div className="flex flex-col gap-2 px-4 pb-4">
+    <div className={cn('flex flex-col gap-2 px-4 pb-4', className)}>
       <div className="flex flex-wrap items-center gap-2">{actions}</div>
       {error && <p role="alert" className="text-label text-red">{error}</p>}
       <SocialConfirmDialog

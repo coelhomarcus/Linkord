@@ -12,6 +12,7 @@ import { Button } from '@/shared/ui/motion/button';
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/motion/tabs';
 import { EASE_OUT } from '@/shared/lib/ease';
 import { OTPInput, type OTPStatus } from '@/shared/ui/motion/otp-input';
+import { ERROR_CODES } from '@/shared/api/errorCodes';
 
 // A dark, on-brand mesh — background near-black, blurple/fuchsia/purple echo
 // the accent palette in index.css instead of arbitrary shader-demo colors.
@@ -110,13 +111,13 @@ function RegisterForm() {
       await register(username, email, password, password, code);
     } catch (err) {
       if (err instanceof ApiError) {
-        if (err.code === 'username_taken' || err.code === 'invalid_username') {
+        if (err.code === ERROR_CODES.username_taken || err.code === ERROR_CODES.invalid_username) {
           setFieldErrors({ username: err.message });
-        } else if (err.code === 'email_taken' || err.code === 'invalid_email') {
+        } else if (err.code === ERROR_CODES.email_taken || err.code === ERROR_CODES.invalid_email) {
           setFieldErrors({ email: err.message });
-        } else if (err.code === 'weak_password' || err.code === 'password_mismatch') {
+        } else if (err.code === ERROR_CODES.weak_password || err.code === ERROR_CODES.password_mismatch) {
           setFieldErrors({ password: err.message });
-        } else if (err.code === 'invalid_code') {
+        } else if (err.code === ERROR_CODES.invalid_code) {
           setFieldErrors({ code: err.message });
         } else {
           setFormError(err.message);

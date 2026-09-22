@@ -1,7 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, ClipboardEvent, KeyboardEvent as ReactKeyboardEvent, SyntheticEvent } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, Paperclip, Reply, Smile, X } from 'lucide-react';
+import { ArrowUp, Paperclip, Reply, Smile } from 'lucide-react';
+import { CloseButton } from '@/shared/ui/primitives/close-button';
 import { Button } from '@/shared/ui/primitives/button';
 import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/shared/ui/primitives/emoji-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/primitives/popover';
@@ -316,9 +317,7 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
             <span className="font-medium text-text-secondary">{replyName}</span>
             {replyingTo.text ? <span className="text-text-muted"> - {replyingTo.text}</span> : null}
           </span>
-          <Button type="button" variant="ghost" size="icon-xs" aria-label="Cancelar resposta" onClick={() => setReplyingTo(null)}>
-            <X size={14} />
-          </Button>
+          <CloseButton size="xs" label="Cancelar resposta" onClick={() => setReplyingTo(null)} />
         </div>
       )}
 
@@ -385,9 +384,7 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
                           <div className="absolute inset-x-1.5 bottom-1.5"><UploadProgressBar progress={uploadProgress} /></div>
                         </>
                       ) : (
-                        <Button type="button" variant="ghost" size="icon-xs" aria-label="Remover anexo" onClick={() => removeFile(item.id)} className="absolute right-1 top-1 size-5 rounded-full bg-black/60 text-white hover:bg-black/80 hover:text-white">
-                          <X size={12} />
-                        </Button>
+                        <CloseButton variant="overlay" size="xs" label="Remover anexo" onClick={() => removeFile(item.id)} className="absolute right-1 top-1" />
                       )}
                     </motion.div>
                   );

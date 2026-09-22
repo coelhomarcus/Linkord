@@ -1,8 +1,10 @@
 import crypto from 'node:crypto';
+import type { ErrorCode } from '../../http/errors.js';
 import { config } from '../../config/env.js';
 import { updateProfile } from '../profile/profileRepository.js';
 import { sanitizeAvatar, sanitizeBanner, sanitizeAvatarColor, sanitizeDisplayName, sanitizeBio, sanitizeProfileLinks } from '../profile/sanitize.js';
 import { deleteAvatarFile } from '../attachments/attachmentCleanup.js';
+import { runSerialized } from './profileQueue.js';
 import type { AppSocket, HandlerTable, Participant, PublicParticipant } from '../../types.js';
 import { logger } from '../../lib/logger.js';
 
@@ -53,6 +55,11 @@ export function send(socket: AppSocket | null | undefined, obj: { t: string; [ke
   if (socket && socket.connected) {
     try { socket.emit(obj.t, obj); } catch { /* socket dying */ }
   }
+}
+
+/** The one way to put an `error` message on a socket, so its code is always a registered one. */
+export function sendSocketError(socket: AppSocket | null | undefined, code: ErrorCode, message: string): void {
+  send(socket, { t: 'error', code, message });
 }
 
 export function broadcast(obj: { t: string; [key: string]: unknown }, exceptId?: string): void {
@@ -158,7 +165,7 @@ export function join(socket: AppSocket, msg: JoinMessage): { participant: Partic
   } else {
     if (participants.size >= config.MAX_PARTICIPANTS) {
       log.warn('join refused: room is full', { participants: participants.size, max: config.MAX_PARTICIPANTS });
-      send(socket, { t: 'error', code: 'full', message: 'Sala cheia, tente mais tarde.' });
+      sendSocketError(socket, 'full', 'Sala cheia, tente mais tarde.');
       return null;
     }
     evictGhostsForUser(u.userId);
@@ -166,7 +173,7 @@ export function join(socket: AppSocket, msg: JoinMessage): { participant: Partic
     // devices) — otherwise a single sign-up could fill the whole room
     if (countConnectionsOf(u.userId) >= config.MAX_CONNECTIONS_PER_USER) {
       log.warn('join refused: too many connections', { userId: u.userId });
-      send(socket, { t: 'error', code: 'too_many_connections', message: 'Você já tem conexões demais abertas. Feche alguma aba.' });
+      sendSocketError(socket, 'too_many_connections', 'Você já tem conexões demais abertas. Feche alguma aba.');
       return null;
     }
     p = {
@@ -215,68 +222,103 @@ export function join(socket: AppSocket, msg: JoinMessage): { participant: Partic
  * displayName resets back to the username, same idea as avatarColor
  * falling back to the default on an invalid value. Persisted to survive
  * reconnects/other tabs. */
-function handleProfile(socket: AppSocket, msg: { avatar?: string; avatarPoster?: string; avatarColor?: string; displayName?: string; banner?: string; bannerPoster?: string; bio?: string; profileLinks?: string[] } | null | undefined): void {
+interface ProfilePatchBody {
+  requestId?: unknown;
+  avatar?: string; avatarPoster?: string; avatarColor?: string; displayName?: string;
+  banner?: string; bannerPoster?: string; bio?: string; profileLinks?: string[];
+}
+
+async function handleProfile(socket: AppSocket, msg: ProfilePatchBody | null | undefined): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   const body = msg && typeof msg === 'object' ? msg : {};
-  const oldAvatar = p.avatar;
-  const oldAvatarPoster = p.avatarPoster;
-  const nextAvatar = Object.prototype.hasOwnProperty.call(body, 'avatar')
-    ? sanitizeAvatar(body.avatar)
-    : p.avatar;
-  const nextAvatarPoster = Object.prototype.hasOwnProperty.call(body, 'avatarPoster')
-    ? sanitizeAvatar(body.avatarPoster)
-    : p.avatarPoster;
-  const nextAvatarColor = Object.prototype.hasOwnProperty.call(body, 'avatarColor')
-    ? sanitizeAvatarColor(body.avatarColor)
-    : p.avatarColor;
-  const nextDisplayName = Object.prototype.hasOwnProperty.call(body, 'displayName')
-    ? (sanitizeDisplayName(body.displayName) || p.name)
-    : p.displayName;
-  const nextBanner = Object.prototype.hasOwnProperty.call(body, 'banner')
-    ? sanitizeBanner(body.banner)
-    : p.banner;
-  const nextBannerPoster = Object.prototype.hasOwnProperty.call(body, 'bannerPoster')
-    ? sanitizeBanner(body.bannerPoster)
-    : p.bannerPoster;
-  const nextBio = Object.prototype.hasOwnProperty.call(body, 'bio')
-    ? sanitizeBio(body.bio)
-    : p.bio;
-  const nextProfileLinks = Object.prototype.hasOwnProperty.call(body, 'profileLinks')
-    ? sanitizeProfileLinks(body.profileLinks)
-    : p.profileLinks;
-  for (const other of participants.values()) {
-    if (other.userId !== p.userId) continue;
-    other.avatar = nextAvatar;
-    other.avatarPoster = nextAvatarPoster;
-    other.avatarColor = nextAvatarColor;
-    other.displayName = nextDisplayName;
-    other.banner = nextBanner;
-    other.bannerPoster = nextBannerPoster;
-    other.bio = nextBio;
-    other.profileLinks = nextProfileLinks;
-    broadcastToKnownPeers(other.userId, { t: 'participant-updated', participant: publicParticipant(other) });
-  }
-  updateProfile(p.userId, {
-    avatar: nextAvatar,
-    avatarPoster: nextAvatarPoster,
-    avatarColor: nextAvatarColor,
-    displayName: nextDisplayName,
-    banner: nextBanner,
-    bannerPoster: nextBannerPoster,
-    bio: nextBio,
-    profileLinks: nextProfileLinks,
-  })
-    .catch((err) => log.error('failed to save profile', err, { participantId: p.id }));
-  // deletes the OLD photo file(s) if they were one of our uploads and
-  // changed — otherwise each photo change would leave the previous one(s)
-  // orphaned.
-  if (oldAvatar && oldAvatar !== p.avatar) {
-    deleteAvatarFile(oldAvatar).catch((err) => log.error('failed to delete old profile photo', err, { participantId: p.id }));
-  }
-  if (oldAvatarPoster && oldAvatarPoster !== p.avatarPoster) {
-    deleteAvatarFile(oldAvatarPoster).catch((err) => log.error('failed to delete old profile photo', err, { participantId: p.id }));
-  }
+  const requestId = typeof body.requestId === 'string' ? body.requestId : null;
+
+  const fail = (code: string, message: string) => {
+    if (requestId) send(socket, { t: 'profile-result', requestId, ok: false, code, message });
+  };
+
+  // Serialized per account: two tabs patching close together must apply in
+  // order against a consistent base, not both read the same stale `p.*` and
+  // race to persist last (see profileQueue.ts).
+  await runSerialized(p.userId, async () => {
+    // re-read after the lock: a same-account tab ahead of us in the queue may
+    // have just changed `p.*`, and a disconnect/account deletion while queued
+    // means there's nothing left to patch
+    const current = participants.get(socket.participantId ?? '');
+    if (!current || current.socket !== socket) return;
+
+    const oldAvatar = current.avatar;
+    const oldAvatarPoster = current.avatarPoster;
+    const nextAvatar = Object.prototype.hasOwnProperty.call(body, 'avatar')
+      ? sanitizeAvatar(body.avatar)
+      : current.avatar;
+    const nextAvatarPoster = Object.prototype.hasOwnProperty.call(body, 'avatarPoster')
+      ? sanitizeAvatar(body.avatarPoster)
+      : current.avatarPoster;
+    const nextAvatarColor = Object.prototype.hasOwnProperty.call(body, 'avatarColor')
+      ? sanitizeAvatarColor(body.avatarColor)
+      : current.avatarColor;
+    const nextDisplayName = Object.prototype.hasOwnProperty.call(body, 'displayName')
+      ? (sanitizeDisplayName(body.displayName) || current.name)
+      : current.displayName;
+    const nextBanner = Object.prototype.hasOwnProperty.call(body, 'banner')
+      ? sanitizeBanner(body.banner)
+      : current.banner;
+    const nextBannerPoster = Object.prototype.hasOwnProperty.call(body, 'bannerPoster')
+      ? sanitizeBanner(body.bannerPoster)
+      : current.bannerPoster;
+    const nextBio = Object.prototype.hasOwnProperty.call(body, 'bio')
+      ? sanitizeBio(body.bio)
+      : current.bio;
+    const nextProfileLinks = Object.prototype.hasOwnProperty.call(body, 'profileLinks')
+      ? sanitizeProfileLinks(body.profileLinks)
+      : current.profileLinks;
+
+    const nextProfile = {
+      avatar: nextAvatar, avatarPoster: nextAvatarPoster, avatarColor: nextAvatarColor, displayName: nextDisplayName,
+      banner: nextBanner, bannerPoster: nextBannerPoster, bio: nextBio, profileLinks: nextProfileLinks,
+    };
+
+    // persisted BEFORE anything else sees it: a DB failure must not broadcast
+    // an unconfirmed profile, delete the old photo, or tell the sender "ok"
+    let saved;
+    try {
+      saved = await updateProfile(current.userId, nextProfile);
+    } catch (err) {
+      log.error('failed to save profile', err, { participantId: current.id });
+      fail('internal_error', 'Não foi possível salvar o perfil agora. Tente de novo.');
+      return;
+    }
+    if (!saved) {
+      // the account row is gone (deleted mid-session) — nothing to confirm
+      fail('not_found', 'Sua conta não foi encontrada.');
+      return;
+    }
+
+    for (const other of participants.values()) {
+      if (other.userId !== current.userId) continue;
+      other.avatar = nextAvatar;
+      other.avatarPoster = nextAvatarPoster;
+      other.avatarColor = nextAvatarColor;
+      other.displayName = nextDisplayName;
+      other.banner = nextBanner;
+      other.bannerPoster = nextBannerPoster;
+      other.bio = nextBio;
+      other.profileLinks = nextProfileLinks;
+      broadcastToKnownPeers(other.userId, { t: 'participant-updated', participant: publicParticipant(other) });
+    }
+    if (requestId) send(socket, { t: 'profile-result', requestId, ok: true, ...nextProfile });
+    // deletes the OLD photo file(s) if they were one of our uploads and
+    // changed — otherwise each photo change would leave the previous one(s)
+    // orphaned. Only reachable once the new ones are confirmed persisted.
+    if (oldAvatar && oldAvatar !== nextAvatar) {
+      deleteAvatarFile(oldAvatar).catch((err) => log.error('failed to delete old profile photo', err, { participantId: current.id }));
+    }
+    if (oldAvatarPoster && oldAvatarPoster !== nextAvatarPoster) {
+      deleteAvatarFile(oldAvatarPoster).catch((err) => log.error('failed to delete old profile photo', err, { participantId: current.id }));
+    }
+  });
 }
 
 /** No LiveKit track equivalent for "deafened" — just a flag the client

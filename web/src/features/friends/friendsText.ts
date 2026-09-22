@@ -1,5 +1,6 @@
 import { ApiError } from '@/shared/api/api';
 import type { FriendRequestOutcome } from '@/shared/api/api';
+import { ERROR_CODES } from '@/shared/api/errorCodes';
 
 /** "  @Lune " → "Lune". The server lowercases for lookup itself
  * (users.ts#findByUsernameLower), so this only strips what a person naturally
@@ -18,12 +19,12 @@ export function describeSendError(err: unknown): string {
   if (err instanceof ApiError) {
     // one deliberately generic answer for "doesn't exist" AND "can't be
     // reached" — the server never says which (a block must not be revealed)
-    if (err.code === 'user_unavailable') return 'Não foi possível enviar a solicitação. Confira o nome de usuário.';
-    if (err.code === 'cooldown') {
+    if (err.code === ERROR_CODES.user_unavailable) return 'Não foi possível enviar a solicitação. Confira o nome de usuário.';
+    if (err.code === ERROR_CODES.cooldown) {
       const when = err.retryAfter ? formatRetryAfter(err.retryAfter) : '';
       return when ? `Aguarde para tentar de novo — disponível a partir de ${when}.` : 'Aguarde um pouco antes de tentar de novo.';
     }
-    if (err.code === 'rate_limited' || err.code === 'quota_exceeded') return err.message;
+    if (err.code === ERROR_CODES.rate_limited || err.code === ERROR_CODES.quota_exceeded) return err.message;
   }
   return 'Não foi possível enviar a solicitação.';
 }

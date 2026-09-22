@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
+import { Navigate, Route, Routes, createBrowserRouter, RouterProvider, useLocation, useNavigate } from 'react-router';
 import { RoomProvider } from '@/app/providers/RoomProvider';
 import { useRoom } from '@/state/RoomContext';
 import { AuthProvider, useAuth } from '@/state/AuthContext';
@@ -11,6 +11,7 @@ import { LoadingScreen } from '@/app/layout/LoadingScreen';
 import { ReconnectBanner } from '@/app/layout/ReconnectBanner';
 import { AccessNotice } from '@/app/layout/AccessNotice';
 import { ConversationSidebar } from '@/features/conversations/ConversationSidebar';
+import { AppNavigationRail } from '@/features/navigation/AppNavigationRail';
 import { ConversationPanel } from '@/features/conversations/ConversationPanel';
 import { GroupDetailsPanel } from '@/features/conversations/GroupDetailsPanel';
 import { ConversationMediaPanel } from '@/features/conversations/ConversationMediaPanel';
@@ -29,7 +30,7 @@ import { GlobalContextMenu } from '@/app/layout/GlobalContextMenu';
 import { ProfileModal } from '@/features/profile/ProfileModal';
 import { FriendsProvider } from '@/features/friends/FriendsContext';
 import { FriendsPage } from '@/features/friends/FriendsPage';
-import { RequestsPage } from '@/features/friends/RequestsPage';
+import { RequestsRedirect } from '@/features/friends/RequestsRedirect';
 import { SettingsPage } from '@/features/settings/SettingsPage';
 import { AWAITING_OPEN, ROUTES, isConversationsPath } from '@/shared/lib/routes';
 import { useConversationRouteSync } from '@/app/useConversationRouteSync';
@@ -56,9 +57,10 @@ function Shell() {
   // Landing straight on a page (a deep link, a refresh on /app/friends) should
   // show that page — the sidebar sheet is only the landing screen when the URL
   // names no page at all.
+  // only on a phone: from 768px the rail is on screen and the drawer opens on demand
   const [mobileShowSidebar, setMobileShowSidebar] = useState(() => {
     const path = window.location.pathname.replace(/\/$/, '');
-    return path === '' || path === '/app' || path === ROUTES.conversations;
+    return window.matchMedia('(max-width: 767px)').matches && (path === '' || path === '/app' || path === ROUTES.conversations);
   });
   const [searchOpen, setSearchOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -164,14 +166,14 @@ function Shell() {
         openMobile={mobileShowSidebar}
         onOpenMobileChange={setMobileShowSidebar}
         className="h-dvh bg-bg-primary text-text-primary"
-        style={{ '--sidebar-width': '22rem', '--sidebar-width-icon': '4.5rem' }}
+        style={{ '--sidebar-width': '18rem', '--sidebar-width-mobile': '24rem', '--sidebar-overlay-offset': '4rem' }}
       >
         <ReconnectBanner />
         <AccessNotice />
+        <AppNavigationRail onOpenProfile={setProfileUserId} className="hidden md:flex" />
         <ConversationSidebar
-          onOpenSettings={() => navigate(ROUTES.settings)}
-          onOpenProfile={setProfileUserId}
           onOpenPalette={() => setPaletteOpen(true)}
+          mobileRail={<AppNavigationRail onOpenProfile={setProfileUserId} className="border-r border-white/10" />}
         />
         <AnimatedSidebarInset className="relative min-h-0 overflow-hidden bg-[rgb(10_10_12)] md:my-2 md:mr-2 md:ml-2 md:rounded-2xl md:border md:border-white/10">
           <Routes>
@@ -190,7 +192,7 @@ function Shell() {
               )}
             />
             <Route path={ROUTES.friends} element={<FriendsPage onOpenProfile={setProfileUserId} />} />
-            <Route path={ROUTES.requests} element={<RequestsPage onOpenProfile={setProfileUserId} />} />
+            <Route path={ROUTES.requests} element={<RequestsRedirect />} />
             <Route path="/admin/*" element={<Suspense fallback={<p className="p-6 text-label text-text-muted">Carregando…</p>}><AdminArea /></Suspense>} />
             <Route path="/app/settings/:tab?" element={<SettingsPage onOpenProfile={setProfileUserId} />} />
             <Route path="*" element={<Navigate to={ROUTES.conversations} replace />} />
@@ -261,7 +263,7 @@ function CommandPaletteMount({ open, onOpenChange, onCall, onMobileNavigated }: 
   onMobileNavigated: () => void;
 }) {
   const { state, conversations, allUsers, activeCallConversationId, openConversation, openDirect, requestChatView } = useRoom();
-  const { isMobile } = useAnimatedSidebar();
+  const { isOverlay } = useAnimatedSidebar();
   const navigate = useNavigate();
 
   const commandItems = useMemo(() => buildCommandItems(
@@ -271,19 +273,19 @@ function CommandPaletteMount({ open, onOpenChange, onCall, onMobileNavigated }: 
         openConversation(id);
         navigate(ROUTES.conversation(id));
         requestChatView();
-        if (isMobile) onMobileNavigated();
+        if (isOverlay) onMobileNavigated();
       },
       onMessageUser: (userId) => {
         openDirect(userId);
         requestChatView();
-        if (isMobile) onMobileNavigated();
+        if (isOverlay) onMobileNavigated();
       },
       onCall: (id) => {
         openConversation(id);
         onCall(id);
       },
     }
-  ), [conversations, allUsers, state.me.userId, state.participants, activeCallConversationId, isMobile, openConversation, openDirect, requestChatView, onCall, onMobileNavigated, navigate]);
+  ), [conversations, allUsers, state.me.userId, state.participants, activeCallConversationId, isOverlay, openConversation, openDirect, requestChatView, onCall, onMobileNavigated, navigate]);
 
   return (
     <CommandPalette
@@ -310,17 +312,26 @@ function AuthGate() {
   );
 }
 
-export function App() {
+// The router sits ABOVE the auth gate but only its <Routes> (inside Shell)
+// ever swap — RoomProvider, and with it the LiveKit call, never remounts on
+// navigation.
+function AppProviders() {
   return (
-    // The router sits ABOVE the auth gate but only its <Routes> (inside Shell)
-    // ever swap — RoomProvider, and with it the LiveKit call, never remounts
-    // on navigation.
-    <BrowserRouter>
-      <AuthProvider>
-        <TooltipProvider>
-          <AuthGate />
-        </TooltipProvider>
-      </AuthProvider>
-    </BrowserRouter>
+    <AuthProvider>
+      <TooltipProvider>
+        <AuthGate />
+      </TooltipProvider>
+    </AuthProvider>
   );
+}
+
+// A single splat route whose element owns its own nested <Routes> (in Shell).
+// This "descendant routes" setup is the smallest step from BrowserRouter to a
+// data router: every route, guard and provider lifecycle stays identical —
+// the only reason to make the change at all is that useBlocker (settings'
+// unsaved-changes guard) requires a data router to exist somewhere above it.
+const router = createBrowserRouter([{ path: '*', element: <AppProviders /> }]);
+
+export function App() {
+  return <RouterProvider router={router} />;
 }

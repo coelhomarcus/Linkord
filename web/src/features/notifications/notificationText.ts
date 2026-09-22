@@ -1,5 +1,5 @@
 import type { NotificationEntry } from '@/shared/api/api';
-import { ROUTES } from '@/shared/lib/routes';
+import { ROUTES, friendsSection, friendsView } from '@/shared/lib/routes';
 
 export function describeNotification(entry: NotificationEntry): string {
   const who = entry.actor?.displayName ?? 'Alguém';
@@ -12,9 +12,9 @@ export function describeNotification(entry: NotificationEntry): string {
 
 export function notificationTarget(entry: NotificationEntry): string {
   switch (entry.kind) {
-    case 'friend_request': return ROUTES.requests;
+    case 'friend_request': return friendsSection('received');
     case 'friend_accepted': return ROUTES.friends;
-    case 'group_invitation': return `${ROUTES.requests}?tab=invitations`;
+    case 'group_invitation': return friendsView('invitations');
   }
 }
 

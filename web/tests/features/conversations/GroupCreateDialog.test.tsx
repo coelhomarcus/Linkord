@@ -79,7 +79,7 @@ describe('GroupCreateDialog', () => {
 
     expect(await screen.findByText(/não é mais seu amigo/)).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: 'Fechar' }));
+    await user.click(screen.getByText('Fechar', { selector: 'button' }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 

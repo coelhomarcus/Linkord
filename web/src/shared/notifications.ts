@@ -15,6 +15,17 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   return Notification.requestPermission();
 }
 
+/** The browser's own permission and the Linkord preference are different
+ * things — this only ever reads the former. `'unsupported'`: no
+ * Notification API at all (never happens for the preference, which is
+ * still a normal on/off in localStorage either way). */
+export type NotificationPermissionState = 'unsupported' | NotificationPermission;
+
+export function notificationPermissionState(): NotificationPermissionState {
+  if (typeof Notification === 'undefined') return 'unsupported';
+  return Notification.permission;
+}
+
 let enabled = false;
 export function setNotificationsModuleEnabled(value: boolean): void {
   enabled = value;

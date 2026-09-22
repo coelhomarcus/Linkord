@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { PageHeader } from '@/shared/PageHeader';
 
-/** Shared frame for the friends/requests pages: header + a scrolling body. */
+/** Header + a scrolling body, full width. Friends composes this itself now
+ * (its header has the view links); this is what the admin area still uses. */
 export function SocialPageLayout({ title, subtitle, actions, children }: {
   title: string;
   subtitle?: string;

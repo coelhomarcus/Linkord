@@ -5,6 +5,7 @@ import { Button } from '@/shared/ui/primitives/button';
 import { acceptInvitation, ApiError, declineInvitation, revokeInvitation } from '@/shared/api/api';
 import { useRoom } from '@/state/RoomContext';
 import type { InvitationCard, InvitationStatus } from '@/shared/types/protocol';
+import { ERROR_CODES } from '@/shared/api/errorCodes';
 
 type LocalOutcome = 'group_full' | null;
 
@@ -47,8 +48,8 @@ function LiveInviteCard({ invitation }: { invitation: InvitationCard }) {
       await action(invitation.id);
       // the card itself updates from the server's `invitation-updated`
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'group_full') setOutcome('group_full');
-      else if (err instanceof ApiError && err.code === 'quota_exceeded') setError('Você já participa do máximo de grupos permitido.');
+      if (err instanceof ApiError && err.code === ERROR_CODES.group_full) setOutcome('group_full');
+      else if (err instanceof ApiError && err.code === ERROR_CODES.quota_exceeded) setError('Você já participa do máximo de grupos permitido.');
       else setError('Não foi possível concluir a ação. Tente de novo.');
     } finally {
       setBusy(null);

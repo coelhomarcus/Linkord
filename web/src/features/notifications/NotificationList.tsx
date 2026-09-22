@@ -1,7 +1,9 @@
 import { useCallback } from 'react';
+import { CloseButton } from '@/shared/ui/primitives/close-button';
 import { Button } from '@/shared/ui/primitives/button';
 import { Avatar } from '@/shared/Avatar';
 import { GroupAvatar } from '@/features/conversations/GroupAvatar';
+import { LoadMoreFooter } from '@/features/friends/LoadMoreFooter';
 import { useCursorList } from '@/features/friends/useCursorList';
 import { useFriends } from '@/features/friends/FriendsContext';
 import { fetchNotifications } from '@/shared/api/api';
@@ -15,10 +17,12 @@ function NotificationIcon({ entry }: { entry: NotificationEntry }) {
   return <Avatar id={actor?.id ?? entry.id} name={actor?.displayName ?? '?'} avatar={actor?.avatar ?? ''} avatarColor={actor?.avatarColor ?? 'blurple'} size={36} className="flex-none" />;
 }
 
-export function NotificationList({ onSelect }: { onSelect: (entry: NotificationEntry) => void }) {
+const notificationKey = (entry: NotificationEntry) => entry.id;
+
+export function NotificationList({ onSelect, onDismiss }: { onSelect: (entry: NotificationEntry) => void; onDismiss: (entry: NotificationEntry) => void }) {
   const { revision } = useFriends();
   const fetchPage = useCallback((cursor: string | null) => fetchNotifications(cursor), []);
-  const list = useCursorList(fetchPage, String(revision));
+  const list = useCursorList(fetchPage, 'notifications', { revision, getKey: notificationKey });
 
   if (list.status === 'loading') return <p className="py-6 text-center text-label text-text-muted">Carregando…</p>;
   if (list.status === 'error') {
@@ -32,14 +36,15 @@ export function NotificationList({ onSelect }: { onSelect: (entry: NotificationE
   if (list.items.length === 0) return <p className="py-6 text-center text-label text-text-muted">Nenhuma notificação por enquanto.</p>;
 
   return (
-    <ul className="flex max-h-[min(24rem,60vh)] flex-col overflow-y-auto">
+    <div className="flex max-h-[min(24rem,60vh)] flex-col overflow-y-auto">
+    <ul className="flex flex-col">
       {list.items.map((entry) => (
-        <li key={entry.id}>
+        <li key={entry.id} className="group relative">
           <button
             type="button"
             onClick={() => onSelect(entry)}
             className={cn(
-              'flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'flex w-full items-center gap-3 rounded-lg py-2 pl-2 pr-9 text-left transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               !entry.read && 'bg-primary/[0.08]',
             )}
           >
@@ -50,13 +55,11 @@ export function NotificationList({ onSelect }: { onSelect: (entry: NotificationE
             </span>
             {!entry.read && <span aria-label="Não lida" className="size-2 flex-none rounded-full bg-primary" />}
           </button>
+          <CloseButton size="xs" label="Descartar notificação" onClick={() => onDismiss(entry)} className="absolute right-1.5 top-1/2 -translate-y-1/2" />
         </li>
       ))}
-      {list.hasMore && (
-        <Button type="button" variant="ghost" size="sm" className="mt-1 self-center" disabled={list.loadingMore} onClick={list.loadMore}>
-          {list.loadingMore ? 'Carregando…' : 'Carregar mais'}
-        </Button>
-      )}
     </ul>
+    <LoadMoreFooter list={list} className="pt-1" />
+    </div>
   );
 }

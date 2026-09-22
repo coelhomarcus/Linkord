@@ -26,6 +26,7 @@ import { preloadSounds } from '@/shared/sounds';
 import { setNotificationClickHandler } from '@/shared/notifications';
 import type { ClientMessage, ServerMessage } from '@/shared/types/protocol';
 import { logger } from '@/shared/lib/logger';
+import { ERROR_CODES } from '@/shared/api/errorCodes';
 
 const log = logger.child({ component: 'room' });
 
@@ -55,6 +56,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const sendWs = useCallback((msg: ClientMessage) => {
     if (socketRef.current?.connected) socketRef.current.emit(msg.t, msg);
   }, []);
+  const isSocketConnected = useCallback(() => !!socketRef.current?.connected, []);
 
   const activeViewRef = useRef<'chat' | 'call'>('chat');
   const notifyActiveView = useCallback((view: 'chat' | 'call') => { activeViewRef.current = view; }, []);
@@ -111,10 +113,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   });
 
   const profileUpdate = useProfileUpdate({
-    dispatch, sendWs, myUserIdRef, setAllUsers: presence.setAllUsers,
-    name: state.me.name, avatar: state.me.avatar, avatarPoster: state.me.avatarPoster, avatarColor: state.me.avatarColor,
-    banner: state.me.banner, bannerPoster: state.me.bannerPoster, bio: state.me.bio,
-    displayName: state.me.displayName, profileLinks: state.me.profileLinks,
+    dispatch, sendWs, myUserIdRef, setAllUsers: presence.setAllUsers, name: state.me.name, isConnected: isSocketConnected,
   });
 
   const tileMenu = useTileMenu();
@@ -283,26 +282,29 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'storage-usage':
         attachmentsUpload.onStorageUsage(m);
         break;
+      case 'profile-result':
+        profileUpdate.handleProfileResult(m);
+        break;
       case 'error':
-        if (m.code === 'full') {
+        if (m.code === ERROR_CODES.full) {
           disconnectIntentionally();
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Sala cheia, tente mais tarde.' });
-        } else if (m.code === 'client_outdated') {
+        } else if (m.code === ERROR_CODES.client_outdated) {
           log.warn('server refused this build (client_outdated)');
           // stop retrying: every reconnect would get the same answer
           disconnectIntentionally();
           dispatch({ type: 'SET_CLIENT_OUTDATED' });
-        } else if (m.code === 'too_many_connections') {
+        } else if (m.code === ERROR_CODES.too_many_connections) {
           disconnectIntentionally();
           dispatch({ type: 'SET_ROOM_ERROR', message: m.message || 'Você já tem conexões demais abertas. Feche alguma aba.' });
-        } else if (m.code === 'quota_exceeded') {
+        } else if (m.code === ERROR_CODES.quota_exceeded) {
           setGroupActionError(m.message);
-        } else if (m.code === 'forbidden' || m.code === 'conflict' || m.code === 'not_found') {
+        } else if (m.code === ERROR_CODES.forbidden || m.code === ERROR_CODES.conflict || m.code === ERROR_CODES.not_found) {
           setGroupActionError(m.message);
-        } else if (m.code === 'livekit-unavailable') {
+        } else if (m.code === ERROR_CODES['livekit-unavailable']) {
           callLifecycle.onLivekitUnavailable();
           dispatch({ type: 'SET_SHARE_ERROR', message: m.message });
-        } else if (m.code === 'message-not-found') {
+        } else if (m.code === ERROR_CODES['message-not-found']) {
           chatMessages.cancelPendingJump();
           messageSearch.setSearchErrorMessage(m.message);
         } else {
@@ -312,7 +314,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     }
   }, [
     dispatch, conversationsList, presence, attachmentsUpload, openConversation, callLifecycle,
-    messageReactions, messageSearch, chatMessages, typingIndicator, disconnectIntentionally,
+    messageReactions, messageSearch, chatMessages, typingIndicator, disconnectIntentionally, profileUpdate,
   ]);
 
   useSocketConnection({ socketRef, intentionalCloseRef, sendWs, dispatch, refreshAuth, onMessage: handleServerMessage });
@@ -343,7 +345,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         registerRequestChatView, requestChatView,
         activeCallConversationId: callLifecycle.activeCallConversationId, joinCall: callLifecycle.joinCall, leaveCall: callLifecycle.leaveCall,
         startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted,
-        updateAvatar: profileUpdate.updateAvatar, updateProfile: profileUpdate.updateProfile, uploadProfileImage: profileUpdate.uploadProfileImage,
+        updateProfile: profileUpdate.updateProfile, uploadProfileImage: profileUpdate.uploadProfileImage, removeProfileImage: profileUpdate.removeProfileImage,
         menuTarget: tileMenu.menuTarget, openTileMenu: tileMenu.openTileMenu, closeTileMenu: tileMenu.closeTileMenu,
         reactions: messageReactions.reactions, sendReaction: messageReactions.sendReaction,
         showStats: roomSettings.showStats, setShowStats: roomSettings.setShowStats,
@@ -353,6 +355,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         showTileBanners: roomSettings.showTileBanners, setShowTileBanners: roomSettings.setShowTileBanners,
         compressImagesDefault: roomSettings.compressImagesDefault, setCompressImagesDefault: roomSettings.setCompressImagesDefault,
         noiseSuppressionEnabled: roomSettings.noiseSuppressionEnabled, setNoiseSuppressionEnabled: roomSettings.setNoiseSuppressionEnabled,
+        noiseSuppressionPending: roomSettings.noiseSuppressionPending, noiseSuppressionError: roomSettings.noiseSuppressionError,
         conversations: conversationsList.conversations, activeConversationId: conversationsList.activeConversationId,
         openConversation, openDirect: conversationsList.openDirect, closeConversation, pinConversation: conversationsList.pinConversation,
         deleteGroup: conversationsList.deleteGroup,

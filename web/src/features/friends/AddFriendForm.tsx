@@ -5,7 +5,7 @@ import { Loader2, UserPlus } from 'lucide-react';
 import { sendFriendRequest } from '@/shared/api/api';
 import { Button } from '@/shared/ui/primitives/button';
 import { Input } from '@/shared/ui/primitives/input';
-import { ROUTES } from '@/shared/lib/routes';
+import { friendsSection } from '@/shared/lib/routes';
 import { describeOutcome, describeSendError, normalizeUsernameInput } from './friendsText';
 
 type Result = { text: string; tone: 'success' | 'info' | 'error'; linkToRequests?: boolean };
@@ -38,9 +38,9 @@ export function AddFriendForm({ onSent, autoFocus }: { onSent: () => void; autoF
   const toneClass = result?.tone === 'error' ? 'text-red' : result?.tone === 'success' ? 'text-green' : 'text-text-muted';
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+    <form onSubmit={handleSubmit} className="flex w-full flex-col gap-2">
       <label htmlFor="add-friend-username" className="text-body font-medium text-text-primary">Adicionar amigo</label>
-      <p className="select-none text-label text-text-muted">Digite o @nome de usuário exato da pessoa.</p>
+      <p className="text-label text-text-muted">Digite o @nome de usuário exato da pessoa.</p>
       <div className="flex gap-2">
         <Input
           id="add-friend-username"
@@ -61,7 +61,7 @@ export function AddFriendForm({ onSent, autoFocus }: { onSent: () => void; autoF
       {result && (
         <p role="status" className={`text-label ${toneClass}`}>
           {result.text}
-          {result.linkToRequests && <> <Link to={ROUTES.requests} className="underline underline-offset-2">Ir para Solicitações</Link></>}
+          {result.linkToRequests && <> <Link to={friendsSection('received')} className="underline underline-offset-2">Ver solicitação recebida</Link></>}
         </p>
       )}
     </form>

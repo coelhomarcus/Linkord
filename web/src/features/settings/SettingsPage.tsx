@@ -1,611 +1,109 @@
-import { useEffect, useRef, useState } from 'react';
-import type { ChangeEvent, FormEvent } from 'react';
-import type { Area } from 'react-easy-crop';
-import { Navigate, useNavigate, useParams } from 'react-router';
-import { Bell, Check, CheckCircle2, HardDrive, IdCard, Loader2, Lock, LogOut, Mail, Settings2, ShieldCheck, SlidersHorizontal, User, Volume2, VolumeX } from 'lucide-react';
-import { AdminLinkTab } from './AdminLinkTab';
-import { PrivacyTab } from './PrivacyTab';
-import { ImageCropDialog } from './ImageCropDialog';
-import { ImageUrlDialog } from '../../shared/ImageUrlDialog';
-import { ProfileCard } from '../profile/ProfileCard';
-import { useRoom } from '../../state/RoomContext';
-import { useAuth } from '../../state/AuthContext';
-import { useMediaDevices } from './useMediaDevices';
-import { requestNotificationPermission } from '../../shared/notifications';
-import { DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '../../shared/Avatar';
-import { BANNER_ASPECT_RATIO } from '@/features/profile/profileLinks';
-import { UploadProgressModal } from '../../shared/UploadProgressModal';
-import { SectionLabel, sectionLabelClass } from './SectionLabel';
-import { cn } from '@/shared/lib/utils';
-import { formatMB } from '../../shared/lib/formatBytes';
-import { AVATAR_MIME_TYPES, MAX_AVATAR_BYTES, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '@/shared/types/protocol';
+import { useEffect, useRef } from 'react';
+import { ArrowLeft } from 'lucide-react';
+import { Navigate, useLocation, useNavigate, useParams } from 'react-router';
+import { useRoom } from '@/state/RoomContext';
 import { PageHeader } from '@/shared/PageHeader';
-import { ROUTES, isSettingsTab } from '@/shared/lib/routes';
-import { Label } from '@/shared/ui/primitives/label';
 import { Button } from '@/shared/ui/primitives/button';
-import { Input } from '@/shared/ui/primitives/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/primitives/select';
-import { Slider } from '@/shared/ui/primitives/slider';
-import { Switch } from '@/shared/ui/primitives/switch';
-import { Tabs, TabsList, TabsIndicator, TabsPanel, TabsTrigger } from '@/shared/ui/primitives/tabs';
-import { confirmEmailChange, requestEmailChange } from '@/shared/api/api';
-import { ApiError } from '@/shared/api/api';
-import { OTPInput, type OTPStatus } from '@/shared/ui/motion/otp-input';
-
-const settingsCardClass = 'flex flex-col gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-4';
-
-function formatGB(bytes: number): string {
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
+import { ROUTES, isSettingsTab } from '@/shared/lib/routes';
+import type { SettingsTab } from '@/shared/lib/routes';
+import { AccountSettings } from './AccountSettings';
+import { AdminLinkTab } from './AdminLinkTab';
+import { AudioVideoSettings } from './AudioVideoSettings';
+import { NotificationsSettings } from './NotificationsSettings';
+import { PreferencesSettings } from './PreferencesSettings';
+import { PrivacyTab } from './PrivacyTab';
+import { ProfileSettings } from './ProfileSettings';
+import { SettingsContent, SettingsPageHeader } from './SettingsLayout';
+import { SettingsIndex, SettingsSidebar } from './SettingsNavigation';
+import { findCategory } from './settingsCatalog';
+import { useSettingsLayout } from './useSettingsLayout';
 
 interface SettingsPageProps {
   onOpenProfile: (userId: string) => void;
 }
 
-function DevicePicker({ label, room, kind }: { label: string; room: import('livekit-client').Room; kind: MediaDeviceKind }) {
-  const { devices, activeDeviceId, permissionNeeded, selectDevice, requestPermission } = useMediaDevices(room, kind);
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label className="text-body font-medium text-text-primary">{label}</Label>
-      {permissionNeeded ? (
-        <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => requestPermission()}>
-          <span>Permitir acesso pra ver os nomes dos dispositivos</span>
-        </Button>
-      ) : (
-        <Select value={activeDeviceId} onValueChange={(v) => v && selectDevice(v)} disabled={devices.length === 0}>
-          <SelectTrigger className="w-full text-text-muted">
-            <SelectValue>{() => devices.find((d) => d.deviceId === activeDeviceId)?.label || 'Padrão do sistema'}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {devices.map((d) => (
-              <SelectItem key={d.deviceId} value={d.deviceId}>{d.label || d.deviceId}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-      <p className="select-none text-label text-text-muted">A troca vale na hora, mesmo durante uma chamada.</p>
-    </div>
-  );
-}
-
-function EmailSettings({ currentEmail }: { currentEmail: string | null }) {
-  const { refresh } = useAuth();
-  const [email, setEmail] = useState(currentEmail ?? '');
-  const [code, setCode] = useState('');
-  const [requested, setRequested] = useState(false);
-  const [status, setStatus] = useState<OTPStatus>('idle');
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-
-  useEffect(() => {
-    setEmail(currentEmail ?? '');
-    setCode('');
-    setRequested(false);
-    setStatus('idle');
-    setError(null);
-  }, [currentEmail]);
-
-  async function handleRequest() {
-    setError(null);
-    setPending(true);
-    try {
-      await requestEmailChange(email);
-      setRequested(true);
-      setStatus('idle');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Não foi possível enviar o código.');
-    } finally {
-      setPending(false);
-    }
+function CategoryPage({ tab, onOpenProfile }: { tab: SettingsTab; onOpenProfile: (userId: string) => void }) {
+  switch (tab) {
+    case 'profile': return <ProfileSettings />;
+    case 'account': return <AccountSettings />;
+    case 'privacy': return <PrivacyTab onOpenProfile={onOpenProfile} />;
+    case 'av': return <AudioVideoSettings />;
+    case 'notifications': return <NotificationsSettings />;
+    case 'prefs': return <PreferencesSettings />;
+    case 'moderation': return <AdminLinkTab />;
   }
-
-  async function handleConfirm(nextCode = code) {
-    if (nextCode.length !== 6 || pending) return;
-    setError(null);
-    setStatus('idle');
-    setPending(true);
-    try {
-      await confirmEmailChange(email, nextCode);
-      setStatus('success');
-      await refresh();
-    } catch (err) {
-      setStatus('error');
-      setError(err instanceof ApiError ? err.message : 'Não foi possível confirmar o e-mail.');
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return (
-    <div className={settingsCardClass}>
-      <span className={cn(sectionLabelClass, 'flex items-center gap-1.5')}><Mail size={14} /> E-mail da conta</span>
-      {!requested ? (
-        <>
-          <p className="select-none text-label text-text-muted">Usado para recuperar sua conta. A alteração será confirmada por código.</p>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-            <div className="min-w-0 flex-1">
-              <Label htmlFor="accountEmail" className="text-label text-text-muted">Novo e-mail</Label>
-              <Input id="accountEmail" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} />
-            </div>
-            <Button type="button" size="sm" disabled={pending || !email} onClick={() => void handleRequest()}>
-              {pending ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
-              {pending ? 'Enviando…' : 'Enviar código'}
-            </Button>
-          </div>
-        </>
-      ) : (
-        <>
-          <p className="select-none text-label text-text-muted">Digite o código enviado para {email}. Ele expira em 30 minutos.</p>
-          <OTPInput
-            label="Código de confirmação"
-            hint="Digite os 6 dígitos enviados para seu e-mail."
-            errorMessage={error ?? 'Confira o código e tente novamente.'}
-            successMessage="E-mail alterado com sucesso."
-            value={code}
-            status={status}
-            onChange={(value) => { setCode(value); setStatus('idle'); setError(null); }}
-            onComplete={(value) => { void handleConfirm(value); }}
-            aria-label="Código de confirmação de e-mail"
-          />
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" disabled={pending || code.length !== 6} onClick={() => void handleConfirm()}>
-              {pending ? <Loader2 size={15} className="animate-spin" /> : status === 'success' ? <CheckCircle2 size={15} /> : <Check size={15} />}
-              {pending ? 'Confirmando…' : status === 'success' ? 'Confirmado' : 'Confirmar e-mail'}
-            </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={() => { setRequested(false); setStatus('idle'); setError(null); }}>Usar outro e-mail</Button>
-          </div>
-        </>
-      )}
-      {error && !requested && <p className="text-label text-red">{error}</p>}
-    </div>
-  );
 }
-
-type ProfileCropTarget =
-  | { field: 'avatar' | 'banner'; kind: 'file'; file: File; src: string }
-  // A URL picked via "Usar URL" — routed through this SAME crop dialog
-  // (instead of being applied directly) so it also goes through the
-  // server's crop/animate-detect pipeline (see uploadProfileImage below),
-  // which is what generates the freeze-until-speaking poster for an
-  // animated GIF/WebP. react-easy-crop only reports crop coordinates here,
-  // it never reads pixels into a <canvas>, so an external image never hits
-  // a CORS/tainted-canvas issue (see ImageCropDialog.tsx's own comment).
-  | { field: 'avatar' | 'banner'; kind: 'url'; url: string };
 
 export function SettingsPage({ onOpenProfile }: SettingsPageProps) {
-  const {
-    state, updateProfile, uploadProfileImage, showStats, setShowStats,
-    notifyVolume, setNotifyVolume, notificationsEnabled, setNotificationsEnabled, showTileBanners, setShowTileBanners, livekitRoom, storageUsage,
-    noiseSuppressionEnabled, setNoiseSuppressionEnabled,
-  } = useRoom();
-  const { logout, user } = useAuth();
+  const { state } = useRoom();
   const { tab } = useParams<{ tab?: string }>();
   const navigate = useNavigate();
-  const pageRef = useRef<HTMLDivElement | null>(null);
-  const [avatar, setAvatar] = useState(state.me.avatar);
-  const [avatarPoster, setAvatarPoster] = useState(state.me.avatarPoster);
-  const [avatarColor, setAvatarColor] = useState(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
-  const [displayName, setDisplayName] = useState(state.me.displayName);
-  const [banner, setBanner] = useState(state.me.banner);
-  const [bannerPoster, setBannerPoster] = useState(state.me.bannerPoster);
-  const [bio, setBio] = useState(state.me.bio);
-  const [profileLinks, setProfileLinks] = useState<string[]>(state.me.profileLinks.length ? state.me.profileLinks : ['']);
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
-  const [avatarError, setAvatarError] = useState<string | null>(null);
-  const [uploadingBanner, setUploadingBanner] = useState(false);
-  const [bannerUploadProgress, setBannerUploadProgress] = useState(0);
-  const [bannerError, setBannerError] = useState<string | null>(null);
-  const [notificationsError, setNotificationsError] = useState<string | null>(null);
-  const [profileSaved, setProfileSaved] = useState(false);
-  const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
-  const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [cropTarget, setCropTarget] = useState<ProfileCropTarget | null>(null);
-  const [urlDialogField, setUrlDialogField] = useState<'avatar' | 'banner' | null>(null);
-  // Set for the duration of the upload (cropTarget itself is cleared right
-  // away, see handleCropConfirm) — drives the blocking UploadProgressModal
-  // below so its title/description can tell a file upload (real byte
-  // progress) apart from a "usar URL" one (server downloads it, so the
-  // client-side progress stays indeterminate).
-  const [activeUpload, setActiveUpload] = useState<{ field: 'avatar' | 'banner'; kind: 'file' | 'url' } | null>(null);
-
-  // keeps the form in sync with the account whenever it changes (a profile
-  // saved from another tab); the page mounting is what used to be "modal opened"
-  useEffect(() => {
-    setProfileSaved(false);
-    setAvatar(state.me.avatar);
-    setAvatarPoster(state.me.avatarPoster);
-    setAvatarColor(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
-    setDisplayName(state.me.displayName);
-    setBanner(state.me.banner);
-    setBannerPoster(state.me.bannerPoster);
-    setBio(state.me.bio);
-    setProfileLinks(state.me.profileLinks.length ? state.me.profileLinks : ['']);
-  }, [state.me.avatar, state.me.avatarPoster, state.me.avatarColor, state.me.banner, state.me.bannerPoster, state.me.bio, state.me.displayName, state.me.profileLinks]);
-
-  useEffect(() => {
-    if (!profileSaved) return;
-    const timeout = window.setTimeout(() => setProfileSaved(false), 2200);
-    return () => window.clearTimeout(timeout);
-  }, [profileSaved]);
-
-  function handleVolumeChange(value: number | readonly number[]) {
-    const v = Array.isArray(value) ? (value[0] ?? 0) : (value as number);
-    setNotifyVolume(v / 100);
-  }
-
-  async function handleToggleNotifications(checked: boolean) {
-    if (!checked) {
-      setNotificationsError(null);
-      setNotificationsEnabled(false);
-      return;
-    }
-    if (typeof Notification === 'undefined') {
-      setNotificationsError('Seu navegador não suporta notificações.');
-      return;
-    }
-    const permission = Notification.permission === 'default' ? await requestNotificationPermission() : Notification.permission;
-    if (permission === 'granted') {
-      setNotificationsError(null);
-      setNotificationsEnabled(true);
-    } else {
-      setNotificationsError('Notificações bloqueadas. Permita o acesso nas configurações do navegador para habilitar.');
-    }
-  }
-
-  function profileLinksForSubmit(): string[] {
-    return profileLinks.map((link) => link.trim()).filter(Boolean);
-  }
-
-  function handleProfileSubmit(e: FormEvent) {
-    e.preventDefault();
-    updateProfile({ avatar, avatarPoster, avatarColor, displayName, banner, bannerPoster, bio, profileLinks: profileLinksForSubmit() });
-    setProfileSaved(true);
-  }
-
-  function updateProfileLink(index: number, value: string) {
-    setProfileLinks((prev) => prev.map((link, i) => (i === index ? value.slice(0, MAX_PROFILE_LINK_LEN) : link)));
-  }
-
-  function addProfileLink() {
-    setProfileLinks((prev) => (prev.length >= MAX_PROFILE_LINKS ? prev : [...prev, '']));
-  }
-
-  function removeProfileLink(index: number) {
-    setProfileLinks((prev) => {
-      const next = prev.filter((_, i) => i !== index);
-      return next.length ? next : [''];
-    });
-  }
-
-  function handleFilePicked(field: 'avatar' | 'banner', e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    const setError = field === 'avatar' ? setAvatarError : setBannerError;
-    if (file.size > MAX_AVATAR_BYTES) {
-      setError(`Arquivo muito grande (máximo ${formatMB(MAX_AVATAR_BYTES)}).`);
-      return;
-    }
-    setError(null);
-    setCropTarget({ field, kind: 'file', file, src: URL.createObjectURL(file) });
-  }
-
-  function handleUrlPicked(field: 'avatar' | 'banner', url: string) {
-    setUrlDialogField(null);
-    // Routed through the crop dialog like a file upload (not applied
-    // directly) — see handleCropConfirm below for why.
-    setCropTarget({ field, kind: 'url', url });
-  }
-
-  function closeCropDialog() {
-    if (cropTarget?.kind === 'file') URL.revokeObjectURL(cropTarget.src);
-    setCropTarget(null);
-  }
-
-  async function handleCropConfirm(crop: Area) {
-    if (!cropTarget) return;
-    const target = cropTarget;
-    const { field } = target;
-    const setUploading = field === 'avatar' ? setUploadingAvatar : setUploadingBanner;
-    const setProgress = field === 'avatar' ? setAvatarUploadProgress : setBannerUploadProgress;
-    const setError = field === 'avatar' ? setAvatarError : setBannerError;
-    const profile = { avatar, avatarColor, displayName, banner, bio, profileLinks: profileLinksForSubmit() };
-    setError(null);
-    setProgress(0);
-    setUploading(true);
-    setActiveUpload({ field, kind: target.kind });
-    closeCropDialog();
-    try {
-      // A picked URL is sent as a JSON body instead of raw file bytes —
-      // uploadProfileImage/the server (/api/avatar) already accepts either
-      // one identically, downloading the URL itself before the same
-      // crop/animate-detect/poster pipeline a file upload goes through.
-      const body = target.kind === 'file'
-        ? target.file
-        : new Blob([JSON.stringify({ url: target.url })], { type: 'application/json' });
-      const url = await uploadProfileImage(field, body, crop, setProgress, profile);
-      if (field === 'avatar') setAvatar(url); else setBanner(url);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : `Falha ao enviar ${field === 'avatar' ? 'a foto' : 'o banner'}.`);
-    } finally {
-      setUploading(false);
-      setActiveUpload(null);
-    }
-  }
-
-  function handleRemoveAvatar() {
-    setAvatar('');
-    setAvatarPoster('');
-    updateProfile({ avatar: '', avatarPoster: '', avatarColor, displayName, banner, bannerPoster, bio, profileLinks: profileLinksForSubmit() });
-  }
-
-  function handleRemoveBanner() {
-    setBanner('');
-    setBannerPoster('');
-    updateProfile({ avatar, avatarPoster, avatarColor, displayName, banner: '', bannerPoster: '', bio, profileLinks: profileLinksForSubmit() });
-  }
-
-  // On a narrow screen the tab strip scrolls sideways; a deep link to a tab
-  // past the fold (/app/settings/privacy) would otherwise land on a page
-  // that never shows which tab is active.
-  useEffect(() => {
-    pageRef.current?.querySelector('[role="tab"][aria-selected="true"]')?.scrollIntoView?.({ inline: 'center', block: 'nearest' });
-  }, [tab]);
-
-  // an unknown tab — or the admin-only one for a non-admin — falls back to
-  // the first tab instead of rendering an empty page
+  const location = useLocation();
+  const areaRef = useRef<HTMLDivElement | null>(null);
+  const scrollerRef = useRef<HTMLElement | null>(null);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
+  const mode = useSettingsLayout(areaRef);
+  const firstRender = useRef(true);
   const isAdmin = state.me.role === 'admin';
-  if (!isSettingsTab(tab) || (tab === 'moderation' && !isAdmin)) {
-    return <Navigate to={ROUTES.settingsTab('profile')} replace />;
-  }
+
+  const known = isSettingsTab(tab) && (tab !== 'moderation' || isAdmin);
+  const active: SettingsTab | null = known ? tab : null;
+  // wide: no category in the URL just means "the first one", on the same URL;
+  // compact: it is the index
+  const showIndex = mode === 'compact' && active === null;
+  const current: SettingsTab = active ?? 'profile';
+  const category = findCategory(current);
+
+  // opening another category starts at its top, with its title focused; a hash
+  // (/app/settings/av#camera) wins and scrolls to that section instead
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      if (!location.hash) return;
+    }
+    if (location.hash) {
+      document.getElementById(location.hash.slice(1))?.scrollIntoView?.({ block: 'start' });
+      return;
+    }
+    scrollerRef.current?.scrollTo?.({ top: 0 });
+    headingRef.current?.focus({ preventScroll: true });
+  }, [current, showIndex, location.hash]);
+
+  // an unknown category — or the admin-only one for a non-admin — falls back to
+  // the first one instead of rendering an empty page
+  if (tab !== undefined && !known) return <Navigate to={ROUTES.settingsTab('profile')} replace />;
+
+  const compactDetail = mode === 'compact' && active !== null;
+  const fromIndex = (location.state as { fromIndex?: boolean } | null)?.fromIndex === true;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader title="Ajustes" />
-      <div ref={pageRef} className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col">
-        <Tabs value={tab} onValueChange={(next) => navigate(ROUTES.settingsTab(next as typeof tab))} orientation="vertical" className="min-h-0 min-w-0 flex-1 flex-col items-stretch md:flex-row">
-          <TabsList className="h-auto w-full min-w-0 flex-none flex-row items-stretch gap-1 overflow-x-auto rounded-none border-b border-white/10 bg-transparent p-2 md:w-48 md:flex-col md:overflow-visible md:border-b-0 md:border-r md:p-3">
-            <TabsIndicator className="rounded-lg bg-primary/12" />
-            <TabsTrigger value="profile" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><User size={16} /><span>Perfil</span></TabsTrigger>
-            <TabsTrigger value="account" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><IdCard size={16} /><span>Conta</span></TabsTrigger>
-            <TabsTrigger value="av" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><SlidersHorizontal size={16} /><span>Áudio e vídeo</span></TabsTrigger>
-            <TabsTrigger value="notifications" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Bell size={16} /><span>Notificações</span></TabsTrigger>
-            <TabsTrigger value="prefs" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Settings2 size={16} /><span>Preferências</span></TabsTrigger>
-            <TabsTrigger value="privacy" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><Lock size={16} /><span>Privacidade</span></TabsTrigger>
-            {isAdmin && (
-              <TabsTrigger value="moderation" className="flex-none justify-start gap-2 whitespace-nowrap px-2.5"><ShieldCheck size={16} /><span>Administração</span></TabsTrigger>
-            )}
-          </TabsList>
-
-          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 md:p-6">
-            <TabsPanel value="profile" className="flex flex-col gap-3">
-              <p className="select-none text-label text-text-muted">
-                Edite direto no seu perfil — o que você vê aqui é exatamente o que os outros vão ver.
-              </p>
-
-              <form onSubmit={handleProfileSubmit} className="flex flex-col gap-3">
-                <ProfileCard
-                  user={{
-                    id: state.me.id || 'preview',
-                    displayName: displayName || state.me.name,
-                    username: state.me.name,
-                    avatar, avatarColor, banner, bio,
-                    profileLinks: profileLinksForSubmit(),
-                    role: state.me.role,
-                  }}
-                  online
-                  onAvatarUpload={() => avatarFileInputRef.current?.click()}
-                  onAvatarUploadUrl={() => setUrlDialogField('avatar')}
-                  onAvatarRemove={handleRemoveAvatar}
-                  avatarUploading={uploadingAvatar}
-                  onBannerUpload={() => bannerFileInputRef.current?.click()}
-                  onBannerUploadUrl={() => setUrlDialogField('banner')}
-                  onBannerRemove={handleRemoveBanner}
-                  bannerUploading={uploadingBanner}
-                  onDisplayNameChange={setDisplayName}
-                  onBioChange={setBio}
-                  onAvatarColorChange={setAvatarColor}
-                  editableLinks={profileLinks}
-                  onLinkChange={updateProfileLink}
-                  onAddLink={addProfileLink}
-                  onRemoveLink={removeProfileLink}
-                />
-                <input
-                  ref={avatarFileInputRef}
-                  aria-label="Selecionar foto de perfil"
-                  type="file"
-                  accept={AVATAR_MIME_TYPES.join(',')}
-                  hidden
-                  onChange={(e) => handleFilePicked('avatar', e)}
-                />
-                <input
-                  ref={bannerFileInputRef}
-                  aria-label="Selecionar banner"
-                  type="file"
-                  accept={AVATAR_MIME_TYPES.join(',')}
-                  hidden
-                  onChange={(e) => handleFilePicked('banner', e)}
-                />
-                {avatarError && <p className="text-label text-red">{avatarError}</p>}
-                {bannerError && <p className="text-label text-red">{bannerError}</p>}
-
-                <div className="flex items-center justify-between gap-2">
-                  <p className="select-none text-caption text-text-muted">PNG, JPEG, GIF ou WEBP, até {formatMB(MAX_AVATAR_BYTES)}.</p>
-                  <Button type="submit" size="sm" className="flex-none">
-                    {profileSaved && <Check size={15} />}
-                    <span>{profileSaved ? 'Perfil salvo' : 'Salvar perfil'}</span>
-                  </Button>
-                </div>
-              </form>
-
-              <ImageCropDialog
-                open={!!cropTarget}
-                imageSrc={cropTarget ? (cropTarget.kind === 'file' ? cropTarget.src : cropTarget.url) : null}
-                aspect={cropTarget?.field === 'banner' ? BANNER_ASPECT_RATIO : 1}
-                cropShape={cropTarget?.field === 'banner' ? 'rect' : 'round'}
-                title={cropTarget?.field === 'banner' ? 'Recortar banner' : 'Recortar foto de perfil'}
-                onCancel={closeCropDialog}
-                onConfirm={handleCropConfirm}
-              />
-
-              <ImageUrlDialog
-                open={urlDialogField !== null}
-                title={urlDialogField === 'banner' ? 'URL do banner' : 'URL da foto de perfil'}
-                onOpenChange={(next) => { if (!next) setUrlDialogField(null); }}
-                onConfirm={(url) => handleUrlPicked(urlDialogField!, url)}
-              />
-
-              <UploadProgressModal
-                open={activeUpload !== null}
-                title={
-                  activeUpload?.kind === 'url'
-                    ? `Baixando ${activeUpload.field === 'banner' ? 'o banner' : 'a foto de perfil'}…`
-                    : `Enviando ${activeUpload?.field === 'banner' ? 'o banner' : 'a foto de perfil'}…`
-                }
-                description={activeUpload?.kind === 'url' ? 'Baixando e processando a imagem da URL — pode levar alguns segundos.' : undefined}
-                progress={activeUpload?.kind === 'file' ? (activeUpload.field === 'banner' ? bannerUploadProgress : avatarUploadProgress) : undefined}
-              />
-            </TabsPanel>
-
-            <TabsPanel value="account" className="flex flex-col gap-4">
-              <EmailSettings currentEmail={user?.email ?? null} />
-              <div className={settingsCardClass}>
-                <SectionLabel>Identificação</SectionLabel>
-                <div className="flex flex-col gap-1">
-                  <Label className="text-label text-text-muted">Nome de usuário</Label>
-                  <p className="select-none text-body text-text-primary">@{state.me.name}</p>
-                  <p className="select-none text-caption text-text-muted">Fixo, não pode ser trocado. O nome de exibição (aba Perfil) é o que aparece para todo mundo.</p>
-                </div>
-                {state.me.role === 'admin' && (
-                  <span className="flex w-fit items-center gap-1 rounded-sm bg-primary/15 px-1.5 py-0.5 text-caption font-medium text-primary">
-                    <ShieldCheck size={14} /> Admin
-                  </span>
-                )}
-              </div>
-
-              <div className={settingsCardClass}>
-                <span className={cn(sectionLabelClass, 'flex items-center gap-1.5')}>
-                  <HardDrive size={14} /> Seu armazenamento de anexos
-                </span>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-bg-hover">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${storageUsage.maxBytes ? Math.min(100, (storageUsage.totalBytes / storageUsage.maxBytes) * 100) : 0}%` }}
-                  />
-                </div>
-                <p className="select-none text-label text-text-muted">
-                  {formatGB(storageUsage.totalBytes)} de {formatGB(storageUsage.maxBytes)} da sua cota usados, {storageUsage.totalFiles} arquivo{storageUsage.totalFiles === 1 ? '' : 's'} enviado{storageUsage.totalFiles === 1 ? '' : 's'}.
-                </p>
-              </div>
-
-              <div className={settingsCardClass}>
-                <SectionLabel>Sessao</SectionLabel>
-                <Button type="button" variant="outline" size="sm" className="w-fit text-red hover:bg-red/12" onClick={logout}>
-                  <LogOut size={14} />
-                  <span>Sair da conta</span>
-                </Button>
-              </div>
-            </TabsPanel>
-
-            <TabsPanel value="av" className="flex flex-col gap-4">
-              <div className={settingsCardClass}>
-                <DevicePicker label="Microfone" room={livekitRoom} kind="audioinput" />
-              </div>
-
-              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
-                <div className="min-w-0">
-                  <p className="select-none text-body font-medium text-text-primary">Supressão de ruído</p>
-                  <p className="select-none text-label text-text-muted">Usa um modelo de IA local pra reduzir ruído de fundo (teclado, ventilador, trânsito) no seu microfone.</p>
-                </div>
-                <Switch
-                  checked={noiseSuppressionEnabled}
-                  onCheckedChange={setNoiseSuppressionEnabled}
-                  aria-label="Supressão de ruído"
-                  className="mt-0.5 flex-none"
-                />
-              </div>
-
-              <div className={settingsCardClass}>
-                <DevicePicker label="Câmera" room={livekitRoom} kind="videoinput" />
-              </div>
-
-              <div className={settingsCardClass}>
-                <DevicePicker label="Alto-falante" room={livekitRoom} kind="audiooutput" />
-              </div>
-            </TabsPanel>
-
-            <TabsPanel value="notifications" className="flex flex-col gap-4">
-              <div className={settingsCardClass}>
-                <div className="flex items-center justify-between gap-3">
-                  <span className={cn(sectionLabelClass, 'flex items-center gap-1.5')}>
-                    {notifyVolume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />} Volume das notificações
-                  </span>
-                  <span className="flex-none text-label tabular-nums text-text-muted">{Math.round(notifyVolume * 100)}%</span>
-                </div>
-                <Slider value={[Math.round(notifyVolume * 100)]} onValueChange={handleVolumeChange} min={0} max={100} />
-                <p className="select-none text-label text-text-muted">
-                  Mutar/desmutar, ensurdecer, entrar/sair da chamada, câmera, tela e mensagem nova.
-                </p>
-              </div>
-
-              <div className={settingsCardClass}>
-                <div className="flex flex-row items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="select-none text-body font-medium text-text-primary">Notificações de mensagens</p>
-                    <p className="select-none text-label text-text-muted">Avisa no sistema quando chegar mensagem em uma conversa que você não está vendo.</p>
-                  </div>
-                  <Switch
-                    checked={notificationsEnabled}
-                    onCheckedChange={handleToggleNotifications}
-                    aria-label="Notificações de mensagens"
-                    className="mt-0.5 flex-none"
-                  />
-                </div>
-                {notificationsError && <p className="text-label text-red">{notificationsError}</p>}
-              </div>
-            </TabsPanel>
-
-            <TabsPanel value="prefs" className="flex flex-col gap-4">
-              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
-                <div className="min-w-0">
-                  <p className="select-none text-body font-medium text-text-primary">Mostrar banners nos tiles</p>
-                  <p className="select-none text-label text-text-muted">Exibe o banner do perfil como fundo dos tiles da chamada.</p>
-                </div>
-                <Switch
-                  checked={showTileBanners}
-                  onCheckedChange={setShowTileBanners}
-                  aria-label="Mostrar banners nos tiles"
-                  className="mt-0.5 flex-none"
-                />
-              </div>
-
-              <div className={cn(settingsCardClass, 'flex-row items-start justify-between gap-3')}>
-                <div className="min-w-0">
-                  <p className="select-none text-body font-medium text-text-primary">Mostrar estatísticas</p>
-                  <p className="select-none text-label text-text-muted">Bitrate e tempo no ar no menu de cada transmissão.</p>
-                </div>
-                <Switch
-                  checked={showStats}
-                  onCheckedChange={setShowStats}
-                  aria-label="Mostrar estatísticas"
-                  className="mt-0.5 flex-none"
-                />
-              </div>
-            </TabsPanel>
-
-            <TabsPanel value="privacy">
-              <PrivacyTab onOpenProfile={onOpenProfile} />
-            </TabsPanel>
-
-            {isAdmin && (
-              <TabsPanel value="moderation">
-                <AdminLinkTab />
-              </TabsPanel>
-            )}
-          </div>
-        </Tabs>
+      <PageHeader
+        title={compactDetail ? category.label : 'Ajustes'}
+        leading={compactDetail ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Voltar às configurações"
+            onClick={() => (fromIndex ? navigate(-1) : navigate(ROUTES.settings))}
+          >
+            <ArrowLeft size={18} aria-hidden />
+          </Button>
+        ) : undefined}
+      />
+      <div ref={areaRef} className="@container flex min-h-0 min-w-0 flex-1">
+        {mode === 'wide' ? <SettingsSidebar active={current} isAdmin={isAdmin} /> : null}
+        <main ref={scrollerRef} aria-label={showIndex ? 'Ajustes' : category.label} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+          {showIndex ? (
+            <SettingsIndex isAdmin={isAdmin} />
+          ) : (
+            <SettingsContent>
+              <SettingsPageHeader title={category.label} description={category.description} headingRef={headingRef} hideTitle={compactDetail} />
+              <CategoryPage tab={current} onOpenProfile={onOpenProfile} />
+            </SettingsContent>
+          )}
+        </main>
       </div>
     </div>
   );

@@ -12,7 +12,7 @@ import { getFriendship } from '../friendships/friendshipsRepository.js';
 import { isBlockedEitherWay } from '../blocks/blocksRepository.js';
 import { markNotificationsRead } from '../notifications/notificationsRepository.js';
 import { countGroupMemberships, exceedsLimit, limitMax } from '../limits/limits.js';
-import { SOCIAL_PAGE_SIZE, decodeTimeCursor, encodeTimeCursor } from '../friendships/cursor.js';
+import { SOCIAL_PAGE_SIZE, decodeTimeCursor, encodeTimeCursor, escapeLike } from '../friendships/cursor.js';
 import { notifySocialChanged, onSocialChange, refreshKnownPeers } from '../presence/knownPeers.js';
 import {
   broadcastToConversationMembers, canManageGroup, getOrCreateDirect, sendConversationUpdateToMembers, touchConversation,
@@ -394,9 +394,12 @@ export interface ReceivedInvitationEntry {
 
 export interface SentInvitationEntry { id: string; at: string; invitee: SocialUser }
 
-export async function listReceivedInvitations(userId: string, cursorRaw?: string): Promise<{ items: ReceivedInvitationEntry[]; nextCursor: string | null } | 'invalid_cursor'> {
+/** The caller's pending invitations, newest first. `q` matches the group's name or the
+ * inviter's name/username — only among invitations this account already has. */
+export async function listReceivedInvitations(userId: string, cursorRaw?: string, q?: string): Promise<{ items: ReceivedInvitationEntry[]; nextCursor: string | null } | 'invalid_cursor'> {
   const cursor = cursorRaw ? decodeTimeCursor(cursorRaw) : null;
   if (cursorRaw && !cursor) return 'invalid_cursor';
+  const pattern = q ? `%${escapeLike(q)}%` : null;
   const rows = await db
     .select({
       id: groupInvitations.id, ts: microsecondIso,
@@ -410,6 +413,7 @@ export async function listReceivedInvitations(userId: string, cursorRaw?: string
     .where(and(
       eq(groupInvitations.inviteeId, userId),
       eq(groupInvitations.status, 'pending'),
+      pattern ? sql`(lower(${conversations.title}) like ${pattern} or lower(${users.username}) like ${pattern} or lower(${users.displayName}) like ${pattern})` : undefined,
       cursor ? sql`(${groupInvitations.createdAt}, ${groupInvitations.id}) < (${cursor.ts}::timestamptz, ${cursor.id})` : undefined,
     ))
     .orderBy(desc(groupInvitations.createdAt), desc(groupInvitations.id))

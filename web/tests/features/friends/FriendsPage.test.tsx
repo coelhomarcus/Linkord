@@ -6,7 +6,9 @@ import { renderSocial, ana, bea } from '@tests/fixtures/socialFixture';
 import { FriendsPage } from '@/features/friends/FriendsPage';
 import * as api from '@/shared/api/api';
 
-vi.mock('@/shared/PageHeader', () => ({ PageHeader: ({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: React.ReactNode }) => (<header><h1>{title}</h1><p>{subtitle}</p>{actions}</header>) }));
+vi.mock('@/shared/PageHeader', () => ({
+  PageHeader: ({ title, middle, actions }: { title: string; middle?: React.ReactNode; actions?: React.ReactNode }) => (<header><h1>{title}</h1>{middle}{actions}</header>),
+}));
 vi.mock('@/shared/api/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/api/api')>()),
   fetchFriends: vi.fn(), fetchRequestSummary: vi.fn(), sendFriendRequest: vi.fn(), removeFriend: vi.fn(), blockUser: vi.fn(),
@@ -50,15 +52,22 @@ describe('FriendsPage', () => {
     expect(await screen.findByText('Ana')).toBeInTheDocument();
   });
 
-  it('filtro Online mostra so quem esta online entre os carregados', async () => {
+  it('Online e decidido pelo servidor (status=online), nao filtrando so a primeira pagina', async () => {
     const user = userEvent.setup();
-    mocked.fetchFriends.mockResolvedValue(page(ana, bea));
+    mocked.fetchFriends.mockImplementation(async (_cursor, _q, status) => (status === 'online' ? page(ana) : page(ana, bea)));
     renderSocial(<FriendsPage onOpenProfile={vi.fn()} />, { room: { state: me, onlineUserIds: new Set(['u-ana']) } });
 
     await screen.findByText('Bea');
-    await user.click(screen.getByRole('button', { name: 'Online' }));
+    await user.click(screen.getByRole('link', { name: 'Online' }));
+    await waitFor(() => expect(screen.queryByText('Bea')).not.toBeInTheDocument());
     expect(screen.getByText('Ana')).toBeInTheDocument();
-    expect(screen.queryByText('Bea')).not.toBeInTheDocument();
+    expect(mocked.fetchFriends).toHaveBeenCalledWith(null, '', 'online');
+  });
+
+  it('Online vazio diz que nao ha ninguem online agora (so depois da consulta)', async () => {
+    mocked.fetchFriends.mockImplementation(async (_cursor, _q, status) => (status === 'online' ? page() : page(ana)));
+    renderSocial(<FriendsPage onOpenProfile={vi.fn()} />, { room: { state: me }, path: '/app/friends?tab=online' });
+    expect(await screen.findByText('Nenhum amigo online agora.')).toBeInTheDocument();
   });
 
   it('adicionar por @username normaliza o texto e mostra o resultado', async () => {
@@ -68,7 +77,7 @@ describe('FriendsPage', () => {
     renderSocial(<FriendsPage onOpenProfile={vi.fn()} />, { room: { state: me } });
 
     await screen.findByText('Ana');
-    await user.click(screen.getByRole('button', { name: 'Adicionar amigo' }));
+    await user.click(screen.getByRole('link', { name: 'Adicionar amigo' }));
     await user.type(screen.getByPlaceholderText('@nomedeusuario'), '  @Lune ');
     await user.click(screen.getByRole('button', { name: 'Enviar' }));
 
@@ -83,7 +92,7 @@ describe('FriendsPage', () => {
     renderSocial(<FriendsPage onOpenProfile={vi.fn()} />, { room: { state: me } });
 
     await screen.findByText('Ana');
-    await user.click(screen.getByRole('button', { name: 'Adicionar amigo' }));
+    await user.click(screen.getByRole('link', { name: 'Adicionar amigo' }));
     await user.type(screen.getByPlaceholderText('@nomedeusuario'), 'ninguem');
     await user.click(screen.getByRole('button', { name: 'Enviar' }));
     expect(await screen.findByText(/Confira o nome de usuário/)).toBeInTheDocument();
