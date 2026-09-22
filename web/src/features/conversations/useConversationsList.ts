@@ -83,7 +83,8 @@ export function useConversationsList(sendWs: (msg: ClientMessage) => void) {
    * conversation; that's what 'conversation-opened' is for. */
   const onConversationCreated = useCallback((m: Extract<ServerMessage, { t: 'conversation-created' }>) => {
     const idx = conversationsRef.current.findIndex((c) => c.id === m.conversation.id);
-    const next = idx === -1 ? [m.conversation, ...conversationsRef.current] : conversationsRef.current.map((c) => (c.id === m.conversation.id ? m.conversation : c));
+    const base = idx === -1 ? [m.conversation, ...conversationsRef.current] : conversationsRef.current.map((c) => (c.id === m.conversation.id ? m.conversation : c));
+    const next = sortConversations(base);
     conversationsRef.current = next;
     setConversations(next);
   }, []);
@@ -141,10 +142,15 @@ export function useConversationsList(sendWs: (msg: ClientMessage) => void) {
     // opener instead so it can still be rendered/typed into for this
     // session; it becomes "real" history for everyone once a message
     // is actually sent (touchConversation broadcasts the list then).
+    // Re-sorted like every other list-changing handler here — this is also
+    // what fires for a brand-new DM/group (handleDirectOpen/handleGroupCreate
+    // on the server both send it), so skipping the sort used to let it land
+    // above a pinned conversation instead of respecting pinnedAt.
     const idx = conversationsRef.current.findIndex((c) => c.id === m.conversation.id);
-    const nextConversations = idx === -1
+    const base = idx === -1
       ? [m.conversation, ...conversationsRef.current]
       : conversationsRef.current.map((c) => (c.id === m.conversation.id ? m.conversation : c));
+    const nextConversations = sortConversations(base);
     conversationsRef.current = nextConversations;
     setConversations(nextConversations);
     openConversationFull(m.conversationId);
