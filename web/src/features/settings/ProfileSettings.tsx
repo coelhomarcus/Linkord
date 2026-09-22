@@ -7,6 +7,7 @@ import { ImageCropDialog } from './ImageCropDialog';
 import { ImageUrlDialog } from '@/shared/ImageUrlDialog';
 import { ProfileCard } from '@/features/profile/ProfileCard';
 import { useRoom } from '@/state/RoomContext';
+import { cn } from '@/shared/lib/utils';
 import { DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '@/shared/Avatar';
 import { BANNER_ASPECT_RATIO } from '@/features/profile/profileLinks';
 import { UploadProgressModal } from '@/shared/UploadProgressModal';
@@ -30,7 +31,13 @@ type ProfileCropTarget =
 
 
 export function ProfileSettings() {
-  const { state, updateProfile, uploadProfileImage, removeProfileImage } = useRoom();
+  const { state, updateProfile, uploadProfileImage, removeProfileImage, activeCallConversationId } = useRoom();
+  // FloatingPip (a call kept running while browsing elsewhere) sits fixed at
+  // the viewport's bottom-left, on top of whatever's there — on a narrow
+  // screen that's exactly where this bar's own Descartar button lands,
+  // making it untappable. Shifting the bar up clears it (same idea as
+  // FloatingPip's own `bottom-20` when the ReconnectBanner takes that corner).
+  const inCall = activeCallConversationId !== null;
   const [avatar, setAvatar] = useState(state.me.avatar);
   const [avatarPoster, setAvatarPoster] = useState(state.me.avatarPoster);
   const [banner, setBanner] = useState(state.me.banner);
@@ -275,7 +282,15 @@ export function ProfileSettings() {
         )}
 
         {showBar && (
-          <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-strong bg-bg-modal/95 px-4 py-3 backdrop-blur @[520px]:-mx-6 @[520px]:px-6 @[960px]:-mx-8 @[960px]:px-8">
+          <div
+            className={cn(
+              '-mx-4 sticky flex flex-wrap items-center justify-between gap-3 border-t border-strong bg-bg-modal/95 px-4 pt-3 backdrop-blur @[520px]:-mx-6 @[520px]:px-6 @[960px]:-mx-8 @[960px]:px-8',
+              // pb instead of py: the safe-area addition only belongs on the
+              // edge that's actually near the device's bottom inset.
+              'pb-[max(0.75rem,env(safe-area-inset-bottom))]',
+              inCall ? 'bottom-20' : 'bottom-0',
+            )}
+          >
             <p role={saveState === 'error' ? 'alert' : undefined} className={saveState === 'error' ? 'text-label text-red' : 'text-label text-text-muted'}>
               {barStatusText}
             </p>

@@ -246,6 +246,31 @@ describe('SettingsPage — perfil', () => {
     expect(screen.queryByRole('button', { name: 'Descartar' })).not.toBeInTheDocument();
   });
 
+  it('com chamada ativa, a barra de salvar sobe para nao ficar atras do PiP flutuante', async () => {
+    const user = userEvent.setup();
+    const state = { ...initialRoomState, me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana' } };
+    renderSettings({ state, activeCallConversationId: 'conv-1' });
+
+    await user.type(screen.getByLabelText('Bio'), 'editando durante a chamada');
+    // button -> the "flex gap-2" buttons row -> the bar itself
+    const bar = screen.getByRole('button', { name: 'Salvar perfil' }).parentElement?.parentElement;
+    // FloatingPip sits fixed at the viewport's bottom-4 left-4 corner —
+    // bottom-0 would put this bar's own buttons right under it.
+    expect(bar?.className).toContain('bottom-20');
+    expect(bar?.className).not.toContain('bottom-0');
+  });
+
+  it('sem chamada ativa, a barra de salvar fica no rodape normal', async () => {
+    const user = userEvent.setup();
+    const state = { ...initialRoomState, me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana' } };
+    renderSettings({ state, activeCallConversationId: null });
+
+    await user.type(screen.getByLabelText('Bio'), 'editando sem chamada');
+    const bar = screen.getByRole('button', { name: 'Salvar perfil' }).parentElement?.parentElement;
+    expect(bar?.className).toContain('bottom-0');
+    expect(bar?.className).not.toContain('bottom-20');
+  });
+
   it('descartar volta os campos aos ultimos valores confirmados e esconde a barra', async () => {
     const user = userEvent.setup();
     const state = {
