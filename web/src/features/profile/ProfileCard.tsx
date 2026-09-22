@@ -51,9 +51,13 @@ interface ProfileCardProps {
   onLinkChange?: (index: number, value: string) => void;
   onAddLink?: () => void;
   onRemoveLink?: (index: number) => void;
+  /** Freezes name/color/bio/links (not the avatar/banner controls, which
+   * apply immediately and aren't part of that draft) while a save is in
+   * flight — avoids a race between a new edit and the request already sent. */
+  fieldsDisabled?: boolean;
 }
 
-function EditableBio({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function EditableBio({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled?: boolean }) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
 
   useLayoutEffect(() => {
@@ -72,7 +76,8 @@ function EditableBio({ value, onChange }: { value: string; onChange: (value: str
         onChange={(e) => onChange(e.target.value.slice(0, MAX_PROFILE_BIO_LEN))}
         placeholder="Fale um pouco sobre você..."
         rows={1}
-        className="w-full resize-none overflow-hidden whitespace-pre-wrap bg-transparent text-body leading-relaxed text-text-secondary outline-none placeholder:text-text-muted/70"
+        disabled={disabled}
+        className="w-full resize-none overflow-hidden whitespace-pre-wrap bg-transparent text-body leading-relaxed text-text-secondary outline-none placeholder:text-text-muted/70 disabled:opacity-60"
       />
       <span className="select-none text-caption tabular-nums text-text-muted">{value.length}/{MAX_PROFILE_BIO_LEN}</span>
     </div>
@@ -85,7 +90,7 @@ export function ProfileCard({
   onBannerUpload, onBannerUploadUrl, onBannerRemove, bannerUploading,
   className,
   onDisplayNameChange, onBioChange, onAvatarColorChange,
-  editableLinks, onLinkChange, onAddLink, onRemoveLink, bare,
+  editableLinks, onLinkChange, onAddLink, onRemoveLink, bare, fieldsDisabled,
 }: ProfileCardProps) {
   const links = (user.profileLinks ?? []).map(linkInfo).filter((item): item is LinkInfo => !!item);
   const linksEditable = editableLinks !== undefined && onLinkChange && onAddLink && onRemoveLink;
@@ -205,9 +210,10 @@ export function ProfileCard({
                           type="button"
                           aria-label={`Usar ${option.label}`}
                           aria-pressed={selected}
+                          disabled={fieldsDisabled}
                           onClick={() => onAvatarColorChange(option.value)}
                           className={cn(
-                            'relative h-5 w-5 rounded-full border transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+                            'relative h-5 w-5 rounded-full border transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60',
                             selected ? 'border-text-primary ring-2 ring-ring/40 ring-offset-1 ring-offset-bg-modal' : 'border-strong hover:border-text-muted'
                           )}
                           style={{ background: option.css }}
@@ -231,9 +237,10 @@ export function ProfileCard({
                   type="color"
                   aria-label="Escolher cor personalizada"
                   aria-pressed={isCustomAvatarColor}
+                  disabled={fieldsDisabled}
                   value={isCustomAvatarColor ? user.avatarColor : '#6b7280'}
                   onChange={(e) => onAvatarColorChange(e.target.value)}
-                  className="avatar-color-custom-input h-5 w-5 cursor-pointer"
+                  className="avatar-color-custom-input h-5 w-5 cursor-pointer disabled:cursor-default disabled:opacity-60"
                 />
                 <span className="pointer-events-none absolute inset-0 m-auto flex h-2.5 w-2.5 items-center justify-center">
                   {isCustomAvatarColor ? <Check size={10} className="text-white drop-shadow" /> : <Palette size={9} className="text-white/90 drop-shadow" />}
@@ -249,9 +256,10 @@ export function ProfileCard({
               aria-label="Nome de exibição"
               maxLength={MAX_DISPLAY_NAME_LEN}
               placeholder={user.username}
+              disabled={fieldsDisabled}
               value={user.displayName === user.username ? '' : user.displayName}
               onChange={(e) => onDisplayNameChange(e.target.value)}
-              className="w-full min-w-0 bg-transparent text-display font-bold text-text-primary outline-none placeholder:text-text-muted/70"
+              className="w-full min-w-0 bg-transparent text-display font-bold text-text-primary outline-none placeholder:text-text-muted/70 disabled:opacity-60"
             />
           ) : (
             <h2 className="truncate text-display font-bold text-text-primary">{user.displayName}</h2>
@@ -270,7 +278,7 @@ export function ProfileCard({
         </div>
 
         {onBioChange ? (
-          <EditableBio value={user.bio} onChange={onBioChange} />
+          <EditableBio value={user.bio} onChange={onBioChange} disabled={fieldsDisabled} />
         ) : (
           user.bio && <p className="mt-4 whitespace-pre-wrap text-body leading-relaxed text-text-secondary">{user.bio}</p>
         )}
@@ -288,11 +296,12 @@ export function ProfileCard({
                     aria-label={`Link ${index + 1}`}
                     maxLength={MAX_PROFILE_LINK_LEN}
                     placeholder="https://..."
+                    disabled={fieldsDisabled}
                     value={link}
                     onChange={(e) => onLinkChange!(index, e.target.value)}
-                    className="min-w-0 flex-1 border-b border-transparent bg-transparent py-1 text-body text-text-primary outline-none placeholder:text-text-muted/70 focus:border-primary/50"
+                    className="min-w-0 flex-1 border-b border-transparent bg-transparent py-1 text-body text-text-primary outline-none placeholder:text-text-muted/70 focus:border-primary/50 disabled:opacity-60"
                   />
-                  <CloseButton variant="danger" label="Remover link" onClick={() => onRemoveLink!(index)} />
+                  <CloseButton variant="danger" label="Remover link" disabled={fieldsDisabled} onClick={() => onRemoveLink!(index)} />
                 </div>
               );
             })}
@@ -301,7 +310,7 @@ export function ProfileCard({
               variant="ghost"
               size="sm"
               className="w-fit text-text-muted hover:text-text-primary"
-              disabled={editableLinks!.length >= MAX_PROFILE_LINKS}
+              disabled={fieldsDisabled || editableLinks!.length >= MAX_PROFILE_LINKS}
               onClick={onAddLink}
             >
               <Plus size={14} />

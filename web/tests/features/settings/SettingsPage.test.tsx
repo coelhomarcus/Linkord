@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
+import { fireEvent, screen, within } from '@testing-library/react';
+import { RouterProvider, createMemoryRouter, useLocation } from 'react-router';
 import userEvent from '@testing-library/user-event';
 import { initialRoomState } from '@/state/roomReducer';
 import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
@@ -19,15 +19,14 @@ vi.mock('@/shared/PageHeader', () => ({
 }));
 vi.mock('@/features/settings/PrivacyTab', () => ({ PrivacyTab: () => <p>lista de bloqueados</p> }));
 
+// A real (memory) data router, not just MemoryRouter/<Routes> — ProfileSettings
+// calls useBlocker for the unsaved-changes guard, which only works with one.
 function renderSettings(overrides: Partial<RoomContextValue> = {}, path = '/app/settings/profile') {
-  return renderWithRoom(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/app/settings/:tab?" element={<SettingsPage onOpenProfile={vi.fn()} />} />
-      </Routes>
-    </MemoryRouter>,
-    overrides,
+  const router = createMemoryRouter(
+    [{ path: '/app/settings/:tab?', element: <SettingsPage onOpenProfile={vi.fn()} /> }],
+    { initialEntries: [path] },
   );
+  return { ...renderWithRoom(<RouterProvider router={router} />, overrides), router };
 }
 
 vi.mock('@/features/settings/ImageCropDialog', () => ({
@@ -233,10 +232,34 @@ describe('SettingsPage — perfil', () => {
     const state = { ...initialRoomState, me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana' } };
     renderSettings({ state, updateProfile });
 
+    await user.type(screen.getByLabelText('Bio'), 'edição pendente');
     await user.click(screen.getByRole('button', { name: 'Salvar perfil' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Você está enviando rápido demais.');
     expect(screen.queryByRole('button', { name: 'Perfil salvo' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Salvar perfil' })).toBeEnabled();
+  });
+
+  it('sem edicoes, a barra de salvar fica escondida', () => {
+    const state = { ...initialRoomState, me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana' } };
+    renderSettings({ state });
+    expect(screen.queryByRole('button', { name: 'Salvar perfil' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Descartar' })).not.toBeInTheDocument();
+  });
+
+  it('descartar volta os campos aos ultimos valores confirmados e esconde a barra', async () => {
+    const user = userEvent.setup();
+    const state = {
+      ...initialRoomState,
+      me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana', bio: 'bio original' },
+    };
+    renderSettings({ state });
+
+    const bio = screen.getByLabelText('Bio');
+    await user.type(bio, ' e mais um pedaço');
+    await user.click(screen.getByRole('button', { name: 'Descartar' }));
+
+    expect(bio).toHaveValue('bio original');
+    expect(screen.queryByRole('button', { name: 'Salvar perfil' })).not.toBeInTheDocument();
   });
 });
 
@@ -252,15 +275,11 @@ function Where() {
 }
 
 function renderRouted(overrides: Partial<RoomContextValue> = {}, path = '/app/settings/profile') {
-  return renderWithRoom(
-    <MemoryRouter initialEntries={[path]}>
-      <Where />
-      <Routes>
-        <Route path="/app/settings/:tab?" element={<SettingsPage onOpenProfile={vi.fn()} />} />
-      </Routes>
-    </MemoryRouter>,
-    overrides,
+  const router = createMemoryRouter(
+    [{ path: '/app/settings/:tab?', element: <><Where /><SettingsPage onOpenProfile={vi.fn()} /></> }],
+    { initialEntries: [path] },
   );
+  return { ...renderWithRoom(<RouterProvider router={router} />, overrides), router };
 }
 
 describe('SettingsPage — navegacao por categorias', () => {
@@ -308,8 +327,10 @@ describe('SettingsPage — navegacao por categorias', () => {
     expect(screen.getByText('lista de bloqueados')).toBeInTheDocument();
   });
 
-  it('o botao de salvar fica junto do cartao, no mesmo formulario, sem painel lateral', () => {
+  it('o botao de salvar fica junto do cartao, no mesmo formulario, sem painel lateral', async () => {
+    const user = userEvent.setup();
     renderSettings({ state: userState });
+    await user.type(screen.getByLabelText('Bio'), 'edição pendente');
     const form = screen.getByRole('button', { name: 'Salvar perfil' }).closest('form');
     expect(form).not.toBeNull();
     expect(form!.contains(screen.getByLabelText('Nome de exibição'))).toBe(true);
@@ -368,5 +389,58 @@ describe('SettingsPage — modo compacto (indice e detalhe)', () => {
   it('o indice nao lista administracao para quem nao e admin', () => {
     renderRouted({ state: userState }, '/app/settings');
     expect(screen.queryByRole('link', { name: 'Administração' })).not.toBeInTheDocument();
+  });
+});
+
+describe('SettingsPage — bloqueio de navegacao com rascunho de perfil pendente', () => {
+  const userState = { ...initialRoomState, me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana', bio: 'bio original' } };
+
+  beforeEach(() => { mockMode = 'wide'; });
+  afterEach(() => { mockMode = 'wide'; });
+
+  it('trocar de categoria com rascunho sujo abre o dialogo; continuar editando mantem o rascunho', async () => {
+    const user = userEvent.setup();
+    renderSettings({ state: userState });
+    await user.type(screen.getByLabelText('Bio'), ' e mais');
+    await user.click(screen.getByRole('link', { name: 'Minha conta' }));
+
+    expect(await screen.findByText('Alterações não salvas')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Continuar editando' }));
+    expect(screen.queryByText('Alterações não salvas')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Bio')).toHaveValue('bio original e mais');
+  });
+
+  it('descartar e sair joga fora o rascunho e completa a navegacao', async () => {
+    const user = userEvent.setup();
+    renderSettings({ state: userState });
+    await user.type(screen.getByLabelText('Bio'), ' e mais');
+    await user.click(screen.getByRole('link', { name: 'Minha conta' }));
+    await screen.findByText('Alterações não salvas');
+
+    await user.click(screen.getByRole('button', { name: 'Descartar e sair' }));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Minha conta' })).toBeInTheDocument();
+  });
+
+  it('salvar e sair so navega apos confirmar; um erro mantem o dialogo aberto na mesma pagina', async () => {
+    const user = userEvent.setup();
+    const updateProfile = vi.fn().mockRejectedValue(new ProfileSaveRefused('rate_limited', 'Você está enviando rápido demais.'));
+    renderSettings({ state: userState, updateProfile });
+    await user.type(screen.getByLabelText('Bio'), ' e mais');
+    await user.click(screen.getByRole('link', { name: 'Minha conta' }));
+    await screen.findByText('Alterações não salvas');
+
+    await user.click(screen.getByRole('button', { name: 'Salvar e sair' }));
+    const dialog = screen.getByRole('dialog');
+    expect(await within(dialog).findByText('Você está enviando rápido demais.')).toBeInTheDocument();
+    expect(screen.getByText('Alterações não salvas')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Minha conta' })).not.toBeInTheDocument();
+  });
+
+  it('sem rascunho sujo, trocar de categoria e instantaneo, sem dialogo', async () => {
+    const user = userEvent.setup();
+    renderSettings({ state: userState });
+    await user.click(screen.getByRole('link', { name: 'Minha conta' }));
+    expect(screen.queryByText('Alterações não salvas')).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 2, name: 'Minha conta' })).toBeInTheDocument();
   });
 });

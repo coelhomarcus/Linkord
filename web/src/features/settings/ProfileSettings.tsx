@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import type { Area } from 'react-easy-crop';
 import { Check } from 'lucide-react';
+import { useBlocker } from 'react-router';
 import { ImageCropDialog } from './ImageCropDialog';
 import { ImageUrlDialog } from '@/shared/ImageUrlDialog';
 import { ProfileCard } from '@/features/profile/ProfileCard';
@@ -10,9 +11,11 @@ import { DEFAULT_AVATAR_COLOR, normalizeAvatarColor } from '@/shared/Avatar';
 import { BANNER_ASPECT_RATIO } from '@/features/profile/profileLinks';
 import { UploadProgressModal } from '@/shared/UploadProgressModal';
 import { formatMB } from '@/shared/lib/formatBytes';
-import { AVATAR_MIME_TYPES, MAX_AVATAR_BYTES, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '@/shared/types/protocol';
+import { AVATAR_MIME_TYPES, MAX_AVATAR_BYTES } from '@/shared/types/protocol';
 import { Button } from '@/shared/ui/primitives/button';
 import { describeProfileSaveError } from '@/features/profile/useProfileUpdate';
+import { useProfileDraft, normalizeProfileDraftFields } from './useProfileDraft';
+import { UnsavedProfileChangesDialog } from './UnsavedProfileChangesDialog';
 
 type ProfileCropTarget =
   | { field: 'avatar' | 'banner'; kind: 'file'; file: File; src: string }
@@ -30,21 +33,14 @@ export function ProfileSettings() {
   const { state, updateProfile, uploadProfileImage, removeProfileImage } = useRoom();
   const [avatar, setAvatar] = useState(state.me.avatar);
   const [avatarPoster, setAvatarPoster] = useState(state.me.avatarPoster);
-  const [avatarColor, setAvatarColor] = useState(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
-  const [displayName, setDisplayName] = useState(state.me.displayName);
   const [banner, setBanner] = useState(state.me.banner);
   const [bannerPoster, setBannerPoster] = useState(state.me.bannerPoster);
-  const [bio, setBio] = useState(state.me.bio);
-  const [profileLinks, setProfileLinks] = useState<string[]>(state.me.profileLinks.length ? state.me.profileLinks : ['']);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [bannerUploadProgress, setBannerUploadProgress] = useState(0);
   const [bannerError, setBannerError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [profileSaved, setProfileSaved] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
   const [cropTarget, setCropTarget] = useState<ProfileCropTarget | null>(null);
@@ -56,13 +52,29 @@ export function ProfileSettings() {
   // client-side progress stays indeterminate).
   const [activeUpload, setActiveUpload] = useState<{ field: 'avatar' | 'banner'; kind: 'file' | 'url' } | null>(null);
 
+  // Avatar/banner apply immediately (E2) and never join this draft — only
+  // name/color/bio/links go through baseline/draft/saveState (plano
+  // §9.2). profileLinksKey guards against the array's fresh reference on
+  // every socket message (JSON deserializes a new one even with identical
+  // content) turning into a spurious "external change".
+  const profileLinksKey = state.me.profileLinks.join('␟');
+  const baseline = useMemo(() => ({
+    displayName: state.me.displayName,
+    avatarColor: normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR,
+    bio: state.me.bio,
+    profileLinks: state.me.profileLinks.length ? state.me.profileLinks : [''],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [state.me.displayName, state.me.avatarColor, state.me.bio, profileLinksKey]);
 
-  // Kept in THREE separate effects, not one watching every field: a confirmed
-  // avatar upload only changes state.me.avatar/avatarPoster, and must not
-  // reset an in-progress, unsaved edit to displayName/bio/links back to their
-  // last-saved value just because it happened to land at the same time.
-  // (Two tabs open, or a save from elsewhere, still wins over local text —
-  // that conflict is the plano de configurações's draft model, not this one.)
+  const { draft, setField, dirty, saveState, error: saveError, conflict, save, discard, applyIncoming } = useProfileDraft({
+    baseline,
+    save: (fields) => updateProfile({
+      avatar, avatarPoster, banner, bannerPoster,
+      ...normalizeProfileDraftFields(fields),
+    }),
+  });
+  const saving = saveState === 'saving';
+
   useEffect(() => {
     setAvatar(state.me.avatar);
     setAvatarPoster(state.me.avatarPoster);
@@ -71,65 +83,55 @@ export function ProfileSettings() {
     setBanner(state.me.banner);
     setBannerPoster(state.me.bannerPoster);
   }, [state.me.banner, state.me.bannerPoster]);
-  // profileLinks arrives fresh off the wire on EVERY confirmed profile change
-  // (JSON deserializes a new array reference even when the content is
-  // identical) — an image-only confirmation would otherwise still trip this
-  // effect on that reference alone and wipe an unsaved text edit. Comparing
-  // by a joined string instead of the array itself makes the dependency
-  // reflect the actual content.
-  const profileLinksKey = state.me.profileLinks.join('␟');
-  useEffect(() => {
-    setAvatarColor(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
-    setDisplayName(state.me.displayName);
-    setBio(state.me.bio);
-    setProfileLinks(state.me.profileLinks.length ? state.me.profileLinks : ['']);
-    // NOT resetting `profileSaved` here: this effect also runs right after
-    // OUR OWN save is confirmed (state.me just changed to match what we
-    // sent), and would otherwise immediately clear the "Perfil salvo"
-    // confirmation `handleProfileSubmit` just set. `profileSaved` is driven
-    // exclusively by that handler and its own auto-clear timeout below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.me.avatarColor, state.me.displayName, state.me.bio, profileLinksKey]);
 
+  const [justSaved, setJustSaved] = useState(false);
   useEffect(() => {
-    if (!profileSaved) return;
-    const timeout = window.setTimeout(() => setProfileSaved(false), 2200);
+    if (!justSaved) return;
+    const timeout = window.setTimeout(() => setJustSaved(false), 2200);
     return () => window.clearTimeout(timeout);
-  }, [profileSaved]);
+  }, [justSaved]);
 
-
-  function profileLinksForSubmit(): string[] {
-    return profileLinks.map((link) => link.trim()).filter(Boolean);
+  async function handleSave() {
+    try {
+      await save();
+      setJustSaved(true);
+    } catch {
+      // surfaced via `saveError` below — nothing else to do here
+    }
   }
 
-  async function handleProfileSubmit(e: FormEvent) {
+  function handleFormSubmit(e: FormEvent) {
     e.preventDefault();
     if (saving) return;
-    setSaveError(null);
-    setSaving(true);
+    void handleSave();
+  }
+
+  // Leaving the Profile category (another settings tab, another page, the
+  // browser's back/forward) with a dirty draft opens the 3-way prompt
+  // instead of silently discarding it. Scoped to a real page change, not an
+  // in-page hash jump (e.g. scrolling to a section keeps the same pathname).
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty && currentLocation.pathname !== nextLocation.pathname);
+
+  async function handleSaveAndLeave() {
     try {
-      await updateProfile({ avatar, avatarPoster, avatarColor, displayName, banner, bannerPoster, bio, profileLinks: profileLinksForSubmit() });
-      setProfileSaved(true);
-    } catch (err) {
-      setSaveError(describeProfileSaveError(err));
-    } finally {
-      setSaving(false);
+      await save();
+      blocker.proceed?.();
+    } catch {
+      // dialog stays open, `saveError` shows why
     }
   }
 
   function updateProfileLink(index: number, value: string) {
-    setProfileLinks((prev) => prev.map((link, i) => (i === index ? value.slice(0, MAX_PROFILE_LINK_LEN) : link)));
+    setField('profileLinks', draft.profileLinks.map((link, i) => (i === index ? value : link)));
   }
 
   function addProfileLink() {
-    setProfileLinks((prev) => (prev.length >= MAX_PROFILE_LINKS ? prev : [...prev, '']));
+    setField('profileLinks', [...draft.profileLinks, '']);
   }
 
   function removeProfileLink(index: number) {
-    setProfileLinks((prev) => {
-      const next = prev.filter((_, i) => i !== index);
-      return next.length ? next : [''];
-    });
+    const next = draft.profileLinks.filter((_, i) => i !== index);
+    setField('profileLinks', next.length ? next : ['']);
   }
 
   function handleFilePicked(field: 'avatar' | 'banner', e: ChangeEvent<HTMLInputElement>) {
@@ -177,10 +179,10 @@ export function ProfileSettings() {
       const body = target.kind === 'file'
         ? target.file
         : new Blob([JSON.stringify({ url: target.url })], { type: 'application/json' });
-      // Sends only avatar/avatarPoster (or banner/bannerPoster) — never
-      // displayName/bio/color/links, however they currently stand in this
-      // form. The preview below updates once the server confirms it (via
-      // state.me, picked up by the sync effect above), not from this call.
+      // Sends only avatar/avatarPoster (or banner/bannerPoster) — never the
+      // profile draft, whatever it currently holds. The preview below
+      // updates once the server confirms it (via state.me, picked up by the
+      // sync effect above), not from this call.
       await uploadProfileImage(field, body, crop, setProgress);
     } catch (err) {
       setError(describeProfileSaveError(err, `Falha ao enviar ${field === 'avatar' ? 'a foto' : 'o banner'}.`));
@@ -200,16 +202,26 @@ export function ProfileSettings() {
     }
   }
 
+  const showBar = dirty || saveState !== 'idle' || justSaved;
+  // justSaved wins even over a `dirty` that's only true because this test/
+  // fixture render never round-trips state.me back through the reducer —
+  // in the real app the baseline catches up in the same tick save() resolves.
+  const barStatusText = saveState === 'error' ? saveError
+    : saving ? 'Salvando…'
+    : justSaved ? 'Perfil salvo.'
+    : dirty ? 'Você tem alterações não salvas.'
+    : '';
+
   return (
     <div className="flex flex-col gap-4">
-      <form onSubmit={handleProfileSubmit} className="flex max-w-120 flex-col gap-3">
+      <form onSubmit={handleFormSubmit} className="flex max-w-120 flex-col gap-3">
         <ProfileCard
           user={{
             id: state.me.id || 'preview',
-            displayName: displayName || state.me.name,
+            displayName: draft.displayName || state.me.name,
             username: state.me.name,
-            avatar, avatarColor, banner, bio,
-            profileLinks: profileLinksForSubmit(),
+            avatar, avatarColor: draft.avatarColor, banner, bio: draft.bio,
+            profileLinks: normalizeProfileDraftFields(draft).profileLinks,
             role: state.me.role,
           }}
           online
@@ -221,13 +233,14 @@ export function ProfileSettings() {
           onBannerUploadUrl={() => setUrlDialogField('banner')}
           onBannerRemove={() => void handleRemoveImage('banner')}
           bannerUploading={uploadingBanner}
-          onDisplayNameChange={setDisplayName}
-          onBioChange={setBio}
-          onAvatarColorChange={setAvatarColor}
-          editableLinks={profileLinks}
+          onDisplayNameChange={(value) => setField('displayName', value)}
+          onBioChange={(value) => setField('bio', value)}
+          onAvatarColorChange={(value) => setField('avatarColor', value)}
+          editableLinks={draft.profileLinks}
           onLinkChange={updateProfileLink}
           onAddLink={addProfileLink}
           onRemoveLink={removeProfileLink}
+          fieldsDisabled={saving}
         />
         <input
           ref={avatarFileInputRef}
@@ -251,12 +264,44 @@ export function ProfileSettings() {
         <p className="text-caption text-text-muted">
           PNG, JPEG, GIF ou WEBP, até {formatMB(MAX_AVATAR_BYTES)}. Foto e banner valem assim que você confirma o recorte; nome, cor, bio e links só depois de salvar.
         </p>
-        {saveError && <p role="alert" className="text-label text-red">{saveError}</p>}
-        <Button type="submit" size="sm" className="w-fit" disabled={saving}>
-          {profileSaved && !saving && <Check size={15} />}
-          <span>{saving ? 'Salvando…' : profileSaved ? 'Perfil salvo' : 'Salvar perfil'}</span>
-        </Button>
+
+        {conflict && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-strong bg-bg-tertiary px-4 py-3 text-label text-text-secondary">
+            <span>Este perfil foi atualizado em outro lugar enquanto você editava.</span>
+            <Button type="button" variant="ghost" size="sm" onClick={applyIncoming}>
+              <span>Usar valores salvos</span>
+            </Button>
+          </div>
+        )}
+
+        {showBar && (
+          <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-strong bg-bg-modal/95 px-4 py-3 backdrop-blur @[520px]:-mx-6 @[520px]:px-6 @[960px]:-mx-8 @[960px]:px-8">
+            <p role={saveState === 'error' ? 'alert' : undefined} className={saveState === 'error' ? 'text-label text-red' : 'text-label text-text-muted'}>
+              {barStatusText}
+            </p>
+            <div className="flex gap-2">
+              {dirty && !justSaved && (
+                <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={discard}>
+                  <span>Descartar</span>
+                </Button>
+              )}
+              <Button type="submit" size="sm" disabled={saving}>
+                {justSaved && <Check size={15} />}
+                <span>{saving ? 'Salvando…' : justSaved ? 'Perfil salvo' : 'Salvar perfil'}</span>
+              </Button>
+            </div>
+          </div>
+        )}
       </form>
+
+      <UnsavedProfileChangesDialog
+        open={blocker.state === 'blocked'}
+        saving={saving}
+        error={saveError}
+        onContinueEditing={() => blocker.reset?.()}
+        onDiscardAndLeave={() => { discard(); blocker.proceed?.(); }}
+        onSaveAndLeave={() => void handleSaveAndLeave()}
+      />
 
       <ImageCropDialog
         open={!!cropTarget}
