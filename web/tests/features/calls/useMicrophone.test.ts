@@ -15,7 +15,7 @@ function fakeTrack() {
     setProcessor: vi.fn(async () => undefined),
     getProcessor: vi.fn((): { name: string } | undefined => undefined),
     stopProcessor: vi.fn(async () => undefined),
-    applyConstraints: vi.fn(async () => undefined),
+    applyConstraints: vi.fn(async (_constraints?: { noiseSuppression: boolean }) => undefined),
   };
 }
 
@@ -101,9 +101,57 @@ describe('useMicrophone — supressao de ruido (RNNoise)', () => {
     const room = fakeRoom(vi.fn(async () => undefined), track);
     const { result } = renderHook(() => useMicrophone(room, vi.fn()));
 
-    await result.current.setNoiseSuppressionEnabled(true);
+    const outcome = await result.current.setNoiseSuppressionEnabled(true);
 
     expect(track.applyConstraints).not.toHaveBeenCalled();
+    expect(outcome).toBe('failed');
+  });
+
+  it('processor anexa mas a constraint nativa falha: para o processor em vez de deixar as duas ligadas', async () => {
+    const track = fakeTrack();
+    // setProcessor "succeeding" means the track is now really attached —
+    // getProcessor has to reflect that for the rest of this test to mean
+    // anything (fakeTrack's default always returns undefined otherwise).
+    track.setProcessor.mockImplementation(async () => {
+      track.getProcessor.mockReturnValue({ name: 'rnnoise-noise-suppression' });
+    });
+    track.applyConstraints.mockRejectedValueOnce(new Error('constraint recusada'));
+    const room = fakeRoom(vi.fn(async () => undefined), track);
+    const { result } = renderHook(() => useMicrophone(room, vi.fn()));
+
+    const outcome = await result.current.setNoiseSuppressionEnabled(true);
+
+    expect(track.setProcessor).toHaveBeenCalledTimes(1);
+    expect(track.stopProcessor).toHaveBeenCalledTimes(1);
+    expect(outcome).toBe('failed');
+  });
+
+  it('sem track ativo (fora de chamada), so avisa que nao ha nada pra aplicar agora', async () => {
+    const room = fakeRoom(vi.fn(async () => undefined), undefined);
+    const { result } = renderHook(() => useMicrophone(room, vi.fn()));
+
+    const outcome = await result.current.setNoiseSuppressionEnabled(true);
+
+    expect(outcome).toBe('no-active-track');
+  });
+
+  it('duas trocas seguidas aplicam em ordem, nao em paralelo', async () => {
+    const track = fakeTrack();
+    const applyOrder: string[] = [];
+    track.applyConstraints.mockImplementation(async (constraints) => {
+      applyOrder.push(constraints?.noiseSuppression ? 'native-on' : 'native-off');
+    });
+    const room = fakeRoom(vi.fn(async () => undefined), track);
+    const { result } = renderHook(() => useMicrophone(room, vi.fn()));
+
+    await Promise.all([
+      result.current.setNoiseSuppressionEnabled(true),
+      result.current.setNoiseSuppressionEnabled(false),
+    ]);
+
+    // whichever order they were fired in, they must not interleave —
+    // the second call's whole apply only starts once the first is done
+    expect(applyOrder).toEqual(['native-off', 'native-on']);
   });
 
   it('ao desligar, para o processor (se houver) e religa a supressao nativa', async () => {

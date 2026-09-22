@@ -6,6 +6,7 @@ import { loadCompressImages, saveCompressImages } from './useCompressImagesPrefe
 import { loadNoiseSuppression, saveNoiseSuppression } from './useNoiseSuppressionPreference';
 import { setVolume } from '@/shared/sounds';
 import { setNotificationsModuleEnabled, loadNotificationsEnabled, saveNotificationsEnabled } from '@/shared/notifications';
+import type { NoiseSuppressionResult } from '@/features/calls/useMicrophone';
 
 /** The 7 user-facing toggles/sliders under Ajustes — each backed by its own
  * `features/settings/useXPreference.ts` localStorage pair, wired up here
@@ -15,7 +16,7 @@ import { setNotificationsModuleEnabled, loadNotificationsEnabled, saveNotificati
  * state themselves. `applyNoiseSuppression` comes from `useMicrophone` —
  * flipping the toggle has to reach the actual LiveKit audio track, not just
  * persist a preference. */
-export function useRoomSettings(applyNoiseSuppression: (enabled: boolean) => Promise<void>) {
+export function useRoomSettings(applyNoiseSuppression: (enabled: boolean) => Promise<NoiseSuppressionResult>) {
   const [showStats, setShowStatsState] = useState(loadShowStats);
   const setShowStats = useCallback((value: boolean) => {
     setShowStatsState(value);
@@ -55,10 +56,27 @@ export function useRoomSettings(applyNoiseSuppression: (enabled: boolean) => Pro
   }, []);
 
   const [noiseSuppressionEnabled, setNoiseSuppressionEnabledState] = useState(loadNoiseSuppression);
-  const setNoiseSuppressionEnabled = useCallback((value: boolean) => {
-    setNoiseSuppressionEnabledState(value);
-    saveNoiseSuppression(value);
-    applyNoiseSuppression(value);
+  const [noiseSuppressionPending, setNoiseSuppressionPending] = useState(false);
+  const [noiseSuppressionError, setNoiseSuppressionError] = useState<string | null>(null);
+  // Applies first, only marks the switch (and persists) once it's actually
+  // confirmed — a failed apply must not leave the switch claiming success
+  // it never had.
+  const setNoiseSuppressionEnabled = useCallback(async (value: boolean) => {
+    setNoiseSuppressionError(null);
+    setNoiseSuppressionPending(true);
+    try {
+      const result = await applyNoiseSuppression(value);
+      if (result === 'failed') {
+        setNoiseSuppressionError(value
+          ? 'Não foi possível ativar a supressão de ruído agora.'
+          : 'Não foi possível desativar a supressão de ruído agora.');
+        return;
+      }
+      setNoiseSuppressionEnabledState(value);
+      saveNoiseSuppression(value);
+    } finally {
+      setNoiseSuppressionPending(false);
+    }
   }, [applyNoiseSuppression]);
 
   useEffect(() => {
@@ -76,6 +94,6 @@ export function useRoomSettings(applyNoiseSuppression: (enabled: boolean) => Pro
     hideAudioOnlyTiles, setHideAudioOnlyTiles,
     showTileBanners, setShowTileBanners,
     compressImagesDefault, setCompressImagesDefault,
-    noiseSuppressionEnabled, setNoiseSuppressionEnabled,
+    noiseSuppressionEnabled, setNoiseSuppressionEnabled, noiseSuppressionPending, noiseSuppressionError,
   };
 }

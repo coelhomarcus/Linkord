@@ -355,6 +355,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         showTileBanners: roomSettings.showTileBanners, setShowTileBanners: roomSettings.setShowTileBanners,
         compressImagesDefault: roomSettings.compressImagesDefault, setCompressImagesDefault: roomSettings.setCompressImagesDefault,
         noiseSuppressionEnabled: roomSettings.noiseSuppressionEnabled, setNoiseSuppressionEnabled: roomSettings.setNoiseSuppressionEnabled,
+        noiseSuppressionPending: roomSettings.noiseSuppressionPending, noiseSuppressionError: roomSettings.noiseSuppressionError,
         conversations: conversationsList.conversations, activeConversationId: conversationsList.activeConversationId,
         openConversation, openDirect: conversationsList.openDirect, closeConversation, pinConversation: conversationsList.pinConversation,
         deleteGroup: conversationsList.deleteGroup,

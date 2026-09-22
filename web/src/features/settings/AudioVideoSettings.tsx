@@ -4,7 +4,9 @@ import { DevicePicker } from './DevicePicker';
 import { SettingsRow, SettingsSection, SettingsSections } from './SettingsLayout';
 
 export function AudioVideoSettings() {
-  const { livekitRoom, noiseSuppressionEnabled, setNoiseSuppressionEnabled } = useRoom();
+  const {
+    livekitRoom, noiseSuppressionEnabled, setNoiseSuppressionEnabled, noiseSuppressionPending, noiseSuppressionError,
+  } = useRoom();
 
   return (
     <SettingsSections>
@@ -14,8 +16,14 @@ export function AudioVideoSettings() {
 
       <SettingsSection id="voice-processing" title="Processamento de voz">
         <SettingsRow label="Supressão de ruído" description="Reduz ruído de fundo (teclado, ventilador, trânsito) no seu microfone.">
-          <Switch checked={noiseSuppressionEnabled} onCheckedChange={setNoiseSuppressionEnabled} aria-label="Supressão de ruído" />
+          <Switch
+            checked={noiseSuppressionEnabled}
+            disabled={noiseSuppressionPending}
+            onCheckedChange={(value) => void setNoiseSuppressionEnabled(value)}
+            aria-label="Supressão de ruído"
+          />
         </SettingsRow>
+        {noiseSuppressionError && <p role="alert" className="text-label text-red">{noiseSuppressionError}</p>}
       </SettingsSection>
 
       <SettingsSection id="speaker" title="Saída de áudio">
