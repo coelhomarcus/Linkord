@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, PhoneCall } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
-import { conversationTitle } from '../conversations/conversationUtils';
 import { useCallTiles } from './useCallTiles';
 import { Tile } from './Tile';
 import { Button } from '@/shared/ui/primitives/button';
@@ -21,7 +20,7 @@ interface FloatingPipProps {
 }
 
 export function FloatingPip({ allIds, onExpand }: FloatingPipProps) {
-  const { state, conversations, activeCallConversationId, allUsers } = useRoom();
+  const { state } = useRoom();
   const descriptors = useCallTiles(allIds).filter((d) => d.kind !== 'avatar');
   const [index, setIndex] = useState(0);
   const [dragPos, setDragPos] = useState<DragPos | null>(null);
@@ -77,36 +76,10 @@ export function FloatingPip({ allIds, onExpand }: FloatingPipProps) {
     };
   }, [isDragging, onExpand]);
 
-  if (!current) {
-    // Audio-only call (nobody's camera/screen is on) — nothing to preview,
-    // but still leave a fixed, always-clickable way back to the call.
-    if (!allIds.length) return null;
-    const title = conversationTitle(
-      conversations.find((c) => c.id === activeCallConversationId) ?? null,
-      state.me.userId,
-      allUsers
-    );
-    return createPortal(
-      <button
-        type="button"
-        onClick={onExpand}
-        className={cn(
-          'fixed left-4 z-30 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-full border border-strong bg-bg-floating/90 py-2.5 pl-3 pr-4 text-label font-medium text-text-primary shadow-popover backdrop-blur-xl transition-colors hover:bg-bg-hover',
-          // ReconnectBanner takes over this corner's usual bottom-4 slot
-          // while reconnecting — shift up instead of stacking on top of it.
-          state.reconnecting ? 'bottom-20' : 'bottom-4'
-        )}
-      >
-        <span className="relative flex size-2.5 flex-none">
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-green opacity-75" />
-          <span className="relative inline-flex size-2.5 rounded-full bg-green" />
-        </span>
-        <PhoneCall size={15} className="flex-none" />
-        <span className="min-w-0 truncate">{title || 'Chamada'}</span>
-      </button>,
-      document.body
-    );
-  }
+  // Audio-only call (nobody's camera/screen is on) — nothing to preview.
+  // The rail's own green phone icon (AppNavigationRail) is the "in a call"
+  // indicator and way back for this case; a floating pill duplicated it.
+  if (!current) return null;
 
   return createPortal(
     <div

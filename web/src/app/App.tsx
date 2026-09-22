@@ -124,6 +124,13 @@ function Shell() {
     if (!isConversationsPath(window.location.pathname)) navigate(ROUTES.conversation(conversationId));
   }
 
+  // Jump back to the Stage from wherever you wandered off to — used by both
+  // FloatingPip (clicking it) and the rail's own "in a call" indicator.
+  function handleReturnToCall() {
+    setActiveView('call');
+    if (!onConversations) navigate(activeCallConversationId ? ROUTES.conversation(activeCallConversationId) : ROUTES.conversations);
+  }
+
   // The call stage only ever shows on the conversations page. Elsewhere the
   // call keeps running (audio, PiP) — navigating never ends it.
   const showStage = onConversations && activeView === 'call' && !!activeCallConversationId && inCall;
@@ -170,10 +177,10 @@ function Shell() {
       >
         <ReconnectBanner />
         <AccessNotice />
-        <AppNavigationRail onOpenProfile={setProfileUserId} className="hidden md:flex" />
+        <AppNavigationRail onOpenProfile={setProfileUserId} onReturnToCall={handleReturnToCall} className="hidden md:flex" />
         <ConversationSidebar
           onOpenPalette={() => setPaletteOpen(true)}
-          mobileRail={<AppNavigationRail onOpenProfile={setProfileUserId} className="border-r border-white/10" />}
+          mobileRail={<AppNavigationRail onOpenProfile={setProfileUserId} onReturnToCall={handleReturnToCall} className="border-r border-white/10" />}
         />
         <AnimatedSidebarInset className="relative min-h-0 overflow-hidden bg-[rgb(10_10_12)] md:my-2 md:mr-2 md:ml-2 md:rounded-2xl md:border md:border-white/10">
           <Routes>
@@ -207,10 +214,7 @@ function Shell() {
           {inCall && !showStage && (
             <FloatingPip
               allIds={callIds}
-              onExpand={() => {
-                setActiveView('call');
-                if (!onConversations) navigate(activeCallConversationId ? ROUTES.conversation(activeCallConversationId) : ROUTES.conversations);
-              }}
+              onExpand={handleReturnToCall}
             />
           )}
           <ReactionsOverlay />

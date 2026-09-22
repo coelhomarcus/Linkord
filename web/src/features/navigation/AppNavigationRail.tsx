@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
-import { PanelLeftOpen, Settings, UsersRound } from 'lucide-react';
+import { PanelLeftOpen, PhoneCall, Settings, UsersRound } from 'lucide-react';
 import { Avatar } from '@/shared/Avatar';
 import { useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/primitives/tooltip';
@@ -9,6 +9,7 @@ import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
 import { useFriends } from '@/features/friends/FriendsContext';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
+import { conversationTitle } from '@/features/conversations/conversationUtils';
 
 const itemClass = 'relative grid size-11 place-items-center rounded-xl outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring';
 
@@ -55,8 +56,14 @@ function RailLink({ to, label, active, badge, onNavigate, children }: {
  * conversation (search, creating a group, the list) stays in the conversations
  * sidebar beside it. On a narrow screen the same rail is drawn inside the
  * navigation sheet, so nothing here is reachable only on desktop. */
-export function AppNavigationRail({ onOpenProfile, className }: { onOpenProfile: (userId: string) => void; className?: string }) {
-  const { state } = useRoom();
+export function AppNavigationRail({ onOpenProfile, onReturnToCall, className }: {
+  onOpenProfile: (userId: string) => void;
+  /** Present whenever a call is running, regardless of which page is open —
+   * same "jump back to the Stage" action FloatingPip's own onExpand does. */
+  onReturnToCall?: () => void;
+  className?: string;
+}) {
+  const { state, conversations, activeCallConversationId, allUsers } = useRoom();
   const { pendingIncomingCount } = useFriends();
   const { pathname } = useLocation();
   const { isMobile, isOverlay, open: listOpen, openMobile, setOpenMobile, toggleSidebar } = useAnimatedSidebar();
@@ -67,6 +74,11 @@ export function AppNavigationRail({ onOpenProfile, className }: { onOpenProfile:
   const listExpanded = isOverlay ? openMobile : listOpen;
   const onSettings = pathname.startsWith(ROUTES.settings) || pathname.startsWith('/admin');
   const friendsLabel = pendingIncomingCount > 0 ? `Amigos, ${pendingIncomingCount} aguardando resposta` : 'Amigos';
+  const inCall = activeCallConversationId !== null;
+  const callTitle = inCall
+    ? conversationTitle(conversations.find((c) => c.id === activeCallConversationId) ?? null, state.me.userId, allUsers)
+    : '';
+  const returnToCallLabel = callTitle ? `Voltar para ${callTitle}` : 'Voltar para a chamada';
 
   return (
     <nav aria-label="Navegação principal" className={cn('flex w-16 flex-none flex-col items-center gap-1.5 bg-bg-primary py-3', className)}>
@@ -77,6 +89,23 @@ export function AppNavigationRail({ onOpenProfile, className }: { onOpenProfile:
         <UsersRound size={20} aria-hidden />
       </RailLink>
       <NotificationBell collapsed onNavigate={afterNavigate} />
+
+      {inCall && (
+        <Tooltip>
+          <TooltipTrigger
+            onClick={() => { onReturnToCall?.(); afterNavigate(); }}
+            aria-label={returnToCallLabel}
+            className={cn(itemClass, 'text-green hover:bg-green/12')}
+          >
+            <PhoneCall size={20} aria-hidden />
+            <span aria-hidden className="absolute -right-0.5 -top-0.5 flex size-2.5">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-green opacity-75" />
+              <span className="relative inline-flex size-2.5 rounded-full bg-green" />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="right">{returnToCallLabel}</TooltipContent>
+        </Tooltip>
+      )}
 
       <div className="flex-1" />
 

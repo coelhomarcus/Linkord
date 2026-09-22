@@ -27,19 +27,20 @@ function setViewport(width: number) {
 }
 const originalMatchMedia = window.matchMedia;
 
-function renderRail(path = '/app/conversations', open = true, openMobile = false) {
+function renderRail(path = '/app/conversations', open = true, openMobile = false, roomOverrides: Partial<import('@/state/RoomContext').RoomContextValue> = {}) {
   const onOpenProfile = vi.fn();
   const onOpenChange = vi.fn();
   const onOpenMobileChange = vi.fn();
+  const onReturnToCall = vi.fn();
   renderSocial(
     <TooltipProvider>
       <AnimatedSidebarProvider open={open} onOpenChange={onOpenChange} openMobile={openMobile} onOpenMobileChange={onOpenMobileChange}>
-        <AppNavigationRail onOpenProfile={onOpenProfile} />
+        <AppNavigationRail onOpenProfile={onOpenProfile} onReturnToCall={onReturnToCall} />
       </AnimatedSidebarProvider>
     </TooltipProvider>,
-    { room: { state: me }, path },
+    { room: { state: me, ...roomOverrides }, path },
   );
-  return { onOpenProfile, onOpenChange, onOpenMobileChange };
+  return { onOpenProfile, onOpenChange, onOpenMobileChange, onReturnToCall };
 }
 
 afterEach(() => { window.matchMedia = originalMatchMedia; });
@@ -98,6 +99,23 @@ describe('AppNavigationRail', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await userEvent.setup().click(toggle);
     expect(onOpenChange).toHaveBeenCalledWith(true);
+  });
+
+  it('sem chamada ativa, sem icone de voltar pra chamada', () => {
+    renderRail();
+    expect(screen.queryByRole('button', { name: /Voltar para/ })).not.toBeInTheDocument();
+  });
+
+  it('com chamada ativa, o icone verde aparece com o titulo da conversa e chama onReturnToCall', async () => {
+    const group = {
+      id: 'conv-1', type: 'group' as const, title: 'os xerecas', avatar: '', createdBy: 'me', memberIds: ['me'],
+      lastMessageAt: null, createdAt: 0, updatedAt: 0, pinnedAt: null, myRole: 'owner' as const, ownerId: 'me', memberCount: 1,
+    };
+    const { onReturnToCall } = renderRail('/app/conversations', true, false, { activeCallConversationId: 'conv-1', conversations: [group] });
+    const button = screen.getByRole('button', { name: 'Voltar para os xerecas' });
+    expect(button).toBeInTheDocument();
+    await userEvent.setup().click(button);
+    expect(onReturnToCall).toHaveBeenCalledTimes(1);
   });
 });
 
