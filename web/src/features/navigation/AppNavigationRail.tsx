@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
-import { PanelLeftOpen, PhoneCall, Settings, UsersRound } from 'lucide-react';
+import { PanelLeftOpen, PhoneCall, Settings, ShieldCheck, UsersRound } from 'lucide-react';
 import { Avatar } from '@/shared/Avatar';
 import { useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/primitives/tooltip';
@@ -72,7 +72,9 @@ export function AppNavigationRail({ onOpenProfile, onReturnToCall, className }: 
   // (on a phone the rail already sits inside that drawer, so the button would only close it)
   const showListToggle = isOverlay ? !isMobile : !listOpen;
   const listExpanded = isOverlay ? openMobile : listOpen;
-  const onSettings = pathname.startsWith(ROUTES.settings) || pathname.startsWith('/admin');
+  const onSettings = pathname.startsWith(ROUTES.settings);
+  const onAdmin = pathname.startsWith('/admin');
+  const isAdmin = state.me.role === 'admin';
   const friendsLabel = pendingIncomingCount > 0 ? `Amigos, ${pendingIncomingCount} aguardando resposta` : 'Amigos';
   const inCall = activeCallConversationId !== null;
   const callTitle = inCall
@@ -121,6 +123,11 @@ export function AppNavigationRail({ onOpenProfile, onReturnToCall, className }: 
           </TooltipTrigger>
           <TooltipContent side="right">Mostrar lista de conversas</TooltipContent>
         </Tooltip>
+      )}
+      {isAdmin && (
+        <RailLink to={ROUTES.admin} label="Área administrativa" active={onAdmin} onNavigate={afterNavigate}>
+          <ShieldCheck size={20} aria-hidden />
+        </RailLink>
       )}
       <RailLink to={ROUTES.settings} label="Ajustes" active={onSettings} onNavigate={afterNavigate}>
         <Settings size={20} aria-hidden />

@@ -69,11 +69,15 @@ describe('AppNavigationRail', () => {
     ['/app/conversations/abc', 'Conversas'],
     ['/app/friends?tab=pending', 'Amigos'],
     ['/app/settings/av', 'Ajustes'],
-    ['/admin/users', 'Ajustes'],
   ])('em %s so "%s" fica marcado como pagina atual', (path, current) => {
     renderRail(path);
     const marked = screen.getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page').map((link) => link.getAttribute('aria-label'));
     expect(marked).toEqual([current]);
+  });
+
+  it('/admin/users nao marca Ajustes como pagina atual (categorias separadas)', () => {
+    renderRail('/admin/users');
+    expect(screen.getByRole('link', { name: 'Ajustes' })).not.toHaveAttribute('aria-current');
   });
 
   it('o badge de Amigos soma pedidos e convites recebidos e o nome acessivel diz o que conta', async () => {
@@ -116,6 +120,26 @@ describe('AppNavigationRail', () => {
     expect(button).toBeInTheDocument();
     await userEvent.setup().click(button);
     expect(onReturnToCall).toHaveBeenCalledTimes(1);
+  });
+
+  it('sem ser admin, sem atalho de area administrativa', () => {
+    renderRail();
+    expect(screen.queryByRole('link', { name: 'Área administrativa' })).not.toBeInTheDocument();
+  });
+});
+
+describe('AppNavigationRail — admin', () => {
+  const admin = { ...me, me: { ...me.me, role: 'admin' as const } };
+
+  it('admin ve o atalho de area administrativa, indo direto pra /admin/users', () => {
+    renderRail('/app/conversations', true, false, { state: admin });
+    expect(screen.getByRole('link', { name: 'Área administrativa' })).toHaveAttribute('href', '/admin/users');
+  });
+
+  it('em /admin/users, so a Area administrativa fica marcada (nao Ajustes)', () => {
+    renderRail('/admin/users', true, false, { state: admin });
+    const marked = screen.getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page').map((link) => link.getAttribute('aria-label'));
+    expect(marked).toEqual(['Área administrativa']);
   });
 });
 
