@@ -56,6 +56,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const sendWs = useCallback((msg: ClientMessage) => {
     if (socketRef.current?.connected) socketRef.current.emit(msg.t, msg);
   }, []);
+  const isSocketConnected = useCallback(() => !!socketRef.current?.connected, []);
 
   const activeViewRef = useRef<'chat' | 'call'>('chat');
   const notifyActiveView = useCallback((view: 'chat' | 'call') => { activeViewRef.current = view; }, []);
@@ -112,10 +113,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   });
 
   const profileUpdate = useProfileUpdate({
-    dispatch, sendWs, myUserIdRef, setAllUsers: presence.setAllUsers,
-    name: state.me.name, avatar: state.me.avatar, avatarPoster: state.me.avatarPoster, avatarColor: state.me.avatarColor,
-    banner: state.me.banner, bannerPoster: state.me.bannerPoster, bio: state.me.bio,
-    displayName: state.me.displayName, profileLinks: state.me.profileLinks,
+    dispatch, sendWs, myUserIdRef, setAllUsers: presence.setAllUsers, name: state.me.name, isConnected: isSocketConnected,
   });
 
   const tileMenu = useTileMenu();
@@ -284,6 +282,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'storage-usage':
         attachmentsUpload.onStorageUsage(m);
         break;
+      case 'profile-result':
+        profileUpdate.handleProfileResult(m);
+        break;
       case 'error':
         if (m.code === ERROR_CODES.full) {
           disconnectIntentionally();
@@ -313,7 +314,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     }
   }, [
     dispatch, conversationsList, presence, attachmentsUpload, openConversation, callLifecycle,
-    messageReactions, messageSearch, chatMessages, typingIndicator, disconnectIntentionally,
+    messageReactions, messageSearch, chatMessages, typingIndicator, disconnectIntentionally, profileUpdate,
   ]);
 
   useSocketConnection({ socketRef, intentionalCloseRef, sendWs, dispatch, refreshAuth, onMessage: handleServerMessage });
@@ -344,7 +345,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         registerRequestChatView, requestChatView,
         activeCallConversationId: callLifecycle.activeCallConversationId, joinCall: callLifecycle.joinCall, leaveCall: callLifecycle.leaveCall,
         startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted,
-        updateAvatar: profileUpdate.updateAvatar, updateProfile: profileUpdate.updateProfile, uploadProfileImage: profileUpdate.uploadProfileImage,
+        updateProfile: profileUpdate.updateProfile, uploadProfileImage: profileUpdate.uploadProfileImage, removeProfileImage: profileUpdate.removeProfileImage,
         menuTarget: tileMenu.menuTarget, openTileMenu: tileMenu.openTileMenu, closeTileMenu: tileMenu.closeTileMenu,
         reactions: messageReactions.reactions, sendReaction: messageReactions.sendReaction,
         showStats: roomSettings.showStats, setShowStats: roomSettings.setShowStats,

@@ -60,15 +60,16 @@ export interface RoomContextValue {
   stopCamera: () => void;
   activateMic: () => Promise<void>;
   toggleMicMuted: () => Promise<void>;
-  updateAvatar: (avatar: string) => void;
-  updateProfile: (profile: { avatar: string; avatarPoster: string; avatarColor: string; displayName: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[] }) => void;
-  uploadProfileImage: (
-    field: 'avatar' | 'banner',
-    file: Blob,
-    crop: CropRect,
-    onProgress?: (fraction: number) => void,
-    profile?: { avatar?: string; avatarColor?: string; displayName?: string; banner?: string; bio?: string; profileLinks?: string[] }
-  ) => Promise<string>;
+  /** Resolves once the server confirms it persisted the whole form (all 8
+   * fields); rejects with `ProfileSaveRefused`/`ProfileSaveTimeout`/
+   * `ProfileSaveOffline` (see features/profile/useProfileUpdate.ts) otherwise
+   * — a caller must never show "salvo" just because this was called. */
+  updateProfile: (profile: { avatar: string; avatarPoster: string; avatarColor: string; displayName: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[] }) => Promise<unknown>;
+  /** Uploads the file, then persists ONLY that image field — never whatever
+   * else happens to be typed in the profile form right now. */
+  uploadProfileImage: (field: 'avatar' | 'banner', file: Blob, crop: CropRect, onProgress?: (fraction: number) => void) => Promise<string>;
+  /** Same isolation as `uploadProfileImage`, for "remover foto/banner". */
+  removeProfileImage: (field: 'avatar' | 'banner') => Promise<unknown>;
   menuTarget: { key: string; participantId: string; kind: TileKind; rect: AnchorRect } | null;
   openTileMenu: (key: string, participantId: string, kind: TileKind, rect: AnchorRect) => void;
   closeTileMenu: () => boolean;

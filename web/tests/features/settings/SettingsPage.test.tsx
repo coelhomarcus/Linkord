@@ -6,6 +6,7 @@ import { initialRoomState } from '@/state/roomReducer';
 import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
 import type { RoomContextValue } from '@/state/RoomContext';
 import { SettingsPage } from '@/features/settings/SettingsPage';
+import { ProfileSaveRefused } from '@/features/profile/useProfileUpdate';
 
 vi.mock('@/state/AuthContext', () => ({
   useAuth: () => ({ logout: vi.fn() }),
@@ -190,7 +191,7 @@ describe('SettingsPage — perfil', () => {
     expect(screen.queryByRole('menuitem', { name: 'Remover foto' })).not.toBeInTheDocument();
   });
 
-  it('recorta e envia uma nova foto de perfil, aplicando na hora (sem esperar Salvar perfil)', async () => {
+  it('recorta e envia uma nova foto de perfil, sem publicar o resto do rascunho (isolado)', async () => {
     const user = userEvent.setup();
     const uploadProfileImage = vi.fn().mockResolvedValue('/uploads/novo-avatar');
     const state = {
@@ -203,22 +204,39 @@ describe('SettingsPage — perfil', () => {
     await user.upload(screen.getByLabelText('Selecionar foto de perfil'), file);
     await user.click(screen.getByRole('button', { name: 'Confirmar recorte' }));
 
-    expect(uploadProfileImage).toHaveBeenCalledWith('avatar', file, { x: 0, y: 0, width: 10, height: 10 }, expect.any(Function), expect.objectContaining({ avatar: '' }));
+    // no 5th "current draft" argument — an avatar upload can never carry
+    // whatever is currently typed into displayName/bio/color/links
+    expect(uploadProfileImage).toHaveBeenCalledWith('avatar', file, { x: 0, y: 0, width: 10, height: 10 }, expect.any(Function));
+    expect(uploadProfileImage).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.anything());
   });
 
-  it('remove a foto de perfil na hora, sem esperar Salvar perfil', async () => {
+  it('remove a foto de perfil por um pedido isolado (nao pelo updateProfile do formulario)', async () => {
     const user = userEvent.setup();
+    const removeProfileImage = vi.fn().mockResolvedValue({});
     const updateProfile = vi.fn();
     const state = {
       ...initialRoomState,
       me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana', avatar: '/uploads/foto-atual', avatarColor: 'green' },
     };
-    renderSettings({ state, updateProfile });
+    renderSettings({ state, updateProfile, removeProfileImage });
 
     await user.click(screen.getByRole('button', { name: 'Alterar foto de perfil' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Remover foto' }));
 
-    expect(updateProfile).toHaveBeenCalledWith(expect.objectContaining({ avatar: '' }));
+    expect(removeProfileImage).toHaveBeenCalledWith('avatar');
+    expect(updateProfile).not.toHaveBeenCalled();
+  });
+
+  it('erro ao salvar mostra o motivo e nao trava o formulario', async () => {
+    const user = userEvent.setup();
+    const updateProfile = vi.fn().mockRejectedValue(new ProfileSaveRefused('rate_limited', 'Você está enviando rápido demais.'));
+    const state = { ...initialRoomState, me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana' } };
+    renderSettings({ state, updateProfile });
+
+    await user.click(screen.getByRole('button', { name: 'Salvar perfil' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Você está enviando rápido demais.');
+    expect(screen.queryByRole('button', { name: 'Perfil salvo' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Salvar perfil' })).toBeEnabled();
   });
 });
 

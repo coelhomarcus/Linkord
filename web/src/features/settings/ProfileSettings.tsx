@@ -12,6 +12,7 @@ import { UploadProgressModal } from '@/shared/UploadProgressModal';
 import { formatMB } from '@/shared/lib/formatBytes';
 import { AVATAR_MIME_TYPES, MAX_AVATAR_BYTES, MAX_PROFILE_LINK_LEN, MAX_PROFILE_LINKS } from '@/shared/types/protocol';
 import { Button } from '@/shared/ui/primitives/button';
+import { describeProfileSaveError } from '@/features/profile/useProfileUpdate';
 
 type ProfileCropTarget =
   | { field: 'avatar' | 'banner'; kind: 'file'; file: File; src: string }
@@ -26,7 +27,7 @@ type ProfileCropTarget =
 
 
 export function ProfileSettings() {
-  const { state, updateProfile, uploadProfileImage } = useRoom();
+  const { state, updateProfile, uploadProfileImage, removeProfileImage } = useRoom();
   const [avatar, setAvatar] = useState(state.me.avatar);
   const [avatarPoster, setAvatarPoster] = useState(state.me.avatarPoster);
   const [avatarColor, setAvatarColor] = useState(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
@@ -41,6 +42,8 @@ export function ProfileSettings() {
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [bannerUploadProgress, setBannerUploadProgress] = useState(0);
   const [bannerError, setBannerError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [profileSaved, setProfileSaved] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const bannerFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -54,19 +57,39 @@ export function ProfileSettings() {
   const [activeUpload, setActiveUpload] = useState<{ field: 'avatar' | 'banner'; kind: 'file' | 'url' } | null>(null);
 
 
-  // keeps the form in sync with the account whenever it changes (a profile
-  // saved from another tab); the page mounting is what used to be "modal opened"
+  // Kept in THREE separate effects, not one watching every field: a confirmed
+  // avatar upload only changes state.me.avatar/avatarPoster, and must not
+  // reset an in-progress, unsaved edit to displayName/bio/links back to their
+  // last-saved value just because it happened to land at the same time.
+  // (Two tabs open, or a save from elsewhere, still wins over local text —
+  // that conflict is the plano de configurações's draft model, not this one.)
   useEffect(() => {
-    setProfileSaved(false);
     setAvatar(state.me.avatar);
     setAvatarPoster(state.me.avatarPoster);
-    setAvatarColor(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
-    setDisplayName(state.me.displayName);
+  }, [state.me.avatar, state.me.avatarPoster]);
+  useEffect(() => {
     setBanner(state.me.banner);
     setBannerPoster(state.me.bannerPoster);
+  }, [state.me.banner, state.me.bannerPoster]);
+  // profileLinks arrives fresh off the wire on EVERY confirmed profile change
+  // (JSON deserializes a new array reference even when the content is
+  // identical) — an image-only confirmation would otherwise still trip this
+  // effect on that reference alone and wipe an unsaved text edit. Comparing
+  // by a joined string instead of the array itself makes the dependency
+  // reflect the actual content.
+  const profileLinksKey = state.me.profileLinks.join('␟');
+  useEffect(() => {
+    setAvatarColor(normalizeAvatarColor(state.me.avatarColor) || DEFAULT_AVATAR_COLOR);
+    setDisplayName(state.me.displayName);
     setBio(state.me.bio);
     setProfileLinks(state.me.profileLinks.length ? state.me.profileLinks : ['']);
-  }, [state.me.avatar, state.me.avatarPoster, state.me.avatarColor, state.me.banner, state.me.bannerPoster, state.me.bio, state.me.displayName, state.me.profileLinks]);
+    // NOT resetting `profileSaved` here: this effect also runs right after
+    // OUR OWN save is confirmed (state.me just changed to match what we
+    // sent), and would otherwise immediately clear the "Perfil salvo"
+    // confirmation `handleProfileSubmit` just set. `profileSaved` is driven
+    // exclusively by that handler and its own auto-clear timeout below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.me.avatarColor, state.me.displayName, state.me.bio, profileLinksKey]);
 
   useEffect(() => {
     if (!profileSaved) return;
@@ -79,10 +102,19 @@ export function ProfileSettings() {
     return profileLinks.map((link) => link.trim()).filter(Boolean);
   }
 
-  function handleProfileSubmit(e: FormEvent) {
+  async function handleProfileSubmit(e: FormEvent) {
     e.preventDefault();
-    updateProfile({ avatar, avatarPoster, avatarColor, displayName, banner, bannerPoster, bio, profileLinks: profileLinksForSubmit() });
-    setProfileSaved(true);
+    if (saving) return;
+    setSaveError(null);
+    setSaving(true);
+    try {
+      await updateProfile({ avatar, avatarPoster, avatarColor, displayName, banner, bannerPoster, bio, profileLinks: profileLinksForSubmit() });
+      setProfileSaved(true);
+    } catch (err) {
+      setSaveError(describeProfileSaveError(err));
+    } finally {
+      setSaving(false);
+    }
   }
 
   function updateProfileLink(index: number, value: string) {
@@ -132,7 +164,6 @@ export function ProfileSettings() {
     const setUploading = field === 'avatar' ? setUploadingAvatar : setUploadingBanner;
     const setProgress = field === 'avatar' ? setAvatarUploadProgress : setBannerUploadProgress;
     const setError = field === 'avatar' ? setAvatarError : setBannerError;
-    const profile = { avatar, avatarColor, displayName, banner, bio, profileLinks: profileLinksForSubmit() };
     setError(null);
     setProgress(0);
     setUploading(true);
@@ -146,26 +177,27 @@ export function ProfileSettings() {
       const body = target.kind === 'file'
         ? target.file
         : new Blob([JSON.stringify({ url: target.url })], { type: 'application/json' });
-      const url = await uploadProfileImage(field, body, crop, setProgress, profile);
-      if (field === 'avatar') setAvatar(url); else setBanner(url);
+      // Sends only avatar/avatarPoster (or banner/bannerPoster) — never
+      // displayName/bio/color/links, however they currently stand in this
+      // form. The preview below updates once the server confirms it (via
+      // state.me, picked up by the sync effect above), not from this call.
+      await uploadProfileImage(field, body, crop, setProgress);
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Falha ao enviar ${field === 'avatar' ? 'a foto' : 'o banner'}.`);
+      setError(describeProfileSaveError(err, `Falha ao enviar ${field === 'avatar' ? 'a foto' : 'o banner'}.`));
     } finally {
       setUploading(false);
       setActiveUpload(null);
     }
   }
 
-  function handleRemoveAvatar() {
-    setAvatar('');
-    setAvatarPoster('');
-    updateProfile({ avatar: '', avatarPoster: '', avatarColor, displayName, banner, bannerPoster, bio, profileLinks: profileLinksForSubmit() });
-  }
-
-  function handleRemoveBanner() {
-    setBanner('');
-    setBannerPoster('');
-    updateProfile({ avatar, avatarPoster, avatarColor, displayName, banner: '', bannerPoster: '', bio, profileLinks: profileLinksForSubmit() });
+  async function handleRemoveImage(field: 'avatar' | 'banner') {
+    const setError = field === 'avatar' ? setAvatarError : setBannerError;
+    setError(null);
+    try {
+      await removeProfileImage(field);
+    } catch (err) {
+      setError(describeProfileSaveError(err, `Não foi possível remover ${field === 'avatar' ? 'a foto' : 'o banner'}.`));
+    }
   }
 
   return (
@@ -183,11 +215,11 @@ export function ProfileSettings() {
           online
           onAvatarUpload={() => avatarFileInputRef.current?.click()}
           onAvatarUploadUrl={() => setUrlDialogField('avatar')}
-          onAvatarRemove={handleRemoveAvatar}
+          onAvatarRemove={() => void handleRemoveImage('avatar')}
           avatarUploading={uploadingAvatar}
           onBannerUpload={() => bannerFileInputRef.current?.click()}
           onBannerUploadUrl={() => setUrlDialogField('banner')}
-          onBannerRemove={handleRemoveBanner}
+          onBannerRemove={() => void handleRemoveImage('banner')}
           bannerUploading={uploadingBanner}
           onDisplayNameChange={setDisplayName}
           onBioChange={setBio}
@@ -219,9 +251,10 @@ export function ProfileSettings() {
         <p className="text-caption text-text-muted">
           PNG, JPEG, GIF ou WEBP, até {formatMB(MAX_AVATAR_BYTES)}. Foto e banner valem assim que você confirma o recorte; nome, cor, bio e links só depois de salvar.
         </p>
-        <Button type="submit" size="sm" className="w-fit">
-          {profileSaved && <Check size={15} />}
-          <span>{profileSaved ? 'Perfil salvo' : 'Salvar perfil'}</span>
+        {saveError && <p role="alert" className="text-label text-red">{saveError}</p>}
+        <Button type="submit" size="sm" className="w-fit" disabled={saving}>
+          {profileSaved && !saving && <Check size={15} />}
+          <span>{saving ? 'Salvando…' : profileSaved ? 'Perfil salvo' : 'Salvar perfil'}</span>
         </Button>
       </form>
 

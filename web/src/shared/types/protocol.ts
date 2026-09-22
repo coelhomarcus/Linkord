@@ -136,9 +136,18 @@ export interface PublicUser {
   role: 'user' | 'admin';
 }
 
+/** Only the fields present are changed — everything else keeps its last
+ * confirmed value on the server. A media-only patch (after an avatar/banner
+ * upload) omits the text fields entirely, so it can never publish a draft
+ * that hasn't been saved. `requestId` correlates the `profile-result`. */
+export type ProfilePatch = Partial<{
+  avatar: string; avatarPoster: string; avatarColor: string; displayName: string;
+  banner: string; bannerPoster: string; bio: string; profileLinks: string[];
+}>;
+
 export type ClientMessage =
   | { t: 'join'; id?: string; token?: string; v: number }
-  | { t: 'profile'; avatar: string; avatarPoster: string; avatarColor: string; displayName: string; banner: string; bannerPoster: string; bio: string; profileLinks: string[] }
+  | ({ t: 'profile'; requestId: string } & ProfilePatch)
   | { t: 'reaction'; emoji: ReactionEmoji }
   | { t: 'deafened'; value: boolean }
   | { t: 'mic-state'; activated: boolean; muted: boolean }
@@ -212,6 +221,11 @@ export type ServerMessage =
   | { t: 'user-offline'; userId: string }
   | { t: 'user-deleted'; userId: string }
   | ({ t: 'storage-usage' } & StorageUsage)
+  // answers the `profile` patch of the same requestId, once the server has
+  // actually persisted it (or refused to) — never inferred from
+  // `participant-updated`, which a different account's edit also triggers
+  | ({ t: 'profile-result'; requestId: string; ok: true } & ProfilePatch)
+  | { t: 'profile-result'; requestId: string; ok: false; code: string; message: string }
   | { t: 'error'; code: string; message: string }
   | { t: 'pong' }
   | { t: 'server-restart' };
