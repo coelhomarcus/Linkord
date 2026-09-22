@@ -17,14 +17,20 @@ function PopoverContent({
   alignOffset = 0,
   side = "bottom",
   sideOffset = 4,
+  keepMounted,
   ...props
 }: PopoverPrimitive.Popup.Props &
   Pick<
     PopoverPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset"
-  >) {
+  > & {
+    /** Keeps the content in the DOM (hidden via the primitive's own closed
+     * styling) instead of unmounting it on every close — see
+     * shared/hooks/useKeepPopoverWarm for when this is worth the trade. */
+    keepMounted?: boolean;
+  }) {
   return (
-    <PopoverPrimitive.Portal>
+    <PopoverPrimitive.Portal keepMounted={keepMounted}>
       <PopoverPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}

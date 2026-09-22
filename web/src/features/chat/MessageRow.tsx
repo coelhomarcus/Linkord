@@ -5,17 +5,17 @@ import { Avatar } from '@/shared/Avatar';
 import { ChatAttachment, IMAGE_MIME_TYPES } from '@/features/chat/ChatAttachment';
 import { ImageAttachmentGrid } from '@/features/chat/ImageAttachmentGrid';
 import { InviteCard } from '@/features/chat/InviteCard';
-import { QuickReactionRow } from '@/features/chat/QuickReactionRow';
 import { ChatMessageText } from '@/features/chat/ChatMessageText';
 import { Button } from '@/shared/ui/primitives/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/shared/ui/primitives/dropdown-menu';
-import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/shared/ui/primitives/emoji-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/primitives/popover';
 import { Textarea } from '@/shared/ui/primitives/textarea';
 import { ReportDialog } from '@/features/reports/ReportDialog';
+import { ReactionEmojiPicker } from '@/features/chat/ReactionEmojiPicker';
 import { formatTime } from '@/shared/lib/formatChatTime';
 import { mentionsUser } from '@/shared/lib/mentions';
 import { cn } from '@/shared/lib/utils';
+import { useKeepPopoverWarm } from '@/shared/hooks/useKeepPopoverWarm';
 import { useRoom } from '@/state/RoomContext';
 import type { ChatMessage, PublicUser, ReactionEmoji } from '@/shared/types/protocol';
 
@@ -24,6 +24,7 @@ const DELETED_AUTHOR_NAME = 'Usuário apagado';
 function ReactionButton({ onPick }: { onPick: (emoji: string) => void }) {
   const [open, setOpen] = useState(false);
   const [fullPickerOpen, setFullPickerOpen] = useState(false);
+  const warmed = useKeepPopoverWarm(fullPickerOpen);
 
   function pick(emoji: string) {
     onPick(emoji);
@@ -36,25 +37,23 @@ function ReactionButton({ onPick }: { onPick: (emoji: string) => void }) {
       onOpenChange={(next) => {
         setOpen(next);
         // back to the quick row next time — a stale "full picker" state
-        // from a previous open would defeat the whole point of it.
+        // from a previous open would defeat the whole point of it. This
+        // only affects which one is VISIBLE (see ReactionEmojiPicker) — the
+        // full picker, once opened, stays warm underneath regardless.
         if (!next) setFullPickerOpen(false);
       }}
     >
       <PopoverTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Reagir" />}>
         <SmilePlus size={13} />
       </PopoverTrigger>
-      {fullPickerOpen ? (
-        <PopoverContent className="w-75 p-0" side="top" align="center">
-          <EmojiPicker className="h-80 w-full" onEmojiSelect={({ emoji }) => pick(emoji)}>
-            <EmojiPickerSearch />
-            <EmojiPickerContent />
-          </EmojiPicker>
-        </PopoverContent>
-      ) : (
-        <PopoverContent className="w-auto p-1.5" side="top" align="center">
-          <QuickReactionRow onPick={pick} onMore={() => setFullPickerOpen(true)} />
-        </PopoverContent>
-      )}
+      <PopoverContent
+        keepMounted={warmed}
+        className={fullPickerOpen ? 'w-75 p-0' : 'w-auto p-1.5'}
+        side="top"
+        align="center"
+      >
+        <ReactionEmojiPicker fullPickerOpen={fullPickerOpen} warmed={warmed} onPick={pick} onMore={() => setFullPickerOpen(true)} />
+      </PopoverContent>
     </Popover>
   );
 }
