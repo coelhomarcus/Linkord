@@ -18,6 +18,7 @@ import {
   reserveUpload, releaseUpload, getReservedBytes, getReservedBytesForUser, withInitLock, completingUploads,
 } from './uploadSession.js';
 import type { UploadManifest } from './uploadSession.js';
+import * as floodControl from '../../realtime/floodControl.js';
 import { logger } from '../../lib/logger.js';
 
 const log = logger.child({ component: 'attachments' });
@@ -27,6 +28,16 @@ const log = logger.child({ component: 'attachments' });
 // sweep) live in uploadSession.ts, the only half app/bootstrap.ts and the
 // test suite need.
 
+// Nothing capped how often an account could START a new upload — the
+// storage quota below only bounds cumulative DECLARED size, so many tiny
+// (or even zero-progress, never-completed) uploads cost real disk I/O
+// (mkdir + a manifest write each) with no cost against that quota at all.
+// Rate-limiting init alone is enough: every chunk belongs to an
+// already-approved session, so gating new sessions here bounds the whole
+// pipeline. Generous — real usage can burst (dragging several files into
+// one message, or several messages in a row).
+const ATTACHMENT_INIT_LIMIT = { windowMs: 60_000, max: 20 };
+
 /** Step 1/3 — declares the file before any bytes are sent, so an invalid
  * conversation/quota/size fails fast. Server decides chunkSize; the client
  * never hardcodes it. */
@@ -34,6 +45,10 @@ export async function handleAttachmentInit(request: FastifyRequest, reply: Fasti
   const cookies = parseCookies(request.headers.cookie || '');
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
   if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
+
+  if (!floodControl.allow(`attachment-init:${sess.userId}`, ATTACHMENT_INIT_LIMIT)) {
+    return sendError(reply, 429, 'rate_limited', 'Muitos envios em pouco tempo. Tente de novo em instantes.');
+  }
 
   const body = jsonBody(request.body);
   const conversationId = String(body.conversationId || '');

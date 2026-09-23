@@ -274,10 +274,12 @@ export const messageReactions = pgTable('message_reactions', {
 /** A file on disk (config.UPLOAD_DIR) — either a message attachment or an
  * avatar; both reuse the same table/folder/serving route
  * (attachments.ts). `messageId` NULL is what distinguishes an avatar from
- * a chat attachment (never backfilled later) — that's why getUsage()
- * (Settings quota) filters on `messageId IS NOT NULL`; avatars don't count
- * toward it (one per account, always replacing the previous, see
- * deleteAvatarFile). `id` is an app-generated uuid reused as the on-disk
+ * a chat attachment (never backfilled later) — chat attachments alone get
+ * a PER-USER quota (getUserUsage, joined through the message's author,
+ * since an avatar has no such join target), but the instance-wide total
+ * (getUsage) counts every row regardless of kind — see that function's own
+ * comment for why avatars/banners are included there. `id` is an
+ * app-generated uuid reused as the on-disk
  * filename — Postgres doesn't know that, so deleting this row (directly or
  * via CASCADE from messages/conversations) NEVER deletes the file by itself;
  * that's on the code that deletes the row (see
