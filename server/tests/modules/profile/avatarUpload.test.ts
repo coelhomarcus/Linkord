@@ -11,6 +11,7 @@ import { encodeAndStoreProfileImage } from '../../../src/modules/profile/avatarU
 
 let uploadDir: string;
 let previousUploadDir: string;
+const UPLOADER_ID = 'test-uploader';
 
 beforeEach(async () => {
   previousUploadDir = config.UPLOAD_DIR;
@@ -42,7 +43,7 @@ function animatedGif(): Buffer {
 
 describe('encodeAndStoreProfileImage', () => {
   test('recorta a imagem inteira e preserva as dimensoes em JPEG', async () => {
-    const result = await encodeAndStoreProfileImage(await staticPng(), { left: 0, top: 0, width: 8, height: 5 });
+    const result = await encodeAndStoreProfileImage(await staticPng(), { left: 0, top: 0, width: 8, height: 5 }, UPLOADER_ID);
     const id = result.avatar.split('/').pop()!;
     const metadata = await sharp(await fs.readFile(filePathFor(id))).metadata();
 
@@ -53,7 +54,7 @@ describe('encodeAndStoreProfileImage', () => {
   });
 
   test('mantem GIF animado e gera poster JPEG', async () => {
-    const result = await encodeAndStoreProfileImage(animatedGif(), { left: 0, top: 0, width: 2, height: 2 });
+    const result = await encodeAndStoreProfileImage(animatedGif(), { left: 0, top: 0, width: 2, height: 2 }, UPLOADER_ID);
     const imageId = result.avatar.split('/').pop()!;
     const posterId = result.avatarPoster?.split('/').pop();
     const imageMetadata = await sharp(await fs.readFile(filePathFor(imageId)), { animated: true }).metadata();
@@ -69,7 +70,7 @@ describe('encodeAndStoreProfileImage', () => {
   test('rejeita um recorte fora dos limites da imagem', async () => {
     const input = await staticPng();
     await assert.rejects(
-      () => encodeAndStoreProfileImage(input, { left: 0, top: 0, width: 999, height: 999 }),
+      () => encodeAndStoreProfileImage(input, { left: 0, top: 0, width: 999, height: 999 }, UPLOADER_ID),
       /Recorte fora dos limites/,
     );
   });
@@ -79,7 +80,7 @@ describe('encodeAndStoreProfileImage', () => {
     mock.method(db, 'insert', () => ({ values: async () => { throw new Error('db offline'); } }) as never);
 
     const input = await staticPng();
-    await assert.rejects(() => encodeAndStoreProfileImage(input, { left: 0, top: 0, width: 8, height: 5 }), /db offline/);
+    await assert.rejects(() => encodeAndStoreProfileImage(input, { left: 0, top: 0, width: 8, height: 5 }, UPLOADER_ID), /db offline/);
     assert.deepEqual(await fs.readdir(uploadDir), []);
   });
 });

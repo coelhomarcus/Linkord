@@ -53,10 +53,13 @@ export function parseCropRect(raw: string | undefined): CropRect | null {
 
 /** Encodes and stores a profile image, extracted out of handleAvatarUpload
  * so the sharp pipeline itself (crop bounds, animation detection, poster
- * generation) is unit-testable without going through Fastify. */
+ * generation) is unit-testable without going through Fastify. `uploaderId`
+ * is who gets to later claim this as their own avatar/banner/group avatar
+ * (handleProfile/handleGroupUpdate check it) — see schema.ts#attachments. */
 export async function encodeAndStoreProfileImage(
   buffer: Buffer,
   cropRect: CropRect,
+  uploaderId: string,
 ): Promise<{ avatar: string; avatarPoster: string | undefined }> {
   let outBuffer: Buffer;
   let outMime: string;
@@ -98,7 +101,7 @@ export async function encodeAndStoreProfileImage(
   const id = newId();
   await fs.writeFile(filePathFor(id), outBuffer);
   try {
-    await db.insert(attachmentsTable).values({ id, messageId: null, fileName: 'avatar', mimeType: outMime, size: outBuffer.length });
+    await db.insert(attachmentsTable).values({ id, messageId: null, uploaderId, fileName: 'avatar', mimeType: outMime, size: outBuffer.length });
   } catch (err) {
     await fs.unlink(filePathFor(id)).catch(() => {});
     throw err;
@@ -116,7 +119,7 @@ export async function encodeAndStoreProfileImage(
       const posterBuffer = await sharp(buffer, { animated: false }).extract(cropRect).jpeg({ quality: 88 }).toBuffer();
       await fs.writeFile(filePathFor(posterId), posterBuffer);
       try {
-        await db.insert(attachmentsTable).values({ id: posterId, messageId: null, fileName: 'avatar-poster', mimeType: 'image/jpeg', size: posterBuffer.length });
+        await db.insert(attachmentsTable).values({ id: posterId, messageId: null, uploaderId, fileName: 'avatar-poster', mimeType: 'image/jpeg', size: posterBuffer.length });
         posterUrl = `/uploads/${posterId}`;
       } catch (err) {
         await fs.unlink(filePathFor(posterId)).catch(() => {});
@@ -196,7 +199,7 @@ export async function handleAvatarUpload(request: FastifyRequest, reply: Fastify
   }
 
   try {
-    const result = await encodeAndStoreProfileImage(buffer, cropRect);
+    const result = await encodeAndStoreProfileImage(buffer, cropRect, sess.userId);
     return sendJson(reply, 201, result);
   } catch (err) {
     if (err instanceof ProfileImageProcessingError) {

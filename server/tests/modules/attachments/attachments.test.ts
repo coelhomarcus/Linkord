@@ -84,7 +84,7 @@ describe('extensionOf', () => {
 describe('isPreviewable', () => {
   function fakeAttachment(overrides: Partial<Attachment> = {}): Attachment {
     return {
-      id: 'a'.repeat(32), messageId: 1, fileName: 'notas.md', mimeType: 'text/markdown',
+      id: 'a'.repeat(32), messageId: 1, uploaderId: null, fileName: 'notas.md', mimeType: 'text/markdown',
       size: 100, createdAt: new Date(), thumbId: null, isThumbnail: false,
       ...overrides,
     };
