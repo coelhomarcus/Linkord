@@ -3,7 +3,7 @@ import type { ErrorCode } from '../../http/errors.js';
 import { config } from '../../config/env.js';
 import { updateProfile } from '../profile/profileRepository.js';
 import { sanitizeAvatar, sanitizeBanner, sanitizeAvatarColor, sanitizeDisplayName, sanitizeBio, sanitizeProfileLinks } from '../profile/sanitize.js';
-import { deleteAvatarFile } from '../attachments/attachmentCleanup.js';
+import { deleteAvatarFile, isOwnedProfileImage } from '../attachments/attachmentCleanup.js';
 import { runSerialized } from './profileQueue.js';
 import type { AppSocket, HandlerTable, Participant, PublicParticipant } from '../../types.js';
 import { logger } from '../../lib/logger.js';
@@ -206,6 +206,7 @@ export function join(socket: AppSocket, msg: JoinMessage): { participant: Partic
       speaking: false,
       graceTimer: null,
       knownPeerIds: new Set(),
+      friendPeerIds: new Set(),
       blockedPeerIds: new Set(),
     };
     participants.set(p.id, p);
@@ -226,6 +227,18 @@ interface ProfilePatchBody {
   requestId?: unknown;
   avatar?: string; avatarPoster?: string; avatarColor?: string; displayName?: string;
   banner?: string; bannerPoster?: string; bio?: string; profileLinks?: string[];
+}
+
+/** sanitizeAvatar/sanitizeBanner only check the STRING's format — this
+ * checks that a local `/uploads/<id>` reference was actually uploaded by
+ * `uploaderId` (a no-op for an external https:// URL or empty string, see
+ * isOwnedProfileImage). Falls back to empty rather than rejecting the whole
+ * patch, same "sanitize to a safe default" posture sanitizeAvatar itself
+ * already has for a malformed string — the only way to trip this is a
+ * modified client trying to claim someone else's upload, which doesn't
+ * deserve a more helpful outcome than "your avatar didn't change". */
+async function ownedOrEmpty(url: string, uploaderId: string): Promise<string> {
+  return url && await isOwnedProfileImage(url, uploaderId) ? url : '';
 }
 
 async function handleProfile(socket: AppSocket, msg: ProfilePatchBody | null | undefined): Promise<void> {
@@ -251,10 +264,10 @@ async function handleProfile(socket: AppSocket, msg: ProfilePatchBody | null | u
     const oldAvatar = current.avatar;
     const oldAvatarPoster = current.avatarPoster;
     const nextAvatar = Object.prototype.hasOwnProperty.call(body, 'avatar')
-      ? sanitizeAvatar(body.avatar)
+      ? await ownedOrEmpty(sanitizeAvatar(body.avatar), current.userId)
       : current.avatar;
     const nextAvatarPoster = Object.prototype.hasOwnProperty.call(body, 'avatarPoster')
-      ? sanitizeAvatar(body.avatarPoster)
+      ? await ownedOrEmpty(sanitizeAvatar(body.avatarPoster), current.userId)
       : current.avatarPoster;
     const nextAvatarColor = Object.prototype.hasOwnProperty.call(body, 'avatarColor')
       ? sanitizeAvatarColor(body.avatarColor)
@@ -263,10 +276,10 @@ async function handleProfile(socket: AppSocket, msg: ProfilePatchBody | null | u
       ? (sanitizeDisplayName(body.displayName) || current.name)
       : current.displayName;
     const nextBanner = Object.prototype.hasOwnProperty.call(body, 'banner')
-      ? sanitizeBanner(body.banner)
+      ? await ownedOrEmpty(sanitizeBanner(body.banner), current.userId)
       : current.banner;
     const nextBannerPoster = Object.prototype.hasOwnProperty.call(body, 'bannerPoster')
-      ? sanitizeBanner(body.bannerPoster)
+      ? await ownedOrEmpty(sanitizeBanner(body.bannerPoster), current.userId)
       : current.bannerPoster;
     const nextBio = Object.prototype.hasOwnProperty.call(body, 'bio')
       ? sanitizeBio(body.bio)

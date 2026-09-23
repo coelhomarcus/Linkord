@@ -81,7 +81,9 @@ export function SettingsSidebar({ active, isAdmin }: { active: SettingsTab; isAd
                     aria-current={current ? 'page' : undefined}
                     className={cn(
                       'flex h-9 items-center gap-2 rounded-lg px-2.5 text-body font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
-                      current ? 'bg-primary/12 text-text-primary' : 'text-text-muted hover:bg-white/[0.05] hover:text-text-secondary',
+                      // Discord/Fluxer: a plain light-gray wash for the
+                      // active item, no accent color.
+                      current ? 'bg-white/10 text-text-primary' : 'text-text-muted hover:bg-white/[0.05] hover:text-text-secondary',
                     )}
                   >
                     <Icon size={16} aria-hidden className="flex-none" />

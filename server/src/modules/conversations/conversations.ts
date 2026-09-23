@@ -4,7 +4,7 @@ import { conversationMembers, conversations, users } from '../../db/schema.js';
 import { participants, send, sendSocketError, sendToUser } from '../presence/participants.js';
 import { refreshKnownPeers } from '../presence/knownPeers.js';
 import { sanitizeAvatar } from '../profile/sanitize.js';
-import { deleteAvatarFile } from '../attachments/attachmentCleanup.js';
+import { deleteAvatarFile, isOwnedProfileImage } from '../attachments/attachmentCleanup.js';
 import { ERROR_CODES } from '../../http/errors.js';
 import {
   canManageGroup,
@@ -164,7 +164,14 @@ async function handleGroupUpdate(socket: AppSocket, msg: { conversationId?: stri
     const title = sanitizeConversationTitle(msg.title);
     if (title) updates.title = title;
   }
-  if (msg.avatar !== undefined) updates.avatar = sanitizeAvatar(msg.avatar);
+  if (msg.avatar !== undefined) {
+    const avatar = sanitizeAvatar(msg.avatar);
+    // same ownership check an account's own avatar/banner gets in
+    // handleProfile — without it, whoever manages the group could claim any
+    // other account's (or group's) /uploads/<id> as this group's avatar,
+    // and its later replacement would delete that real owner's file.
+    updates.avatar = avatar && await isOwnedProfileImage(avatar, p.userId) ? avatar : '';
+  }
   if (updates.title === undefined && updates.avatar === undefined) return;
 
   const [updatedRow] = await db.update(conversations).set(updates).where(eq(conversations.id, conversationId)).returning();

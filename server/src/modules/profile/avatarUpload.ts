@@ -8,12 +8,22 @@ import { sendJson, sendError } from '../../http/respond.js';
 import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
 import { newId, filePathFor } from '../attachments/attachmentStorage.js';
+import { getUsage } from '../attachments/attachmentQuota.js';
 import { fetchImageFromUrl, AVATAR_MIME_TYPES } from './imageFetch.js';
+import * as floodControl from '../../realtime/floodControl.js';
 import { logger } from '../../lib/logger.js';
 
 const log = logger.child({ component: 'avatar' });
 
 const MAX_CROP_DIMENSION = 4096; // sane ceiling, well under sharp's own decompression-bomb guard
+
+// This route had NO cap of any kind before — neither a per-request check nor
+// a request-rate one — so a compromised account could hammer it (each hit
+// doing real disk I/O, and for the "usar URL" flow a real outbound fetch)
+// with nothing to stop it. 5/min is generous for an actual person picking a
+// photo (including a few crop retries) and pointless to raise further —
+// nobody legitimately changes their avatar faster than that.
+const AVATAR_UPLOAD_LIMIT = { windowMs: 60_000, max: 5 };
 
 export type CropRect = { left: number; top: number; width: number; height: number };
 
@@ -43,10 +53,13 @@ export function parseCropRect(raw: string | undefined): CropRect | null {
 
 /** Encodes and stores a profile image, extracted out of handleAvatarUpload
  * so the sharp pipeline itself (crop bounds, animation detection, poster
- * generation) is unit-testable without going through Fastify. */
+ * generation) is unit-testable without going through Fastify. `uploaderId`
+ * is who gets to later claim this as their own avatar/banner/group avatar
+ * (handleProfile/handleGroupUpdate check it) — see schema.ts#attachments. */
 export async function encodeAndStoreProfileImage(
   buffer: Buffer,
   cropRect: CropRect,
+  uploaderId: string,
 ): Promise<{ avatar: string; avatarPoster: string | undefined }> {
   let outBuffer: Buffer;
   let outMime: string;
@@ -88,7 +101,7 @@ export async function encodeAndStoreProfileImage(
   const id = newId();
   await fs.writeFile(filePathFor(id), outBuffer);
   try {
-    await db.insert(attachmentsTable).values({ id, messageId: null, fileName: 'avatar', mimeType: outMime, size: outBuffer.length });
+    await db.insert(attachmentsTable).values({ id, messageId: null, uploaderId, fileName: 'avatar', mimeType: outMime, size: outBuffer.length });
   } catch (err) {
     await fs.unlink(filePathFor(id)).catch(() => {});
     throw err;
@@ -106,7 +119,7 @@ export async function encodeAndStoreProfileImage(
       const posterBuffer = await sharp(buffer, { animated: false }).extract(cropRect).jpeg({ quality: 88 }).toBuffer();
       await fs.writeFile(filePathFor(posterId), posterBuffer);
       try {
-        await db.insert(attachmentsTable).values({ id: posterId, messageId: null, fileName: 'avatar-poster', mimeType: 'image/jpeg', size: posterBuffer.length });
+        await db.insert(attachmentsTable).values({ id: posterId, messageId: null, uploaderId, fileName: 'avatar-poster', mimeType: 'image/jpeg', size: posterBuffer.length });
         posterUrl = `/uploads/${posterId}`;
       } catch (err) {
         await fs.unlink(filePathFor(posterId)).catch(() => {});
@@ -144,6 +157,10 @@ export async function handleAvatarUpload(request: FastifyRequest, reply: Fastify
   const sess = await resolveSession(cookies[config.SESSION_COOKIE]);
   if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
 
+  if (!floodControl.allow(`avatar:${sess.userId}`, AVATAR_UPLOAD_LIMIT)) {
+    return sendError(reply, 429, 'rate_limited', 'Muitas trocas de foto em pouco tempo. Tente de novo em instantes.');
+  }
+
   const mimeType = String(request.headers['content-type'] || '').split(';')[0]!.trim();
 
   let buffer: Buffer;
@@ -172,8 +189,17 @@ export async function handleAvatarUpload(request: FastifyRequest, reply: Fastify
   const cropRect = parseCropRect((request.query as Record<string, string | undefined>).crop);
   if (!cropRect) return sendError(reply, 400, 'invalid_crop', 'Recorte inválido.');
 
+  // The instance-wide cap now includes avatars/banners too (see
+  // attachmentQuota.ts#getUsage) — checked against the pre-encode buffer,
+  // which is never smaller than what actually gets written to disk.
+  const usage = await getUsage();
+  if (usage.totalBytes + buffer.length > config.MAX_STORAGE_BYTES) {
+    log.warn('avatar upload refused: instance storage is full', { userId: sess.userId, size: buffer.length });
+    return sendError(reply, 400, 'storage_full', 'Armazenamento cheio (30GB no total). Tente novamente mais tarde.');
+  }
+
   try {
-    const result = await encodeAndStoreProfileImage(buffer, cropRect);
+    const result = await encodeAndStoreProfileImage(buffer, cropRect, sess.userId);
     return sendJson(reply, 201, result);
   } catch (err) {
     if (err instanceof ProfileImageProcessingError) {

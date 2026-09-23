@@ -182,7 +182,7 @@ export type ServerMessage =
       userId: string; name: string; displayName: string; avatar: string; avatarPoster: string; avatarColor: string;
       banner: string; bannerPoster: string; bio: string; profileLinks: string[]; role: 'user' | 'admin';
       maxParticipants: number; participants: Participant[];
-      conversations: Conversation[]; knownUsers: PublicUser[]; onlineUserIds: string[];
+      conversations: Conversation[]; knownUsers: PublicUser[]; onlineUserIds: string[]; friendIds: string[];
       storageUsage: StorageUsage;
       livekitUrl: string;
     }
@@ -216,7 +216,7 @@ export type ServerMessage =
   | { t: 'social-changed' }
   // the scoped snapshot re-sent when this connection's known peers change
   // (same shape the welcome carries)
-  | { t: 'presence-sync'; knownUsers: PublicUser[]; participants: Participant[]; onlineUserIds: string[] }
+  | { t: 'presence-sync'; knownUsers: PublicUser[]; participants: Participant[]; onlineUserIds: string[]; friendIds: string[] }
   | { t: 'user-online'; userId: string }
   | { t: 'user-offline'; userId: string }
   | { t: 'user-deleted'; userId: string }

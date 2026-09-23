@@ -175,7 +175,7 @@ export function MessageList({ conversationId, onReply, onOpenProfile, bottomPadd
   return (
     <div className="relative min-h-0 flex-1">
       <div ref={scrollRef} className="h-full overflow-y-auto px-2 pt-3" style={{ paddingBottom: bottomPadding }}>
-        <div ref={contentRef} className="mx-auto flex w-full max-w-5xl flex-col">
+        <div ref={contentRef} className="flex w-full flex-col">
           {isLoadingOlder && <p className="my-3 text-center text-label text-text-muted">Carregando mensagens anteriores...</p>}
           {messages.length === 0 && (
             <div className="flex min-h-[45vh] items-center justify-center px-6 text-center text-label text-text-muted">

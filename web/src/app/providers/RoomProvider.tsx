@@ -168,7 +168,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           participants: m.participants,
         });
         conversationsList.setInitial(m.conversations ?? []);
-        presence.setInitial(m.knownUsers, m.onlineUserIds);
+        presence.setInitial(m.knownUsers, m.onlineUserIds, m.friendIds);
         attachmentsUpload.setStorageUsage(m.storageUsage);
         {
           const firstConversation = (m.conversations ?? [])[0];
@@ -268,7 +268,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         break;
       case 'presence-sync':
         dispatch({ type: 'PARTICIPANTS_SYNC', participants: m.participants });
-        presence.setInitial(m.knownUsers, m.onlineUserIds);
+        presence.setInitial(m.knownUsers, m.onlineUserIds, m.friendIds);
         break;
       case 'user-online':
         presence.onUserOnline(m);
@@ -366,7 +366,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         loadingOlderByConversation: chatMessages.loadingOlderByConversation, loadOlderMessages: chatMessages.loadOlderMessages,
         unreadByConversation: chatMessages.unreadByConversation,
         typingByConversation: typingIndicator.typingByConversation, sendTyping: typingIndicator.sendTyping,
-        allUsers: presence.allUsers, onlineUserIds: presence.onlineUserIds,
+        allUsers: presence.allUsers, onlineUserIds: presence.onlineUserIds, friendUserIds: presence.friendUserIds,
         kickFromCall: callLifecycle.kickFromCall,
         groupActionError, clearGroupActionError: () => setGroupActionError(null),
         accessNotice, clearAccessNotice: () => setAccessNotice(null),

@@ -274,10 +274,12 @@ export const messageReactions = pgTable('message_reactions', {
 /** A file on disk (config.UPLOAD_DIR) — either a message attachment or an
  * avatar; both reuse the same table/folder/serving route
  * (attachments.ts). `messageId` NULL is what distinguishes an avatar from
- * a chat attachment (never backfilled later) — that's why getUsage()
- * (Settings quota) filters on `messageId IS NOT NULL`; avatars don't count
- * toward it (one per account, always replacing the previous, see
- * deleteAvatarFile). `id` is an app-generated uuid reused as the on-disk
+ * a chat attachment (never backfilled later) — chat attachments alone get
+ * a PER-USER quota (getUserUsage, joined through the message's author,
+ * since an avatar has no such join target), but the instance-wide total
+ * (getUsage) counts every row regardless of kind — see that function's own
+ * comment for why avatars/banners are included there. `id` is an
+ * app-generated uuid reused as the on-disk
  * filename — Postgres doesn't know that, so deleting this row (directly or
  * via CASCADE from messages/conversations) NEVER deletes the file by itself;
  * that's on the code that deletes the row (see
@@ -288,6 +290,22 @@ export const messageReactions = pgTable('message_reactions', {
 export const attachments = pgTable('attachments', {
   id: text('id').primaryKey(),
   messageId: integer('message_id').references(() => messages.id, { onDelete: 'cascade' }),
+  // Who uploaded this file — only populated for a PROFILE image (messageId
+  // null: avatar/banner/group avatar). A chat attachment already has an
+  // owner via messageId -> messages.authorId, so this stays null there on
+  // purpose rather than duplicating it. What this field is actually FOR:
+  // handleProfile/handleGroupUpdate use it to verify a claimed
+  // `/uploads/<id>` avatar/banner reference was really uploaded by the
+  // account claiming it, instead of trusting the id alone — any account's
+  // own /uploads/<id> is a public, observable string, and without this
+  // nothing stopped a different account from claiming it as their own
+  // avatar; the eventual cleanup of THAT fraudulent reference would then
+  // delete the real owner's still-in-use file (see
+  // attachmentCleanup.ts#deleteAvatarFile's own reference check, the other
+  // half of this same fix). `set null` (not cascade) on user deletion:
+  // losing the attribution isn't a reason to also destroy the file, which
+  // may still be another account's actual current avatar.
+  uploaderId: text('uploader_id').references(() => users.id, { onDelete: 'set null' }),
   fileName: text('file_name').notNull(),
   mimeType: text('mime_type').notNull(),
   // bigint (not integer): the attachment cap is 2GiB (MAX_ATTACHMENT_BYTES),

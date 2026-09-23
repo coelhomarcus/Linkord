@@ -76,6 +76,7 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     loadOlderMessages: noop,
     allUsers: new Map(),
     onlineUserIds: new Set(),
+    friendUserIds: new Set(),
     kickFromCall: noop,
     groupActionError: null,
     socialRevision: 0,

@@ -1,4 +1,4 @@
-import { eq, isNotNull, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { config } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { attachments as attachmentsTable, messages } from '../../db/schema.js';
@@ -11,13 +11,21 @@ export interface UsageInfo {
 }
 
 /** Always computed live (sum/count the table) — never drifts from disk.
- * Only counts chat attachments (messageId set); avatars are excluded from
- * the 30GB quota on purpose. */
+ * Counts EVERYTHING, including avatars/banners/group avatars (messageId
+ * null) — those used to be excluded on the theory that an account only ever
+ * has one avatar + one banner at a time, so they don't accumulate the way
+ * chat history does (see schema.ts#attachments). That's true for STEADY
+ * storage, but it left this total (and therefore handleAvatarUpload, which
+ * checks it) blind to write VOLUME — nothing stopped an account from
+ * replacing its avatar as fast as the network allowed, and many accounts
+ * doing that simultaneously does add up against the shared instance-wide
+ * cap. Chat attachments still get their own PER-USER quota separately
+ * (getUserUsage below, via the message's author) — this total is the
+ * shared ceiling everyone draws from regardless of what kind of file it is. */
 export async function getUsage(): Promise<UsageInfo> {
   const [row] = await db
     .select({ totalBytes: sql<number>`coalesce(sum(${attachmentsTable.size}), 0)`, totalFiles: sql<number>`count(*)` })
-    .from(attachmentsTable)
-    .where(isNotNull(attachmentsTable.messageId));
+    .from(attachmentsTable);
   return { totalBytes: Number(row!.totalBytes), totalFiles: Number(row!.totalFiles), maxBytes: config.MAX_STORAGE_BYTES };
 }
 

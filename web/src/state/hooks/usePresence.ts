@@ -34,10 +34,17 @@ export function usePresence() {
   const allUsersRef = useRef<Map<string, PublicUser>>(new Map());
   useEffect(() => { allUsersRef.current = allUsers; }, [allUsers]);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+  // The friend subset of allUsers — allUsers also carries co-members of a
+  // shared conversation who aren't friends (their profile/presence is
+  // needed to render that conversation), so anything that should be
+  // friends-only (the command palette's "Conversar com…", say) filters
+  // against this instead of allUsers directly.
+  const [friendUserIds, setFriendUserIds] = useState<Set<string>>(new Set());
 
-  const setInitial = useCallback((users: PublicUser[], onlineIds: string[]) => {
+  const setInitial = useCallback((users: PublicUser[], onlineIds: string[], friendIds: string[]) => {
     setAllUsers(new Map(users.map((u) => [u.id, u])));
     setOnlineUserIds(new Set(onlineIds));
+    setFriendUserIds(new Set(friendIds));
   }, []);
 
   const onParticipantJoined = useCallback((m: Extract<ServerMessage, { t: 'participant-joined' }>) => {
@@ -73,7 +80,7 @@ export function usePresence() {
   }, []);
 
   return {
-    allUsers, allUsersRef, setAllUsers, onlineUserIds, setInitial,
+    allUsers, allUsersRef, setAllUsers, onlineUserIds, friendUserIds, setInitial,
     onParticipantJoined, onParticipantUpdated, onUserOnline, onUserOffline, onUserDeleted,
   };
 }

@@ -146,7 +146,7 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
           </div>
         )}
 
-        <div className="max-w-[680px]">
+        <div className="w-full">
           {message.replyTo && (
             <button
               type="button"
