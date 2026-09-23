@@ -47,8 +47,11 @@ function ConversationRow({ conversation, active, onClick }: {
         onClick={onClick}
         className={cn(
           'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors',
+          // Discord/Fluxer: the active row is a plain light-gray wash, no
+          // border and no accent color — the color is reserved for actual
+          // brand moments, not "you are here" state.
           active
-            ? 'border-primary/35 bg-primary/12 text-text-primary shadow-[inset_0_1px_0_rgb(255_255_255_/_0.06)]'
+            ? 'border-transparent bg-white/10 text-text-primary shadow-[inset_0_1px_0_rgb(255_255_255_/_0.06)]'
             : 'border-transparent text-text-secondary hover:border-white/10 hover:bg-white/[0.045]'
         )}
       >
