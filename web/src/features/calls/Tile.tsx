@@ -158,7 +158,7 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
         {isDeafened ? (
           <HeadphoneOff size={14} className="flex-none text-red" />
         ) : (
-          kind !== 'screen' && media.micActivated && media.micMuted && (
+          kind !== 'screen' && media.micMuted && (
             <MicOff size={14} className="flex-none text-red" />
           )
         )}

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Headphones, HeadphoneOff, Mic, MicOff, Monitor, MonitorX, PhoneOff, Smile, Video, VideoOff } from 'lucide-react';
 import { CloseButton } from '@/shared/ui/primitives/close-button';
 import { useRoom } from '../../state/RoomContext';
+import type { MicProblem } from '@/state/roomReducer';
 import { useParticipantMedia } from './useLiveKitTrack';
 import type { ReactionEmoji } from '@/shared/types/protocol';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/primitives/tooltip';
@@ -14,12 +15,28 @@ import { cn } from '@/shared/lib/utils';
 // Unrelated to per-message chat reactions, which now accept any emoji.
 const CALL_REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉'] as const;
 
+const MIC_PROBLEM_LABEL = {
+  'not-found': 'Nenhum microfone encontrado',
+  denied: 'Microfone bloqueado pelo navegador',
+} as const;
+
+const MIC_PROBLEM_NOTICE = {
+  'not-found': 'Nenhum microfone encontrado. Você está na chamada, mas ninguém te ouve — conecte um microfone e ele será ativado sozinho.',
+  denied: 'O navegador bloqueou o microfone. Você está na chamada, mas ninguém te ouve — libere o microfone nas permissões do site e clique no botão do microfone.',
+} as const;
+
 export function CallControlBar() {
-  const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, toggleMicMuted, deafened, toggleDeafened, leaveCall, sendReaction, reconnecting } = useRoom();
+  const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, activateMic, toggleMicMuted, deafened, toggleDeafened, leaveCall, sendReaction, reconnecting } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
   const cameraOn = state.me.cameraOn;
   const sharing = state.me.sharing;
   const [reactionsOpen, setReactionsOpen] = useState(false);
+  const micProblem = myMedia.micActivated ? null : state.micProblem;
+  // Dismissing hides this occurrence only: once the problem clears, the next
+  // one (a later call, the mic unplugged again) has to show again.
+  const [dismissedMicProblem, setDismissedMicProblem] = useState<MicProblem>(null);
+  if (!micProblem && dismissedMicProblem) setDismissedMicProblem(null);
+  const micLabel = micProblem ? MIC_PROBLEM_LABEL[micProblem] : !myMedia.micActivated ? 'Ativar microfone' : myMedia.micMuted ? 'Desmutar' : 'Mutar';
 
   function pickReaction(emoji: ReactionEmoji) {
     sendReaction(emoji);
@@ -39,6 +56,13 @@ export function CallControlBar() {
         <div className="flex max-w-[calc(100vw-2rem)] items-start gap-2 rounded-md border border-strong bg-bg-floating px-3 py-2 text-label text-text-secondary shadow-popover md:max-w-100">
           <span className="min-w-0 flex-1">{state.shareError}</span>
           <CloseButton size="xs" label="Dispensar aviso" onClick={() => dispatch({ type: 'SET_SHARE_ERROR', message: null })} />
+        </div>
+      )}
+      {micProblem && micProblem !== dismissedMicProblem && (
+        <div role="status" className="flex max-w-[calc(100vw-2rem)] items-start gap-2 rounded-md border border-red/40 bg-bg-floating px-3 py-2 text-label text-text-secondary shadow-popover md:max-w-100">
+          <MicOff size={16} className="mt-0.5 flex-none text-red" />
+          <span className="min-w-0 flex-1">{MIC_PROBLEM_NOTICE[micProblem]}</span>
+          <CloseButton size="xs" label="Dispensar aviso" onClick={() => setDismissedMicProblem(micProblem)} />
         </div>
       )}
       <div className="flex items-center gap-2">
@@ -71,13 +95,14 @@ export function CallControlBar() {
 
         <Tooltip>
           <TooltipTrigger
-            onClick={() => { void toggleMicMuted(); }}
-            aria-label={myMedia.micMuted ? 'Desmutar' : 'Mutar'}
-            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), callButtonClass)}
+            onClick={() => { void (myMedia.micActivated ? toggleMicMuted() : activateMic()); }}
+            aria-label={micLabel}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), callButtonClass, 'relative')}
           >
             {myMedia.micMuted ? <MicOff size={18} className="text-red" /> : <Mic size={18} />}
+            {micProblem && <span aria-hidden className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full border-2 border-bg-floating bg-red" />}
           </TooltipTrigger>
-          <TooltipContent>{myMedia.micMuted ? 'Desmutar' : 'Mutar'}</TooltipContent>
+          <TooltipContent>{micLabel}</TooltipContent>
         </Tooltip>
 
         <Tooltip>

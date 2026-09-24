@@ -28,7 +28,12 @@ export interface RoomState {
   // the server told this build it speaks an old protocol (client_outdated): only a reload fixes it
   clientOutdated: boolean;
   shareError: string | null;
+  // why the mic isn't published, kept as state (not a one-off shareError) so
+  // the call UI can keep saying so until a mic actually shows up
+  micProblem: MicProblem;
 }
+
+export type MicProblem = 'not-found' | 'denied' | null;
 
 export const initialRoomState: RoomState = {
   me: {
@@ -43,6 +48,7 @@ export const initialRoomState: RoomState = {
   roomError: null,
   clientOutdated: false,
   shareError: null,
+  micProblem: null,
 };
 
 export type RoomAction =
@@ -65,7 +71,8 @@ export type RoomAction =
   | { type: 'SET_CLIENT_OUTDATED' }
   | { type: 'SET_LOCAL_CAMERA'; on: boolean }
   | { type: 'SET_FOCUSED'; id: string | null }
-  | { type: 'SET_SHARE_ERROR'; message: string | null };
+  | { type: 'SET_SHARE_ERROR'; message: string | null }
+  | { type: 'SET_MIC_PROBLEM'; problem: MicProblem };
 
 export function roomReducer(state: RoomState, action: RoomAction): RoomState {
   switch (action.type) {
@@ -163,6 +170,8 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       return { ...state, focusedId: action.id };
     case 'SET_SHARE_ERROR':
       return { ...state, shareError: action.message };
+    case 'SET_MIC_PROBLEM':
+      return { ...state, micProblem: action.problem };
     default:
       return state;
   }

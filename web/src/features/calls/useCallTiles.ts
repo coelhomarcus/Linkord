@@ -11,7 +11,6 @@ function buildDescriptors(room: Room, participantIds: string[]): TileDescriptor[
   for (const id of participantIds) {
     const participant = getParticipant(room, id);
     if (!participant) continue;
-    if (!participant.getTrackPublication(Track.Source.Microphone)) continue;
     const hasScreen = !!activeTrack(participant, Track.Source.ScreenShare);
     const hasCamera = !!activeTrack(participant, Track.Source.Camera);
     if (hasScreen) out.push({ key: tileKey(id, 'screen'), participantId: id, kind: 'screen' });

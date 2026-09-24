@@ -1,8 +1,8 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch } from 'react';
 import { ConnectionState, RoomEvent, Track } from 'livekit-client';
 import type { LocalAudioTrack, Room } from 'livekit-client';
-import type { RoomAction } from '../../state/roomReducer';
+import type { MicProblem, RoomAction } from '../../state/roomReducer';
 import { playSound } from '../../shared/sounds';
 import { loadDevicePreference } from '../settings/useDevicePreference';
 import { loadNoiseSuppression } from '../settings/useNoiseSuppressionPreference';
@@ -84,6 +84,11 @@ function waitForConnection(room: Room): Promise<void> {
 
 export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): MicrophoneApi {
   const activatingRef = useRef(false);
+  const micProblemRef = useRef<MicProblem>(null);
+  const setMicProblem = useCallback((problem: MicProblem) => {
+    micProblemRef.current = problem;
+    dispatch({ type: 'SET_MIC_PROBLEM', problem });
+  }, [dispatch]);
 
   const activateMic = useCallback(async () => {
     if (activatingRef.current) return;
@@ -105,6 +110,7 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
       // so the choice looked like it "didn't stick".
       const savedDeviceId = loadDevicePreference('audioinput');
       await room.localParticipant.setMicrophoneEnabled(true, savedDeviceId ? { deviceId: savedDeviceId } : undefined);
+      setMicProblem(null);
       if (loadNoiseSuppression()) await applyNoiseSuppression(room, true);
     } catch (err) {
       if (err instanceof Error && err.message === 'timeout') {
@@ -112,20 +118,31 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
         return;
       }
       const name = (err as DOMException)?.name;
-      // NotFoundError gets its own message (unlike the other call/camera
-      // activation flows, which stay silent on it): this one runs
-      // automatically on every call join, so a silent failure here reads as
-      // "the call is broken" rather than "there's no mic plugged in".
-      if (name === 'NotFoundError') {
-        dispatch({ type: 'SET_SHARE_ERROR', message: 'Nenhum microfone encontrado. Você entrou na call, mas ninguém vai te ouvir até conectar um microfone.' });
-        return;
-      }
-      const denied = name === 'NotAllowedError' || name === 'AbortError';
-      if (!denied) dispatch({ type: 'SET_SHARE_ERROR', message: `Não foi possível acessar o microfone: ${(err as Error)?.message}` });
+      // Unlike camera/screen share, this runs automatically on every call
+      // join, so staying silent here reads as "the call is broken". These two
+      // become persistent state rather than a dismissable error: permission
+      // may already be granted with the mic simply unplugged, and the UI has
+      // to keep saying so until one shows up.
+      if (name === 'NotFoundError') { setMicProblem('not-found'); return; }
+      if (name === 'NotAllowedError') { setMicProblem('denied'); return; }
+      if (name !== 'AbortError') dispatch({ type: 'SET_SHARE_ERROR', message: `Não foi possível acessar o microfone: ${(err as Error)?.message}` });
     } finally {
       activatingRef.current = false;
     }
-  }, [dispatch, room]);
+  }, [dispatch, room, setMicProblem]);
+
+  // Plugging a mic in mid-call publishes it without the user having to find
+  // the retry button.
+  useEffect(() => {
+    const mediaDevices = navigator.mediaDevices;
+    if (!mediaDevices?.addEventListener) return;
+    const onDeviceChange = () => {
+      if (micProblemRef.current !== 'not-found' || room.state !== ConnectionState.Connected) return;
+      void activateMic();
+    };
+    mediaDevices.addEventListener('devicechange', onDeviceChange);
+    return () => mediaDevices.removeEventListener('devicechange', onDeviceChange);
+  }, [activateMic, room]);
 
   const toggleMicMuted = useCallback(async () => {
     const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
@@ -142,6 +159,7 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
   }, [room]);
 
   const leaveMic = useCallback(async () => {
+    setMicProblem(null);
     const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
     const track = pub?.track as LocalAudioTrack | undefined;
     if (!track) return;
@@ -151,7 +169,7 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
     // MediaStreamTrack, it doesn't know about attached processors.
     if (track.getProcessor()) await track.stopProcessor().catch(() => {});
     await room.localParticipant.unpublishTrack(track, true);
-  }, [room]);
+  }, [room, setMicProblem]);
 
   // Called when the "Supressão de ruído" switch in Settings changes while a
   // mic track already exists — activateMic only reads the saved preference

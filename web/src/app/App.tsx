@@ -22,7 +22,6 @@ import { CallChatToggleButton } from '@/features/calls/CallChatToggleButton';
 import { CallChatPanel } from '@/features/calls/CallChatPanel';
 import { ParticipantAudioLayer } from '@/features/calls/ParticipantAudioLayer';
 import { FloatingPip } from '@/features/calls/FloatingPip';
-import { useParticipantMedia } from '@/features/calls/useLiveKitTrack';
 import { callParticipantIds, conversationTitle } from '@/features/conversations/conversationUtils';
 import { TileMenu } from '@/features/calls/TileMenu';
 import { ReactionsOverlay } from '@/features/reactions/ReactionsOverlay';
@@ -109,8 +108,9 @@ function Shell() {
 
   const publishing = state.me.sharing || state.me.cameraOn;
 
-  const myMedia = useParticipantMedia(state.me.id ?? '');
-  const inCall = myMedia.micActivated;
+  // Not tied to having a published mic: joining with no mic plugged in (or
+  // mic permission blocked) still has to show the call and play everyone else.
+  const inCall = !!activeCallConversationId;
 
   const callIds = useMemo(
     () => callParticipantIds(state.me.id, state.participants, activeCallConversationId),
@@ -133,7 +133,7 @@ function Shell() {
 
   // The call stage only ever shows on the conversations page. Elsewhere the
   // call keeps running (audio, PiP) — navigating never ends it.
-  const showStage = onConversations && activeView === 'call' && !!activeCallConversationId && inCall;
+  const showStage = onConversations && activeView === 'call' && inCall;
 
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId);
   const activeConversationName = conversationTitle(activeConversation, state.me.userId, allUsers);
