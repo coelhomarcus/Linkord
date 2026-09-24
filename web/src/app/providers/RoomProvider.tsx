@@ -302,8 +302,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         } else if (m.code === ERROR_CODES.forbidden || m.code === ERROR_CODES.conflict || m.code === ERROR_CODES.not_found) {
           setGroupActionError(m.message);
         } else if (m.code === ERROR_CODES['livekit-unavailable']) {
-          callLifecycle.onLivekitUnavailable();
-          dispatch({ type: 'SET_SHARE_ERROR', message: m.message });
+          // also answers a moderator's kick from inside a call, where the call UI is open
+          if (!callLifecycle.onCallJoinRejected(m.message)) dispatch({ type: 'SET_SHARE_ERROR', message: m.message });
+        } else if (m.code === ERROR_CODES['call-not-allowed'] || m.code === ERROR_CODES.relationship_required) {
+          if (!callLifecycle.onCallJoinRejected(m.message)) log.warn('unhandled server error', { code: m.code, message: m.message, report: true });
         } else if (m.code === ERROR_CODES['message-not-found']) {
           chatMessages.cancelPendingJump();
           messageSearch.setSearchErrorMessage(m.message);

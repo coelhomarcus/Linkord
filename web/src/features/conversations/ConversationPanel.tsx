@@ -17,6 +17,7 @@ import { MessageRow } from '@/features/chat/MessageRow';
 import { MessageComposer } from '@/features/chat/MessageComposer';
 import { TypingIndicator } from '@/features/chat/TypingIndicator';
 import { DirectComposerGate } from '@/features/friends/DirectComposerGate';
+import { CloseButton } from '@/shared/ui/primitives/close-button';
 import type { MessageComposerHandle } from '@/features/chat/MessageComposer';
 
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -227,7 +228,7 @@ interface ConversationPanelProps {
 }
 
 export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onOpenDetails, onOpenMedia }: ConversationPanelProps) {
-  const { state, conversations, activeConversationId, allUsers, onlineUserIds, activeCallConversationId } = useRoom();
+  const { state, dispatch, conversations, activeConversationId, allUsers, onlineUserIds, activeCallConversationId } = useRoom();
   const { setOpenMobile } = useAnimatedSidebar();
   const conversation = conversations.find((item) => item.id === activeConversationId) ?? null;
   const title = conversationTitle(conversation, state.me.userId, allUsers);
@@ -246,6 +247,7 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
     : otherCallParticipants;
   const mainRef = useRef<HTMLElement | null>(null);
   const surfaceWidth = useMeasuredWidth(mainRef);
+  const callJoinError = state.callJoinError && state.callJoinError.conversationId === conversation?.id ? state.callJoinError.message : null;
 
   return (
     <main ref={mainRef} className="flex h-full min-w-0 flex-1 flex-col text-text-primary">
@@ -312,6 +314,13 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
               <Phone size={16} />
             </Button>
           </header>
+          {callJoinError && (
+            <div role="alert" className="mx-3 mt-3 flex items-start gap-2 rounded-md border border-red/40 bg-bg-floating px-3 py-2 text-label text-text-secondary shadow-popover md:mx-4">
+              <Phone size={16} className="mt-0.5 flex-none text-red" />
+              <span className="min-w-0 flex-1">{callJoinError}</span>
+              <CloseButton size="xs" label="Dispensar aviso" onClick={() => dispatch({ type: 'SET_CALL_JOIN_ERROR', error: null })} />
+            </div>
+          )}
           <ChatSurfaceWidthProvider width={surfaceWidth}>
             {conversation.status === 'suspended' ? (
               <div role="status" className="grid flex-1 place-items-center px-6 text-center">

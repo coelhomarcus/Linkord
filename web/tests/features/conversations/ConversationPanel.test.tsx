@@ -2,9 +2,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { initialRoomState } from '@/state/roomReducer';
 import { RoomContext } from '@/state/RoomContext';
+import type { RoomContextValue } from '@/state/RoomContext';
 import { createFakeRoomContextValue, renderWithRoom } from '@tests/fixtures/roomContextFixture';
 import type { ChatMessage } from '@/shared/types/protocol';
-import { MessageList, MessageListBridge } from '@/features/conversations/ConversationPanel';
+import { ConversationPanel, MessageList, MessageListBridge } from '@/features/conversations/ConversationPanel';
+import type { Conversation } from '@/shared/types/protocol';
+import { AnimatedSidebarProvider } from '@/shared/ui/motion/animated-sidebar';
+import { renderSocial } from '@tests/fixtures/socialFixture';
+import * as api from '@/shared/api/api';
+
+vi.mock('@/shared/api/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/shared/api/api')>()),
+  fetchRelationship: vi.fn(), fetchRequestSummary: vi.fn(),
+}));
+const mockedApi = vi.mocked(api);
 
 // the direct-conversation gate needs the friends provider — covered by its
 // own tests (tests/features/friends/DirectComposerGate.test.tsx)
@@ -148,5 +159,43 @@ describe('MessageList — corrida entre resize (imagem/video carregando) e o eve
     // would have knocked down stickToBottomRef and this call would be a no-op.
     resizeCallback([], {} as ResizeObserver);
     expect(scrollEl.scrollTop).toBe(2000);
+  });
+});
+
+describe('ConversationPanel — erro ao entrar na chamada', () => {
+  const direct: Conversation = {
+    id: 'c1', type: 'direct', title: '', avatar: '', createdBy: null, memberIds: ['me', 'peer'],
+    lastMessageAt: null, createdAt: 0, updatedAt: 0, pinnedAt: null, myRole: 'member', ownerId: null, memberCount: 0,
+  };
+  const me = { ...joinedState, me: { ...initialRoomState.me, userId: 'me' } };
+
+  function renderPanel(room: Partial<RoomContextValue>) {
+    const onOpenCall = vi.fn();
+    renderSocial(
+      <AnimatedSidebarProvider>
+        <ConversationPanel onOpenProfile={() => {}} onOpenCall={onOpenCall} onOpenSearch={() => {}} onOpenDetails={() => {}} onOpenMedia={() => {}} />
+      </AnimatedSidebarProvider>,
+      { room: { state: me, conversations: [direct], activeConversationId: 'c1', ...room } },
+    );
+    return { onOpenCall };
+  }
+
+  afterEach(() => { vi.clearAllMocks(); });
+
+  it('mostra o erro de uma chamada que nao conseguiu comecar, so na conversa dela', () => {
+    mockedApi.fetchRequestSummary.mockResolvedValue({ incoming: 0, invitations: 0 });
+    mockedApi.fetchRelationship.mockResolvedValue({ relation: 'friends', retryAfter: null });
+    const dispatch = vi.fn();
+    renderPanel({ dispatch, state: { ...me, callJoinError: { conversationId: 'c1', message: 'Vídeo/voz indisponível no momento.' } } });
+    expect(screen.getByRole('alert')).toHaveTextContent('Vídeo/voz indisponível no momento.');
+    fireEvent.click(screen.getByLabelText('Dispensar aviso'));
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_CALL_JOIN_ERROR', error: null });
+  });
+
+  it('erro de chamada de outra conversa nao aparece aqui', () => {
+    mockedApi.fetchRequestSummary.mockResolvedValue({ incoming: 0, invitations: 0 });
+    mockedApi.fetchRelationship.mockResolvedValue({ relation: 'friends', retryAfter: null });
+    renderPanel({ state: { ...me, callJoinError: { conversationId: 'outra', message: 'falhou' } } });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

@@ -8,6 +8,7 @@ export const ERROR_CODES = {
   client_outdated: 'client_outdated',
   too_many_connections: 'too_many_connections',
   'livekit-unavailable': 'livekit-unavailable',
+  'call-not-allowed': 'call-not-allowed',
   'message-not-found': 'message-not-found',
   // shared by HTTP and socket
   forbidden: 'forbidden',
@@ -15,6 +16,7 @@ export const ERROR_CODES = {
   not_found: 'not_found',
   quota_exceeded: 'quota_exceeded',
   rate_limited: 'rate_limited',
+  relationship_required: 'relationship_required',
   // HTTP
   group_full: 'group_full',
   user_unavailable: 'user_unavailable',
