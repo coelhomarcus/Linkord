@@ -17,6 +17,7 @@ import { MessageRow } from '@/features/chat/MessageRow';
 import { MessageComposer } from '@/features/chat/MessageComposer';
 import { TypingIndicator } from '@/features/chat/TypingIndicator';
 import { DirectComposerGate } from '@/features/friends/DirectComposerGate';
+import { useRelationship } from '@/features/friends/useRelationship';
 import { CloseButton } from '@/shared/ui/primitives/close-button';
 import type { MessageComposerHandle } from '@/features/chat/MessageComposer';
 
@@ -247,6 +248,17 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
     : otherCallParticipants;
   const mainRef = useRef<HTMLElement | null>(null);
   const surfaceWidth = useMeasuredWidth(mainRef);
+  const directPeerId = conversation?.type === 'direct' ? (conversation.memberIds.find((id) => id !== state.me.userId) ?? null) : null;
+  const { state: relationship } = useRelationship(directPeerId);
+  // Same stance as DirectComposerGate: only a confirmed answer disables the
+  // button — while loading (or on a failed read) the server's own check decides.
+  const callBlockedReason = conversation?.status === 'suspended'
+    ? null
+    : relationship.status === 'ready' && relationship.value.relation === 'blocked'
+      ? 'Você não pode ligar enquanto essa pessoa estiver bloqueada.'
+      : relationship.status === 'ready' && relationship.value.relation !== 'friends'
+        ? 'Vocês precisam ser amigos para fazer chamadas.'
+        : null;
   const callJoinError = state.callJoinError && state.callJoinError.conversationId === conversation?.id ? state.callJoinError.message : null;
 
   return (
@@ -310,9 +322,21 @@ export function ConversationPanel({ onOpenProfile, onOpenCall, onOpenSearch, onO
                 <Info size={16} />
               </Button>
             )}
-            <Button type="button" size="icon-sm" aria-label="Entrar na chamada" disabled={conversation.status === 'suspended'} onClick={() => onOpenCall(conversation.id)} className="bg-green text-bg-primary hover:bg-green/90">
-              <Phone size={16} />
-            </Button>
+            {callBlockedReason ? (
+              <Tooltip>
+                {/* a disabled button gets no pointer events, so the tooltip hangs off a wrapper */}
+                <TooltipTrigger render={<span tabIndex={0} className="inline-flex rounded-md focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />}>
+                  <Button type="button" size="icon-sm" aria-label="Entrar na chamada" disabled className="bg-bg-tertiary text-text-muted">
+                    <Phone size={16} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{callBlockedReason}</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button type="button" size="icon-sm" aria-label="Entrar na chamada" disabled={conversation.status === 'suspended'} onClick={() => onOpenCall(conversation.id)} className="bg-green text-bg-primary hover:bg-green/90">
+                <Phone size={16} />
+              </Button>
+            )}
           </header>
           {callJoinError && (
             <div role="alert" className="mx-3 mt-3 flex items-start gap-2 rounded-md border border-red/40 bg-bg-floating px-3 py-2 text-label text-text-secondary shadow-popover md:mx-4">

@@ -162,7 +162,7 @@ describe('MessageList — corrida entre resize (imagem/video carregando) e o eve
   });
 });
 
-describe('ConversationPanel — erro ao entrar na chamada', () => {
+describe('ConversationPanel — botao de chamada', () => {
   const direct: Conversation = {
     id: 'c1', type: 'direct', title: '', avatar: '', createdBy: null, memberIds: ['me', 'peer'],
     lastMessageAt: null, createdAt: 0, updatedAt: 0, pinnedAt: null, myRole: 'member', ownerId: null, memberCount: 0,
@@ -181,6 +181,24 @@ describe('ConversationPanel — erro ao entrar na chamada', () => {
   }
 
   afterEach(() => { vi.clearAllMocks(); });
+
+  it('amigos: o botao liga normalmente', async () => {
+    mockedApi.fetchRequestSummary.mockResolvedValue({ incoming: 0, invitations: 0 });
+    mockedApi.fetchRelationship.mockResolvedValue({ relation: 'friends', retryAfter: null });
+    const { onOpenCall } = renderPanel({});
+    await vi.waitFor(() => expect(mockedApi.fetchRelationship).toHaveBeenCalled());
+    fireEvent.click(screen.getByLabelText('Entrar na chamada'));
+    expect(onOpenCall).toHaveBeenCalledWith('c1');
+  });
+
+  it('quem nao e amigo: o botao fica desabilitado', async () => {
+    mockedApi.fetchRequestSummary.mockResolvedValue({ incoming: 0, invitations: 0 });
+    mockedApi.fetchRelationship.mockResolvedValue({ relation: 'none', retryAfter: null });
+    const { onOpenCall } = renderPanel({});
+    await vi.waitFor(() => expect(screen.getByLabelText('Entrar na chamada')).toBeDisabled());
+    fireEvent.click(screen.getByLabelText('Entrar na chamada'));
+    expect(onOpenCall).not.toHaveBeenCalled();
+  });
 
   it('mostra o erro de uma chamada que nao conseguiu comecar, so na conversa dela', () => {
     mockedApi.fetchRequestSummary.mockResolvedValue({ incoming: 0, invitations: 0 });
