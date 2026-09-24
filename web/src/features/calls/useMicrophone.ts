@@ -112,7 +112,15 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
         return;
       }
       const name = (err as DOMException)?.name;
-      const denied = name === 'NotAllowedError' || name === 'NotFoundError' || name === 'AbortError';
+      // NotFoundError gets its own message (unlike the other call/camera
+      // activation flows, which stay silent on it): this one runs
+      // automatically on every call join, so a silent failure here reads as
+      // "the call is broken" rather than "there's no mic plugged in".
+      if (name === 'NotFoundError') {
+        dispatch({ type: 'SET_SHARE_ERROR', message: 'Nenhum microfone encontrado. Você entrou na call, mas ninguém vai te ouvir até conectar um microfone.' });
+        return;
+      }
+      const denied = name === 'NotAllowedError' || name === 'AbortError';
       if (!denied) dispatch({ type: 'SET_SHARE_ERROR', message: `Não foi possível acessar o microfone: ${(err as Error)?.message}` });
     } finally {
       activatingRef.current = false;
