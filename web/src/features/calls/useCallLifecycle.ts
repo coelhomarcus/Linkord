@@ -96,8 +96,9 @@ export function useCallLifecycle(deps: CallLifecycleDeps) {
     if (activeCallConversationIdRef.current === conversationId) return;
     if (activeCallConversationIdRef.current) await leaveCall();
     pendingCallConversationIdRef.current = conversationId;
+    dispatch({ type: 'SET_CALL_JOIN_ERROR', error: null });
     sendWs({ t: 'call-join', conversationId });
-  }, [sendWs, leaveCall]);
+  }, [sendWs, leaveCall, dispatch]);
 
   const leaveCallRef = useRef(leaveCall);
   useEffect(() => { leaveCallRef.current = leaveCall; }, [leaveCall]);
@@ -108,9 +109,23 @@ export function useCallLifecycle(deps: CallLifecycleDeps) {
     if (m.conversationId !== pendingCallConversationIdRef.current) return;
     livekitRoom.connect(m.livekitUrl, m.livekitToken)
       .then(() => activateMic())
-      .catch((err) => log.error('LiveKit connect failed', err, { conversationId: m.conversationId }));
+      .catch((err) => {
+        log.error('LiveKit connect failed', err, { conversationId: m.conversationId });
+        // Already left (or switched calls) while connecting — that rejection
+        // is expected. Checked against the pending join, not the active call:
+        // a failed connect also fires Disconnected, which clears the active
+        // call before this runs.
+        if (pendingCallConversationIdRef.current !== m.conversationId) return;
+        // Back out entirely, server side included: staying "in" a call that
+        // never connected shows an empty stage, and joinCall ignores a
+        // conversation it thinks is already active, so retrying did nothing.
+        sendWs({ t: 'call-leave' });
+        pendingCallConversationIdRef.current = null;
+        setActiveCallConversationId(null);
+        dispatch({ type: 'SET_CALL_JOIN_ERROR', error: { conversationId: m.conversationId, message: 'Não foi possível conectar à chamada. Verifique sua conexão e tente de novo.' } });
+      });
     setActiveCallConversationId(m.conversationId);
-  }, [livekitRoom, activateMic, setActiveCallConversationId]);
+  }, [livekitRoom, activateMic, setActiveCallConversationId, sendWs, dispatch]);
 
   /** If a conversation currently in a call gets deleted out from under us
    * (admin action), leave it — same as clicking "leave call" ourselves. */
@@ -118,12 +133,17 @@ export function useCallLifecycle(deps: CallLifecycleDeps) {
     if (conversationId === activeCallConversationIdRef.current) leaveCallRef.current();
   }, []);
 
-  /** The server rejected our call-join attempt (LiveKit down/misconfigured)
-   * — clears the pending join so a stale call-token arriving late can't be
-   * mistaken for this failed attempt. */
-  const onLivekitUnavailable = useCallback(() => {
+  /** The server refused a call-join (no access, not friends, LiveKit
+   * down) — clears the pending join so a stale call-token arriving late can't
+   * be mistaken for this failed attempt. Returns false when no join was
+   * pending: the same error codes also answer other requests. */
+  const onCallJoinRejected = useCallback((message: string): boolean => {
+    const conversationId = pendingCallConversationIdRef.current;
+    if (!conversationId) return false;
     pendingCallConversationIdRef.current = null;
-  }, []);
+    dispatch({ type: 'SET_CALL_JOIN_ERROR', error: { conversationId, message } });
+    return true;
+  }, [dispatch]);
 
   useEffect(() => {
     const onDisconnected = (reason?: DisconnectReason) => {
@@ -207,6 +227,6 @@ export function useCallLifecycle(deps: CallLifecycleDeps) {
   return {
     audioUnlocked, deafened, toggleDeafened, reconnecting,
     activeCallConversationId, joinCall, leaveCall, kickFromCall,
-    onCallToken, onConversationDeleted, onLivekitUnavailable,
+    onCallToken, onConversationDeleted, onCallJoinRejected,
   };
 }

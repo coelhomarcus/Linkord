@@ -74,6 +74,78 @@ describe('useMicrophone — activateMic aplica o microfone salvo', () => {
   });
 });
 
+describe('useMicrophone — microfone ausente ou bloqueado', () => {
+  let deviceChangeListeners: Array<() => void>;
+
+  beforeEach(() => {
+    deviceChangeListeners = [];
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: {
+        getUserMedia: vi.fn(),
+        addEventListener: vi.fn((_type: string, fn: () => void) => { deviceChangeListeners.push(fn); }),
+        removeEventListener: vi.fn(),
+      },
+      configurable: true,
+    });
+  });
+
+  it('sem nenhum microfone (NotFoundError), marca o problema em vez de um erro dispensavel', async () => {
+    const room = fakeRoom(vi.fn(async () => { throw new DOMException('Requested device not found', 'NotFoundError'); }));
+    const dispatch = vi.fn();
+    const { result } = renderHook(() => useMicrophone(room, dispatch));
+
+    await result.current.activateMic();
+
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_MIC_PROBLEM', problem: 'not-found' });
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_SHARE_ERROR' }));
+  });
+
+  it('permissao negada (NotAllowedError) vira o problema "denied"', async () => {
+    const room = fakeRoom(vi.fn(async () => { throw new DOMException('Permission denied', 'NotAllowedError'); }));
+    const dispatch = vi.fn();
+    const { result } = renderHook(() => useMicrophone(room, dispatch));
+
+    await result.current.activateMic();
+
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_MIC_PROBLEM', problem: 'denied' });
+  });
+
+  it.each(['NotReadableError', 'AbortError'])('microfone que nao inicia (%s) vira o problema "unavailable"', async (errName) => {
+    const room = fakeRoom(vi.fn(async () => { throw new DOMException('Could not start audio source', errName); }));
+    const dispatch = vi.fn();
+    const { result } = renderHook(() => useMicrophone(room, dispatch));
+
+    await result.current.activateMic();
+
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_MIC_PROBLEM', problem: 'unavailable' });
+  });
+
+  it('conectar um microfone no meio da chamada tenta ativar de novo e limpa o problema', async () => {
+    const setMicrophoneEnabled = vi.fn(async () => undefined);
+    setMicrophoneEnabled.mockRejectedValueOnce(new DOMException('Requested device not found', 'NotFoundError'));
+    const room = fakeRoom(setMicrophoneEnabled);
+    const dispatch = vi.fn();
+    const { result } = renderHook(() => useMicrophone(room, dispatch));
+    await result.current.activateMic();
+
+    for (const fn of deviceChangeListeners) fn();
+    await vi.waitFor(() => expect(setMicrophoneEnabled).toHaveBeenCalledTimes(2));
+
+    expect(dispatch).toHaveBeenLastCalledWith({ type: 'SET_MIC_PROBLEM', problem: null });
+  });
+
+  it('com permissao negada, conectar um dispositivo nao dispara nova tentativa sozinha', async () => {
+    const setMicrophoneEnabled = vi.fn(async () => { throw new DOMException('Permission denied', 'NotAllowedError'); });
+    const room = fakeRoom(setMicrophoneEnabled);
+    const { result } = renderHook(() => useMicrophone(room, vi.fn()));
+    await result.current.activateMic();
+
+    for (const fn of deviceChangeListeners) fn();
+
+    expect(setMicrophoneEnabled).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('useMicrophone — supressao de ruido (RNNoise)', () => {
   afterEach(() => {
     localStorage.clear();
