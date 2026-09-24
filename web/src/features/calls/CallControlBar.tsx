@@ -18,11 +18,13 @@ const CALL_REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉'] as con
 const MIC_PROBLEM_LABEL = {
   'not-found': 'Nenhum microfone encontrado',
   denied: 'Microfone bloqueado pelo navegador',
+  unavailable: 'Microfone indisponível',
 } as const;
 
 const MIC_PROBLEM_NOTICE = {
   'not-found': 'Nenhum microfone encontrado. Você está na chamada, mas ninguém te ouve — conecte um microfone e ele será ativado sozinho.',
   denied: 'O navegador bloqueou o microfone. Você está na chamada, mas ninguém te ouve — libere o microfone nas permissões do site e clique no botão do microfone.',
+  unavailable: 'Não foi possível iniciar o microfone — ele pode estar em uso por outro aplicativo. Você está na chamada, mas ninguém te ouve; clique no botão do microfone para tentar de novo.',
 } as const;
 
 export function CallControlBar() {

@@ -66,4 +66,10 @@ describe('CallControlBar', () => {
     });
     expect(screen.getByText('Nao foi possivel acessar a camera.')).toBeInTheDocument();
   });
+
+  it('microfone que nao inicia: sugere que pode estar em uso por outro aplicativo', () => {
+    renderWithRoom(<CallControlBar />, { state: { ...initialRoomState, micProblem: 'unavailable' } });
+    expect(screen.getByLabelText('Microfone indisponível')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('em uso por outro aplicativo');
+  });
 });

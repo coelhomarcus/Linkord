@@ -119,25 +119,27 @@ export function useMicrophone(room: Room, dispatch: Dispatch<RoomAction>): Micro
       }
       const name = (err as DOMException)?.name;
       // Unlike camera/screen share, this runs automatically on every call
-      // join, so staying silent here reads as "the call is broken". These two
+      // join, so staying silent here reads as "the call is broken". These
       // become persistent state rather than a dismissable error: permission
       // may already be granted with the mic simply unplugged, and the UI has
       // to keep saying so until one shows up.
       if (name === 'NotFoundError') { setMicProblem('not-found'); return; }
       if (name === 'NotAllowedError') { setMicProblem('denied'); return; }
-      if (name !== 'AbortError') dispatch({ type: 'SET_SHARE_ERROR', message: `Não foi possível acessar o microfone: ${(err as Error)?.message}` });
+      if (name === 'NotReadableError' || name === 'AbortError') { setMicProblem('unavailable'); return; }
+      dispatch({ type: 'SET_SHARE_ERROR', message: `Não foi possível acessar o microfone: ${(err as Error)?.message}` });
     } finally {
       activatingRef.current = false;
     }
   }, [dispatch, room, setMicProblem]);
 
-  // Plugging a mic in mid-call publishes it without the user having to find
-  // the retry button.
+  // Plugging a mic in (or another one appearing) mid-call publishes it
+  // without the user having to find the retry button. A denied permission is
+  // left alone: no device change can lift it.
   useEffect(() => {
     const mediaDevices = navigator.mediaDevices;
     if (!mediaDevices?.addEventListener) return;
     const onDeviceChange = () => {
-      if (micProblemRef.current !== 'not-found' || room.state !== ConnectionState.Connected) return;
+      if (micProblemRef.current === 'denied' || !micProblemRef.current || room.state !== ConnectionState.Connected) return;
       void activateMic();
     };
     mediaDevices.addEventListener('devicechange', onDeviceChange);

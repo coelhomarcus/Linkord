@@ -33,7 +33,9 @@ export interface RoomState {
   micProblem: MicProblem;
 }
 
-export type MicProblem = 'not-found' | 'denied' | null;
+// 'unavailable': a device exists but couldn't be started (in use by another
+// app, driver error)
+export type MicProblem = 'not-found' | 'denied' | 'unavailable' | null;
 
 export const initialRoomState: RoomState = {
   me: {

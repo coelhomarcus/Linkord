@@ -110,6 +110,16 @@ describe('useMicrophone — microfone ausente ou bloqueado', () => {
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_MIC_PROBLEM', problem: 'denied' });
   });
 
+  it.each(['NotReadableError', 'AbortError'])('microfone que nao inicia (%s) vira o problema "unavailable"', async (errName) => {
+    const room = fakeRoom(vi.fn(async () => { throw new DOMException('Could not start audio source', errName); }));
+    const dispatch = vi.fn();
+    const { result } = renderHook(() => useMicrophone(room, dispatch));
+
+    await result.current.activateMic();
+
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_MIC_PROBLEM', problem: 'unavailable' });
+  });
+
   it('conectar um microfone no meio da chamada tenta ativar de novo e limpa o problema', async () => {
     const setMicrophoneEnabled = vi.fn(async () => undefined);
     setMicrophoneEnabled.mockRejectedValueOnce(new DOMException('Requested device not found', 'NotFoundError'));
