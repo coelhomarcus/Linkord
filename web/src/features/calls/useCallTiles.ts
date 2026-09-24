@@ -21,6 +21,9 @@ function buildDescriptors(room: Room, participantIds: string[]): TileDescriptor[
 }
 
 const CALL_TILE_EVENTS = [
+  // the local tile otherwise waits for a track event, and someone who joined
+  // alone without a mic never publishes one
+  RoomEvent.Connected,
   RoomEvent.TrackPublished,
   RoomEvent.TrackUnpublished,
   RoomEvent.TrackSubscribed,
