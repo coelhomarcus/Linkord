@@ -1,12 +1,12 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, ClipboardEvent, KeyboardEvent as ReactKeyboardEvent, SyntheticEvent } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, Paperclip, Reply, Smile } from 'lucide-react';
+import { ArrowUp, ImagePlus, Paperclip, Plus, Reply, Smile } from 'lucide-react';
 import { CloseButton } from '@/shared/ui/primitives/close-button';
 import { Button } from '@/shared/ui/primitives/button';
 import { EmojiPicker, EmojiPickerContent, EmojiPickerSearch } from '@/shared/ui/primitives/emoji-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/primitives/popover';
-import { Switch } from '@/shared/ui/primitives/switch';
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/shared/ui/primitives/dropdown-menu';
 import { Textarea } from '@/shared/ui/primitives/textarea';
 import { Avatar } from '@/shared/Avatar';
 import { DocumentAttachmentCard } from '@/features/media/DocumentAttachmentCard';
@@ -29,6 +29,10 @@ const TYPING_THROTTLE_MS = 3000;
 const TYPING_IDLE_MS = 5000;
 
 const MAX_MENTION_RESULTS = 8;
+// mirrors the server's MAX_CHAT_LEN; the counter only shows near the end so
+// it doesn't compete with the text for most messages
+const MAX_MESSAGE_LEN = 2000;
+const COUNTER_THRESHOLD = 1800;
 
 /** Finds the "@query" the cursor is currently sitting inside of, if any —
  * "@" must start a token (preceded by whitespace or the start of the text),
@@ -68,6 +72,8 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
   const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
   const mentionOptionRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const counterId = useId();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   // an upload can finish after the user moved to another conversation; the
   // reply target is global, so it's only cleared if they're still here
@@ -77,7 +83,8 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
   const typingIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
   const disabled = !state.joined || upload !== null;
-  const canSubmit = !disabled && (text.trim().length > 0 || pendingFiles.length > 0);
+  const tooLong = text.length > MAX_MESSAGE_LEN;
+  const canSubmit = !disabled && !tooLong && (text.trim().length > 0 || pendingFiles.length > 0);
 
   // Keeps the arrow-key-highlighted mention option visible — without this,
   // ArrowDown/ArrowUp move mentionSelectedIndex past the dropdown's visible
@@ -208,6 +215,8 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
     const trimmed = current.text.trim();
     const batch = current.pendingFiles;
     if (!batch.length && !trimmed) return;
+    // the server would cut it silently; the counter already says why
+    if (current.text.length > MAX_MESSAGE_LEN) return;
     stopTyping(); // sending is proof they stopped — don't wait for the idle timeout
     setMentionQuery(null);
     const replyTo = replyingTo?.msgId;
@@ -330,24 +339,18 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
   const replyAuthor = replyingTo?.id ? allUsers.get(replyingTo.id) : undefined;
   const replyName = replyAuthor?.displayName ?? replyingTo?.name;
 
+  const remaining = MAX_MESSAGE_LEN - text.length;
+  const showCounter = text.length >= COUNTER_THRESHOLD;
+  const iconButton = 'flex-none rounded-full text-text-muted hover:text-text-primary';
+
   return (
-    <div className="w-full flex-none px-2 pb-4">
-      {replyingTo && (
-        <div className="mb-2 flex items-center gap-2 rounded-xl border border-white/10 bg-[rgb(18_18_20)] px-3 py-2 text-label">
-          <Reply size={14} className="text-text-muted" />
-          <span className="min-w-0 flex-1 truncate">
-            <span className="font-medium text-text-secondary">{replyName}</span>
-            {replyingTo.text ? <span className="text-text-muted"> - {replyingTo.text}</span> : null}
-          </span>
-          <CloseButton size="xs" label="Cancelar resposta" onClick={() => setReplyingTo(null)} />
-        </div>
-      )}
-
+    <div className="w-full flex-none px-2 pb-3 @min-[640px]/chat:px-4 @min-[640px]/chat:pb-4">
       <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileChange} />
+      <input ref={imageInputRef} type="file" accept="image/*" multiple hidden onChange={handleFileChange} />
 
-      <div className="relative flex flex-col gap-2 rounded-2xl border border-white/10 bg-[rgb(18_18_20)] p-2 shadow-[0_16px_50px_rgb(0_0_0_/_0.25)]">
+      <div className="relative flex flex-col rounded-2xl border border-white/10 bg-[rgb(18_18_20)] focus-within:border-white/20">
         {mentionQuery && mentionCandidates.length > 0 && (
-          <div className="absolute inset-x-0 bottom-full z-20 mb-1 max-h-56 overflow-y-auto rounded-xl border border-white/10 bg-[rgb(24_24_27)] py-1 shadow-[0_16px_50px_rgb(0_0_0_/_0.25)]">
+          <div className="absolute inset-x-0 bottom-full z-20 mb-1 max-h-56 overflow-y-auto rounded-xl border border-white/10 bg-[rgb(24_24_27)] py-1 shadow-popover">
             <p className="select-none px-3 pb-1 pt-0.5 text-caption font-semibold uppercase text-text-muted">Mencionar alguém</p>
             {mentionCandidates.map((user, i) => (
               <button
@@ -372,6 +375,18 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
             ))}
           </div>
         )}
+
+        {replyingTo && (
+          <div className="flex items-center gap-2 border-b border-white/8 py-1.5 pl-3 pr-1.5 text-label">
+            <Reply size={14} className="flex-none text-text-muted" />
+            <span className="min-w-0 flex-1 truncate text-text-muted">
+              Respondendo a <span className="font-medium text-text-secondary">{replyName}</span>
+              {replyingTo.text ? <span> - {replyingTo.text}</span> : null}
+            </span>
+            <CloseButton size="xs" label="Cancelar resposta" onClick={() => setReplyingTo(null)} />
+          </div>
+        )}
+
         <AnimatePresence initial={false}>
           {pendingFiles.length > 0 && (
             <motion.div
@@ -382,7 +397,8 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
               transition={{ duration: 0.18, ease: 'easeOut' }}
               className="overflow-hidden"
             >
-              <div className="flex flex-wrap gap-2 px-1 pt-1">
+              {/* one scrolling row keeps the tray from eating the history on a phone */}
+              <div className="flex gap-2 overflow-x-auto px-2 pt-2">
                 {pendingFiles.map((item) => {
                   const uploading = upload?.activeFileId === item.id;
                   return (
@@ -391,12 +407,12 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
                       layout
                       title={`${item.file.name} - ${formatFileSize(item.file.size)}`}
                       className={cn(
-                        'relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]',
-                        item.previewUrl ? 'size-18' : 'flex w-56 max-w-full items-center py-2.5 pl-2.5 pr-8'
+                        'relative flex-none overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]',
+                        item.previewUrl ? 'size-18' : 'flex w-56 items-center py-2.5 pl-2.5 pr-8'
                       )}
                     >
                       {item.previewUrl ? (
-                        <img src={item.previewUrl} alt="" className="size-full object-cover" />
+                        <img src={item.previewUrl} alt={item.file.name} className="size-full object-cover" />
                       ) : (
                         <DocumentAttachmentCard name={item.file.name} size={item.file.size} mime={item.file.type} className="min-w-0" />
                       )}
@@ -416,27 +432,24 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
           )}
         </AnimatePresence>
 
-        {pendingFiles.some((item) => item.file.type.startsWith('image/')) && (
-          <div className="flex items-center gap-2 px-1 text-label text-text-muted">
-            <Switch checked={compressImages} onCheckedChange={toggleCompress} size="sm" aria-label="Compactar imagens antes de enviar" />
-            <span className="select-none">Compactar imagens (WebP)</span>
-          </div>
-        )}
+        {attachError && <p role="alert" className="mx-2 mt-2 rounded-lg border border-red/20 bg-red/10 px-3 py-2 text-label text-red">{attachError}</p>}
 
-        {attachError && <p className="rounded-lg border border-red/20 bg-red/10 px-3 py-2 text-label text-red">{attachError}</p>}
-
-        <div className="flex items-end gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Anexar arquivo"
-            disabled={disabled}
-            onClick={() => fileInputRef.current?.click()}
-            className="flex-none rounded-full text-text-muted hover:text-text-primary"
-          >
-            <Paperclip size={18} />
-          </Button>
+        <div className="flex items-end gap-1 p-1.5">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button type="button" variant="ghost" size="icon" aria-label="Adicionar" disabled={disabled} className={iconButton} />}
+            >
+              <Plus size={20} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align="start" className="w-64">
+              <DropdownMenuItem onClick={() => fileInputRef.current?.click()}><Paperclip size={14} />Anexar arquivos</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => imageInputRef.current?.click()}><ImagePlus size={14} />Enviar imagens</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem checked={compressImages} onCheckedChange={toggleCompress}>
+                Compactar imagens (WebP)
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Textarea
             ref={textareaRef}
             value={text}
@@ -450,23 +463,33 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             disabled={disabled}
-            maxLength={2000}
             rows={1}
+            aria-label="Mensagem"
+            aria-invalid={tooLong || undefined}
+            aria-describedby={showCounter ? counterId : undefined}
             placeholder={pendingFiles.length ? 'Adicionar legenda' : 'Mensagem'}
             className="min-h-9 max-h-40 flex-1 resize-none border-none bg-transparent px-1 py-1.5 text-body shadow-none focus-visible:ring-0"
           />
+          {showCounter && (
+            <span id={counterId} className={cn('flex-none self-end px-1 pb-2.5 text-caption tabular-nums', tooLong ? 'font-semibold text-red' : 'text-text-muted')}>
+              {remaining}
+            </span>
+          )}
+          {/* below ~480px it moves into "+" so the text field keeps its room */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Enviar imagens"
+            disabled={disabled}
+            onClick={() => imageInputRef.current?.click()}
+            className={cn(iconButton, 'hidden @min-[480px]/chat:inline-flex')}
+          >
+            <ImagePlus size={18} />
+          </Button>
           <Popover open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
             <PopoverTrigger
-              render={
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Inserir emoji"
-                  disabled={disabled}
-                  className="flex-none rounded-full text-text-muted hover:text-text-primary"
-                />
-              }
+              render={<Button type="button" variant="ghost" size="icon" aria-label="Inserir emoji" disabled={disabled} className={iconButton} />}
             >
               <Smile size={18} />
             </PopoverTrigger>

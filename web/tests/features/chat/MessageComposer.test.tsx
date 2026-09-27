@@ -81,60 +81,72 @@ describe('MessageComposer', () => {
     expect(sendChatMessage).toHaveBeenCalledWith('conv-1', 'oi', undefined);
   });
 
-  it('botao de anexar abre o input de arquivo diretamente, sem menu', async () => {
+  it('"+" abre o menu Adicionar; "Anexar arquivos" abre o seletor geral', async () => {
     const user = userEvent.setup();
-    renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState });
+    const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState });
+    const clicked: HTMLInputElement[] = [];
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (this: HTMLInputElement) { clicked.push(this); });
 
-    const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
-    await user.click(screen.getByRole('button', { name: 'Anexar arquivo' }));
+    await user.click(screen.getByRole('button', { name: 'Adicionar' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Anexar arquivos' }));
 
-    expect(clickSpy).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(clicked).toHaveLength(1);
+    expect(clicked[0]!.accept).toBe('');
+    expect(container.contains(clicked[0]!)).toBe(true);
     clickSpy.mockRestore();
   });
 
-  it('nao mostra o toggle de compactar quando so ha anexo nao-imagem', async () => {
+  it('o atalho de imagem abre um seletor so de imagens', async () => {
     const user = userEvent.setup();
-    const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState });
-    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState });
+    const clicked: HTMLInputElement[] = [];
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (this: HTMLInputElement) { clicked.push(this); });
 
-    await user.upload(input, fakeFile('doc.pdf', 'application/pdf'));
+    await user.click(screen.getByRole('button', { name: 'Enviar imagens' }));
 
-    expect(screen.queryByLabelText('Compactar imagens antes de enviar')).not.toBeInTheDocument();
+    expect(clicked.map((el) => el.accept)).toEqual(['image/*']);
+    clickSpy.mockRestore();
   });
 
-  it('mostra o toggle ligado por padrao quando compressImagesDefault e true', async () => {
+  it.each([true, false])('a opcao de compactar no menu reflete a preferencia (%s)', async (preference) => {
     const user = userEvent.setup();
-    const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, compressImagesDefault: true });
-    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, compressImagesDefault: preference });
 
-    await user.upload(input, fakeFile('foto.jpg', 'image/jpeg'));
+    await user.click(screen.getByRole('button', { name: 'Adicionar' }));
 
-    expect(screen.getByLabelText('Compactar imagens antes de enviar')).toBeChecked();
+    expect(await screen.findByRole('menuitemcheckbox', { name: 'Compactar imagens (WebP)' })).toHaveAttribute('aria-checked', String(preference));
   });
 
-  it('mostra o toggle desligado quando compressImagesDefault e false', async () => {
-    const user = userEvent.setup();
-    const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, compressImagesDefault: false });
-    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
-
-    await user.upload(input, fakeFile('foto.jpg', 'image/jpeg'));
-
-    expect(screen.getByLabelText('Compactar imagens antes de enviar')).not.toBeChecked();
-  });
-
-  it('clicar no toggle atualiza a preferencia persistida', async () => {
+  it('marcar a opcao de compactar atualiza a preferencia persistida', async () => {
     const user = userEvent.setup();
     const setCompressImagesDefault = vi.fn();
-    const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, {
-      state: joinedState, compressImagesDefault: true, setCompressImagesDefault,
-    });
-    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
-    await user.upload(input, fakeFile('foto.jpg', 'image/jpeg'));
+    renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, compressImagesDefault: true, setCompressImagesDefault });
 
-    await user.click(screen.getByLabelText('Compactar imagens antes de enviar'));
+    await user.click(screen.getByRole('button', { name: 'Adicionar' }));
+    await user.click(await screen.findByRole('menuitemcheckbox', { name: 'Compactar imagens (WebP)' }));
 
     expect(setCompressImagesDefault).toHaveBeenCalledWith(false);
+  });
+
+  it('perto do limite mostra o contador; acima dele bloqueia o envio sem cortar o texto', async () => {
+    const user = userEvent.setup();
+    const sendChatMessage = vi.fn(() => true);
+    renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendChatMessage });
+    const textarea = screen.getByRole('textbox', { name: 'Mensagem' });
+
+    fireEvent.change(textarea, { target: { value: 'a'.repeat(1500) } });
+    expect(screen.queryByText('500')).not.toBeInTheDocument();
+
+    fireEvent.change(textarea, { target: { value: 'a'.repeat(1900) } });
+    expect(screen.getByText('100')).toBeInTheDocument();
+
+    fireEvent.change(textarea, { target: { value: 'a'.repeat(2010) } });
+    expect(textarea).toHaveValue('a'.repeat(2010));
+    expect(screen.getByText('-10')).toBeInTheDocument();
+    expect(textarea).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: 'Enviar mensagem' })).toBeDisabled();
+    await user.type(textarea, '{Enter}');
+    expect(sendChatMessage).not.toHaveBeenCalled();
   });
 
   it('com o toggle ligado, comprime cada imagem antes de enviar', async () => {
