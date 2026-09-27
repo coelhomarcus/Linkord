@@ -398,7 +398,7 @@ export function rejectCorrelated(event: string, socket: AppSocket, msg: unknown,
     sendChatResult(socket, req, { error: { code, message } });
     return true;
   }
-  if ((event === 'chat-edit' || event === 'chat-delete') && isRequestId(req.requestId)) {
+  if ((event === 'chat-edit' || event === 'chat-delete' || event === 'chat-react') && isRequestId(req.requestId)) {
     answerAction(socket, req, { code, message });
     return true;
   }
@@ -537,17 +537,36 @@ async function handleChatEdit(socket: AppSocket, msg: { msgId?: unknown; text?: 
 
 /** Toggles (not just adds) — reacting again with the same emoji removes
  * your own reaction, Discord-style. */
-async function handleChatReact(socket: AppSocket, msg: { msgId?: unknown; emoji?: string }): Promise<void> {
+async function handleChatReact(socket: AppSocket, msg: { msgId?: unknown; emoji?: string; present?: unknown; requestId?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
+  // protocol 5: a desired state (present true/false), answered; older
+  // clients send neither and get the toggle, silently, as before
+  const desired = typeof msg.present === 'boolean' ? msg.present : null;
+  const fail = (failure: ActionFailure) => {
+    if (desired === null && failure.code === ERROR_CODES.relationshipRequired) sendSocketError(socket, failure.code, failure.message);
+    answerAction(socket, msg, failure);
+  };
   const msgId = Number(msg.msgId);
   const emoji = String(msg.emoji || '');
-  if (!Number.isFinite(msgId) || !isSingleEmoji(emoji)) return;
+  if (!Number.isFinite(msgId) || !isSingleEmoji(emoji)) return fail({ code: 'invalid_message', message: 'Reação inválida.' });
   const [existing] = await db.select({ conversationId: messages.conversationId, kind: messages.kind }).from(messages).where(eq(messages.id, msgId)).limit(1);
-  if (!existing || existing.kind !== 'text') return; // no reactions on invitation cards
-  if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return;
-  if (!(await assertCanWriteToConversation(socket, existing.conversationId, p.userId))) return;
-  const userIds = await reactions.toggle(msgId, p.userId, emoji);
+  if (!existing) return fail({ code: 'not_found', message: 'Essa mensagem não existe mais.' });
+  if (existing.kind !== 'text') return fail({ code: 'forbidden', message: 'Convites não recebem reações.' });
+  if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return fail({ code: 'conversation_not_found', message: 'Conversa não encontrada.' });
+  const peerId = await getDirectPeerId(existing.conversationId, p.userId);
+  if (peerId && !(await canSendDirectMessage(p.userId, peerId))) return fail({ code: ERROR_CODES.relationshipRequired, message: 'Vocês precisam ser amigos pra conversar por aqui.' });
+
+  let userIds: string[];
+  if (desired === null) {
+    userIds = await reactions.toggle(msgId, p.userId, emoji);
+  } else {
+    const result = await reactions.setPresence(msgId, p.userId, emoji, desired);
+    answerAction(socket, msg, null);
+    // a repeat that changed nothing has nothing new to tell anyone
+    if (!result.changed) return;
+    userIds = result.userIds;
+  }
   await broadcastToConversationMembers(existing.conversationId, {
     t: 'chat-reaction-updated',
     conversationId: existing.conversationId,

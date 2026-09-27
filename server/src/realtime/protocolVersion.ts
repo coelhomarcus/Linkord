@@ -7,8 +7,9 @@
 // 3 adds correlated, idempotent chat sends (`clientMessageId` →
 // `chat-send-result`); 4 answers chat-edit/chat-delete carrying a
 // `requestId` with `chat-action-result`. Both additive: a version-2 client
-// still works.
-export const PROTOCOL_VERSION = 4;
+// still works. 5: chat-react with `present` sets a desired state instead of
+// toggling, answered the same way.
+export const PROTOCOL_VERSION = 5;
 export const MIN_PROTOCOL_VERSION = 2;
 
 export function isClientCompatible(version: unknown): boolean {

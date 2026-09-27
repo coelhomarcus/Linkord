@@ -177,3 +177,48 @@ describe('editar e apagar com resultado (Postgres real)', () => {
     assert.equal(actionResults(ctx.sent).length, 0);
   }));
 });
+
+describe('reacoes por estado desejado (Postgres real)', () => {
+  const actionResults = (sent: Sent) => sent.filter((s) => s.event === 'chat-action-result').map((s) => s.payload);
+  const reactionBroadcasts = (sent: Sent) => sent.filter((s) => s.event === 'chat-reaction-updated').map((s) => s.payload);
+
+  it('adicionar duas vezes deixa uma reacao; a repeticao nao faz broadcast', () => withMember(async (ctx) => {
+    await handlers.chat!(ctx.socket, { conversationId: ctx.conversationId, text: 'reaja', requestId: 's', clientMessageId: key() });
+    const msgId = results(ctx.sent)[0].message.msgId;
+    await handlers['chat-react']!(ctx.socket, { msgId, emoji: '👍', present: true, requestId: 'r1' });
+    await handlers['chat-react']!(ctx.socket, { msgId, emoji: '👍', present: true, requestId: 'r2' });
+    assert.deepEqual(actionResults(ctx.sent).map((r) => [r.requestId, r.error]), [['r1', undefined], ['r2', undefined]]);
+    assert.deepEqual(reactionBroadcasts(ctx.sent).map((b) => b.userIds), [[ctx.userId]]);
+  }));
+
+  it('remover com present=false e idempotente', () => withMember(async (ctx) => {
+    await handlers.chat!(ctx.socket, { conversationId: ctx.conversationId, text: 'reaja', requestId: 's', clientMessageId: key() });
+    const msgId = results(ctx.sent)[0].message.msgId;
+    await handlers['chat-react']!(ctx.socket, { msgId, emoji: '🎉', present: true, requestId: 'a' });
+    await handlers['chat-react']!(ctx.socket, { msgId, emoji: '🎉', present: false, requestId: 'b' });
+    await handlers['chat-react']!(ctx.socket, { msgId, emoji: '🎉', present: false, requestId: 'c' });
+    assert.deepEqual(reactionBroadcasts(ctx.sent).map((b) => b.userIds), [[ctx.userId], []]);
+  }));
+
+  it('cliente antigo continua alternando, sem resposta', () => withMember(async (ctx) => {
+    await handlers.chat!(ctx.socket, { conversationId: ctx.conversationId, text: 'reaja', requestId: 's', clientMessageId: key() });
+    const msgId = results(ctx.sent)[0].message.msgId;
+    await handlers['chat-react']!(ctx.socket, { msgId, emoji: '😂' });
+    await handlers['chat-react']!(ctx.socket, { msgId, emoji: '😂' });
+    assert.equal(actionResults(ctx.sent).length, 0);
+    assert.deepEqual(reactionBroadcasts(ctx.sent).map((b) => b.userIds), [[ctx.userId], []]);
+  }));
+
+  it('DM sem amizade recusa com resultado', async () => {
+    const [a, b] = [await makeUser('cs'), await makeUser('cs')];
+    const { conversation } = await getOrCreateDirect(a.id, b.id, a.id);
+    const [row] = await db.insert(messages).values({ conversationId: conversation.id, authorId: b.id, text: 'oi' }).returning();
+    const { socket, sent, participant } = joinNew(a);
+    try {
+      await handlers['chat-react']!(socket, { msgId: row!.id, emoji: '👍', present: true, requestId: 'x' });
+      assert.equal(actionResults(sent)[0].error.code, 'relationship_required');
+    } finally {
+      cleanupParticipant(participant);
+    }
+  });
+});
