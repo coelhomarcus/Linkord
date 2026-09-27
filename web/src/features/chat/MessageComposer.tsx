@@ -214,7 +214,10 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
     const clearReplyIfStillHere = () => { if (conversationIdRef.current === conversationId) setReplyingTo(null); };
 
     if (!batch.length) {
-      sendChatMessage(conversationId, trimmed, replyTo);
+      if (!sendChatMessage(conversationId, trimmed, replyTo)) {
+        updateDraft(() => ({ attachError: 'Sem conexão com o servidor. A mensagem não foi enviada; tente de novo quando reconectar.' }));
+        return;
+      }
       updateDraft(() => ({ text: '', attachError: null }));
       clearReplyIfStillHere();
       return;

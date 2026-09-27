@@ -32,7 +32,7 @@ describe('MessageComposer', () => {
 
   it('envia a mensagem com Enter e limpa o campo', async () => {
     const user = userEvent.setup();
-    const sendChatMessage = vi.fn();
+    const sendChatMessage = vi.fn(() => true);
     renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendChatMessage });
 
     const textarea = screen.getByPlaceholderText('Mensagem');
@@ -42,9 +42,21 @@ describe('MessageComposer', () => {
     expect(textarea).toHaveValue('');
   });
 
+  it('sem conexao, a mensagem nao e descartada: o texto fica e um aviso aparece', async () => {
+    const user = userEvent.setup();
+    const sendChatMessage = vi.fn(() => false);
+    renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendChatMessage });
+
+    const textarea = screen.getByPlaceholderText('Mensagem');
+    await user.type(textarea, 'importante{Enter}');
+
+    expect(textarea).toHaveValue('importante');
+    expect(screen.getByText(/Sem conexão com o servidor/)).toBeInTheDocument();
+  });
+
   it('shift+enter nao envia, so quebra linha', async () => {
     const user = userEvent.setup();
-    const sendChatMessage = vi.fn();
+    const sendChatMessage = vi.fn(() => true);
     renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendChatMessage });
 
     const textarea = screen.getByPlaceholderText('Mensagem');
@@ -56,7 +68,7 @@ describe('MessageComposer', () => {
 
   it('botao de enviar comeca desabilitado e habilita com texto', async () => {
     const user = userEvent.setup();
-    const sendChatMessage = vi.fn();
+    const sendChatMessage = vi.fn(() => true);
     renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendChatMessage });
 
     const sendButton = screen.getByRole('button', { name: 'Enviar mensagem' });
@@ -175,7 +187,7 @@ describe('MessageComposer', () => {
 
   it('falha no meio do lote: so os arquivos que faltaram voltam, e o reenvio completa a mesma mensagem', async () => {
     const user = userEvent.setup();
-    const sendChatMessage = vi.fn();
+    const sendChatMessage = vi.fn(() => true);
     const sendAttachments = vi.fn<(req: SendAttachmentsRequest) => Promise<void>>(async ({ onFileSent }) => {
       onFileSent?.(0, 99);
       throw new PartialAttachmentError(99, 1, 2, new Error('rede'));
@@ -296,7 +308,7 @@ describe('MessageComposer — typing indicator', () => {
 
   it('enviar a mensagem emite typing:false na hora, antes do idle de 5s', async () => {
     const sendTyping = vi.fn();
-    const sendChatMessage = vi.fn();
+    const sendChatMessage = vi.fn(() => true);
     renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendTyping, sendChatMessage });
 
     const textarea = screen.getByPlaceholderText('Mensagem');
@@ -342,7 +354,7 @@ describe('MessageComposer — menções (@)', () => {
 
   it('Enter com o dropdown aberto insere a menção em vez de enviar a mensagem', async () => {
     const user = userEvent.setup();
-    const sendChatMessage = vi.fn();
+    const sendChatMessage = vi.fn(() => true);
     renderComposer({ sendChatMessage });
 
     const textarea = screen.getByPlaceholderText('Mensagem');
@@ -449,7 +461,7 @@ describe('MessageComposer — rascunho por conversa', () => {
 
   it('upload em andamento numa conversa nao bloqueia o envio em outra', async () => {
     const user = userEvent.setup();
-    const sendChatMessage = vi.fn();
+    const sendChatMessage = vi.fn(() => true);
     const sendAttachments = vi.fn(() => new Promise<void>(() => {}));
     const { container, switchTo } = renderComposer('conv-1', { sendAttachments, sendChatMessage });
     await user.upload(container.querySelector<HTMLInputElement>('input[type="file"]')!, fakeFile('um.pdf', 'application/pdf'));

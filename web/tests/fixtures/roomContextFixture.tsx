@@ -12,7 +12,7 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
   const base: RoomContextValue = {
     state: initialRoomState,
     dispatch: noop,
-    sendWs: noop,
+    sendWs: () => true,
     tileDomRegistry: { current: new Map() },
     audioRegistry: { current: new Map() },
     audioUnlocked: false,
@@ -83,7 +83,7 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     clearGroupActionError: noop,
     accessNotice: null,
     clearAccessNotice: noop,
-    sendChatMessage: noop,
+    sendChatMessage: () => true,
     deleteChatMessage: noop,
     editChatMessage: noop,
     reactToChatMessage: noop,

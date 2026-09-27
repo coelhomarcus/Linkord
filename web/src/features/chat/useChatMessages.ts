@@ -17,7 +17,7 @@ function displayNameForConversation(conversation: Conversation | undefined, meUs
 }
 
 interface ChatMessagesDeps {
-  sendWs: (msg: ClientMessage) => void;
+  sendWs: (msg: ClientMessage) => boolean;
   // Read-only cross-domain context — chat message handling genuinely needs
   // all of these (deciding unread/notify-sound/typing-clear on arrival,
   // moving the active-conversation cursor on jump), but none of them are
@@ -108,7 +108,8 @@ export function useChatMessages(deps: ChatMessagesDeps) {
 
   const sendChatMessage = useCallback((conversationId: string, text: string, replyTo?: number) => {
     const trimmed = text.trim();
-    if (trimmed) sendWs({ t: 'chat', conversationId, text: trimmed, ...(replyTo ? { replyTo } : {}) });
+    if (!trimmed) return false;
+    return sendWs({ t: 'chat', conversationId, text: trimmed, ...(replyTo ? { replyTo } : {}) });
   }, [sendWs]);
   const deleteChatMessage = useCallback((msgId: number) => sendWs({ t: 'chat-delete', msgId }), [sendWs]);
   const editChatMessage = useCallback((msgId: number, text: string) => {

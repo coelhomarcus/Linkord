@@ -41,7 +41,8 @@ export interface CropRect {
 export interface RoomContextValue {
   state: RoomState;
   dispatch: Dispatch<RoomAction>;
-  sendWs: (msg: ClientMessage) => void;
+  /** False when the socket is down and the message was dropped. */
+  sendWs: (msg: ClientMessage) => boolean;
   tileDomRegistry: MutableRefObject<Map<string, TileDomHandle>>;
   audioRegistry: MutableRefObject<Map<string, AudioHandle>>;
   audioUnlocked: boolean;
@@ -122,7 +123,8 @@ export interface RoomContextValue {
   // the conversation (and any panel about it) is already gone by then
   accessNotice: string | null;
   clearAccessNotice: () => void;
-  sendChatMessage: (conversationId: string, text: string, replyTo?: number) => void;
+  /** False when nothing was sent (empty text, or the socket is down). */
+  sendChatMessage: (conversationId: string, text: string, replyTo?: number) => boolean;
   deleteChatMessage: (msgId: number) => void;
   editChatMessage: (msgId: number, text: string) => void;
   reactToChatMessage: (msgId: number, emoji: ReactionEmoji) => void;

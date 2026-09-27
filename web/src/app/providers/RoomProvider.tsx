@@ -53,8 +53,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     dynacast: true,
   }));
 
-  const sendWs = useCallback((msg: ClientMessage) => {
-    if (socketRef.current?.connected) socketRef.current.emit(msg.t, msg);
+  const sendWs = useCallback((msg: ClientMessage): boolean => {
+    if (!socketRef.current?.connected) return false;
+    socketRef.current.emit(msg.t, msg);
+    return true;
   }, []);
   const isSocketConnected = useCallback(() => !!socketRef.current?.connected, []);
 
