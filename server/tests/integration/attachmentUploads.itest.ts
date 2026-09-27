@@ -219,3 +219,51 @@ describe('upload preparado e publicacao do lote (Postgres real)', () => {
     assert.equal(fs.existsSync(path.join(uploadDir, kept)), false);
   });
 });
+
+describe('dimensoes de midia (Postgres real)', () => {
+  async function stageBuffer(cookie: string, conversationId: string, buffer: Buffer, fileName: string, mimeType: string) {
+    const init = await app.inject({ method: 'POST', url: '/api/attachments/init', headers: { cookie }, payload: { conversationId, fileName, mimeType, totalSize: buffer.length, stage: true } });
+    const { uploadId } = init.json() as { uploadId: string };
+    await app.inject({ method: 'POST', url: `/api/attachments/${uploadId}/chunk/0`, headers: { cookie, 'content-type': 'application/octet-stream' }, payload: buffer });
+    const complete = await app.inject({ method: 'POST', url: `/api/attachments/${uploadId}/complete`, headers: { cookie }, payload: {} });
+    return (complete.json() as { staged: { id: string; width?: number; height?: number; thumbId?: string } }).staged;
+  }
+
+  it('imagem preparada informa largura/altura e a mensagem publicada tambem', async () => {
+    const owner = await makeUser('dm');
+    const conversationId = await makeGroupWithMembers(owner.id, []);
+    const cookie = await sessionFor(owner.id);
+    const staged = await stageBuffer(cookie, conversationId, bigPng, 'paisagem.png', 'image/png');
+    assert.deepEqual([staged.width, staged.height], [1200, 900]);
+
+    const { socket, sent, participant } = joinNew(owner);
+    try {
+      await chatHandlers.chat!(socket, { conversationId, text: '', requestId: 'r', clientMessageId: crypto.randomUUID(), attachmentIds: [staged.id] });
+    } finally {
+      cleanupParticipant(participant);
+    }
+    const result = sent.find((s) => s.event === 'chat-send-result')!.payload;
+    assert.deepEqual([result.message.attachments[0].width, result.message.attachments[0].height], [1200, 900]);
+    const [row] = await db.select().from(attachmentsTable).where(eq(attachmentsTable.id, staged.id));
+    assert.deepEqual([row!.width, row!.height], [1200, 900]);
+  });
+
+  it('foto girada por EXIF: dimensoes de exibicao e miniatura em retrato', async () => {
+    const owner = await makeUser('dm');
+    const conversationId = await makeGroupWithMembers(owner.id, []);
+    const cookie = await sessionFor(owner.id);
+    // stored landscape, displayed portrait (orientation 6 = rotate 90°)
+    const rotated = await sharp({ create: { width: 1200, height: 900, channels: 3, background: '#aa3300' } }).jpeg().withMetadata({ orientation: 6 }).toBuffer();
+    const staged = await stageBuffer(cookie, conversationId, rotated, 'celular.jpg', 'image/jpeg');
+    assert.deepEqual([staged.width, staged.height], [900, 1200]);
+    const thumb = await sharp(path.join(uploadDir, staged.thumbId!)).metadata();
+    assert.ok(thumb.height! > thumb.width!, `miniatura deveria ser retrato, veio ${thumb.width}x${thumb.height}`);
+  });
+
+  it('arquivo que nao e imagem nao inventa dimensoes', async () => {
+    const owner = await makeUser('dm');
+    const conversationId = await makeGroupWithMembers(owner.id, []);
+    const staged = await stageBuffer(await sessionFor(owner.id), conversationId, Buffer.from('%PDF-1.4 x'), 'doc.pdf', 'application/pdf');
+    assert.equal(staged.width, undefined);
+  });
+});

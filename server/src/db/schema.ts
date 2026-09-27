@@ -353,6 +353,11 @@ export const attachments = pgTable('attachments', {
   // each upload happened to finish. Legacy rows are all 0 and fall back to
   // createdAt.
   position: integer('position').notNull().default(0),
+  // Displayed size of an image (EXIF orientation applied), read on upload,
+  // so the client reserves its box before the pixels arrive. Null for other
+  // types, for files that couldn't be read, and for rows from before this.
+  width: integer('width'),
+  height: integer('height'),
 }, (t) => [
   index('attachments_message_id_idx').on(t.messageId),
 ]);
@@ -373,6 +378,8 @@ export const stagedAttachments = pgTable('staged_attachments', {
   thumbId: text('thumb_id'),
   thumbMimeType: text('thumb_mime_type'),
   thumbSize: bigint('thumb_size', { mode: 'number' }),
+  width: integer('width'),
+  height: integer('height'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 }, (t) => [

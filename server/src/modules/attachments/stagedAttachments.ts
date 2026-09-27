@@ -89,7 +89,7 @@ export async function publishStaged(tx: Tx, args: { ids: string[]; ownerId: stri
     }
     const [row] = await tx.insert(attachments).values({
       id: staged.id, messageId: args.messageId, fileName: staged.fileName, mimeType: staged.mimeType, size: staged.size,
-      thumbId: staged.thumbId, position,
+      thumbId: staged.thumbId, position, width: staged.width, height: staged.height,
     }).returning();
     published.push(row!);
   }

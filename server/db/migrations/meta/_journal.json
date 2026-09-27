@@ -204,6 +204,13 @@
       "when": 1790547987543,
       "tag": "0028_staged_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790549670659,
+      "tag": "0029_media_dimensions",
+      "breakpoints": true
     }
   ]
 }

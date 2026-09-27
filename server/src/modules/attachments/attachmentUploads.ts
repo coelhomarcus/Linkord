@@ -11,7 +11,7 @@ import { broadcastToConversationMembers, conversationExistsForUser, getDirectPee
 import { canSendDirectMessage } from '../friendships/friendshipsRepository.js';
 import { buildReplyRef } from '../messages/replyRef.js';
 import { newId, filePathFor } from './attachmentStorage.js';
-import { generateThumbnail, THUMBNAIL_SOURCE_MIME_TYPES } from './attachmentThumbnails.js';
+import { generateThumbnail, readImageDimensions, THUMBNAIL_SOURCE_MIME_TYPES } from './attachmentThumbnails.js';
 import { discardStaged, findOwnedStaged, stageFile } from './stagedAttachments.js';
 import type { StagedAttachment } from '../../db/schema.js';
 import { getUsage, sendUsageToUser } from './attachmentQuota.js';
@@ -292,7 +292,10 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
       }
     }
 
-    const attachmentPayload = { id: row.id, name: row.fileName, mime: row.mimeType, size: row.size, ...(thumbId ? { thumbId } : {}) };
+    // best effort, like the thumbnail: no size just means no reserved box
+    const dims = THUMBNAIL_SOURCE_MIME_TYPES.has(row.mimeType) ? await readImageDimensions(destPath) : null;
+    if (dims) await db.update(attachmentsTable).set(dims).where(eq(attachmentsTable.id, row.id));
+    const attachmentPayload = { id: row.id, name: row.fileName, mime: row.mimeType, size: row.size, ...(thumbId ? { thumbId } : {}), ...(dims ?? {}) };
     if (message) {
       const chatMessage = {
         msgId: message.id,
@@ -331,7 +334,10 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
 }
 
 function stagedPayload(row: StagedAttachment) {
-  return { id: row.id, name: row.fileName, mime: row.mimeType, size: row.size, ...(row.thumbId ? { thumbId: row.thumbId } : {}) };
+  return {
+    id: row.id, name: row.fileName, mime: row.mimeType, size: row.size, ...(row.thumbId ? { thumbId: row.thumbId } : {}),
+    ...(row.width && row.height ? { width: row.width, height: row.height } : {}),
+  };
 }
 
 /** The staged half of complete: the file (and its thumbnail) end up on disk
@@ -340,10 +346,12 @@ async function completeStaged(reply: FastifyReply, manifest: UploadManifest, use
   const { uploadId } = manifest;
   const destPath = filePathFor(uploadId);
   let thumb: { id: string; mime: string; size: number } | null = null;
+  let dims: { width: number; height: number } | null = null;
   let staged: StagedAttachment;
   try {
     await assembleChunks(uploadId, manifest, destPath);
     if (THUMBNAIL_SOURCE_MIME_TYPES.has(manifest.mimeType)) {
+      dims = await readImageDimensions(destPath);
       const generated = await generateThumbnail(destPath);
       if (generated) {
         const thumbId = newId();
@@ -360,6 +368,7 @@ async function completeStaged(reply: FastifyReply, manifest: UploadManifest, use
       id: uploadId, ownerId: userId, conversationId: manifest.conversationId,
       fileName: manifest.fileName, mimeType: manifest.mimeType, size: manifest.totalSize,
       thumbId: thumb?.id ?? null, thumbMimeType: thumb?.mime ?? null, thumbSize: thumb?.size ?? null,
+      width: dims?.width ?? null, height: dims?.height ?? null,
     });
   } catch (err) {
     // chunks stay, so complete can be retried without re-uploading
