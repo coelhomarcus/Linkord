@@ -175,7 +175,7 @@ export type ClientMessage =
   | { t: 'chat'; conversationId: string; text: string; replyTo?: number; requestId?: string; clientMessageId?: string; attachmentIds?: string[] }
   | { t: 'chat-delete'; msgId: number; requestId?: string }
   | { t: 'chat-edit'; msgId: number; text: string; requestId?: string }
-  | { t: 'chat-react'; msgId: number; emoji: ReactionEmoji }
+  | { t: 'chat-react'; msgId: number; emoji: ReactionEmoji; present?: boolean; requestId?: string }
   | { t: 'typing'; conversationId: string; value: boolean }
   | { t: 'call-join'; conversationId: string }
   | { t: 'call-leave' }

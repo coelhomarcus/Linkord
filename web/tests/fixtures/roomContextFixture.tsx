@@ -93,6 +93,7 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     deletingMsgIds: new Set(),
     messageActionErrors: new Map(),
     dismissMessageActionError: noop,
+    pendingReactions: new Map(),
     reactToChatMessage: noop,
     replyingTo: null,
     setReplyingTo: noop,

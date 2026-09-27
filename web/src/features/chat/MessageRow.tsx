@@ -16,10 +16,12 @@ import { mentionsUser } from '@/shared/lib/mentions';
 import { cn } from '@/shared/lib/utils';
 import { useKeepPopoverWarm } from '@/shared/hooks/useKeepPopoverWarm';
 import { useRoom } from '@/state/RoomContext';
-import type { ChatMessage, PublicUser, ReactionEmoji } from '@/shared/types/protocol';
+import type { ChatMessage, PublicUser } from '@/shared/types/protocol';
 import type { OutboxEntry } from './useMessageOutbox';
 import { PendingAttachments } from './PendingAttachments';
 import { messagePermissions } from './messageActions';
+import { MessageReactions } from './MessageReactions';
+import { withPendingReactions } from './reactionState';
 import { CloseButton } from '@/shared/ui/primitives/close-button';
 
 const DELETED_AUTHOR_NAME = 'Usuário apagado';
@@ -93,7 +95,7 @@ function PendingStatus({ entry, offline, onRetry, onDiscard }: { entry: OutboxEn
 export function MessageRow({ message, showHeader, highlighted, allUsers, mentionLookup, onOpenProfile, onReply, onJumpTo, pending }: MessageRowProps) {
   const {
     state, deleteChatMessage, editChatMessage, reactToChatMessage, editingMsgId, setEditingMsgId, retryPendingMessage, discardPendingMessage,
-    deletingMsgIds, messageActionErrors, dismissMessageActionError,
+    deletingMsgIds, messageActionErrors, dismissMessageActionError, pendingReactions,
   } = useRoom();
   const [editText, setEditText] = useState(message.text);
   const [editSaving, setEditSaving] = useState(false);
@@ -261,27 +263,13 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
         {pending?.attachments && <PendingAttachments attachments={pending.attachments} />}
         {pending && <PendingStatus entry={pending} offline={state.reconnecting} onRetry={retryPendingMessage} onDiscard={discardPendingMessage} />}
 
-        {!pending && message.reactions && (
-          <div className="mt-1 flex flex-wrap gap-1">
-            {(Object.entries(message.reactions) as [ReactionEmoji, string[]][]).map(([emoji, userIds]) => {
-              if (!userIds?.length) return null;
-              const mine = !!state.me.userId && userIds.includes(state.me.userId);
-              return (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => reactToChatMessage(message.msgId, emoji)}
-                  className={cn(
-                    'flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-label transition-colors',
-                    mine ? 'border-primary/50 bg-primary/15 text-text-primary' : 'border-white/10 bg-white/[0.04] text-text-secondary hover:bg-white/[0.08]'
-                  )}
-                >
-                  <span>{emoji}</span>
-                  <span>{userIds.length}</span>
-                </button>
-              );
-            })}
-          </div>
+        {!pending && (
+          <MessageReactions
+            reactions={withPendingReactions(message.reactions, message.msgId, pendingReactions, state.me.userId)}
+            myUserId={state.me.userId}
+            allUsers={allUsers}
+            onToggle={(emoji) => reactToChatMessage(message.msgId, emoji)}
+          />
         )}
       </div>
 

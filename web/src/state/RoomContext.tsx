@@ -139,6 +139,8 @@ export interface RoomContextValue {
   /** Rejects with the server's reason when the edit didn't go through. */
   editChatMessage: (msgId: number, text: string) => Promise<void>;
   deletingMsgIds: Set<number>;
+  /** The viewer's unconfirmed reaction intents (see reactionState.ts). */
+  pendingReactions: Map<string, boolean>;
   messageActionErrors: Map<number, string>;
   dismissMessageActionError: (msgId: number) => void;
   reactToChatMessage: (msgId: number, emoji: ReactionEmoji) => void;

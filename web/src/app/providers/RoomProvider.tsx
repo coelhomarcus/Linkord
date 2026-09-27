@@ -388,6 +388,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         queueMessageWithFiles: chatMessages.queueMessageWithFiles,
         deletingMsgIds: chatMessages.deletingMsgIds, messageActionErrors: chatMessages.messageActionErrors,
         dismissMessageActionError: chatMessages.dismissMessageActionError,
+        pendingReactions: chatMessages.pendingReactions,
         editChatMessage: chatMessages.editChatMessage, reactToChatMessage: chatMessages.reactToChatMessage,
         replyingTo: chatMessages.replyingTo, setReplyingTo: chatMessages.setReplyingTo,
         editingMsgId: chatMessages.editingMsgId, setEditingMsgId: chatMessages.setEditingMsgId,

@@ -6,6 +6,7 @@ import { messagePreviewText } from '@/features/chat/messagePreview';
 import { mentionsUsername } from '@/shared/lib/mentions';
 import { useMessageOutbox } from './useMessageOutbox';
 import { useMessageActionRequests } from './useMessageActionRequests';
+import { useReactionIntents } from './useReactionIntents';
 import type { ChatMessage, ClientMessage, Conversation, PublicUser, ReactionEmoji, ServerMessage } from '@/shared/types/protocol';
 
 const CHAT_CLIENT_LIMIT = 300;
@@ -13,6 +14,8 @@ const CHAT_CLIENT_LIMIT = 300;
 const CORRELATED_SEND_PROTOCOL = 3;
 // edits and deletes answered with chat-action-result
 const CORRELATED_ACTIONS_PROTOCOL = 4;
+// reactions as a desired state instead of a toggle
+const REACTION_INTENTS_PROTOCOL = 5;
 
 /** Adds `message` once, in msgId order — a send's result and its broadcast
  * both deliver it, in either order, and it may land after newer messages. */
@@ -73,11 +76,17 @@ export function useChatMessages(deps: ChatMessagesDeps) {
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
   const correlatedSendRef = useRef(false);
   const correlatedActionsRef = useRef(false);
+  const reactionIntentsRef = useRef(false);
   const actionRequests = useMessageActionRequests(sendWs);
   const { request: requestAction } = actionRequests;
   // shared by the row and the right-click menu, which both delete
   const [deletingMsgIds, setDeletingMsgIds] = useState<Set<number>>(new Set());
   const [messageActionErrors, setMessageActionErrors] = useState<Map<number, string>>(new Map());
+  const onReactionError = useCallback((msgId: number, message: string) => {
+    setMessageActionErrors((prev) => new Map(prev).set(msgId, `Não foi possível reagir: ${message}`));
+  }, []);
+  const reactionIntents = useReactionIntents({ request: requestAction, onError: onReactionError });
+  const { react: reactWithIntent } = reactionIntents;
 
   const insertConfirmed = useCallback((message: ChatMessage) => {
     setMessagesByConversation((prev) => {
@@ -169,6 +178,7 @@ export function useChatMessages(deps: ChatMessagesDeps) {
   const onWelcome = useCallback((protocolVersion: number | undefined) => {
     correlatedSendRef.current = (protocolVersion ?? 0) >= CORRELATED_SEND_PROTOCOL;
     correlatedActionsRef.current = (protocolVersion ?? 0) >= CORRELATED_ACTIONS_PROTOCOL;
+    reactionIntentsRef.current = (protocolVersion ?? 0) >= REACTION_INTENTS_PROTOCOL;
     onOutboxReconnected();
   }, [onOutboxReconnected]);
   const dismissMessageActionError = useCallback((msgId: number) => {
@@ -198,7 +208,15 @@ export function useChatMessages(deps: ChatMessagesDeps) {
     if (!correlatedActionsRef.current) { sendWs({ t: 'chat-edit', msgId, text: trimmed }); return; }
     await requestAction({ t: 'chat-edit', msgId, text: trimmed });
   }, [sendWs, requestAction]);
-  const reactToChatMessage = useCallback((msgId: number, emoji: ReactionEmoji) => sendWs({ t: 'chat-react', msgId, emoji }), [sendWs]);
+  const reactToChatMessage = useCallback((msgId: number, emoji: ReactionEmoji) => {
+    if (!reactionIntentsRef.current) { sendWs({ t: 'chat-react', msgId, emoji }); return; }
+    let mineOnServer = false;
+    for (const list of messagesByConversationRef.current.values()) {
+      const message = list.find((msg) => msg.msgId === msgId);
+      if (message) { mineOnServer = !!myUserIdRef.current && !!message.reactions?.[emoji]?.includes(myUserIdRef.current); break; }
+    }
+    reactWithIntent(msgId, emoji, mineOnServer);
+  }, [sendWs, reactWithIntent, myUserIdRef]);
 
   const onConversationHistory = useCallback((m: Extract<ServerMessage, { t: 'conversation-history' }>) => {
     setMessagesByConversation((prev) => new Map(prev).set(m.conversationId, m.messages));
@@ -348,6 +366,7 @@ export function useChatMessages(deps: ChatMessagesDeps) {
     onWelcome, onChatSendResult: outbox.onChatSendResult, queueMessageWithFiles,
     onChatActionResult: actionRequests.onChatActionResult,
     deletingMsgIds, messageActionErrors, dismissMessageActionError,
+    pendingReactions: reactionIntents.pendingReactions,
     pendingByConversation: outbox.pendingByConversation,
     retryPendingMessage: outbox.retry, discardPendingMessage: outbox.discard,
     replyingTo, setReplyingTo, editingMsgId, setEditingMsgId,
