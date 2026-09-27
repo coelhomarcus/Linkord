@@ -562,9 +562,8 @@ async function handleChatReact(socket: AppSocket, msg: { msgId?: unknown; emoji?
     userIds = await reactions.toggle(msgId, p.userId, emoji);
   } else {
     const result = await reactions.setPresence(msgId, p.userId, emoji, desired);
-    answerAction(socket, msg, null);
     // a repeat that changed nothing has nothing new to tell anyone
-    if (!result.changed) return;
+    if (!result.changed) return answerAction(socket, msg, null);
     userIds = result.userIds;
   }
   await broadcastToConversationMembers(existing.conversationId, {
@@ -574,6 +573,9 @@ async function handleChatReact(socket: AppSocket, msg: { msgId?: unknown; emoji?
     emoji,
     userIds,
   });
+  // after the broadcast (same socket, so it arrives after): the client drops
+  // its optimistic copy only once the real list is already there
+  answerAction(socket, msg, null);
 }
 
 // the original author OR an admin can delete — same split as
