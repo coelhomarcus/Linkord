@@ -77,7 +77,7 @@ export function ChatSurface({ conversationId, onOpenProfile }: { conversationId:
     >
       <ChatSurfaceWidthProvider width={surfaceWidth}>
         <MediaViewerProvider>
-          <MessageTimeline conversationId={conversationId} onReply={setReplyingTo} onOpenProfile={onOpenProfile} bottomPadding={composerHeight + STATUS_RAIL_HEIGHT + 8} />
+          <MessageTimeline key={conversationId} conversationId={conversationId} onReply={setReplyingTo} onOpenProfile={onOpenProfile} bottomPadding={composerHeight + STATUS_RAIL_HEIGHT + 8} />
         </MediaViewerProvider>
       </ChatSurfaceWidthProvider>
       <div

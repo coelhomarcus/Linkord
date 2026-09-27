@@ -83,13 +83,16 @@ describe('ChatSurface — digitacao nao desloca a lista', () => {
         state: joinedState,
         allUsers: new Map([['u1', fulano]]),
         typingByConversation: new Map([['conv-1', typing]]),
+        messagesByConversation: new Map([['conv-1', [{ msgId: 1, conversationId: 'conv-1', id: 'u1', name: 'Fulano', avatar: '', text: 'oi', ts: 1 }]]]),
       })}>
         <ChatSurface conversationId="conv-1" onOpenProfile={() => {}} />
       </RoomContext.Provider>
     );
     const { container, rerender } = render(surface(new Set()));
-    const scrollEl = container.querySelector('.overflow-y-auto') as HTMLElement;
-    const paddingBefore = scrollEl.style.paddingBottom;
+    const scrollEl = container.querySelector('[data-scroll-root]') as HTMLElement;
+    // the composer's reserved space is part of the virtual list's height now
+    const listHeight = () => (container.querySelector('[role="log"]') as HTMLElement).style.height;
+    const heightBefore = listHeight();
 
     rerender(surface(new Set(['u1'])));
 
@@ -98,6 +101,6 @@ describe('ChatSurface — digitacao nao desloca a lista', () => {
     const heightObserved = observed.filter((el) => !el.contains(scrollEl));
     expect(heightObserved.length).toBeGreaterThan(0);
     expect(heightObserved.some((el) => el.contains(typing))).toBe(false);
-    expect(scrollEl.style.paddingBottom).toBe(paddingBefore);
+    expect(listHeight()).toBe(heightBefore);
   });
 });
