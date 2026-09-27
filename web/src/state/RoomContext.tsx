@@ -117,6 +117,8 @@ export interface RoomContextValue {
   loadingNewerByConversation: Set<string>;
   /** Live messages that arrived while an older window was shown. */
   newerCountByConversation: Map<string, number>;
+  /** Changes when a conversation's loaded window is replaced, not extended. */
+  windowGenerationByConversation: Map<string, number>;
   allUsers: Map<string, PublicUser>;
   onlineUserIds: Set<string>;
   /** The friend subset of allUsers — see usePresence.ts's own comment. */

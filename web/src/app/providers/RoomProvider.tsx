@@ -380,6 +380,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         loadingOlderByConversation: chatMessages.loadingOlderByConversation, loadOlderMessages: chatMessages.loadOlderMessages,
         loadNewerMessages: chatMessages.loadNewerMessages, loadingNewerByConversation: chatMessages.loadingNewerByConversation,
         newerCountByConversation: chatMessages.newerCountByConversation,
+        windowGenerationByConversation: chatMessages.windowGenerationByConversation,
         unreadByConversation: chatMessages.unreadByConversation,
         typingByConversation: typingIndicator.typingByConversation, sendTyping: typingIndicator.sendTyping,
         allUsers: presence.allUsers, onlineUserIds: presence.onlineUserIds, friendUserIds: presence.friendUserIds,

@@ -86,6 +86,14 @@ export function useChatMessages(deps: ChatMessagesDeps) {
   // live messages that arrived while a conversation shows an older window:
   // not inserted (that would leave a hidden gap), just counted
   const [newerCountByConversation, setNewerCountByConversation] = useState<Map<string, number>>(new Map());
+  // bumped whenever a conversation's window is replaced wholesale (opened
+  // at the present, or around a jump target) rather than extended: the
+  // timeline starts over from its new position instead of keeping a scroll
+  // offset that belonged to rows no longer there
+  const [windowGenerationByConversation, setWindowGeneration] = useState<Map<string, number>>(new Map());
+  const bumpWindow = useCallback((conversationId: string) => {
+    setWindowGeneration((prev) => new Map(prev).set(conversationId, (prev.get(conversationId) ?? 0) + 1));
+  }, []);
   // one outstanding page per conversation+direction; a reply carrying any
   // other requestId answers something since replaced (a jump, a reload)
   const pageRequestsRef = useRef(new Map<string, { requestId: string; timer: ReturnType<typeof setTimeout> }>());
@@ -299,20 +307,22 @@ export function useChatMessages(deps: ChatMessagesDeps) {
 
   const onConversationHistory = useCallback((m: Extract<ServerMessage, { t: 'conversation-history' }>) => {
     resetPages(m.conversationId);
+    bumpWindow(m.conversationId);
     setMessagesByConversation((prev) => new Map(prev).set(m.conversationId, m.messages));
     setHasMoreByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMore));
     setHasMoreAfterByConversation((prev) => new Map(prev).set(m.conversationId, false));
-  }, [resetPages]);
+  }, [resetPages, bumpWindow]);
 
   const onConversationHistoryAround = useCallback((m: Extract<ServerMessage, { t: 'conversation-history-around' }>) => {
     const pending = pendingJumpRef.current;
     if (!pending || pending.conversationId !== m.conversationId || pending.msgId !== m.msgId) return;
     pendingJumpRef.current = null;
     resetPages(m.conversationId);
+    bumpWindow(m.conversationId);
     setMessagesByConversation((prev) => new Map(prev).set(m.conversationId, m.messages));
     setHasMoreByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMoreBefore));
     setHasMoreAfterByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMoreAfter));
-  }, [resetPages]);
+  }, [resetPages, bumpWindow]);
 
   const onConversationHistoryMore = useCallback((m: Extract<ServerMessage, { t: 'conversation-history-more' }>) => {
     const conversationId = m.conversationId;
@@ -457,7 +467,7 @@ export function useChatMessages(deps: ChatMessagesDeps) {
     retryPendingMessage: outbox.retry, discardPendingMessage: outbox.discard,
     replyingTo, setReplyingTo, editingMsgId, setEditingMsgId,
     onConversationHistory, onConversationHistoryAround, onConversationHistoryMore, onConversationHistoryNewer,
-    loadNewerMessages, loadingNewerByConversation, newerCountByConversation,
+    loadNewerMessages, loadingNewerByConversation, newerCountByConversation, windowGenerationByConversation,
     onChat, onChatDeleted, onChatEdited, onInvitationUpdated, onChatAttachmentAdded, onChatReactionUpdated, onConversationDeleted, onConversationRead,
   };
 }

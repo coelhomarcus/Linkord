@@ -89,7 +89,10 @@ export function MessageTimeline({ conversationId, onReply, onOpenProfile, bottom
     // the library keeps the first visible row (and the offset inside it)
     // in place when rows are added above, and follows appends at the end
     anchorTo: 'end',
-    followOnAppend: true,
+    // only at the real present: at the end of an older window a newer page
+    // must keep the reader's place, or following it would request the next
+    // page, and the next, all the way to the present on its own
+    followOnAppend: !hasMoreAfter,
     scrollEndThreshold: AT_END_THRESHOLD,
     paddingStart: 12,
     paddingEnd: bottomPadding,
@@ -97,16 +100,27 @@ export function MessageTimeline({ conversationId, onReply, onOpenProfile, bottom
   });
   const virtualItems = virtualizer.getVirtualItems();
 
-  // Mounted per conversation (ChatSurface keys it), so this runs once: start
-  // at the present. Paging waits for it, or the first render — sitting at
-  // the top before this scroll — would fetch older history nobody asked for.
+  const jumpIndex = pendingJumpTarget && pendingJumpTarget.conversationId === conversationId
+    ? items.findIndex((item) => item.type === 'message' && item.message.msgId === pendingJumpTarget.msgId)
+    : -1;
+
+  // Mounted per window (ChatSurface keys it), so this runs once: start on
+  // the jump target when there is one, at the present otherwise. Paging
+  // waits for it, or the first render — sitting at the top before this
+  // scroll — would fetch history nobody asked for.
   const [ready, setReady] = useState(false);
   useLayoutEffect(() => {
     if (ready || !items.length) return;
-    virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
+    if (jumpIndex >= 0) {
+      // the jump effect below centers it again once rows are measured, and
+      // highlights it
+      virtualizer.scrollToIndex(jumpIndex, { align: 'center' });
+    } else {
+      virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
+    }
     const frame = requestAnimationFrame(() => setReady(true));
     return () => cancelAnimationFrame(frame);
-  }, [ready, items.length, virtualizer]);
+  }, [ready, items, jumpIndex, virtualizer]);
 
   // Your own send brings you back to the present, even from old history.
   const pendingCount = pending.length;

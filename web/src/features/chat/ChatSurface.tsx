@@ -19,7 +19,7 @@ function hasFiles(e: DragEvent<HTMLDivElement>): boolean {
 }
 
 export function ChatSurface({ conversationId, onOpenProfile }: { conversationId: string; onOpenProfile: (userId: string) => void }) {
-  const { state, setReplyingTo } = useRoom();
+  const { state, setReplyingTo, windowGenerationByConversation } = useRoom();
   const composerRef = useRef<MessageComposerHandle>(null);
   const composerWrapRef = useRef<HTMLDivElement | null>(null);
   const [composerHeight, setComposerHeight] = useState(0);
@@ -77,7 +77,7 @@ export function ChatSurface({ conversationId, onOpenProfile }: { conversationId:
     >
       <ChatSurfaceWidthProvider width={surfaceWidth}>
         <MediaViewerProvider>
-          <MessageTimeline key={conversationId} conversationId={conversationId} onReply={setReplyingTo} onOpenProfile={onOpenProfile} bottomPadding={composerHeight + STATUS_RAIL_HEIGHT + 8} />
+          <MessageTimeline key={`${conversationId}:${windowGenerationByConversation.get(conversationId) ?? 0}`} conversationId={conversationId} onReply={setReplyingTo} onOpenProfile={onOpenProfile} bottomPadding={composerHeight + STATUS_RAIL_HEIGHT + 8} />
         </MediaViewerProvider>
       </ChatSurfaceWidthProvider>
       <div
