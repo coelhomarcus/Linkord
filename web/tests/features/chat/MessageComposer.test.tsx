@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { initialRoomState } from '@/state/roomReducer';
-import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
+import { createFakeRoomContextValue, renderWithRoom } from '@tests/fixtures/roomContextFixture';
+import { RoomContext } from '@/state/RoomContext';
 import { MessageComposer } from '@/features/chat/MessageComposer';
+import { clearAllDrafts } from '@/features/chat/conversationDrafts';
 import { compressImageFile } from '@/shared/lib/compressImageFile';
 import type { Conversation, PublicUser } from '@/shared/types/protocol';
 import { ApiError } from '@/shared/api/api';
@@ -14,6 +16,10 @@ vi.mock('@/shared/lib/compressImageFile', () => ({
 }));
 
 const joinedState = { ...initialRoomState, joined: true };
+
+// drafts live in a module-level store keyed by conversation, so every test
+// here would otherwise inherit the previous one's text and files
+afterEach(() => clearAllDrafts());
 
 function fakeFile(name: string, type: string): File {
   return new File(['conteudo'], name, { type });
@@ -380,5 +386,101 @@ describe('MessageComposer — menções (@)', () => {
     await user.type(screen.getByPlaceholderText('Mensagem'), 'fulano@an');
 
     expect(screen.queryByText('Ana Silva')).not.toBeInTheDocument();
+  });
+});
+
+describe('MessageComposer — rascunho por conversa', () => {
+  function renderComposer(conversationId: string, overrides: Parameters<typeof createFakeRoomContextValue>[0] = {}) {
+    const value = createFakeRoomContextValue({ state: joinedState, compressImagesDefault: false, ...overrides });
+    const view = render(<RoomContext.Provider value={value}><MessageComposer conversationId={conversationId} /></RoomContext.Provider>);
+    return {
+      ...view,
+      switchTo: (id: string) => view.rerender(<RoomContext.Provider value={value}><MessageComposer conversationId={id} /></RoomContext.Provider>),
+    };
+  }
+
+  it('cada conversa tem o proprio texto; voltar restaura o que estava escrito', async () => {
+    const user = userEvent.setup();
+    const { switchTo } = renderComposer('conv-1');
+    await user.type(screen.getByRole('textbox'), 'rascunho um');
+
+    switchTo('conv-2');
+    expect(screen.getByRole('textbox')).toHaveValue('');
+    await user.type(screen.getByRole('textbox'), 'outro');
+
+    switchTo('conv-1');
+    expect(screen.getByRole('textbox')).toHaveValue('rascunho um');
+  });
+
+  it('anexos escolhidos numa conversa nao aparecem na outra', async () => {
+    const user = userEvent.setup();
+    const { container, switchTo } = renderComposer('conv-1');
+    await user.upload(container.querySelector<HTMLInputElement>('input[type="file"]')!, fakeFile('um.pdf', 'application/pdf'));
+
+    switchTo('conv-2');
+    // the tray has an exit animation, so the node leaves a moment later
+    await waitFor(() => expect(screen.queryByText('um.pdf')).not.toBeInTheDocument());
+    switchTo('conv-1');
+    expect(screen.getByText('um.pdf')).toBeInTheDocument();
+  });
+
+  it('upload que termina depois da troca de conversa nao apaga o texto da conversa nova', async () => {
+    const user = userEvent.setup();
+    let finish!: () => void;
+    const setReplyingTo = vi.fn();
+    const sendAttachments = vi.fn<(req: SendAttachmentsRequest) => Promise<void>>(({ onFileSent }) => new Promise((resolve) => {
+      finish = () => { onFileSent?.(0, 5); resolve(); };
+    }));
+    const { container, switchTo } = renderComposer('conv-1', { sendAttachments, setReplyingTo });
+    await user.upload(container.querySelector<HTMLInputElement>('input[type="file"]')!, fakeFile('um.pdf', 'application/pdf'));
+    await user.type(screen.getByRole('textbox'), 'legenda');
+    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
+
+    switchTo('conv-2');
+    await user.type(screen.getByRole('textbox'), 'texto novo');
+    await act(async () => finish());
+
+    expect(screen.getByRole('textbox')).toHaveValue('texto novo');
+    expect(setReplyingTo).not.toHaveBeenCalled();
+    switchTo('conv-1');
+    expect(screen.getByRole('textbox')).toHaveValue('');
+    await waitFor(() => expect(screen.queryByText('um.pdf')).not.toBeInTheDocument());
+  });
+
+  it('upload em andamento numa conversa nao bloqueia o envio em outra', async () => {
+    const user = userEvent.setup();
+    const sendChatMessage = vi.fn();
+    const sendAttachments = vi.fn(() => new Promise<void>(() => {}));
+    const { container, switchTo } = renderComposer('conv-1', { sendAttachments, sendChatMessage });
+    await user.upload(container.querySelector<HTMLInputElement>('input[type="file"]')!, fakeFile('um.pdf', 'application/pdf'));
+    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
+
+    switchTo('conv-2');
+    await user.type(screen.getByRole('textbox'), 'oi{Enter}');
+
+    expect(sendChatMessage).toHaveBeenCalledWith('conv-2', 'oi', undefined);
+  });
+
+  it('texto salvo no sessionStorage volta depois de recarregar a pagina', () => {
+    sessionStorage.setItem('linkord:draft:v1::conv-9', 'sobreviveu ao reload');
+    renderComposer('conv-9');
+    expect(screen.getByRole('textbox')).toHaveValue('sobreviveu ao reload');
+  });
+
+  it('clearAllDrafts (logout) apaga os rascunhos da memoria e do sessionStorage', async () => {
+    vi.useFakeTimers();
+    try {
+      const { unmount } = renderComposer('conv-1');
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'segredo' } });
+      act(() => { vi.advanceTimersByTime(1000); });
+      expect(sessionStorage.getItem('linkord:draft:v1::conv-1')).toBe('segredo');
+
+      act(() => clearAllDrafts());
+      expect(sessionStorage.getItem('linkord:draft:v1::conv-1')).toBeNull();
+      expect(screen.getByRole('textbox')).toHaveValue('');
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

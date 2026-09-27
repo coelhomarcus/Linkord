@@ -18,14 +18,9 @@ import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
 import { ApiError } from '@/shared/api/api';
 import { PartialAttachmentError } from './useAttachmentsUpload';
+import { readDraft, useConversationDraft, type PendingAttachment } from './conversationDrafts';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE } from '@/shared/types/protocol';
 import type { PublicUser } from '@/shared/types/protocol';
-
-export interface PendingAttachment {
-  id: string;
-  file: File;
-  previewUrl: string | null;
-}
 
 // How often notifyTyping actually emits typing:true while the user keeps
 // typing (leading-edge: fires right away after being idle, then throttles),
@@ -58,12 +53,11 @@ export interface MessageComposerHandle {
 
 export const MessageComposer = forwardRef<MessageComposerHandle, { conversationId: string }>(function MessageComposer({ conversationId }, ref) {
   const { state, allUsers, conversations, sendChatMessage, sendAttachments, sendTyping, replyingTo, setReplyingTo, compressImagesDefault, setCompressImagesDefault } = useRoom();
-  const [text, setText] = useState('');
+  const accountId = state.me.userId ?? '';
+  const [draft, updateDraft] = useConversationDraft(accountId, conversationId);
+  const { text, pendingFiles, attachError, upload } = draft;
+  const setText = (next: string) => updateDraft(() => ({ text: next }));
   const [compressImages, setCompressImages] = useState(compressImagesDefault);
-  const [pendingFiles, setPendingFiles] = useState<PendingAttachment[]>([]);
-  const [attachError, setAttachError] = useState<string | null>(null);
-  const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   // once opened, keeps the picker mounted (hidden) instead of paying its
   // dataset fetch/measure cost again on every open — see useKeepPopoverWarm.
@@ -75,15 +69,14 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
   const mentionOptionRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const pendingFilesRef = useRef<PendingAttachment[]>([]);
-  const isSubmittingRef = useRef(false);
-  // the message a partially-failed batch already created — the next submit
-  // appends the remaining files to it instead of publishing a second message
-  const partialBatchRef = useRef<{ conversationId: string; msgId: number } | null>(null);
+  // an upload can finish after the user moved to another conversation; the
+  // reply target is global, so it's only cleared if they're still here
+  const conversationIdRef = useRef(conversationId);
+  useEffect(() => { conversationIdRef.current = conversationId; }, [conversationId]);
   const typingThrottleRef = useRef<number | null>(null); // Date.now() of the last emitted typing:true
   const typingIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
-  const disabled = !state.joined || activeUploadId !== null;
+  const disabled = !state.joined || upload !== null;
   const canSubmit = !disabled && (text.trim().length > 0 || pendingFiles.length > 0);
 
   // Keeps the arrow-key-highlighted mention option visible — without this,
@@ -92,13 +85,6 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
   useEffect(() => {
     mentionOptionRefs.current[mentionSelectedIndex]?.scrollIntoView({ block: 'nearest' });
   }, [mentionSelectedIndex, mentionQuery]);
-
-  useEffect(() => { pendingFilesRef.current = pendingFiles; }, [pendingFiles]);
-  useEffect(() => () => {
-    pendingFilesRef.current.forEach((file) => {
-      if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
-    });
-  }, []);
 
   function notifyTyping() {
     if (disabled) return;
@@ -182,7 +168,7 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
 
   function addFiles(files: File[]) {
     if (!files.length) return;
-    const remainingSlots = MAX_ATTACHMENTS_PER_MESSAGE - pendingFiles.length;
+    const remainingSlots = MAX_ATTACHMENTS_PER_MESSAGE - readDraft(accountId, conversationId).pendingFiles.length;
     const accepted: PendingAttachment[] = [];
     let error: string | null = null;
     for (const file of files) {
@@ -200,18 +186,13 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
         previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
       });
     }
-    if (accepted.length) setPendingFiles((prev) => [...prev, ...accepted]);
-    setAttachError(error);
+    updateDraft((d) => ({ pendingFiles: accepted.length ? [...d.pendingFiles, ...accepted] : d.pendingFiles, attachError: error }));
   }
 
   useImperativeHandle(ref, () => ({ addFiles }));
 
   function removeFile(id: string) {
-    setPendingFiles((prev) => {
-      const found = prev.find((file) => file.id === id);
-      if (found?.previewUrl) URL.revokeObjectURL(found.previewUrl);
-      return prev.filter((file) => file.id !== id);
-    });
+    updateDraft((d) => ({ pendingFiles: d.pendingFiles.filter((file) => file.id !== id) }));
   }
 
   function toggleCompress(next: boolean) {
@@ -220,82 +201,79 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
   }
 
   async function submit() {
-    // Guard against a second submit firing before `disabled` (an async
-    // state update) has re-rendered — e.g. a fast double-click, or Enter
-    // and the send button both landing in the same tick.
-    if (isSubmittingRef.current) return;
-    const trimmed = text.trim();
-    if (!pendingFiles.length && !trimmed) return;
-    isSubmittingRef.current = true;
+    // read from the store, not this render: Enter and a click landing in the
+    // same tick would otherwise both see the text as unsent
+    const current = readDraft(accountId, conversationId);
+    if (!state.joined || current.upload) return;
+    const trimmed = current.text.trim();
+    const batch = current.pendingFiles;
+    if (!batch.length && !trimmed) return;
     stopTyping(); // sending is proof they stopped — don't wait for the idle timeout
     setMentionQuery(null);
+    const replyTo = replyingTo?.msgId;
+    const clearReplyIfStillHere = () => { if (conversationIdRef.current === conversationId) setReplyingTo(null); };
+
+    if (!batch.length) {
+      sendChatMessage(conversationId, trimmed, replyTo);
+      updateDraft(() => ({ text: '', attachError: null }));
+      clearReplyIfStillHere();
+      return;
+    }
+
+    const resumeMsgId = current.partialBatchMsgId;
+    // Mark the first file as "uploading" immediately, before the network
+    // round-trip, so the UI reacts the instant the user submits instead of
+    // waiting on the first progress event to arrive.
+    updateDraft(() => ({ attachError: null, upload: { activeFileId: batch[0]!.id, progress: 0 } }));
     try {
-      if (pendingFiles.length) {
-        setAttachError(null);
-        setUploadProgress(0);
-        // Mark the first file as "uploading" immediately, before the
-        // network round-trip, so the UI reacts the instant the user submits
-        // instead of waiting on the first progress event to arrive.
-        setActiveUploadId(pendingFiles[0]?.id ?? null);
-        const batch = pendingFiles;
-        const resume = partialBatchRef.current?.conversationId === conversationId ? partialBatchRef.current : null;
-        const filesToSend = compressImages
-          ? await Promise.all(batch.map((item) => (
-              item.file.type.startsWith('image/') ? compressImageFile(item.file) : item.file
-            )))
-          : batch.map((item) => item.file);
-        try {
-          await sendAttachments({
-            conversationId,
-            files: filesToSend,
-            // on resume the caption and reply already went out with the first file
-            caption: resume ? '' : trimmed,
-            replyTo: resume ? undefined : replyingTo?.msgId,
-            targetMsgId: resume?.msgId,
-            onProgress: (fileIndex, fraction) => {
-              setActiveUploadId(batch[fileIndex]?.id ?? null);
-              setUploadProgress(fraction);
-            },
-            onFileSent: (fileIndex, msgId) => {
-              removeFile(batch[fileIndex]!.id);
-              if (!resume && fileIndex === 0) {
-                partialBatchRef.current = { conversationId, msgId };
-                setText('');
-                setReplyingTo(null);
-              }
-            },
-          });
-        } catch (err) {
-          if (err instanceof PartialAttachmentError) {
-            const failed = err.totalCount - err.failedIndex;
-            setAttachError(failed === 1
-              ? 'Um anexo não foi enviado. Envie de novo para tentar só ele.'
-              : `${failed} anexos não foram enviados. Envie de novo para tentar só esses.`);
-            return;
-          }
-          if (resume && err instanceof ApiError && UNRESUMABLE_TARGET_CODES.has(err.code)) {
-            partialBatchRef.current = null;
-            setAttachError('Não deu para completar a mensagem anterior. Envie de novo para mandar os anexos restantes numa nova mensagem.');
-            return;
-          }
-          throw err;
-        }
-        partialBatchRef.current = null;
-        // typed after a partial failure: the resumed files carry no caption,
-        // so the text goes out as its own message rather than being dropped
-        if (resume && trimmed) sendChatMessage(conversationId, trimmed, replyingTo?.msgId);
-        setText('');
-        setReplyingTo(null);
-        return;
-      }
-      sendChatMessage(conversationId, trimmed, replyingTo?.msgId);
-      setText('');
-      setReplyingTo(null);
+      const filesToSend = compressImages
+        ? await Promise.all(batch.map((item) => (
+            item.file.type.startsWith('image/') ? compressImageFile(item.file) : item.file
+          )))
+        : batch.map((item) => item.file);
+      await sendAttachments({
+        conversationId,
+        files: filesToSend,
+        // on resume the caption and reply already went out with the first file
+        caption: resumeMsgId != null ? '' : trimmed,
+        replyTo: resumeMsgId != null ? undefined : replyTo,
+        targetMsgId: resumeMsgId ?? undefined,
+        onProgress: (fileIndex, fraction) => {
+          updateDraft(() => ({ upload: { activeFileId: batch[fileIndex]?.id ?? null, progress: fraction } }));
+        },
+        onFileSent: (fileIndex, msgId) => {
+          const sentId = batch[fileIndex]!.id;
+          const createdMessage = resumeMsgId == null && fileIndex === 0;
+          updateDraft((d) => ({
+            pendingFiles: d.pendingFiles.filter((file) => file.id !== sentId),
+            ...(createdMessage ? { partialBatchMsgId: msgId, text: '' } : {}),
+          }));
+          if (createdMessage) clearReplyIfStillHere();
+        },
+      });
+      // typed after a partial failure: the resumed files carry no caption,
+      // so the text goes out as its own message rather than being dropped
+      if (resumeMsgId != null && trimmed) sendChatMessage(conversationId, trimmed, replyTo);
+      updateDraft(() => ({ partialBatchMsgId: null, text: '' }));
+      clearReplyIfStillHere();
     } catch (err) {
-      setAttachError(err instanceof Error ? err.message : 'Falha ao enviar.');
+      if (err instanceof PartialAttachmentError) {
+        const failed = err.totalCount - err.failedIndex;
+        updateDraft(() => ({
+          attachError: failed === 1
+            ? 'Um anexo não foi enviado. Envie de novo para tentar só ele.'
+            : `${failed} anexos não foram enviados. Envie de novo para tentar só esses.`,
+        }));
+      } else if (resumeMsgId != null && err instanceof ApiError && UNRESUMABLE_TARGET_CODES.has(err.code)) {
+        updateDraft(() => ({
+          partialBatchMsgId: null,
+          attachError: 'Não deu para completar a mensagem anterior. Envie de novo para mandar os anexos restantes numa nova mensagem.',
+        }));
+      } else {
+        updateDraft(() => ({ attachError: err instanceof Error ? err.message : 'Falha ao enviar.' }));
+      }
     } finally {
-      isSubmittingRef.current = false;
-      setActiveUploadId(null);
+      updateDraft(() => ({ upload: null }));
     }
   }
 
@@ -403,7 +381,7 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
             >
               <div className="flex flex-wrap gap-2 px-1 pt-1">
                 {pendingFiles.map((item) => {
-                  const uploading = activeUploadId === item.id;
+                  const uploading = upload?.activeFileId === item.id;
                   return (
                     <motion.div
                       key={item.id}
@@ -422,7 +400,7 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
                       {uploading ? (
                         <>
                           <div className="absolute inset-0 bg-black/55" />
-                          <div className="absolute inset-x-1.5 bottom-1.5"><UploadProgressBar progress={uploadProgress} /></div>
+                          <div className="absolute inset-x-1.5 bottom-1.5"><UploadProgressBar progress={upload?.progress ?? 0} /></div>
                         </>
                       ) : (
                         <CloseButton variant="overlay" size="xs" label="Remover anexo" onClick={() => removeFile(item.id)} className="absolute right-1 top-1" />
