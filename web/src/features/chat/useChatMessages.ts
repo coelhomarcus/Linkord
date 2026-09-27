@@ -5,11 +5,14 @@ import { notifyIncomingChatMessage } from '@/shared/notifications';
 import { messagePreviewText } from '@/features/chat/messagePreview';
 import { mentionsUsername } from '@/shared/lib/mentions';
 import { useMessageOutbox } from './useMessageOutbox';
+import { useMessageActionRequests } from './useMessageActionRequests';
 import type { ChatMessage, ClientMessage, Conversation, PublicUser, ReactionEmoji, ServerMessage } from '@/shared/types/protocol';
 
 const CHAT_CLIENT_LIMIT = 300;
 // correlated, idempotent chat sends (see useMessageOutbox)
 const CORRELATED_SEND_PROTOCOL = 3;
+// edits and deletes answered with chat-action-result
+const CORRELATED_ACTIONS_PROTOCOL = 4;
 
 /** Adds `message` once, in msgId order — a send's result and its broadcast
  * both deliver it, in either order, and it may land after newer messages. */
@@ -69,6 +72,12 @@ export function useChatMessages(deps: ChatMessagesDeps) {
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
   const correlatedSendRef = useRef(false);
+  const correlatedActionsRef = useRef(false);
+  const actionRequests = useMessageActionRequests(sendWs);
+  const { request: requestAction } = actionRequests;
+  // shared by the row and the right-click menu, which both delete
+  const [deletingMsgIds, setDeletingMsgIds] = useState<Set<number>>(new Set());
+  const [messageActionErrors, setMessageActionErrors] = useState<Map<number, string>>(new Map());
 
   const insertConfirmed = useCallback((message: ChatMessage) => {
     setMessagesByConversation((prev) => {
@@ -159,13 +168,36 @@ export function useChatMessages(deps: ChatMessagesDeps) {
    * supports and resends whatever was still unconfirmed. */
   const onWelcome = useCallback((protocolVersion: number | undefined) => {
     correlatedSendRef.current = (protocolVersion ?? 0) >= CORRELATED_SEND_PROTOCOL;
+    correlatedActionsRef.current = (protocolVersion ?? 0) >= CORRELATED_ACTIONS_PROTOCOL;
     onOutboxReconnected();
   }, [onOutboxReconnected]);
-  const deleteChatMessage = useCallback((msgId: number) => sendWs({ t: 'chat-delete', msgId }), [sendWs]);
-  const editChatMessage = useCallback((msgId: number, text: string) => {
+  const dismissMessageActionError = useCallback((msgId: number) => {
+    setMessageActionErrors((prev) => { if (!prev.has(msgId)) return prev; const next = new Map(prev); next.delete(msgId); return next; });
+  }, []);
+
+  /** Resolves once the server removed it (older servers: once sent). A
+   * failure stays visible on the row instead of the message silently
+   * staying put. */
+  const deleteChatMessage = useCallback(async (msgId: number): Promise<void> => {
+    if (!correlatedActionsRef.current) { sendWs({ t: 'chat-delete', msgId }); return; }
+    dismissMessageActionError(msgId);
+    setDeletingMsgIds((prev) => new Set(prev).add(msgId));
+    try {
+      await requestAction({ t: 'chat-delete', msgId });
+    } catch (err) {
+      setMessageActionErrors((prev) => new Map(prev).set(msgId, `Não foi possível apagar: ${err instanceof Error ? err.message : 'erro desconhecido'}`));
+    } finally {
+      setDeletingMsgIds((prev) => { const next = new Set(prev); next.delete(msgId); return next; });
+    }
+  }, [sendWs, requestAction, dismissMessageActionError]);
+
+  /** Rejects with the server's reason, so the editor can stay open with it. */
+  const editChatMessage = useCallback(async (msgId: number, text: string): Promise<void> => {
     const trimmed = text.trim();
-    if (trimmed) sendWs({ t: 'chat-edit', msgId, text: trimmed });
-  }, [sendWs]);
+    if (!trimmed) return;
+    if (!correlatedActionsRef.current) { sendWs({ t: 'chat-edit', msgId, text: trimmed }); return; }
+    await requestAction({ t: 'chat-edit', msgId, text: trimmed });
+  }, [sendWs, requestAction]);
   const reactToChatMessage = useCallback((msgId: number, emoji: ReactionEmoji) => sendWs({ t: 'chat-react', msgId, emoji }), [sendWs]);
 
   const onConversationHistory = useCallback((m: Extract<ServerMessage, { t: 'conversation-history' }>) => {
@@ -314,6 +346,8 @@ export function useChatMessages(deps: ChatMessagesDeps) {
     clearUnread, loadOlderMessages, pendingJumpTarget, clearPendingJumpTarget, cancelPendingJump, jumpToMessage,
     sendChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,
     onWelcome, onChatSendResult: outbox.onChatSendResult, queueMessageWithFiles,
+    onChatActionResult: actionRequests.onChatActionResult,
+    deletingMsgIds, messageActionErrors, dismissMessageActionError,
     pendingByConversation: outbox.pendingByConversation,
     retryPendingMessage: outbox.retry, discardPendingMessage: outbox.discard,
     replyingTo, setReplyingTo, editingMsgId, setEditingMsgId,

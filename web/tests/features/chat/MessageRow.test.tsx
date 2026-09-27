@@ -270,3 +270,47 @@ describe('MessageRow — envio pendente', () => {
     expect(discardPendingMessage).toHaveBeenCalledWith('k1');
   });
 });
+
+describe('MessageRow — editar e apagar com confirmacao', () => {
+  const mine = makeMessage({ id: 'me', text: 'texto antigo' });
+  const me = { ...initialRoomState, me: { ...initialRoomState.me, userId: 'me' } };
+  const renderMine = (room: Parameters<typeof renderWithRoom>[1] = {}) => renderWithRoom(
+    <MessageRow message={mine} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={() => {}} onReply={() => {}} onJumpTo={() => {}} />,
+    { state: me, editingMsgId: mine.msgId, ...room },
+  );
+
+  it('edicao recusada: o editor continua aberto com o texto e o motivo', async () => {
+    const user = userEvent.setup();
+    const setEditingMsgId = vi.fn();
+    const editChatMessage = vi.fn(async () => { throw new Error('Vocês precisam ser amigos pra conversar por aqui.'); });
+    renderMine({ editChatMessage, setEditingMsgId });
+    const editor = screen.getByRole('textbox');
+    await user.clear(editor);
+    await user.type(editor, 'texto novo{Enter}');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Vocês precisam ser amigos');
+    expect(editor).toHaveValue('texto novo');
+    expect(setEditingMsgId).not.toHaveBeenCalledWith(null);
+  });
+
+  it('edicao confirmada fecha o editor', async () => {
+    const user = userEvent.setup();
+    const setEditingMsgId = vi.fn();
+    const editChatMessage = vi.fn(async () => {});
+    renderMine({ editChatMessage, setEditingMsgId });
+    await user.type(screen.getByRole('textbox'), ' editado{Enter}');
+    expect(editChatMessage).toHaveBeenCalledWith(mine.msgId, 'texto antigo editado');
+    expect(setEditingMsgId).toHaveBeenCalledWith(null);
+  });
+
+  it('apagando: a linha avisa; falha aparece na linha e pode ser dispensada', () => {
+    const dismissMessageActionError = vi.fn();
+    const { rerender } = renderMine({ editingMsgId: null, deletingMsgIds: new Set([mine.msgId]) });
+    expect(screen.getByText('Apagando…')).toBeInTheDocument();
+    rerender(<></>);
+    renderMine({ editingMsgId: null, messageActionErrors: new Map([[mine.msgId, 'Não foi possível apagar: sem conexão']]), dismissMessageActionError });
+    expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível apagar');
+    fireEvent.click(screen.getByRole('button', { name: 'Dispensar aviso' }));
+    expect(dismissMessageActionError).toHaveBeenCalledWith(mine.msgId);
+  });
+});

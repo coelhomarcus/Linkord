@@ -173,8 +173,8 @@ export type ClientMessage =
   | { t: 'load-messages-around'; conversationId: string; msgId: number }
   | { t: 'message-search'; query: string; conversationId?: string }
   | { t: 'chat'; conversationId: string; text: string; replyTo?: number; requestId?: string; clientMessageId?: string; attachmentIds?: string[] }
-  | { t: 'chat-delete'; msgId: number }
-  | { t: 'chat-edit'; msgId: number; text: string }
+  | { t: 'chat-delete'; msgId: number; requestId?: string }
+  | { t: 'chat-edit'; msgId: number; text: string; requestId?: string }
   | { t: 'chat-react'; msgId: number; emoji: ReactionEmoji }
   | { t: 'typing'; conversationId: string; value: boolean }
   | { t: 'call-join'; conversationId: string }
@@ -216,6 +216,7 @@ export type ServerMessage =
   | { t: 'chat-send-result'; requestId: string; clientMessageId: string; message?: ChatMessage; error?: { code: string; message: string } }
   | { t: 'chat-deleted'; conversationId: string; msgId: number }
   | { t: 'chat-edited'; message: ChatMessage }
+  | { t: 'chat-action-result'; requestId: string; error?: { code: string; message: string } }
   | { t: 'invitation-updated'; invitation: InvitationCard }
   | { t: 'role-updated'; role: 'user' | 'admin' }
   | { t: 'chat-reaction-updated'; conversationId: string; msgId: number; emoji: ReactionEmoji; userIds: string[] }

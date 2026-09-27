@@ -235,6 +235,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'chat-send-result':
         chatMessages.onChatSendResult(m);
         break;
+      case 'chat-action-result':
+        chatMessages.onChatActionResult(m);
+        break;
       case 'typing':
         typingIndicator.onTyping(m);
         break;
@@ -383,6 +386,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         pendingByConversation: chatMessages.pendingByConversation,
         retryPendingMessage: chatMessages.retryPendingMessage, discardPendingMessage: chatMessages.discardPendingMessage,
         queueMessageWithFiles: chatMessages.queueMessageWithFiles,
+        deletingMsgIds: chatMessages.deletingMsgIds, messageActionErrors: chatMessages.messageActionErrors,
+        dismissMessageActionError: chatMessages.dismissMessageActionError,
         editChatMessage: chatMessages.editChatMessage, reactToChatMessage: chatMessages.reactToChatMessage,
         replyingTo: chatMessages.replyingTo, setReplyingTo: chatMessages.setReplyingTo,
         editingMsgId: chatMessages.editingMsgId, setEditingMsgId: chatMessages.setEditingMsgId,

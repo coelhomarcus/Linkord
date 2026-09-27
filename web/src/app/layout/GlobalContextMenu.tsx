@@ -7,6 +7,7 @@ import type { ReportTarget } from '@/features/reports/reportCategories';
 import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/shared/ui/primitives/context-menu';
 import { ReactionEmojiPicker } from '@/features/chat/ReactionEmojiPicker';
 import { useKeepPopoverWarm } from '@/shared/hooks/useKeepPopoverWarm';
+import { messagePermissions } from '@/features/chat/messageActions';
 import { useRoom } from '@/state/RoomContext';
 import { downloadFile } from '@/shared/lib/download';
 
@@ -44,13 +45,11 @@ export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenu
   // proliferation risk in keeping it warm. See useKeepPopoverWarm.
   const emojiPickerWarmed = useKeepPopoverWarm(fullEmojiPicker);
   const contextMenuActionsRef = useRef<ContextMenuRootActions | null>(null);
-  const isAdmin = state.me.role === 'admin';
   const targetMessage = messageTarget != null
     ? activeConversationId ? messagesByConversation.get(activeConversationId)?.find((m) => m.msgId === messageTarget) : undefined
     : undefined;
-  const targetIsInvite = targetMessage?.kind === 'group_invite';
-  const targetIsMine = !!targetMessage && targetMessage.id === state.me.userId;
-  const targetCanDelete = targetIsMine || isAdmin;
+  // one source of truth with the row's toolbar and phone menu
+  const can = targetMessage ? messagePermissions(targetMessage, { userId: state.me.userId, role: state.me.role }) : null;
   const targetConversation = conversationTarget ? conversations.find((c) => c.id === conversationTarget) : undefined;
 
   const showMessageBlock = !!targetMessage;
@@ -144,10 +143,10 @@ export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenu
             resize when "+" swaps the quick reactions for the full picker;
             every other block is a handful of short text items, so those keep
             the component's own natural width. */}
-        <ContextMenuContent keepMounted={emojiPickerWarmed} className={showMessageBlock && !targetIsInvite ? 'w-75' : undefined}>
+        <ContextMenuContent keepMounted={emojiPickerWarmed} className={showMessageBlock && can?.react ? 'w-75' : undefined}>
           {showMessageBlock && targetMessage && (
             <>
-              {!targetIsInvite && (
+              {can?.react && (
                 <>
                   <ReactionEmojiPicker
                     fullPickerOpen={fullEmojiPicker}
@@ -163,26 +162,26 @@ export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenu
                   </ContextMenuItem>
                 </>
               )}
-              {targetMessage.text && (
+              {can?.copy && (
                 <ContextMenuItem onClick={handleCopyMessageText}>
                   <Copy size={14} />
                   <span>Copiar texto</span>
                 </ContextMenuItem>
               )}
-              {!targetIsMine && !targetIsInvite && !!targetMessage.id && (
+              {can?.report && (
                 <ContextMenuItem onClick={() => setReportTarget({ type: 'message', id: String(targetMessage.msgId), label: `mensagem de ${targetMessage.name}` })}>
                   <Flag size={14} />
                   <span>Denunciar</span>
                 </ContextMenuItem>
               )}
-              {targetIsMine && !targetIsInvite && (
+              {can?.edit && (
                 <ContextMenuItem onClick={() => setEditingMsgId(targetMessage.msgId)}>
                   <Pencil size={14} />
                   <span>Editar</span>
                 </ContextMenuItem>
               )}
-              {targetCanDelete && (
-                <ContextMenuItem variant="destructive" onClick={() => deleteChatMessage(targetMessage.msgId)}>
+              {can?.delete && (
+                <ContextMenuItem variant="destructive" onClick={() => void deleteChatMessage(targetMessage.msgId)}>
                   <Trash2 size={14} />
                   <span>Apagar</span>
                 </ContextMenuItem>

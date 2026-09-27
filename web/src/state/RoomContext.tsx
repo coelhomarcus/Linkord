@@ -133,8 +133,14 @@ export interface RoomContextValue {
    * doesn't support staged batches (use sendAttachments then). */
   queueMessageWithFiles: (conversationId: string, text: string, replyTo: number | undefined, files: { file: File; compress: boolean }[]) => boolean;
   discardPendingMessage: (clientMessageId: string) => void;
-  deleteChatMessage: (msgId: number) => void;
-  editChatMessage: (msgId: number, text: string) => void;
+  /** Settles once the server answered (protocol 4); a failure lands in
+   * messageActionErrors. */
+  deleteChatMessage: (msgId: number) => Promise<void>;
+  /** Rejects with the server's reason when the edit didn't go through. */
+  editChatMessage: (msgId: number, text: string) => Promise<void>;
+  deletingMsgIds: Set<number>;
+  messageActionErrors: Map<number, string>;
+  dismissMessageActionError: (msgId: number) => void;
   reactToChatMessage: (msgId: number, emoji: ReactionEmoji) => void;
   replyingTo: ChatMessage | null;
   setReplyingTo: (message: ChatMessage | null) => void;

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Flag, MoreHorizontal, Pencil, Reply, SmilePlus, Trash2 } from 'lucide-react';
+import { Copy, Flag, MoreHorizontal, Pencil, Reply, SmilePlus, Trash2 } from 'lucide-react';
 import { Avatar } from '@/shared/Avatar';
 import { MessageMedia } from './MessageMedia';
 import { InviteCard } from '@/features/chat/InviteCard';
@@ -19,6 +19,8 @@ import { useRoom } from '@/state/RoomContext';
 import type { ChatMessage, PublicUser, ReactionEmoji } from '@/shared/types/protocol';
 import type { OutboxEntry } from './useMessageOutbox';
 import { PendingAttachments } from './PendingAttachments';
+import { messagePermissions } from './messageActions';
+import { CloseButton } from '@/shared/ui/primitives/close-button';
 
 const DELETED_AUTHOR_NAME = 'Usuário apagado';
 
@@ -89,36 +91,59 @@ function PendingStatus({ entry, offline, onRetry, onDiscard }: { entry: OutboxEn
 }
 
 export function MessageRow({ message, showHeader, highlighted, allUsers, mentionLookup, onOpenProfile, onReply, onJumpTo, pending }: MessageRowProps) {
-  const { state, deleteChatMessage, editChatMessage, reactToChatMessage, editingMsgId, setEditingMsgId, retryPendingMessage, discardPendingMessage } = useRoom();
+  const {
+    state, deleteChatMessage, editChatMessage, reactToChatMessage, editingMsgId, setEditingMsgId, retryPendingMessage, discardPendingMessage,
+    deletingMsgIds, messageActionErrors, dismissMessageActionError,
+  } = useRoom();
   const [editText, setEditText] = useState(message.text);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const isMine = message.id === state.me.userId;
-  const isMod = state.me.role === 'admin';
-  const canDelete = isMine || isMod;
+  const can = messagePermissions(message, { userId: state.me.userId, role: state.me.role });
+  const canDelete = can.delete;
+  const deleting = deletingMsgIds.has(message.msgId);
+  const actionError = pending ? undefined : messageActionErrors.get(message.msgId);
   const author = message.id ? allUsers.get(message.id) : undefined;
   const displayedName = author?.displayName ?? message.name;
   const displayedAvatar = author?.avatar ?? message.avatar;
   const replyAuthor = message.replyTo?.authorId ? allUsers.get(message.replyTo.authorId) : undefined;
   const mentionsMe = !isMine && mentionsUser(message.text, mentionLookup, state.me.userId);
   const isInvite = message.kind === 'group_invite';
-  const canReport = !isMine && !isInvite && !!message.id;
+  const canReport = can.report;
   const isEditing = !pending && !isInvite && editingMsgId === message.msgId;
 
-  function saveEdit() {
+  async function saveEdit() {
     const trimmed = editText.trim();
-    if (trimmed) editChatMessage(message.msgId, trimmed);
-    setEditingMsgId(null);
+    if (editSaving) return;
+    if (!trimmed || trimmed === message.text) { setEditingMsgId(null); return; }
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      await editChatMessage(message.msgId, trimmed);
+      setEditingMsgId(null);
+    } catch (err) {
+      // the editor stays open with the text as typed, so nothing is lost
+      setEditError(err instanceof Error ? err.message : 'Não foi possível salvar.');
+    } finally {
+      setEditSaving(false);
+    }
   }
 
   function startEdit() {
     setEditText(message.text);
+    setEditError(null);
     setEditingMsgId(message.msgId);
+  }
+
+  function copyText() {
+    navigator.clipboard.writeText(message.text).catch(() => {});
   }
 
   function handleEditKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
-      saveEdit();
+      void saveEdit();
     }
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -138,8 +163,10 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
         showHeader ? 'mt-[17px]' : 'mt-0',
         'hover:bg-white/[0.03]',
         mentionsMe && 'border-l-2 border-yellow/50 bg-yellow/[0.06] pl-[calc(1rem-2px)] hover:bg-yellow/[0.08]',
-        highlighted && 'bg-primary/10'
+        highlighted && 'bg-primary/10',
+        deleting && 'opacity-50'
       )}
+      aria-busy={deleting || undefined}
     >
       <div className="w-10 flex-none">
         {showHeader && (
@@ -202,8 +229,11 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
                 rows={1}
                 className="min-h-9 resize-none border-white/15 bg-black/20 text-body"
               />
+              {editError && <p role="alert" className="text-caption text-red">{editError}</p>}
               <p className="text-caption text-text-muted">
-                escape para <button type="button" onClick={() => setEditingMsgId(null)} className="underline hover:text-text-secondary">cancelar</button> · enter para <button type="button" onClick={saveEdit} className="underline hover:text-text-secondary">salvar</button>
+                {editSaving ? 'Salvando…' : (
+                  <>escape para <button type="button" onClick={() => setEditingMsgId(null)} className="underline hover:text-text-secondary">cancelar</button> · enter para <button type="button" onClick={() => void saveEdit()} className="underline hover:text-text-secondary">salvar</button></>
+                )}
               </p>
             </div>
           ) : (
@@ -221,6 +251,13 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
           )}
         </div>
 
+        {deleting && <p className="mt-0.5 text-caption text-text-muted">Apagando…</p>}
+        {actionError && (
+          <p role="alert" className="mt-0.5 flex items-center gap-2 text-caption text-red">
+            <span>{actionError}</span>
+            <CloseButton size="xs" label="Dispensar aviso" onClick={() => dismissMessageActionError(message.msgId)} />
+          </p>
+        )}
         {pending?.attachments && <PendingAttachments attachments={pending.attachments} />}
         {pending && <PendingStatus entry={pending} offline={state.reconnecting} onRetry={retryPendingMessage} onDiscard={discardPendingMessage} />}
 
@@ -256,14 +293,14 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
           moment the mouse leaves the row (e.g. to move onto the open emoji
           picker, which is portaled outside this row), snapping the open
           popover to the viewport's top-left corner. */}
-      {!pending && <div className="absolute right-3 top-0 hidden -translate-y-1/2 items-center gap-0.5 rounded-full border border-white/10 bg-[rgb(20_20_23)] p-0.5 opacity-0 shadow-popover transition-opacity pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto md:flex">
-        {!isInvite && <ReactionButton onPick={(emoji) => reactToChatMessage(message.msgId, emoji)} />}
-        {!isInvite && (
+      {!pending && <div className="absolute right-3 top-0 hidden -translate-y-1/2 items-center gap-0.5 rounded-full border border-white/10 bg-[rgb(20_20_23)] p-0.5 opacity-0 shadow-popover transition-opacity pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto group-focus-within/row:opacity-100 group-focus-within/row:pointer-events-auto md:flex">
+        {can.react && <ReactionButton onPick={(emoji) => reactToChatMessage(message.msgId, emoji)} />}
+        {can.reply && (
           <Button type="button" variant="ghost" size="icon-xs" aria-label="Responder" onClick={onReply}>
             <Reply size={13} />
           </Button>
         )}
-        {isMine && !isInvite && (
+        {can.edit && (
           <Button type="button" variant="ghost" size="icon-xs" aria-label="Editar" onClick={startEdit}>
             <Pencil size={13} />
           </Button>
@@ -274,7 +311,7 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
           </Button>
         )}
         {canDelete && (
-          <Button type="button" variant="ghost" size="icon-xs" aria-label="Apagar" onClick={() => deleteChatMessage(message.msgId)} className="hover:bg-red/10 hover:text-red">
+          <Button type="button" variant="ghost" size="icon-xs" aria-label="Apagar" disabled={deleting} onClick={() => void deleteChatMessage(message.msgId)} className="hover:bg-red/10 hover:text-red">
             <Trash2 size={13} />
           </Button>
         )}
@@ -283,16 +320,17 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
       {/* Mobile — no hover, so the toolbar above is unreachable; a persistent
           reaction button plus a tap menu for the rest cover the same actions. */}
       {!pending && <div className="absolute right-3 top-1 flex items-center gap-0.5 md:hidden">
-        {!isInvite && <ReactionButton onPick={(emoji) => reactToChatMessage(message.msgId, emoji)} />}
+        {can.react && <ReactionButton onPick={(emoji) => reactToChatMessage(message.msgId, emoji)} />}
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Acoes" />}>
             <MoreHorizontal size={13} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {!isInvite && <DropdownMenuItem onClick={onReply}><Reply size={14} />Responder</DropdownMenuItem>}
-            {isMine && !isInvite && <DropdownMenuItem onClick={startEdit}><Pencil size={14} />Editar</DropdownMenuItem>}
+            {can.reply && <DropdownMenuItem onClick={onReply}><Reply size={14} />Responder</DropdownMenuItem>}
+            {can.copy && <DropdownMenuItem onClick={copyText}><Copy size={14} />Copiar texto</DropdownMenuItem>}
+            {can.edit && <DropdownMenuItem onClick={startEdit}><Pencil size={14} />Editar</DropdownMenuItem>}
             {canReport && <DropdownMenuItem onClick={() => setReportOpen(true)}><Flag size={14} />Denunciar</DropdownMenuItem>}
-            {canDelete && <DropdownMenuItem variant="destructive" onClick={() => deleteChatMessage(message.msgId)}><Trash2 size={14} />Apagar</DropdownMenuItem>}
+            {canDelete && <DropdownMenuItem variant="destructive" disabled={deleting} onClick={() => void deleteChatMessage(message.msgId)}><Trash2 size={14} />Apagar</DropdownMenuItem>}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>}
