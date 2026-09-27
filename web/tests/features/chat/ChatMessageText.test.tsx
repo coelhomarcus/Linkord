@@ -83,3 +83,39 @@ describe('ChatMessageText — @mencoes', () => {
     expect(screen.getByRole('button')).toBeDisabled();
   });
 });
+
+describe('ChatMessageText — formatacao', () => {
+  it('negrito, italico, riscado e codigo viram os elementos certos', () => {
+    const { container } = render(<ChatMessageText text="**a** *b* ~~c~~ `d`" />);
+    expect(container.querySelector('strong')).toHaveTextContent('a');
+    expect(container.querySelector('em')).toHaveTextContent('b');
+    expect(container.querySelector('s')).toHaveTextContent('c');
+    expect(container.querySelector('code')).toHaveTextContent('d');
+  });
+
+  it('bloco de codigo rola na horizontal dentro da mensagem, sem alargar a pagina', () => {
+    const { container } = render(<ChatMessageText text={'```\nconst muito_longo = 1;\n```'} />);
+    const pre = container.querySelector('pre')!;
+    expect(pre).toHaveTextContent('const muito_longo = 1;');
+    expect(pre).toHaveClass('overflow-x-auto', 'max-w-full');
+  });
+
+  it('citacao e lista', () => {
+    const { container } = render(<ChatMessageText text={'> citado\n- um\n- dois'} />);
+    expect(container.querySelector('blockquote')).toHaveTextContent('citado');
+    expect(container.querySelectorAll('ul > li')).toHaveLength(2);
+  });
+
+  it('HTML no texto aparece como texto, nunca como elemento', () => {
+    const { container } = render(<ChatMessageText text={'<img src=x onerror=alert(1)>'} />);
+    expect(container.querySelector('img')).toBeNull();
+    expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeInTheDocument();
+  });
+
+  it('mensagem so com o link mantem o endereco visivel', () => {
+    vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} });
+    render(<ChatMessageText text="https://exemplo.com/pagina" />);
+    expect(screen.getByRole('link', { name: 'https://exemplo.com/pagina' })).toHaveAttribute('href', 'https://exemplo.com/pagina');
+    vi.unstubAllGlobals();
+  });
+});
