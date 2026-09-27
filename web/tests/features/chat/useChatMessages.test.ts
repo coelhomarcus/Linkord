@@ -3,6 +3,9 @@ import { act, renderHook } from '@testing-library/react';
 import { useChatMessages } from '@/features/chat/useChatMessages';
 import type { ChatMessage, InvitationCard } from '@/shared/types/protocol';
 
+vi.mock('@/shared/sounds', () => ({ playSound: vi.fn() }));
+vi.mock('@/shared/notifications', () => ({ notifyIncomingChatMessage: vi.fn() }));
+
 const card = (over: Partial<InvitationCard> = {}): InvitationCard => ({
   id: 'inv-1', status: 'pending', groupId: 'g', groupTitle: 'Grupo', groupAvatar: '', memberCount: 2,
   inviterId: 'a', inviteeId: 'b', version: 1, ...over,
@@ -41,5 +44,16 @@ describe('useChatMessages — invitation-updated', () => {
     const before = result.current.messagesByConversation;
     act(() => result.current.onInvitationUpdated({ t: 'invitation-updated', invitation: card({ id: 'outro' }) }));
     expect(result.current.messagesByConversation).toBe(before);
+  });
+});
+
+describe('useChatMessages — nao lidas', () => {
+  it('mensagem propria em outra conversa nao conta como nao lida; a de outra pessoa conta', () => {
+    const { result } = setup();
+    act(() => result.current.onChat({ t: 'chat', message: message(10, { conversationId: 'outra', id: 'b' }) }));
+    expect(result.current.unreadByConversation.get('outra')).toBeUndefined();
+
+    act(() => result.current.onChat({ t: 'chat', message: message(11, { conversationId: 'outra', id: 'a' }) }));
+    expect(result.current.unreadByConversation.get('outra')).toBe(1);
   });
 });

@@ -160,7 +160,9 @@ export function useChatMessages(deps: ChatMessagesDeps) {
       const next = [...existing, m.message];
       return new Map(prev).set(conversationId, next.length > CHAT_CLIENT_LIMIT ? next.slice(next.length - CHAT_CLIENT_LIMIT) : next);
     });
-    if (conversationId !== activeConversationIdRef.current) {
+    // your own message is never unread — it can land in a conversation you
+    // left (an upload finishing after a switch, or another tab/device)
+    if (conversationId !== activeConversationIdRef.current && m.message.id !== myUserIdRef.current) {
       setUnreadByConversation((prev) => new Map(prev).set(conversationId, (prev.get(conversationId) || 0) + 1));
     }
     // The message itself is proof they stopped typing — don't wait for
