@@ -126,6 +126,21 @@ describe('MessageTimeline — salto para mensagem', () => {
     expect(scrolled.some((s) => s.el === mainRoot)).toBe(false);
   });
 
+  it('janela aberta por um salto comeca no alvo, nao no fim, e o destaca', async () => {
+    const clearPendingJumpTarget = vi.fn();
+    const messages = Array.from({ length: 300 }, (_, i) => message(i + 1));
+    const { container } = renderTimeline({
+      messagesByConversation: new Map([['conv-1', messages]]),
+      hasMoreAfterByConversation: new Map([['conv-1', true]]),
+      pendingJumpTarget: { conversationId: 'conv-1', msgId: 40 },
+      clearPendingJumpTarget,
+    });
+    await waitFor(() => expect(clearPendingJumpTarget).toHaveBeenCalled());
+    expect(container.querySelector('[data-msg-id="40"]')).not.toBeNull();
+    expect(container.querySelector('[data-msg-id="300"]')).toBeNull();
+    expect(container.querySelector('[data-msg-id="40"]')!.className).toContain('bg-primary/10');
+  });
+
   it('alvo fora da janela carregada: pede a janela em torno dele', async () => {
     const jumpToMessage = vi.fn();
     const reply = message(50, { text: 'resposta', replyTo: { msgId: 7, authorId: 'u1', text: 'antiga' } });
