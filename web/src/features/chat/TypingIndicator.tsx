@@ -19,7 +19,7 @@ function TypingDots() {
 }
 
 /** Discord/Fluxer-style typing row: sits right above the composer (see
- * MessageListBridge), never in the header — a status about the conversation
+ * ChatSurface), never in the header — a status about the conversation
  * you're about to reply to belongs next to where you type, not competing
  * with the person/group you're talking to for the same line. */
 export function TypingIndicator({ conversationId }: { conversationId: string }) {

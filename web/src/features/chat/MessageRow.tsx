@@ -110,7 +110,7 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
 
   return (
     <div
-      id={`chat-msg-${message.msgId}`}
+      data-msg-id={message.msgId}
       data-message-id={message.msgId}
       className={cn(
         'group/row relative flex gap-3 rounded-md px-4 py-0.5',

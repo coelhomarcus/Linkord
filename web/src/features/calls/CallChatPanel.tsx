@@ -4,13 +4,11 @@ import { CloseButton } from '@/shared/ui/primitives/close-button';
 import { useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { Drawer } from '@/shared/ui/motion/drawer';
 import { SPRING_LAYOUT } from '@/shared/lib/ease';
-import { ChatSurfaceWidthProvider } from '@/shared/lib/chatSurfaceWidth';
 import { useRoom } from '@/state/RoomContext';
-import { conversationTitle } from '../conversations/conversationUtils';
-import { MessageListBridge } from '../conversations/ConversationPanel';
+import { conversationTitle } from '@/features/conversations/conversationUtils';
+import { ChatSurface } from '@/features/chat/ChatSurface';
 
 const PANEL_WIDTH = 360;
-const MOBILE_PANEL_WIDTH = 384;
 
 interface CallChatPanelProps {
   conversationId: string | null;
@@ -29,14 +27,14 @@ export function CallChatPanel({ conversationId, open, onOpenChange, onOpenProfil
   const title = conversationTitle(conversation, state.me.userId, allUsers);
 
   const content = conversation && (
-    <ChatSurfaceWidthProvider width={isMobile ? MOBILE_PANEL_WIDTH : PANEL_WIDTH}>
+    <>
       <div className="flex flex-none items-center gap-2 border-b border-white/10 px-4 py-4">
         <MessageCircle size={18} className="flex-none text-text-muted" />
         <h2 className="min-w-0 flex-1 truncate text-title font-semibold">{title}</h2>
         <CloseButton label="Fechar chat" onClick={() => onOpenChange(false)} />
       </div>
-      <MessageListBridge conversationId={conversation.id} onOpenProfile={onOpenProfile} />
-    </ChatSurfaceWidthProvider>
+      <ChatSurface conversationId={conversation.id} onOpenProfile={onOpenProfile} />
+    </>
   );
 
   return isMobile ? (

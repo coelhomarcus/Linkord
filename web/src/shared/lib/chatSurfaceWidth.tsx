@@ -29,7 +29,7 @@ export function useChatSurfaceWidth(fallback: number): number {
 }
 
 // Between the chat surface's own edge and an attachment's content box sit:
-// the message list's scroll padding (MessageList, px-2 both sides), the
+// the message list's scroll padding (MessageTimeline, px-2 both sides), the
 // message row's own padding (MessageRow, px-4 both sides), and the avatar
 // column + its gap (w-10 + gap-3) on the left only. There's no bubble
 // anymore (see MessageRow) so no bubble padding to add on top.
