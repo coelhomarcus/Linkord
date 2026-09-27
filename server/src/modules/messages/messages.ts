@@ -20,6 +20,7 @@ import { resolveDisplayName } from '../users/users.js';
 import * as attachments from '../attachments/attachments.js';
 import { deleteForMessage } from '../attachments/attachmentCleanup.js';
 import * as reactions from './reactions.js';
+import { buildReplyRef, normalizeReplyRef, type ReplyRef } from './replyRef.js';
 import { ERROR_CODES } from '../../http/errors.js';
 import { loadInvitationCards, type InvitationCard } from '../conversations/invitationCards.js';
 import { revokeInvitationForDeletedCard } from '../conversations/invitationsRepository.js';
@@ -50,7 +51,6 @@ async function assertCanWriteToConversation(socket: AppSocket, conversationId: s
 // my message?" and "did I react?" must survive tab/session changes too.
 // The client compares against `state.me.userId`, not `state.me.id`.
 
-const REPLY_PREVIEW_LEN = 120;
 const DELETED_AUTHOR_NAME = 'Usuário apagado';
 // split of CHAT_HISTORY_LIMIT for handleLoadMessagesAround — half before
 // the target, half from (and including) it.
@@ -59,13 +59,6 @@ const AROUND_AFTER_LIMIT = config.CHAT_HISTORY_LIMIT - AROUND_BEFORE_LIMIT;
 
 function conversationIdFrom(msg: { conversationId?: string }): string {
   return String(msg.conversationId || '');
-}
-
-interface ReplyRef {
-  msgId: number;
-  authorId: string | null;
-  text: string;
-  attachmentCount?: number;
 }
 
 interface ChatMessagePayload {
@@ -144,21 +137,6 @@ function authorNameFor(row: MessageWithAuthor): string {
     : DELETED_AUTHOR_NAME;
 }
 
-function normalizeReplyRef(raw: unknown): ReplyRef | undefined {
-  if (!raw || typeof raw !== 'object') return undefined;
-  const obj = raw as Record<string, unknown>;
-  const msgId = Number(obj.msgId);
-  if (!Number.isFinite(msgId)) return undefined;
-  const ref: ReplyRef = {
-    msgId,
-    authorId: typeof obj.authorId === 'string' && obj.authorId ? obj.authorId : null,
-    text: String(obj.text == null ? '' : obj.text).slice(0, REPLY_PREVIEW_LEN),
-  };
-  const attachmentCount = Number(obj.attachmentCount);
-  if (Number.isFinite(attachmentCount) && attachmentCount > 0) ref.attachmentCount = attachmentCount;
-  return ref;
-}
-
 /** `attachments` (optional, up to MAX_ATTACHMENTS_PER_MESSAGE) are the raw
  * attachments-table rows, and `reactionsByEmoji` the grouped
  * message_reactions rows for this message — neither lives in the messages
@@ -187,32 +165,6 @@ function rowToMessage(row: MessageWithAuthor, attachments?: Attachment[], reacti
     }));
   }
   return out;
-}
-
-/** Builds a compact reference to the original message from the client's
- * msgId. It stores the original author's user id, not mutable profile data,
- * so reply previews follow profile changes too. Silently returns undefined
- * if it's gone (deleted) or from another conversation, so the reply just carries
- * no reference instead of failing outright. */
-async function buildReplyRef(conversationId: string, replyToId: unknown): Promise<ReplyRef | undefined> {
-  const id = Number(replyToId);
-  if (!Number.isFinite(id)) return undefined;
-  const [original] = await db
-    .select({ id: messages.id, authorId: messages.authorId, text: messages.text, kind: messages.kind })
-    .from(messages)
-    .where(and(eq(messages.id, id), eq(messages.conversationId, conversationId)))
-    .limit(1);
-  // a card can't be replied to — its preview would be blank, and answering
-  // an invitation is what its own buttons are for
-  if (!original || original.kind !== 'text') return undefined;
-  const ref: ReplyRef = { msgId: original.id, authorId: original.authorId, text: original.text.slice(0, REPLY_PREVIEW_LEN) };
-  // no caption on the original — likely an attachment-only message. Lets
-  // the reply reference show "📎 N anexos" instead of a blank snippet.
-  if (!ref.text) {
-    const attachmentCount = (await attachments.getByMessageIds([original.id])).get(original.id)?.length ?? 0;
-    if (attachmentCount > 0) ref.attachmentCount = attachmentCount;
-  }
-  return ref;
 }
 
 /** Serializes a page of rows with everything that lives outside the messages

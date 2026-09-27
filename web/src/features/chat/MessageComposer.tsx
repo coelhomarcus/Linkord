@@ -242,9 +242,15 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
               item.file.type.startsWith('image/') ? compressImageFile(item.file) : item.file
             )))
           : pendingFiles.map((item) => item.file);
-        await sendAttachments(conversationId, filesToSend, trimmed, (fileIndex, fraction) => {
-          setActiveUploadId(pendingFiles[fileIndex]?.id ?? null);
-          setUploadProgress(fraction);
+        await sendAttachments({
+          conversationId,
+          files: filesToSend,
+          caption: trimmed,
+          replyTo: replyingTo?.msgId,
+          onProgress: (fileIndex, fraction) => {
+            setActiveUploadId(pendingFiles[fileIndex]?.id ?? null);
+            setUploadProgress(fraction);
+          },
         });
         clearFiles();
         setText('');

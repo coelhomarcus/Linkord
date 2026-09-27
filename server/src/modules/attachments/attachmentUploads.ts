@@ -9,6 +9,7 @@ import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
 import { broadcastToConversationMembers, conversationExistsForUser, getDirectPeerId, touchConversation, recordConversationActivity } from '../conversations/conversationsRepository.js';
 import { canSendDirectMessage } from '../friendships/friendshipsRepository.js';
+import { buildReplyRef } from '../messages/replyRef.js';
 import { newId, filePathFor } from './attachmentStorage.js';
 import { generateThumbnail, THUMBNAIL_SOURCE_MIME_TYPES } from './attachmentThumbnails.js';
 import { getUsage, sendUsageToUser } from './attachmentQuota.js';
@@ -66,6 +67,9 @@ export async function handleAttachmentInit(request: FastifyRequest, reply: Fasti
   const fileName = sanitizeFileName(body.fileName);
   const mimeType = String(body.mimeType || 'application/octet-stream').split(';')[0]!.trim() || 'application/octet-stream';
   const caption = String(body.caption || '').trim().slice(0, config.MAX_CHAT_LEN);
+  // only the file that creates the message uses it; resolved at complete
+  // time, so a target deleted while the bytes were uploading just drops it
+  const replyTo = Number.isInteger(body.replyTo) ? Number(body.replyTo) : undefined;
 
   const totalSize = Number(body.totalSize);
   if (!Number.isInteger(totalSize) || totalSize <= 0 || totalSize > config.MAX_ATTACHMENT_BYTES) {
@@ -102,7 +106,7 @@ export async function handleAttachmentInit(request: FastifyRequest, reply: Fasti
   try {
     await fs.mkdir(tmpDirFor(uploadId), { recursive: true });
     await fs.writeFile(manifestPathFor(uploadId), JSON.stringify({
-      uploadId, userId: sess.userId, conversationId, fileName, mimeType, totalSize, caption,
+      uploadId, userId: sess.userId, conversationId, fileName, mimeType, totalSize, caption, replyTo,
       chunkSize, totalChunks, createdAt: new Date().toISOString(),
     } satisfies UploadManifest));
   } catch (err) {
@@ -220,9 +224,10 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
           return attachmentRow!;
         });
       } else {
+        const replyTo = await buildReplyRef(manifest.conversationId, manifest.replyTo);
         const inserted = await db.transaction(async (tx) => {
           const [messageRow] = await tx.insert(messages).values({
-            conversationId: manifest.conversationId, authorId: sess.userId, text: manifest.caption,
+            conversationId: manifest.conversationId, authorId: sess.userId, text: manifest.caption, replyTo: replyTo ?? null,
           }).returning();
           const [attachmentRow] = await tx.insert(attachmentsTable).values({
             id: uploadId, messageId: messageRow!.id, fileName: manifest.fileName, mimeType: manifest.mimeType, size: manifest.totalSize,
@@ -281,6 +286,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
         avatar: sess.avatar,
         text: message.text,
         ts: message.createdAt.getTime(),
+        ...(message.replyTo ? { replyTo: message.replyTo } : {}),
         attachments: [attachmentPayload],
       };
       await touchConversation(message.conversationId, message.createdAt);

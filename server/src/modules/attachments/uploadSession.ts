@@ -30,6 +30,7 @@ export interface UploadManifest {
   mimeType: string;
   totalSize: number;
   caption: string;
+  replyTo?: number;
   chunkSize: number;
   totalChunks: number;
   createdAt: string;

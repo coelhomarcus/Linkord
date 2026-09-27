@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import { after, describe, it } from 'node:test';
 import Fastify from 'fastify';
 import sharp from 'sharp';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { config } from '../../src/config/env.js';
-import { attachments as attachmentsTable } from '../../src/db/schema.js';
+import { attachments as attachmentsTable, messages } from '../../src/db/schema.js';
 import { registerAttachmentRoutes } from '../../src/modules/attachments/attachments.js';
 import { createSession } from '../../src/modules/auth/session.js';
 import { db, makeGroupWithMembers, makeUser, pool } from './helpers.js';
@@ -29,10 +29,10 @@ async function sessionFor(userId: string): Promise<string> {
   return `${config.SESSION_COOKIE}=${rawToken}`;
 }
 
-async function upload(cookie: string, conversationId: string, extra: { targetMsgId?: number; caption?: string } = {}) {
+async function upload(cookie: string, conversationId: string, extra: { targetMsgId?: number; replyTo?: number; caption?: string } = {}) {
   const init = await app.inject({
     method: 'POST', url: '/api/attachments/init', headers: { cookie },
-    payload: { conversationId, fileName: 'foto.png', mimeType: 'image/png', totalSize: bigPng.length, caption: extra.caption ?? '' },
+    payload: { conversationId, fileName: 'foto.png', mimeType: 'image/png', totalSize: bigPng.length, caption: extra.caption ?? '', replyTo: extra.replyTo },
   });
   assert.equal(init.statusCode, 201, init.body);
   const { uploadId } = init.json() as { uploadId: string };
@@ -68,5 +68,37 @@ describe('upload de anexos (Postgres real)', () => {
     const fifth = await upload(cookie, conversationId, { targetMsgId: msgId });
     assert.equal(fifth.statusCode, 400);
     assert.equal((fifth.json() as { error: { code: string } }).error.code, 'too_many_attachments');
+  });
+
+  it('resposta com anexo guarda a referencia da mensagem respondida', async () => {
+    const owner = await makeUser('up');
+    const conversationId = await makeGroupWithMembers(owner.id, []);
+    const cookie = await sessionFor(owner.id);
+    const [original] = await db.insert(messages).values({ conversationId, authorId: owner.id, text: 'mensagem original' }).returning();
+
+    const res = await upload(cookie, conversationId, { replyTo: original!.id, caption: 'olha isso' });
+    assert.equal(res.statusCode, 201, res.body);
+    const { message } = res.json() as { message: { msgId: number; replyTo?: { msgId: number; text: string } } };
+    assert.equal(message.replyTo?.msgId, original!.id);
+    assert.equal(message.replyTo?.text, 'mensagem original');
+
+    const [row] = await db.select({ replyTo: messages.replyTo }).from(messages).where(eq(messages.id, message.msgId));
+    assert.equal((row!.replyTo as { msgId: number }).msgId, original!.id);
+  });
+
+  it('resposta a uma mensagem de outra conversa e descartada, sem falhar o upload', async () => {
+    const owner = await makeUser('up');
+    const conversationId = await makeGroupWithMembers(owner.id, []);
+    const otherConversationId = await makeGroupWithMembers(owner.id, []);
+    const cookie = await sessionFor(owner.id);
+    const [elsewhere] = await db.insert(messages).values({ conversationId: otherConversationId, authorId: owner.id, text: 'outra conversa' }).returning();
+
+    const res = await upload(cookie, conversationId, { replyTo: elsewhere!.id });
+    assert.equal(res.statusCode, 201, res.body);
+    const { message } = res.json() as { message: { msgId: number; replyTo?: unknown } };
+    assert.equal(message.replyTo, undefined);
+    const [row] = await db.select({ replyTo: messages.replyTo }).from(messages)
+      .where(and(eq(messages.id, message.msgId), eq(messages.conversationId, conversationId)));
+    assert.equal(row!.replyTo, null);
   });
 });

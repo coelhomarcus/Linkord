@@ -131,7 +131,7 @@ describe('MessageComposer', () => {
 
     expect(compressImageFile).toHaveBeenCalledTimes(1);
     expect(compressImageFile).toHaveBeenCalledWith(original);
-    expect(sendAttachments).toHaveBeenCalledWith('conv-1', [original], '', expect.any(Function));
+    expect(sendAttachments).toHaveBeenCalledWith(expect.objectContaining({ conversationId: 'conv-1', files: [original], caption: '' }));
   });
 
   it('com o toggle desligado, envia os arquivos originais sem comprimir', async () => {
@@ -147,7 +147,22 @@ describe('MessageComposer', () => {
     await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
 
     expect(compressImageFile).not.toHaveBeenCalled();
-    expect(sendAttachments).toHaveBeenCalledWith('conv-1', [original], '', expect.any(Function));
+    expect(sendAttachments).toHaveBeenCalledWith(expect.objectContaining({ conversationId: 'conv-1', files: [original], caption: '' }));
+  });
+
+  it('respondendo a uma mensagem, o envio de anexos leva a referencia da resposta', async () => {
+    const user = userEvent.setup();
+    const sendAttachments = vi.fn(async () => {});
+    const replyingTo = { msgId: 42, conversationId: 'conv-1', id: 'u2', name: 'Ana', avatar: '', text: 'oi', ts: 0 };
+    const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, {
+      state: joinedState, compressImagesDefault: false, sendAttachments, replyingTo,
+    });
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(input, fakeFile('doc.pdf', 'application/pdf'));
+
+    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
+
+    expect(sendAttachments).toHaveBeenCalledWith(expect.objectContaining({ replyTo: 42 }));
   });
 });
 

@@ -4,6 +4,7 @@ import type { Room } from 'livekit-client';
 import type { ChatMessage, ClientMessage, Conversation, PublicUser, ReactionEmoji, SearchResult, StorageUsage } from '@/shared/types/protocol';
 import type { RoomAction, RoomState } from './roomReducer';
 import type { TileKind } from '../features/calls/tileTypes';
+import type { SendAttachmentsRequest } from '@/features/chat/useAttachmentsUpload';
 
 export interface ReactionEvent {
   key: number;
@@ -139,7 +140,7 @@ export interface RoomContextValue {
   clearSearchError: () => void;
   searchMessages: (query: string, conversationId?: string) => void;
   storageUsage: StorageUsage;
-  sendAttachments: (conversationId: string, files: File[], caption: string, onProgress?: (fileIndex: number, fraction: number) => void) => Promise<void>;
+  sendAttachments: (request: SendAttachmentsRequest) => Promise<void>;
 }
 
 export const RoomContext = createContext<RoomContextValue | null>(null);

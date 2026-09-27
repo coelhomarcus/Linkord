@@ -2,6 +2,14 @@ import { useCallback, useState } from 'react';
 import { uploadFileInChunks } from '@/shared/lib/chunkedUpload';
 import type { ServerMessage, StorageUsage } from '@/shared/types/protocol';
 
+export interface SendAttachmentsRequest {
+  conversationId: string;
+  files: File[];
+  caption: string;
+  replyTo?: number;
+  onProgress?: (fileIndex: number, fraction: number) => void;
+}
+
 export class PartialAttachmentError extends Error {
   sentCount: number;
   totalCount: number;
@@ -20,11 +28,9 @@ export class PartialAttachmentError extends Error {
 export function useAttachmentsUpload() {
   const [storageUsage, setStorageUsage] = useState<StorageUsage>({ totalBytes: 0, totalFiles: 0, maxBytes: 0 });
 
-  const sendAttachments = useCallback(async (
-    conversationId: string, files: File[], caption: string, onProgress?: (fileIndex: number, fraction: number) => void
-  ): Promise<void> => {
+  const sendAttachments = useCallback(async ({ conversationId, files, caption, replyTo, onProgress }: SendAttachmentsRequest): Promise<void> => {
     if (!files.length) return;
-    const msgId = await uploadFileInChunks({ conversationId, file: files[0]!, caption, onProgress: (f) => onProgress?.(0, f) });
+    const msgId = await uploadFileInChunks({ conversationId, file: files[0]!, caption, replyTo, onProgress: (f) => onProgress?.(0, f) });
     for (let i = 1; i < files.length; i++) {
       try {
         await uploadFileInChunks({ conversationId, file: files[i]!, caption: '', targetMsgId: msgId, onProgress: (f) => onProgress?.(i, f) });
