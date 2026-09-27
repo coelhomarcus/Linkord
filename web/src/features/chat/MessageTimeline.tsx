@@ -156,7 +156,7 @@ export function MessageTimeline({ conversationId, onReply, onOpenProfile, bottom
 
   return (
     <div className="relative min-h-0 flex-1">
-      <div ref={scrollRef} className="h-full overflow-y-auto px-2 pt-3" style={{ paddingBottom: bottomPadding }}>
+      <div ref={scrollRef} data-scroll-root className="h-full overflow-y-auto px-2 pt-3" style={{ paddingBottom: bottomPadding }}>
         <div ref={contentRef} className="flex w-full flex-col">
           {isLoadingOlder && <p className="my-3 text-center text-label text-text-muted">Carregando mensagens anteriores...</p>}
           {messages.length === 0 && (
