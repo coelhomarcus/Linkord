@@ -19,6 +19,7 @@ import { useKeepPopoverWarm } from '@/shared/hooks/useKeepPopoverWarm';
 import { useRoom } from '@/state/RoomContext';
 import type { ChatMessage, PublicUser, ReactionEmoji } from '@/shared/types/protocol';
 import type { OutboxEntry } from './useMessageOutbox';
+import { PendingAttachments } from './PendingAttachments';
 
 const DELETED_AUTHOR_NAME = 'Usuário apagado';
 
@@ -75,6 +76,7 @@ interface MessageRowProps {
 
 function PendingStatus({ entry, offline, onRetry, onDiscard }: { entry: OutboxEntry; offline: boolean; onRetry: (id: string) => void; onDiscard: (id: string) => void }) {
   // queued sends go out on their own after reconnecting; say why they wait
+  if (entry.state === 'uploading') return <span className="sr-only">Enviando anexos</span>;
   if (entry.state === 'sending' && offline) return <p className="mt-0.5 text-caption text-text-muted">Aguardando conexão…</p>;
   if (entry.state === 'sending') return <span className="sr-only">Enviando</span>;
   if (entry.state === 'unknown') return <p className="mt-0.5 text-caption text-text-muted">Confirmando envio…</p>;
@@ -226,6 +228,7 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
           )}
         </div>
 
+        {pending?.attachments && <PendingAttachments attachments={pending.attachments} />}
         {pending && <PendingStatus entry={pending} offline={state.reconnecting} onRetry={retryPendingMessage} onDiscard={discardPendingMessage} />}
 
         {!pending && message.reactions && (

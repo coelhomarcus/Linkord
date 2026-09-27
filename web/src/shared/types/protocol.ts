@@ -168,7 +168,7 @@ export type ClientMessage =
   | { t: 'load-more-messages'; conversationId: string; beforeMsgId: number }
   | { t: 'load-messages-around'; conversationId: string; msgId: number }
   | { t: 'message-search'; query: string; conversationId?: string }
-  | { t: 'chat'; conversationId: string; text: string; replyTo?: number; requestId?: string; clientMessageId?: string }
+  | { t: 'chat'; conversationId: string; text: string; replyTo?: number; requestId?: string; clientMessageId?: string; attachmentIds?: string[] }
   | { t: 'chat-delete'; msgId: number }
   | { t: 'chat-edit'; msgId: number; text: string }
   | { t: 'chat-react'; msgId: number; emoji: ReactionEmoji }

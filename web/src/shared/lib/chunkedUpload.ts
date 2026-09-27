@@ -46,14 +46,37 @@ async function runWithConcurrency(count: number, limit: number, task: (i: number
 
 const MAX_CHUNK_RETRIES = 3;
 const MAX_CONCURRENT_CHUNKS = 3;
+const RETRY_BASE_MS = 500;
 
-export async function uploadFileInChunks({ conversationId, file, caption, replyTo, targetMsgId, onProgress }: ChunkedUploadOptions): Promise<number> {
+export interface StagedFile { id: string; name: string; mime: string; size: number; thumbId?: string }
+
+// A 4xx says the request itself is wrong (no access, too big, gone) —
+// sending it again can't help. Timeouts, rate limits and 5xx can.
+function isRetryable(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return true; // network failure
+  return err.status >= 500 || err.status === 408 || err.status === 429;
+}
+
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+  });
+}
+
+interface UploadRun extends ChunkedUploadOptions {
+  stage?: boolean;
+  signal?: AbortSignal;
+}
+
+async function runUpload({ conversationId, file, caption, replyTo, targetMsgId, onProgress, stage, signal }: UploadRun): Promise<unknown> {
   if (!conversationId) throw new ApiError(400, 'missing_conversation', 'Conversa não informada.');
   const initRes = await fetch('/api/attachments/init', {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ conversationId, fileName: file.name, mimeType: file.type || 'application/octet-stream', totalSize: file.size, caption, replyTo }),
+    body: JSON.stringify({ conversationId, fileName: file.name, mimeType: file.type || 'application/octet-stream', totalSize: file.size, caption, replyTo, ...(stage ? { stage: true } : {}) }),
+    signal,
   });
   if (!initRes.ok) throw await toApiError(initRes);
   const { uploadId, chunkSize, totalChunks } = await initRes.json() as InitResponse;
@@ -76,13 +99,15 @@ export async function uploadFileInChunks({ conversationId, file, caption, replyT
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/octet-stream' },
           body: blob,
+          signal,
         });
         if (!res.ok) throw await toApiError(res);
         sentPerChunk[index] = blob.size;
         reportProgress();
         return;
       } catch (err) {
-        if (attempt >= MAX_CHUNK_RETRIES) throw err;
+        if (signal?.aborted || attempt >= MAX_CHUNK_RETRIES || !isRetryable(err)) throw err;
+        await wait(RETRY_BASE_MS * 2 ** attempt, signal);
       }
     }
   }
@@ -90,19 +115,49 @@ export async function uploadFileInChunks({ conversationId, file, caption, replyT
   try {
     await runWithConcurrency(totalChunks, MAX_CONCURRENT_CHUNKS, uploadChunk);
   } catch (err) {
-    log.error('upload failed', err, { uploadId, bytes: file.size, type: file.type, chunks: totalChunks });
+    if (!signal?.aborted) log.error('upload failed', err, { uploadId, bytes: file.size, type: file.type, chunks: totalChunks });
     fetch(`/api/attachments/${uploadId}`, { method: 'DELETE', credentials: 'same-origin' }).catch(() => {});
     throw err;
   }
 
-  const completeRes = await fetch(`/api/attachments/${uploadId}/complete`, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(targetMsgId != null ? { targetMsgId } : {}),
-  });
-  if (!completeRes.ok) throw await toApiError(completeRes);
-  if (targetMsgId != null) return targetMsgId;
-  const { message } = await completeRes.json() as { message: { msgId: number } };
-  return message.msgId;
+  // complete is safe to repeat in staged mode (the server answers a repeat
+  // with the same file), so a lost reply is retried instead of failing
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const completeRes = await fetch(`/api/attachments/${uploadId}/complete`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(targetMsgId != null ? { targetMsgId } : {}),
+        signal,
+      });
+      if (!completeRes.ok) throw await toApiError(completeRes);
+      return await completeRes.json();
+    } catch (err) {
+      if (!stage || signal?.aborted || attempt >= MAX_CHUNK_RETRIES || !isRetryable(err)) {
+        if (stage) fetch(`/api/attachments/${uploadId}`, { method: 'DELETE', credentials: 'same-origin' }).catch(() => {});
+        throw err;
+      }
+      await wait(RETRY_BASE_MS * 2 ** attempt, signal);
+    }
+  }
+}
+
+/** Legacy path: the first file creates the message, later ones attach to it. */
+export async function uploadFileInChunks(options: ChunkedUploadOptions): Promise<number> {
+  const body = await runUpload(options) as { message?: { msgId: number } };
+  if (options.targetMsgId != null) return options.targetMsgId;
+  return body.message!.msgId;
+}
+
+/** Uploads the file without publishing it; the message that carries it is
+ * created later, with the whole batch, by one correlated chat send. */
+export async function stageFileInChunks(options: { conversationId: string; file: File; onProgress?: (fraction: number) => void; signal?: AbortSignal }): Promise<StagedFile> {
+  const body = await runUpload({ ...options, caption: '', stage: true }) as { staged: StagedFile };
+  return body.staged;
+}
+
+/** Drops a staged file the user gave up on; best effort — expiry cleans up otherwise. */
+export function discardStagedFile(id: string): void {
+  fetch(`/api/attachments/${id}`, { method: 'DELETE', credentials: 'same-origin' }).catch(() => {});
 }

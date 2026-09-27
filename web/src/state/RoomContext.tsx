@@ -129,6 +129,9 @@ export interface RoomContextValue {
   /** Your sends the server hasn't confirmed yet, per conversation, in order. */
   pendingByConversation: Map<string, OutboxEntry[]>;
   retryPendingMessage: (clientMessageId: string) => void;
+  /** Sends a message with files through the outbox; false when the server
+   * doesn't support staged batches (use sendAttachments then). */
+  queueMessageWithFiles: (conversationId: string, text: string, replyTo: number | undefined, files: { file: File; compress: boolean }[]) => boolean;
   discardPendingMessage: (clientMessageId: string) => void;
   deleteChatMessage: (msgId: number) => void;
   editChatMessage: (msgId: number, text: string) => void;

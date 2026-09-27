@@ -182,6 +182,24 @@ describe('MessageComposer', () => {
     expect(sendAttachments).toHaveBeenCalledWith(expect.objectContaining({ conversationId: 'conv-1', files: [original], caption: '' }));
   });
 
+  it('servidor com lotes preparados: o envio vai para a outbox e o campo fica livre na hora', async () => {
+    const user = userEvent.setup();
+    const sendAttachments = vi.fn(async () => {});
+    const queueMessageWithFiles = vi.fn(() => true);
+    const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, {
+      state: joinedState, compressImagesDefault: true, sendAttachments, queueMessageWithFiles,
+    });
+    const doc = fakeFile('doc.pdf', 'application/pdf');
+    await user.upload(container.querySelector<HTMLInputElement>('input[type="file"]')!, doc);
+    await user.type(screen.getByRole('textbox'), 'segue');
+    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
+
+    expect(queueMessageWithFiles).toHaveBeenCalledWith('conv-1', 'segue', undefined, [{ file: doc, compress: true }]);
+    expect(sendAttachments).not.toHaveBeenCalled();
+    expect(screen.getByRole('textbox')).toHaveValue('');
+    expect(screen.getByRole('textbox')).toBeEnabled();
+  });
+
   it('respondendo a uma mensagem, o envio de anexos leva a referencia da resposta', async () => {
     const user = userEvent.setup();
     const sendAttachments = vi.fn(async () => {});

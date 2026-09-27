@@ -87,6 +87,7 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     pendingByConversation: new Map(),
     retryPendingMessage: noop,
     discardPendingMessage: noop,
+    queueMessageWithFiles: () => false,
     deleteChatMessage: noop,
     editChatMessage: noop,
     reactToChatMessage: noop,

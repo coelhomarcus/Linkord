@@ -56,7 +56,7 @@ export interface MessageComposerHandle {
 }
 
 export const MessageComposer = forwardRef<MessageComposerHandle, { conversationId: string }>(function MessageComposer({ conversationId }, ref) {
-  const { state, allUsers, conversations, sendChatMessage, sendAttachments, sendTyping, replyingTo, setReplyingTo, compressImagesDefault, setCompressImagesDefault } = useRoom();
+  const { state, allUsers, conversations, sendChatMessage, sendAttachments, queueMessageWithFiles, sendTyping, replyingTo, setReplyingTo, compressImagesDefault, setCompressImagesDefault } = useRoom();
   const accountId = state.me.userId ?? '';
   const [draft, updateDraft] = useConversationDraft(accountId, conversationId);
   const { text, pendingFiles, attachError, upload } = draft;
@@ -233,6 +233,13 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
     }
 
     const resumeMsgId = current.partialBatchMsgId;
+    // the batch is owned by the outbox from here: the field is free for the
+    // next message while the files upload
+    if (resumeMsgId == null && queueMessageWithFiles(conversationId, trimmed, replyTo, batch.map((item) => ({ file: item.file, compress: compressImages })))) {
+      updateDraft(() => ({ text: '', pendingFiles: [], attachError: null }));
+      clearReplyIfStillHere();
+      return;
+    }
     // Mark the first file as "uploading" immediately, before the network
     // round-trip, so the UI reacts the instant the user submits instead of
     // waiting on the first progress event to arrive.

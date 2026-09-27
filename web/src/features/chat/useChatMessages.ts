@@ -130,18 +130,30 @@ export function useChatMessages(deps: ChatMessagesDeps) {
     setPendingJumpTargetState(null);
   }, []);
 
+  // only for drawing the pending copy; the server builds the real reference
+  const pendingReplyRef = useCallback((conversationId: string, replyTo?: number) => {
+    const original = replyTo ? messagesByConversationRef.current.get(conversationId)?.find((msg) => msg.msgId === replyTo) : undefined;
+    return original ? { msgId: original.msgId, authorId: original.id, text: original.text.slice(0, 120) } : undefined;
+  }, []);
+
+  /** A batch goes through the outbox (staged, then published with its
+   * message). False on a server too old for that — the caller falls back
+   * to the legacy upload. */
+  const queueMessageWithFiles = useCallback((conversationId: string, text: string, replyTo: number | undefined, files: { file: File; compress: boolean }[]) => {
+    if (!correlatedSendRef.current) return false;
+    enqueuePending(conversationId, text.trim(), pendingReplyRef(conversationId, replyTo), files);
+    return true;
+  }, [enqueuePending, pendingReplyRef]);
+
   const sendChatMessage = useCallback((conversationId: string, text: string, replyTo?: number) => {
     const trimmed = text.trim();
     if (!trimmed) return false;
     if (correlatedSendRef.current) {
-      const original = replyTo ? messagesByConversationRef.current.get(conversationId)?.find((msg) => msg.msgId === replyTo) : undefined;
-      // only for showing the pending copy; the server builds the real one
-      const replyRef = original ? { msgId: original.msgId, authorId: original.id, text: original.text.slice(0, 120) } : undefined;
-      enqueuePending(conversationId, trimmed, replyRef);
+      enqueuePending(conversationId, trimmed, pendingReplyRef(conversationId, replyTo));
       return true;
     }
     return sendWs({ t: 'chat', conversationId, text: trimmed, ...(replyTo ? { replyTo } : {}) });
-  }, [sendWs, enqueuePending]);
+  }, [sendWs, enqueuePending, pendingReplyRef]);
 
   /** Every welcome, including after a reconnect: learns what this server
    * supports and resends whatever was still unconfirmed. */
@@ -301,7 +313,7 @@ export function useChatMessages(deps: ChatMessagesDeps) {
     messagesByConversation, hasMoreByConversation, hasMoreAfterByConversation, loadingOlderByConversation, unreadByConversation,
     clearUnread, loadOlderMessages, pendingJumpTarget, clearPendingJumpTarget, cancelPendingJump, jumpToMessage,
     sendChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,
-    onWelcome, onChatSendResult: outbox.onChatSendResult,
+    onWelcome, onChatSendResult: outbox.onChatSendResult, queueMessageWithFiles,
     pendingByConversation: outbox.pendingByConversation,
     retryPendingMessage: outbox.retry, discardPendingMessage: outbox.discard,
     replyingTo, setReplyingTo, editingMsgId, setEditingMsgId,
