@@ -6,6 +6,8 @@ import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
 import { MessageComposer } from '@/features/chat/MessageComposer';
 import { compressImageFile } from '@/shared/lib/compressImageFile';
 import type { Conversation, PublicUser } from '@/shared/types/protocol';
+import { ApiError } from '@/shared/api/api';
+import { PartialAttachmentError, type SendAttachmentsRequest } from '@/features/chat/useAttachmentsUpload';
 
 vi.mock('@/shared/lib/compressImageFile', () => ({
   compressImageFile: vi.fn(async (file: File) => file),
@@ -163,6 +165,80 @@ describe('MessageComposer', () => {
     await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
 
     expect(sendAttachments).toHaveBeenCalledWith(expect.objectContaining({ replyTo: 42 }));
+  });
+
+  it('falha no meio do lote: so os arquivos que faltaram voltam, e o reenvio completa a mesma mensagem', async () => {
+    const user = userEvent.setup();
+    const sendChatMessage = vi.fn();
+    const sendAttachments = vi.fn<(req: SendAttachmentsRequest) => Promise<void>>(async ({ onFileSent }) => {
+      onFileSent?.(0, 99);
+      throw new PartialAttachmentError(99, 1, 2, new Error('rede'));
+    });
+    const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, {
+      state: joinedState, compressImagesDefault: false, sendAttachments, sendChatMessage,
+    });
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const first = fakeFile('um.pdf', 'application/pdf');
+    const second = fakeFile('dois.pdf', 'application/pdf');
+    await user.upload(input, [first, second]);
+    await user.type(screen.getByRole('textbox'), 'legenda');
+
+    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
+
+    expect(await screen.findByText('Um anexo não foi enviado. Envie de novo para tentar só ele.')).toBeInTheDocument();
+    expect(screen.queryByText('um.pdf')).not.toBeInTheDocument();
+    expect(screen.getByText('dois.pdf')).toBeInTheDocument();
+    // the caption went out with the first file
+    expect(screen.getByRole('textbox')).toHaveValue('');
+
+    sendAttachments.mockImplementationOnce(async () => {});
+    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
+
+    expect(sendAttachments).toHaveBeenLastCalledWith(expect.objectContaining({ files: [second], caption: '', targetMsgId: 99 }));
+    expect(sendChatMessage).not.toHaveBeenCalled();
+  });
+
+  it('falha no primeiro arquivo: nada foi publicado, texto e arquivos continuam para reenviar do zero', async () => {
+    const user = userEvent.setup();
+    const sendAttachments = vi.fn(async () => { throw new ApiError(500, 'internal_error', 'Falhou.'); });
+    const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, {
+      state: joinedState, compressImagesDefault: false, sendAttachments,
+    });
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(input, [fakeFile('um.pdf', 'application/pdf'), fakeFile('dois.pdf', 'application/pdf')]);
+    await user.type(screen.getByRole('textbox'), 'legenda');
+
+    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
+
+    expect(await screen.findByText('Falhou.')).toBeInTheDocument();
+    expect(screen.getByText('um.pdf')).toBeInTheDocument();
+    expect(screen.getByText('dois.pdf')).toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toHaveValue('legenda');
+
+    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
+    expect(sendAttachments).toHaveBeenLastCalledWith(expect.objectContaining({ caption: 'legenda', targetMsgId: undefined }));
+  });
+
+  it('mensagem anterior nao aceita mais anexos: o proximo envio cria uma mensagem nova', async () => {
+    const user = userEvent.setup();
+    const sendAttachments = vi.fn<(req: SendAttachmentsRequest) => Promise<void>>(async ({ onFileSent }) => {
+      onFileSent?.(0, 99);
+      throw new PartialAttachmentError(99, 1, 2, new Error('rede'));
+    });
+    const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, {
+      state: joinedState, compressImagesDefault: false, sendAttachments,
+    });
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(input, [fakeFile('um.pdf', 'application/pdf'), fakeFile('dois.pdf', 'application/pdf')]);
+    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
+
+    sendAttachments.mockImplementationOnce(async () => { throw new ApiError(400, 'target_message_too_old', 'Antiga.'); });
+    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
+    expect(await screen.findByText(/Não deu para completar a mensagem anterior/)).toBeInTheDocument();
+
+    sendAttachments.mockImplementationOnce(async () => {});
+    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
+    expect(sendAttachments).toHaveBeenLastCalledWith(expect.objectContaining({ targetMsgId: undefined }));
   });
 });
 

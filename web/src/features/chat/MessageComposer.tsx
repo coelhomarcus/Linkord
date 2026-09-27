@@ -16,6 +16,8 @@ import { compressImageFile } from '@/shared/lib/compressImageFile';
 import { formatFileSize, formatSizeLimit } from '@/shared/lib/formatBytes';
 import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
+import { ApiError } from '@/shared/api/api';
+import { PartialAttachmentError } from './useAttachmentsUpload';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE } from '@/shared/types/protocol';
 import type { PublicUser } from '@/shared/types/protocol';
 
@@ -46,6 +48,10 @@ function getMentionQuery(text: string, cursor: number): { start: number; query: 
   return { start: atIndex, query: match[1] ?? '' };
 }
 
+// A retry that tries to extend the message and is told it can't (too old,
+// deleted, full) has to fall back to a fresh message for the remaining files.
+const UNRESUMABLE_TARGET_CODES = new Set(['target_message_too_old', 'target_message_not_found', 'too_many_attachments', 'not_your_message']);
+
 export interface MessageComposerHandle {
   addFiles: (files: File[]) => void;
 }
@@ -71,6 +77,9 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingFilesRef = useRef<PendingAttachment[]>([]);
   const isSubmittingRef = useRef(false);
+  // the message a partially-failed batch already created — the next submit
+  // appends the remaining files to it instead of publishing a second message
+  const partialBatchRef = useRef<{ conversationId: string; msgId: number } | null>(null);
   const typingThrottleRef = useRef<number | null>(null); // Date.now() of the last emitted typing:true
   const typingIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
@@ -205,15 +214,6 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
     });
   }
 
-  function clearFiles() {
-    setPendingFiles((prev) => {
-      prev.forEach((file) => {
-        if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
-      });
-      return [];
-    });
-  }
-
   function toggleCompress(next: boolean) {
     setCompressImages(next);
     setCompressImagesDefault(next);
@@ -237,22 +237,53 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
         // network round-trip, so the UI reacts the instant the user submits
         // instead of waiting on the first progress event to arrive.
         setActiveUploadId(pendingFiles[0]?.id ?? null);
+        const batch = pendingFiles;
+        const resume = partialBatchRef.current?.conversationId === conversationId ? partialBatchRef.current : null;
         const filesToSend = compressImages
-          ? await Promise.all(pendingFiles.map((item) => (
+          ? await Promise.all(batch.map((item) => (
               item.file.type.startsWith('image/') ? compressImageFile(item.file) : item.file
             )))
-          : pendingFiles.map((item) => item.file);
-        await sendAttachments({
-          conversationId,
-          files: filesToSend,
-          caption: trimmed,
-          replyTo: replyingTo?.msgId,
-          onProgress: (fileIndex, fraction) => {
-            setActiveUploadId(pendingFiles[fileIndex]?.id ?? null);
-            setUploadProgress(fraction);
-          },
-        });
-        clearFiles();
+          : batch.map((item) => item.file);
+        try {
+          await sendAttachments({
+            conversationId,
+            files: filesToSend,
+            // on resume the caption and reply already went out with the first file
+            caption: resume ? '' : trimmed,
+            replyTo: resume ? undefined : replyingTo?.msgId,
+            targetMsgId: resume?.msgId,
+            onProgress: (fileIndex, fraction) => {
+              setActiveUploadId(batch[fileIndex]?.id ?? null);
+              setUploadProgress(fraction);
+            },
+            onFileSent: (fileIndex, msgId) => {
+              removeFile(batch[fileIndex]!.id);
+              if (!resume && fileIndex === 0) {
+                partialBatchRef.current = { conversationId, msgId };
+                setText('');
+                setReplyingTo(null);
+              }
+            },
+          });
+        } catch (err) {
+          if (err instanceof PartialAttachmentError) {
+            const failed = err.totalCount - err.failedIndex;
+            setAttachError(failed === 1
+              ? 'Um anexo não foi enviado. Envie de novo para tentar só ele.'
+              : `${failed} anexos não foram enviados. Envie de novo para tentar só esses.`);
+            return;
+          }
+          if (resume && err instanceof ApiError && UNRESUMABLE_TARGET_CODES.has(err.code)) {
+            partialBatchRef.current = null;
+            setAttachError('Não deu para completar a mensagem anterior. Envie de novo para mandar os anexos restantes numa nova mensagem.');
+            return;
+          }
+          throw err;
+        }
+        partialBatchRef.current = null;
+        // typed after a partial failure: the resumed files carry no caption,
+        // so the text goes out as its own message rather than being dropped
+        if (resume && trimmed) sendChatMessage(conversationId, trimmed, replyingTo?.msgId);
         setText('');
         setReplyingTo(null);
         return;
