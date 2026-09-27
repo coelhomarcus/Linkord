@@ -2,8 +2,7 @@ import { useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Flag, MoreHorizontal, Pencil, Reply, SmilePlus, Trash2 } from 'lucide-react';
 import { Avatar } from '@/shared/Avatar';
-import { ChatAttachment, IMAGE_MIME_TYPES } from '@/features/chat/ChatAttachment';
-import { ImageAttachmentGrid } from '@/features/chat/ImageAttachmentGrid';
+import { MessageMedia } from './MessageMedia';
 import { InviteCard } from '@/features/chat/InviteCard';
 import { ChatMessageText } from '@/features/chat/ChatMessageText';
 import { Button } from '@/shared/ui/primitives/button';
@@ -216,13 +215,7 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
                 <ChatMessageText text={message.text} mentionLookup={mentionLookup} myUserId={state.me.userId} onOpenProfile={onOpenProfile} />
                 {message.editedAt && <span className="ml-1 text-caption text-text-muted">(editado)</span>}
               </div>
-              {message.attachments?.length === 4 && message.attachments.every((a) => IMAGE_MIME_TYPES.has(a.mime)) ? (
-                <ImageAttachmentGrid attachments={message.attachments} />
-              ) : (
-                message.attachments?.map((attachment) => (
-                  <ChatAttachment key={attachment.id} attachment={attachment} />
-                ))
-              )}
+              {message.attachments?.length ? <MessageMedia attachments={message.attachments} /> : null}
             </>
             )
           )}

@@ -7,6 +7,7 @@ import { DirectComposerGate } from '@/features/friends/DirectComposerGate';
 import { MessageComposer, type MessageComposerHandle } from './MessageComposer';
 import { MessageTimeline } from './MessageTimeline';
 import { TypingIndicator } from './TypingIndicator';
+import { MediaViewerProvider } from './MediaViewerProvider';
 
 // Typing lives in a fixed-height rail above the composer, outside the box
 // the ResizeObserver measures: someone starting or stopping typing must not
@@ -75,7 +76,9 @@ export function ChatSurface({ conversationId, onOpenProfile }: { conversationId:
       onDrop={handleDrop}
     >
       <ChatSurfaceWidthProvider width={surfaceWidth}>
-        <MessageTimeline conversationId={conversationId} onReply={setReplyingTo} onOpenProfile={onOpenProfile} bottomPadding={composerHeight + STATUS_RAIL_HEIGHT + 8} />
+        <MediaViewerProvider>
+          <MessageTimeline conversationId={conversationId} onReply={setReplyingTo} onOpenProfile={onOpenProfile} bottomPadding={composerHeight + STATUS_RAIL_HEIGHT + 8} />
+        </MediaViewerProvider>
       </ChatSurfaceWidthProvider>
       <div
         aria-hidden

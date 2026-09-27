@@ -79,6 +79,10 @@ export interface ChatAttachment {
   // resized copy for thumbnails. The ORIGINAL (`id`) is still what full-size
   // views (lightbox, download) use.
   thumbId?: string;
+  // Displayed size of an image, when the server could read it — lets the
+  // row reserve the final box before the pixels arrive.
+  width?: number;
+  height?: number;
 }
 export const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_MESSAGE = 4;
