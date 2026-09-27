@@ -7,9 +7,9 @@ import { mentionsUsername } from '@/shared/lib/mentions';
 import { useMessageOutbox } from './useMessageOutbox';
 import { useMessageActionRequests } from './useMessageActionRequests';
 import { useReactionIntents } from './useReactionIntents';
+import { MAX_WINDOW, withNewerMessages, withOlderPage } from './historyWindow';
 import type { ChatMessage, ClientMessage, Conversation, PublicUser, ReactionEmoji, ServerMessage } from '@/shared/types/protocol';
 
-const CHAT_CLIENT_LIMIT = 300;
 // correlated, idempotent chat sends (see useMessageOutbox)
 const CORRELATED_SEND_PROTOCOL = 3;
 // edits and deletes answered with chat-action-result
@@ -23,8 +23,18 @@ function withMessage(list: ChatMessage[], message: ChatMessage): ChatMessage[] {
   if (list.some((existing) => existing.msgId === message.msgId)) return list;
   let index = list.length;
   while (index > 0 && list[index - 1]!.msgId > message.msgId) index--;
-  const next = [...list.slice(0, index), message, ...list.slice(index)];
-  return next.length > CHAT_CLIENT_LIMIT ? next.slice(next.length - CHAT_CLIENT_LIMIT) : next;
+  return [...list.slice(0, index), message, ...list.slice(index)];
+}
+
+// A page request that never gets an answer mustn't leave its direction
+// "loading" forever — after this the user can scroll to try again.
+const PAGE_TIMEOUT_MS = 10_000;
+
+function updateSet(set: Set<string>, id: string, present: boolean): Set<string> {
+  if (set.has(id) === present) return set;
+  const next = new Set(set);
+  if (present) next.add(id); else next.delete(id);
+  return next;
 }
 
 function displayNameForConversation(conversation: Conversation | undefined, meUserId: string | null, users: Map<string, PublicUser>): string {
@@ -69,8 +79,16 @@ export function useChatMessages(deps: ChatMessagesDeps) {
   const hasMoreByConversationRef = useRef<Map<string, boolean>>(new Map());
   useEffect(() => { hasMoreByConversationRef.current = hasMoreByConversation; }, [hasMoreByConversation]);
   const [hasMoreAfterByConversation, setHasMoreAfterByConversation] = useState<Map<string, boolean>>(new Map());
+  const hasMoreAfterRef = useRef<Map<string, boolean>>(new Map());
+  useEffect(() => { hasMoreAfterRef.current = hasMoreAfterByConversation; }, [hasMoreAfterByConversation]);
   const [loadingOlderByConversation, setLoadingOlderByConversation] = useState<Set<string>>(new Set());
-  const loadingOlderRef = useRef<Set<string>>(new Set());
+  const [loadingNewerByConversation, setLoadingNewerByConversation] = useState<Set<string>>(new Set());
+  // live messages that arrived while a conversation shows an older window:
+  // not inserted (that would leave a hidden gap), just counted
+  const [newerCountByConversation, setNewerCountByConversation] = useState<Map<string, number>>(new Map());
+  // one outstanding page per conversation+direction; a reply carrying any
+  // other requestId answers something since replaced (a jump, a reload)
+  const pageRequestsRef = useRef(new Map<string, { requestId: string; timer: ReturnType<typeof setTimeout> }>());
   const [unreadByConversation, setUnreadByConversation] = useState<Map<string, number>>(new Map());
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
@@ -89,11 +107,15 @@ export function useChatMessages(deps: ChatMessagesDeps) {
   const { react: reactWithIntent } = reactionIntents;
 
   const insertConfirmed = useCallback((message: ChatMessage) => {
+    let trimmed = false;
     setMessagesByConversation((prev) => {
       const list = prev.get(message.conversationId) || [];
-      const next = withMessage(list, message);
-      return next === list ? prev : new Map(prev).set(message.conversationId, next);
+      let next = withMessage(list, message);
+      if (next === list) return prev;
+      if (next.length > MAX_WINDOW) { next = next.slice(next.length - MAX_WINDOW); trimmed = true; }
+      return new Map(prev).set(message.conversationId, next);
     });
+    if (trimmed) setHasMoreByConversation((prev) => new Map(prev).set(message.conversationId, true));
   }, []);
   const outbox = useMessageOutbox({ sendWs, onConfirmed: insertConfirmed });
   const { enqueue: enqueuePending, onEcho: onPendingEcho, onReconnected: onOutboxReconnected } = outbox;
@@ -107,14 +129,69 @@ export function useChatMessages(deps: ChatMessagesDeps) {
     });
   }, []);
 
+  const setLoading = useCallback((direction: 'older' | 'newer', conversationId: string, loading: boolean) => {
+    (direction === 'older' ? setLoadingOlderByConversation : setLoadingNewerByConversation)((prev) => updateSet(prev, conversationId, loading));
+  }, []);
+
+  const startPage = useCallback((direction: 'older' | 'newer', conversationId: string): string | null => {
+    const key = `${direction}:${conversationId}`;
+    if (pageRequestsRef.current.has(key)) return null;
+    const requestId = crypto.randomUUID();
+    const timer = setTimeout(() => {
+      if (pageRequestsRef.current.get(key)?.requestId !== requestId) return;
+      pageRequestsRef.current.delete(key);
+      setLoading(direction, conversationId, false);
+    }, PAGE_TIMEOUT_MS);
+    pageRequestsRef.current.set(key, { requestId, timer });
+    setLoading(direction, conversationId, true);
+    return requestId;
+  }, [setLoading]);
+
+  /** True when this page answers the current request (or comes from a
+   * server too old to echo one). */
+  const finishPage = useCallback((direction: 'older' | 'newer', conversationId: string, requestId: string | undefined): boolean => {
+    const key = `${direction}:${conversationId}`;
+    const current = pageRequestsRef.current.get(key);
+    if (requestId !== undefined && current?.requestId !== requestId) return false;
+    if (current) clearTimeout(current.timer);
+    pageRequestsRef.current.delete(key);
+    setLoading(direction, conversationId, false);
+    return true;
+  }, [setLoading]);
+
+  /** A new window (open, jump) replaces whatever pages were on their way. */
+  const resetPages = useCallback((conversationId: string) => {
+    for (const direction of ['older', 'newer'] as const) {
+      const key = `${direction}:${conversationId}`;
+      const current = pageRequestsRef.current.get(key);
+      if (current) clearTimeout(current.timer);
+      pageRequestsRef.current.delete(key);
+      setLoading(direction, conversationId, false);
+    }
+    setNewerCountByConversation((prev) => { if (!prev.has(conversationId)) return prev; const next = new Map(prev); next.delete(conversationId); return next; });
+  }, [setLoading]);
+
   const loadOlderMessages = useCallback((conversationId: string) => {
-    if (loadingOlderRef.current.has(conversationId)) return;
     if (hasMoreByConversationRef.current.get(conversationId) === false) return;
     const oldest = messagesByConversationRef.current.get(conversationId)?.[0];
     if (!oldest) return;
-    loadingOlderRef.current.add(conversationId);
-    setLoadingOlderByConversation((prev) => new Set(prev).add(conversationId));
-    sendWs({ t: 'load-more-messages', conversationId, beforeMsgId: oldest.msgId });
+    const requestId = startPage('older', conversationId);
+    if (requestId) sendWs({ t: 'load-more-messages', conversationId, beforeMsgId: oldest.msgId, requestId });
+  }, [sendWs, startPage]);
+
+  const loadNewerMessages = useCallback((conversationId: string) => {
+    if (hasMoreAfterRef.current.get(conversationId) !== true) return;
+    const list = messagesByConversationRef.current.get(conversationId);
+    const newest = list?.[list.length - 1];
+    if (!newest) return;
+    const requestId = startPage('newer', conversationId);
+    if (requestId) sendWs({ t: 'load-messages-after', conversationId, afterMsgId: newest.msgId, requestId });
+  }, [sendWs, startPage]);
+
+  // your own message belongs at the present: sending from an old window
+  // brings the conversation back to its latest page
+  const returnToPresentIfBehind = useCallback((conversationId: string) => {
+    if (hasMoreAfterRef.current.get(conversationId) === true) sendWs({ t: 'conversation-open', conversationId });
   }, [sendWs]);
 
   const [pendingJumpTarget, setPendingJumpTargetState] = useState<{ conversationId: string; msgId: number } | null>(null);
@@ -159,19 +236,21 @@ export function useChatMessages(deps: ChatMessagesDeps) {
    * to the legacy upload. */
   const queueMessageWithFiles = useCallback((conversationId: string, text: string, replyTo: number | undefined, files: { file: File; compress: boolean }[]) => {
     if (!correlatedSendRef.current) return false;
+    returnToPresentIfBehind(conversationId);
     enqueuePending(conversationId, text.trim(), pendingReplyRef(conversationId, replyTo), files);
     return true;
-  }, [enqueuePending, pendingReplyRef]);
+  }, [enqueuePending, pendingReplyRef, returnToPresentIfBehind]);
 
   const sendChatMessage = useCallback((conversationId: string, text: string, replyTo?: number) => {
     const trimmed = text.trim();
     if (!trimmed) return false;
     if (correlatedSendRef.current) {
+      returnToPresentIfBehind(conversationId);
       enqueuePending(conversationId, trimmed, pendingReplyRef(conversationId, replyTo));
       return true;
     }
     return sendWs({ t: 'chat', conversationId, text: trimmed, ...(replyTo ? { replyTo } : {}) });
-  }, [sendWs, enqueuePending, pendingReplyRef]);
+  }, [sendWs, enqueuePending, pendingReplyRef, returnToPresentIfBehind]);
 
   /** Every welcome, including after a reconnect: learns what this server
    * supports and resends whatever was still unconfirmed. */
@@ -219,39 +298,42 @@ export function useChatMessages(deps: ChatMessagesDeps) {
   }, [sendWs, reactWithIntent, myUserIdRef]);
 
   const onConversationHistory = useCallback((m: Extract<ServerMessage, { t: 'conversation-history' }>) => {
+    resetPages(m.conversationId);
     setMessagesByConversation((prev) => new Map(prev).set(m.conversationId, m.messages));
     setHasMoreByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMore));
     setHasMoreAfterByConversation((prev) => new Map(prev).set(m.conversationId, false));
-  }, []);
+  }, [resetPages]);
 
   const onConversationHistoryAround = useCallback((m: Extract<ServerMessage, { t: 'conversation-history-around' }>) => {
     const pending = pendingJumpRef.current;
     if (!pending || pending.conversationId !== m.conversationId || pending.msgId !== m.msgId) return;
     pendingJumpRef.current = null;
+    resetPages(m.conversationId);
     setMessagesByConversation((prev) => new Map(prev).set(m.conversationId, m.messages));
     setHasMoreByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMoreBefore));
     setHasMoreAfterByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMoreAfter));
-  }, []);
+  }, [resetPages]);
 
   const onConversationHistoryMore = useCallback((m: Extract<ServerMessage, { t: 'conversation-history-more' }>) => {
     const conversationId = m.conversationId;
-    loadingOlderRef.current.delete(conversationId);
-    setLoadingOlderByConversation((prev) => {
-      if (!prev.has(conversationId)) return prev;
-      const next = new Set(prev);
-      next.delete(conversationId);
-      return next;
-    });
+    if (!finishPage('older', conversationId, m.requestId)) return;
     setHasMoreByConversation((prev) => new Map(prev).set(conversationId, m.hasMore));
-    if (m.messages.length > 0) {
-      setMessagesByConversation((prev) => {
-        const existing = prev.get(conversationId) || [];
-        const existingIds = new Set(existing.map((msg) => msg.msgId));
-        const older = m.messages.filter((msg) => !existingIds.has(msg.msgId));
-        return new Map(prev).set(conversationId, [...older, ...existing]);
-      });
-    }
-  }, []);
+    if (!m.messages.length) return;
+    const update = withOlderPage(messagesByConversationRef.current.get(conversationId) ?? [], m.messages);
+    setMessagesByConversation((prev) => new Map(prev).set(conversationId, update.messages));
+    if (update.trimmedNewest) setHasMoreAfterByConversation((prev) => new Map(prev).set(conversationId, true));
+  }, [finishPage]);
+
+  const onConversationHistoryNewer = useCallback((m: Extract<ServerMessage, { t: 'conversation-history-newer' }>) => {
+    const conversationId = m.conversationId;
+    if (!finishPage('newer', conversationId, m.requestId)) return;
+    const update = withNewerMessages(messagesByConversationRef.current.get(conversationId) ?? [], m.messages);
+    setMessagesByConversation((prev) => new Map(prev).set(conversationId, update.messages));
+    setHasMoreAfterByConversation((prev) => new Map(prev).set(conversationId, m.hasMoreAfter));
+    if (update.trimmedOldest) setHasMoreByConversation((prev) => new Map(prev).set(conversationId, true));
+    // caught up with the present: whatever was counted is now in the list
+    if (!m.hasMoreAfter) setNewerCountByConversation((prev) => { if (!prev.has(conversationId)) return prev; const next = new Map(prev); next.delete(conversationId); return next; });
+  }, [finishPage]);
 
   const onChat = useCallback((m: Extract<ServerMessage, { t: 'chat' }>) => {
     const conversationId = m.message.conversationId;
@@ -259,7 +341,11 @@ export function useChatMessages(deps: ChatMessagesDeps) {
     // a repeated delivery (or one that lost the race to its own send result)
     // must not notify or count as unread twice
     if (messagesByConversationRef.current.get(conversationId)?.some((msg) => msg.msgId === m.message.msgId)) return;
-    insertConfirmed(m.message);
+    if (hasMoreAfterRef.current.get(conversationId) === true) {
+      setNewerCountByConversation((prev) => new Map(prev).set(conversationId, (prev.get(conversationId) ?? 0) + 1));
+    } else {
+      insertConfirmed(m.message);
+    }
     // your own message is never unread — it can land in a conversation you
     // left (an upload finishing after a switch, or another tab/device)
     if (conversationId !== activeConversationIdRef.current && m.message.id !== myUserIdRef.current) {
@@ -370,7 +456,8 @@ export function useChatMessages(deps: ChatMessagesDeps) {
     pendingByConversation: outbox.pendingByConversation,
     retryPendingMessage: outbox.retry, discardPendingMessage: outbox.discard,
     replyingTo, setReplyingTo, editingMsgId, setEditingMsgId,
-    onConversationHistory, onConversationHistoryAround, onConversationHistoryMore,
+    onConversationHistory, onConversationHistoryAround, onConversationHistoryMore, onConversationHistoryNewer,
+    loadNewerMessages, loadingNewerByConversation, newerCountByConversation,
     onChat, onChatDeleted, onChatEdited, onInvitationUpdated, onChatAttachmentAdded, onChatReactionUpdated, onConversationDeleted, onConversationRead,
   };
 }

@@ -229,6 +229,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'conversation-history-more':
         chatMessages.onConversationHistoryMore(m);
         break;
+      case 'conversation-history-newer':
+        chatMessages.onConversationHistoryNewer(m);
+        break;
       case 'chat':
         chatMessages.onChat(m);
         break;
@@ -375,6 +378,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         transferGroupOwnership: conversationsList.transferGroupOwnership,
         messagesByConversation: chatMessages.messagesByConversation, hasMoreByConversation: chatMessages.hasMoreByConversation,
         loadingOlderByConversation: chatMessages.loadingOlderByConversation, loadOlderMessages: chatMessages.loadOlderMessages,
+        loadNewerMessages: chatMessages.loadNewerMessages, loadingNewerByConversation: chatMessages.loadingNewerByConversation,
+        newerCountByConversation: chatMessages.newerCountByConversation,
         unreadByConversation: chatMessages.unreadByConversation,
         typingByConversation: typingIndicator.typingByConversation, sendTyping: typingIndicator.sendTyping,
         allUsers: presence.allUsers, onlineUserIds: presence.onlineUserIds, friendUserIds: presence.friendUserIds,

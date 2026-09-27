@@ -112,6 +112,11 @@ export interface RoomContextValue {
   typingByConversation: Map<string, Set<string>>;
   sendTyping: (conversationId: string, value: boolean) => void;
   loadOlderMessages: (conversationId: string) => void;
+  /** Next page toward the present, for a window opened on old history. */
+  loadNewerMessages: (conversationId: string) => void;
+  loadingNewerByConversation: Set<string>;
+  /** Live messages that arrived while an older window was shown. */
+  newerCountByConversation: Map<string, number>;
   allUsers: Map<string, PublicUser>;
   onlineUserIds: Set<string>;
   /** The friend subset of allUsers — see usePresence.ts's own comment. */

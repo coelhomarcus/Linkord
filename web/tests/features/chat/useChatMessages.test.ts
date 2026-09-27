@@ -101,3 +101,69 @@ describe('useChatMessages — envio correlacionado', () => {
     expect(result.current.unreadByConversation.get('outra')).toBe(1);
   });
 });
+
+describe('useChatMessages — janela de historico', () => {
+  function setupWindow() {
+    const sendWs = vi.fn((_msg: unknown) => true);
+    const ref = <T,>(current: T) => ({ current });
+    const hook = renderHook(() => useChatMessages({
+      sendWs, activeConversationIdRef: ref<string | null>('dm'), setActiveConversation: vi.fn(),
+      conversationsRef: ref([]), allUsersRef: ref(new Map()), myUserIdRef: ref<string | null>('b'), myUsernameRef: ref<string | null>('b'),
+      activeViewRef: ref<'chat' | 'call'>('chat'), clearTypingEntry: vi.fn(),
+    }));
+    return { ...hook, sendWs };
+  }
+  const sentOf = (sendWs: ReturnType<typeof vi.fn>, t: string) => sendWs.mock.calls.map(([m]) => m as { t: string; requestId?: string }).filter((m) => m.t === t);
+
+  it('pagina antiga que responde a um pedido substituido e ignorada', () => {
+    const { result, sendWs } = setupWindow();
+    act(() => result.current.onConversationHistory({ t: 'conversation-history', conversationId: 'dm', hasMore: true, messages: [message(10)] }));
+    act(() => result.current.loadOlderMessages('dm'));
+    const stale = sentOf(sendWs, 'load-more-messages')[0]!.requestId!;
+    // a reopen replaces the window before the page comes back
+    act(() => result.current.onConversationHistory({ t: 'conversation-history', conversationId: 'dm', hasMore: true, messages: [message(20)] }));
+    act(() => result.current.onConversationHistoryMore({ t: 'conversation-history-more', conversationId: 'dm', hasMore: false, messages: [message(1)], requestId: stale }));
+    expect(result.current.messagesByConversation.get('dm')!.map((m) => m.msgId)).toEqual([20]);
+  });
+
+  it('pagina que nunca responde libera o "carregando" depois do prazo', () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = setupWindow();
+      act(() => result.current.onConversationHistory({ t: 'conversation-history', conversationId: 'dm', hasMore: true, messages: [message(10)] }));
+      act(() => result.current.loadOlderMessages('dm'));
+      expect(result.current.loadingOlderByConversation.has('dm')).toBe(true);
+      act(() => { vi.advanceTimersByTime(10_000); });
+      expect(result.current.loadingOlderByConversation.has('dm')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('janela antiga: mensagem ao vivo nao entra (evita buraco), so conta; alcancar o presente zera', () => {
+    const { result, sendWs } = setupWindow();
+    act(() => result.current.onConversationHistoryAround({ t: 'conversation-history-around', conversationId: 'dm', msgId: 5, messages: [message(5)], hasMoreBefore: true, hasMoreAfter: true }));
+    // around only applies when it answers a jump
+    act(() => result.current.jumpToMessage('dm', 5));
+    act(() => result.current.onConversationHistoryAround({ t: 'conversation-history-around', conversationId: 'dm', msgId: 5, messages: [message(5)], hasMoreBefore: true, hasMoreAfter: true }));
+    act(() => result.current.onChat({ t: 'chat', message: message(99, { id: 'a' }) }));
+    expect(result.current.messagesByConversation.get('dm')!.map((m) => m.msgId)).toEqual([5]);
+    expect(result.current.newerCountByConversation.get('dm')).toBe(1);
+
+    act(() => result.current.loadNewerMessages('dm'));
+    const req = sentOf(sendWs, 'load-messages-after')[0]!;
+    expect(req).toMatchObject({ afterMsgId: 5 });
+    act(() => result.current.onConversationHistoryNewer({ t: 'conversation-history-newer', conversationId: 'dm', messages: [message(6), message(99)], hasMoreAfter: false, requestId: req.requestId }));
+    expect(result.current.messagesByConversation.get('dm')!.map((m) => m.msgId)).toEqual([5, 6, 99]);
+    expect(result.current.newerCountByConversation.get('dm')).toBeUndefined();
+  });
+
+  it('enviar a partir de uma janela antiga volta ao presente', () => {
+    const { result, sendWs } = setupWindow();
+    act(() => result.current.onWelcome(5));
+    act(() => result.current.jumpToMessage('dm', 5));
+    act(() => result.current.onConversationHistoryAround({ t: 'conversation-history-around', conversationId: 'dm', msgId: 5, messages: [message(5)], hasMoreBefore: false, hasMoreAfter: true }));
+    act(() => { result.current.sendChatMessage('dm', 'oi'); });
+    expect(sentOf(sendWs, 'conversation-open')).toHaveLength(1);
+  });
+});

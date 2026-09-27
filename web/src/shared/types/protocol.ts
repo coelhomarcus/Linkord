@@ -169,8 +169,9 @@ export type ClientMessage =
   | { t: 'group-update'; conversationId: string; title?: string; avatar?: string }
   | { t: 'group-members-remove'; conversationId: string; userId: string }
   | { t: 'group-transfer-owner'; conversationId: string; userId: string }
-  | { t: 'load-more-messages'; conversationId: string; beforeMsgId: number }
-  | { t: 'load-messages-around'; conversationId: string; msgId: number }
+  | { t: 'load-more-messages'; conversationId: string; beforeMsgId: number; requestId?: string }
+  | { t: 'load-messages-after'; conversationId: string; afterMsgId: number; requestId?: string }
+  | { t: 'load-messages-around'; conversationId: string; msgId: number; requestId?: string }
   | { t: 'message-search'; query: string; conversationId?: string }
   | { t: 'chat'; conversationId: string; text: string; replyTo?: number; requestId?: string; clientMessageId?: string; attachmentIds?: string[] }
   | { t: 'chat-delete'; msgId: number; requestId?: string }
@@ -204,7 +205,8 @@ export type ServerMessage =
   | { t: 'conversation-pinned'; conversationId: string; pinnedAt: number | null }
   | { t: 'conversation-read'; conversationId: string; lastReadMessageId: number }
   | { t: 'conversation-history'; conversationId: string; messages: ChatMessage[]; hasMore: boolean }
-  | { t: 'conversation-history-more'; conversationId: string; messages: ChatMessage[]; hasMore: boolean }
+  | { t: 'conversation-history-more'; conversationId: string; messages: ChatMessage[]; hasMore: boolean; requestId?: string }
+  | { t: 'conversation-history-newer'; conversationId: string; messages: ChatMessage[]; hasMoreAfter: boolean; requestId?: string }
   | { t: 'conversation-history-around'; conversationId: string; msgId: number; messages: ChatMessage[]; hasMoreBefore: boolean; hasMoreAfter: boolean }
   | { t: 'conversation-deleted'; conversationId: string; reason?: 'removed' | 'deleted' }
   | { t: 'participant-joined'; participant: Participant }
