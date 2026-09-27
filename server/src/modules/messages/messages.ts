@@ -1,7 +1,7 @@
 import { sendUsageToUser } from '../attachments/attachmentQuota.js';
 import { isActiveAdmin } from '../admin/adminAuth.js';
 import { recordAudit } from '../admin/auditLog.js';
-import { eq, and, desc, asc, lt, gte, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, lt, gt, gte, sql } from 'drizzle-orm';
 import { config } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { messages, conversationMembers, users, type Message, type Attachment } from '../../db/schema.js';
@@ -235,7 +235,13 @@ async function handleConversationOpen(socket: AppSocket, msg: { conversationId?:
 /** Client scrolled to the top of an already-open conversation — sends up to
  * CHAT_HISTORY_LIMIT messages older than `beforeMsgId` (the oldest one the
  * client currently has), for it to PREPEND to existing history. */
-async function handleLoadMoreMessages(socket: AppSocket, msg: { conversationId?: string; beforeMsgId?: unknown }): Promise<void> {
+/** Echoed on history pages so a client can drop a page that answers a
+ * request it has since replaced (a jump, a switch). */
+function pageRequestId(msg: { requestId?: unknown }): { requestId?: string } {
+  return typeof msg.requestId === 'string' && msg.requestId.length <= 64 ? { requestId: msg.requestId } : {};
+}
+
+async function handleLoadMoreMessages(socket: AppSocket, msg: { conversationId?: string; beforeMsgId?: unknown; requestId?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   const conversationId = conversationIdFrom(msg);
@@ -255,6 +261,31 @@ async function handleLoadMoreMessages(socket: AppSocket, msg: { conversationId?:
     conversationId,
     messages: payloads,
     hasMore: rows.length === config.CHAT_HISTORY_LIMIT,
+    ...pageRequestId(msg),
+  });
+}
+
+/** Newer than X: lets a window opened on old history (a search result, a
+ * reply jump) walk forward to the present instead of jumping there. */
+async function handleLoadMessagesAfter(socket: AppSocket, msg: { conversationId?: string; afterMsgId?: unknown; requestId?: unknown }): Promise<void> {
+  const p = participants.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  const conversationId = conversationIdFrom(msg);
+  const afterMsgId = Number(msg.afterMsgId);
+  if (!conversationId || !Number.isFinite(afterMsgId) || !(await conversationExistsForUser(conversationId, p.userId))) return;
+  const rows = await db
+    .select(messageWithAuthorSelect)
+    .from(messages)
+    .leftJoin(users, eq(users.id, messages.authorId))
+    .where(and(eq(messages.conversationId, conversationId), gt(messages.id, afterMsgId)))
+    .orderBy(asc(messages.id))
+    .limit(config.CHAT_HISTORY_LIMIT);
+  send(socket, {
+    t: 'conversation-history-newer',
+    conversationId,
+    messages: await serializeRows(rows),
+    hasMoreAfter: rows.length === config.CHAT_HISTORY_LIMIT,
+    ...pageRequestId(msg),
   });
 }
 
@@ -264,7 +295,7 @@ async function handleLoadMoreMessages(socket: AppSocket, msg: { conversationId?:
  * with the result (see RoomProvider.tsx#jumpToMessage), same "recenter"
  * shape as opening a conversation, just anchored differently instead of
  * preserving whatever was loaded before. */
-async function handleLoadMessagesAround(socket: AppSocket, msg: { conversationId?: string; msgId?: unknown }): Promise<void> {
+async function handleLoadMessagesAround(socket: AppSocket, msg: { conversationId?: string; msgId?: unknown; requestId?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   const conversationId = conversationIdFrom(msg);
@@ -299,6 +330,7 @@ async function handleLoadMessagesAround(socket: AppSocket, msg: { conversationId
     messages: payloads,
     hasMoreBefore: beforeRows.length === AROUND_BEFORE_LIMIT,
     hasMoreAfter: afterRows.length === AROUND_AFTER_LIMIT,
+    ...pageRequestId(msg),
   });
 }
 
@@ -651,6 +683,7 @@ export const handlers: HandlerTable = {
   'conversation-open': handleConversationOpen,
   'load-more-messages': handleLoadMoreMessages,
   'load-messages-around': handleLoadMessagesAround,
+  'load-messages-after': handleLoadMessagesAfter,
   'message-search': handleMessageSearch,
   chat: handleChat,
   'chat-delete': handleChatDelete,

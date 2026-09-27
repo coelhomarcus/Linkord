@@ -222,3 +222,27 @@ describe('reacoes por estado desejado (Postgres real)', () => {
     }
   });
 });
+
+describe('historico para frente (Postgres real)', () => {
+  it('load-messages-after devolve as mais novas, em ordem, com o requestId de volta', () => withMember(async (ctx) => {
+    const ids: number[] = [];
+    for (const text of ['m1', 'm2', 'm3', 'm4']) {
+      const [row] = await db.insert(messages).values({ conversationId: ctx.conversationId, authorId: ctx.userId, text }).returning();
+      ids.push(row!.id);
+    }
+    await handlers['load-messages-after']!(ctx.socket, { conversationId: ctx.conversationId, afterMsgId: ids[1], requestId: 'pg1' });
+    const page = ctx.sent.find((s) => s.event === 'conversation-history-newer')!.payload;
+    assert.deepEqual(page.messages.map((m: { text: string }) => m.text), ['m3', 'm4']);
+    assert.equal(page.hasMoreAfter, false);
+    assert.equal(page.requestId, 'pg1');
+  }));
+
+  it('conversa alheia nao responde', async () => {
+    const stranger = await makeUser('cs');
+    const otherGroup = await makeGroupWithMembers(stranger.id, []);
+    await withMember(async (ctx) => {
+      await handlers['load-messages-after']!(ctx.socket, { conversationId: otherGroup, afterMsgId: 0 });
+      assert.equal(ctx.sent.filter((s) => s.event === 'conversation-history-newer').length, 0);
+    });
+  });
+});
