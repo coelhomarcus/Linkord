@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { after, describe, it } from 'node:test';
 import { eq } from 'drizzle-orm';
-import { messageSendOperations, messages } from '../../src/db/schema.js';
+import { conversationMembers, messageSendOperations, messages } from '../../src/db/schema.js';
 import { handlers } from '../../src/modules/messages/messages.js';
 import { getOrCreateDirect } from '../../src/modules/conversations/conversationsRepository.js';
 import { sweepSendOperations } from '../../src/modules/messages/sendOperations.js';
@@ -122,5 +122,58 @@ describe('chat correlacionado (Postgres real)', () => {
     await sweepSendOperations(Date.now() + 8 * 24 * 60 * 60 * 1000);
     const left = await db.select().from(messageSendOperations).where(eq(messageSendOperations.authorId, userId));
     assert.equal(left.length, 0);
+  }));
+});
+
+describe('editar e apagar com resultado (Postgres real)', () => {
+  const actionResults = (sent: Sent) => sent.filter((s) => s.event === 'chat-action-result').map((s) => s.payload);
+
+  async function ownMessage(ctx: { socket: any; sent: Sent; conversationId: string }) {
+    await handlers.chat!(ctx.socket, { conversationId: ctx.conversationId, text: 'original', requestId: 's', clientMessageId: key() });
+    return results(ctx.sent)[0].message.msgId as number;
+  }
+
+  it('editar responde sucesso e salva', () => withMember(async (ctx) => {
+    const msgId = await ownMessage(ctx);
+    await handlers['chat-edit']!(ctx.socket, { msgId, text: 'editado', requestId: 'e1' });
+    assert.deepEqual(actionResults(ctx.sent), [{ t: 'chat-action-result', requestId: 'e1' }]);
+    const [row] = await db.select().from(messages).where(eq(messages.id, msgId));
+    assert.equal(row!.text, 'editado');
+  }));
+
+  it('editar mensagem de outra pessoa responde forbidden', () => withMember(async (ctx) => {
+    const msgId = await ownMessage(ctx);
+    const other = await makeUser('cs');
+    await db.insert(conversationMembers).values({ conversationId: ctx.conversationId, userId: other.id, role: 'member' });
+    const { socket, sent, participant } = joinNew(other);
+    try {
+      await handlers['chat-edit']!(socket, { msgId, text: 'invasao', requestId: 'e2' });
+      assert.equal(actionResults(sent)[0].error.code, 'forbidden');
+    } finally {
+      cleanupParticipant(participant);
+    }
+  }));
+
+  it('editar com texto longo demais responde erro sem cortar', () => withMember(async (ctx) => {
+    const msgId = await ownMessage(ctx);
+    await handlers['chat-edit']!(ctx.socket, { msgId, text: 'x'.repeat(2001), requestId: 'e3' });
+    assert.equal(actionResults(ctx.sent)[0].error.code, 'message_too_long');
+    const [row] = await db.select().from(messages).where(eq(messages.id, msgId));
+    assert.equal(row!.text, 'original');
+  }));
+
+  it('apagar responde sucesso; apagar de novo tambem (ja nao existe)', () => withMember(async (ctx) => {
+    const msgId = await ownMessage(ctx);
+    await handlers['chat-delete']!(ctx.socket, { msgId, requestId: 'd1' });
+    await handlers['chat-delete']!(ctx.socket, { msgId, requestId: 'd2' });
+    assert.deepEqual(actionResults(ctx.sent).map((r) => r.error), [undefined, undefined]);
+    assert.equal((await rowsIn(ctx.conversationId)).length, 0);
+  }));
+
+  it('sem requestId (cliente antigo) nao ha resposta', () => withMember(async (ctx) => {
+    const msgId = await ownMessage(ctx);
+    await handlers['chat-edit']!(ctx.socket, { msgId, text: 'novo' });
+    await handlers['chat-delete']!(ctx.socket, { msgId });
+    assert.equal(actionResults(ctx.sent).length, 0);
   }));
 });

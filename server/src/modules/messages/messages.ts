@@ -391,11 +391,18 @@ function sendChatResult(socket: AppSocket, msg: ChatSendRequest, result: { messa
 
 /** For refusals decided before the handler runs (the dispatcher's rate
  * limit), so a correlated send still gets its answer. */
-export function rejectChatSend(socket: AppSocket, msg: unknown, code: ErrorCode, message: string): boolean {
+export function rejectCorrelated(event: string, socket: AppSocket, msg: unknown, code: ErrorCode, message: string): boolean {
   const req = (msg || {}) as ChatSendRequest;
-  if (!isValidClientMessageId(req.clientMessageId)) return false;
-  sendChatResult(socket, req, { error: { code, message } });
-  return true;
+  if (event === 'chat') {
+    if (!isValidClientMessageId(req.clientMessageId)) return false;
+    sendChatResult(socket, req, { error: { code, message } });
+    return true;
+  }
+  if ((event === 'chat-edit' || event === 'chat-delete') && isRequestId(req.requestId)) {
+    answerAction(socket, req, { code, message });
+    return true;
+  }
+  return false;
 }
 
 async function handleChat(socket: AppSocket, msg: ChatSendRequest): Promise<void> {
@@ -479,20 +486,34 @@ async function handleCorrelatedChat(socket: AppSocket, msg: ChatSendRequest, cli
 /** Only the original author edits — not even admin (Discord-like; admin
  * can only delete, see handleChatDelete). Compared by userId, not
  * connection id — stays "yours" after reconnecting/reloading. */
-async function handleChatEdit(socket: AppSocket, msg: { msgId?: unknown; text?: string }): Promise<void> {
-  const p = participants.get(socket.participantId ?? '');
-  if (!p || p.socket !== socket) return;
+type ActionFailure = { code: ErrorCode; message: string };
+
+const isRequestId = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= 64;
+
+/** Edit and delete answer a client that sent a requestId (protocol 4) with
+ * chat-action-result, so it can keep the editor open on failure instead of
+ * assuming success. Without one they stay silent, as before. */
+function answerAction(socket: AppSocket, msg: { requestId?: unknown }, failure: ActionFailure | null): void {
+  if (!isRequestId(msg.requestId)) return;
+  send(socket, { t: 'chat-action-result', requestId: msg.requestId, ...(failure ? { error: failure } : {}) });
+}
+
+async function editMessage(p: Participant, msg: { msgId?: unknown; text?: string; requestId?: unknown }): Promise<ActionFailure | null> {
   const msgId = Number(msg.msgId);
-  const text = sanitizeChatText(msg.text);
-  if (!Number.isFinite(msgId) || !text) return;
+  const rawText = String(msg.text ?? '').trim();
+  if (!Number.isFinite(msgId) || !rawText) return { code: 'invalid_message', message: 'Mensagem vazia.' };
+  // a correlated client shows a counter, so it is told instead of cut
+  if (isRequestId(msg.requestId) && rawText.length > config.MAX_CHAT_LEN) return { code: 'message_too_long', message: `A mensagem passa de ${config.MAX_CHAT_LEN} caracteres.` };
+  const text = sanitizeChatText(rawText);
   const [existing] = await db.select().from(messages).where(eq(messages.id, msgId)).limit(1);
-  if (!existing || existing.authorId !== p.userId) return;
-  if (existing.kind !== 'text') return; // an invitation card is never editable
-  if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return;
+  if (!existing) return { code: 'not_found', message: 'Essa mensagem não existe mais.' };
+  if (existing.authorId !== p.userId || existing.kind !== 'text') return { code: 'forbidden', message: 'Você só pode editar as suas mensagens.' };
+  if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return { code: 'conversation_not_found', message: 'Conversa não encontrada.' };
   // §4.3: editing an old message while contact is restricted would be a
   // backdoor around the send-gate above — closing that is the specific
   // reason edit (not delete) is restricted here.
-  if (!(await assertCanWriteToConversation(socket, existing.conversationId, p.userId))) return;
+  const peerId = await getDirectPeerId(existing.conversationId, p.userId);
+  if (peerId && !(await canSendDirectMessage(p.userId, peerId))) return { code: ERROR_CODES.relationshipRequired, message: 'Vocês precisam ser amigos pra conversar por aqui.' };
   const [updated] = await db.update(messages).set({ text, editedAt: new Date() }).where(eq(messages.id, msgId)).returning();
   // without these, editing a caption on a message WITH an attachment or a
   // reaction made it disappear for everyone (the client replaces the whole
@@ -503,6 +524,15 @@ async function handleChatEdit(socket: AppSocket, msg: { msgId?: unknown; text?: 
   ]);
   await recordConversationActivity(existing.conversationId);
   await broadcastToConversationMembers(existing.conversationId, { t: 'chat-edited', message: rowToMessage(rowWithParticipant(updated!, p), attachment, reactionsByEmoji) });
+  return null;
+}
+
+async function handleChatEdit(socket: AppSocket, msg: { msgId?: unknown; text?: string; requestId?: unknown }): Promise<void> {
+  const p = participants.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  const failure = await editMessage(p, msg);
+  if (!isRequestId(msg.requestId) && failure?.code === ERROR_CODES.relationshipRequired) sendSocketError(socket, failure.code, failure.message);
+  answerAction(socket, msg, failure);
 }
 
 /** Toggles (not just adds) — reacting again with the same emoji removes
@@ -530,21 +560,20 @@ async function handleChatReact(socket: AppSocket, msg: { msgId?: unknown; emoji?
 // the original author OR an admin can delete — same split as
 // handleChatEdit, except admin gets delete too (never edit, see above).
 // "Clear all" no longer exists: deleting the whole conversation covers that now.
-async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Promise<void> {
-  const p = participants.get(socket.participantId ?? '');
-  if (!p || p.socket !== socket) return;
+async function deleteMessage(p: Participant, msg: { msgId?: unknown }): Promise<ActionFailure | null> {
   const msgId = Number(msg.msgId);
-  if (!Number.isFinite(msgId)) return;
+  if (!Number.isFinite(msgId)) return { code: 'not_found', message: 'Essa mensagem não existe mais.' };
   const [existing] = await db
     .select({ conversationId: messages.conversationId, authorId: messages.authorId, kind: messages.kind, groupInvitationId: messages.groupInvitationId })
     .from(messages)
     .where(eq(messages.id, msgId))
     .limit(1);
-  if (!existing) return;
-  if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return;
+  // already gone is the outcome a delete wanted: not an error to show
+  if (!existing) return null;
+  if (!(await conversationExistsForUser(existing.conversationId, p.userId))) return { code: 'conversation_not_found', message: 'Conversa não encontrada.' };
   const isAuthor = existing.authorId === p.userId;
   // admin authority is re-read, not taken from the connection's frozen role (§7.5)
-  if (!isAuthor && !(await isActiveAdmin(p.userId))) return;
+  if (!isAuthor && !(await isActiveAdmin(p.userId))) return { code: 'forbidden', message: 'Você só pode apagar as suas mensagens.' };
   // before the row goes: a card that vanished while its invitation stayed
   // acceptable is exactly the desync this prevents
   if (existing.kind === 'group_invite' && existing.groupInvitationId) {
@@ -570,7 +599,15 @@ async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown }): Pr
     conversationId: existing.conversationId,
     msgId,
   });
+  return null;
 }
+
+async function handleChatDelete(socket: AppSocket, msg: { msgId?: unknown; requestId?: unknown }): Promise<void> {
+  const p = participants.get(socket.participantId ?? '');
+  if (!p || p.socket !== socket) return;
+  answerAction(socket, msg, await deleteMessage(p, msg));
+}
+
 
 // No DB write at all — pure ephemeral fan-out, same spirit as
 // speaking/deafened (realtime/participants.ts). The client is responsible

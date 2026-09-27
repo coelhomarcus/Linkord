@@ -231,7 +231,7 @@ export function createWsServer(httpServer: HttpServer): Server {
         if (userId && !floodControl.allow(`${eventName}:${userId}`, rule)) {
           log.warn('socket action rate limited', { event: eventName, userId });
           const message = 'Você está enviando rápido demais. Espere um pouco.';
-          if (eventName === 'chat' && chat.rejectChatSend(socket, payload, 'rate_limited', message)) return;
+          if (chat.rejectCorrelated(eventName, socket, payload, 'rate_limited', message)) return;
           sendSocketError(socket, 'rate_limited', message);
           return;
         }

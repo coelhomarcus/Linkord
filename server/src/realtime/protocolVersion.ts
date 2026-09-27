@@ -5,8 +5,10 @@
 // compatible version is told to update, instead of half-working against a
 // `welcome` it does not understand.
 // 3 adds correlated, idempotent chat sends (`clientMessageId` →
-// `chat-send-result`), additively: a version-2 client still works.
-export const PROTOCOL_VERSION = 3;
+// `chat-send-result`); 4 answers chat-edit/chat-delete carrying a
+// `requestId` with `chat-action-result`. Both additive: a version-2 client
+// still works.
+export const PROTOCOL_VERSION = 4;
 export const MIN_PROTOCOL_VERSION = 2;
 
 export function isClientCompatible(version: unknown): boolean {
