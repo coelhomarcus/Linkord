@@ -3,6 +3,7 @@ import { config } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { attachments, conversationMembers, conversations, friendships, messages } from '../../db/schema.js';
 import type { Tx } from '../users/userPairLock.js';
+import { stagedBytes } from '../attachments/stagedAttachments.js';
 
 // Per-account quotas (docs/plano-rede-social.md §6.6, §10.2.8). The numbers
 // live in config (initial guesses, tunable); this module is the one place
@@ -61,7 +62,7 @@ export async function getUserStorageBytes(userId: string): Promise<number> {
   const [row] = await db.select({ bytes: sql<number>`coalesce(sum(${attachments.size}), 0)::float8` }).from(attachments)
     .innerJoin(messages, eq(messages.id, attachments.messageId))
     .where(eq(messages.authorId, userId));
-  return Number(row?.bytes ?? 0);
+  return Number(row?.bytes ?? 0) + (await stagedBytes(userId)).bytes;
 }
 
 export interface UserLimits {

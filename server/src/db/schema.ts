@@ -349,9 +349,38 @@ export const attachments = pgTable('attachments', {
   // Every query that lists "this message's attachments" must filter
   // isThumbnail = false (see getByMessageIds, modules/media.ts).
   isThumbnail: boolean('is_thumbnail').notNull().default(false),
+  // Order within the message, as the sender picked the files — not when
+  // each upload happened to finish. Legacy rows are all 0 and fall back to
+  // createdAt.
+  position: integer('position').notNull().default(0),
 }, (t) => [
   index('attachments_message_id_idx').on(t.messageId),
 ]);
+
+// A file fully uploaded but not yet part of any message: the batch it belongs
+// to is published in one step (see modules/messages/messages.ts, correlated
+// chat with attachmentIds). Its own table on purpose — an `attachments` row
+// with no message means a public profile image, and a staged file must never
+// be served to anyone. The file lives on disk under the same id; its bytes
+// count against the owner's quota while it waits here.
+export const stagedAttachments = pgTable('staged_attachments', {
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  conversationId: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+  fileName: text('file_name').notNull(),
+  mimeType: text('mime_type').notNull(),
+  size: bigint('size', { mode: 'number' }).notNull(),
+  thumbId: text('thumb_id'),
+  thumbMimeType: text('thumb_mime_type'),
+  thumbSize: bigint('thumb_size', { mode: 'number' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (t) => [
+  index('staged_attachments_owner_id_idx').on(t.ownerId),
+  index('staged_attachments_expires_at_idx').on(t.expiresAt),
+]);
+
+export type StagedAttachment = typeof stagedAttachments.$inferSelect;
 
 /** The recipient's inbox/read-state for a social event — scoped for now to
  * the resources that exist this etapa (friend requests, group invitations).

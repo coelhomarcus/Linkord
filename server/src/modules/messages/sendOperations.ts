@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { and, eq, lt } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { messageSendOperations, messages, type Message } from '../../db/schema.js';
+import { messageSendOperations, messages, type Attachment, type Message } from '../../db/schema.js';
 
 // A retry can only be told apart from a new message by the key the client
 // chose for its intent; this long is enough for any client still retrying.
@@ -14,14 +14,15 @@ export function isValidClientMessageId(value: unknown): value is string {
 
 /** Canonical hash of what a send asks for — the key alone can't tell a
  * retry from a reused key with different content. */
-export function sendPayloadHash(payload: { conversationId: string; text: string; replyTo: number | null }): string {
-  return crypto.createHash('sha256')
-    .update(JSON.stringify([payload.conversationId, payload.text, payload.replyTo]))
-    .digest('hex');
+export function sendPayloadHash(payload: { conversationId: string; text: string; replyTo: number | null; attachmentIds?: string[] }): string {
+  const parts: unknown[] = [payload.conversationId, payload.text, payload.replyTo];
+  // appended only when present, so a text-only send hashes as it always has
+  if (payload.attachmentIds?.length) parts.push(payload.attachmentIds);
+  return crypto.createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 }
 
 export type SendOutcome =
-  | { status: 'created'; row: Message }
+  | { status: 'created'; row: Message; attachments: Attachment[] }
   | { status: 'duplicate'; messageId: number }
   | { status: 'deleted' }
   | { status: 'conflict' };
@@ -34,6 +35,9 @@ export async function insertMessageOnce(args: {
   clientMessageId: string;
   payloadHash: string;
   values: typeof messages.$inferInsert;
+  /** Runs in the same transaction, after the message row exists — a throw
+   * here undoes the message and the claim, leaving the key free to retry. */
+  attach?: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0], row: Message) => Promise<Attachment[]>;
 }): Promise<SendOutcome> {
   return db.transaction(async (tx) => {
     const claimed = await tx.insert(messageSendOperations)
@@ -56,7 +60,8 @@ export async function insertMessageOnce(args: {
       eq(messageSendOperations.authorId, args.authorId),
       eq(messageSendOperations.clientMessageId, args.clientMessageId),
     ));
-    return { status: 'created', row: row! };
+    const attached = args.attach ? await args.attach(tx, row!) : [];
+    return { status: 'created', row: row!, attachments: attached };
   });
 }
 

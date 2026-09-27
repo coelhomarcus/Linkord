@@ -4,6 +4,7 @@ import { db } from '../../db/client.js';
 import { attachments } from '../../db/schema.js';
 import { recordAudit, recordAuditFailure, type AuditActor } from '../admin/auditLog.js';
 import { filePathFor } from './attachmentStorage.js';
+import { stagedFileIds } from './stagedAttachments.js';
 import { logger } from '../../lib/logger.js';
 
 const log = logger.child({ component: 'audit' });
@@ -84,7 +85,8 @@ async function listDiskFiles(): Promise<DiskFile[]> {
  * disappearing into the log. */
 export async function sweepOrphans(opts: { dryRun: boolean; actor: AuditActor | null; requestId?: string; reason?: string }): Promise<SweepResult> {
   const files = await listDiskFiles();
-  const dbIds = new Set((await db.select({ id: attachments.id }).from(attachments)).map((r) => r.id));
+  // a staged file has no attachments row yet but is very much in use
+  const dbIds = new Set([...(await db.select({ id: attachments.id }).from(attachments)).map((r) => r.id), ...(await stagedFileIds())]);
   const { orphans, recent, missingFiles } = classifyOrphans({ files, dbIds, now: Date.now(), graceMs: config.ORPHAN_GRACE_MS });
 
   let deleted = 0;

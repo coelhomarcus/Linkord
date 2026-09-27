@@ -12,6 +12,8 @@ import { canSendDirectMessage } from '../friendships/friendshipsRepository.js';
 import { buildReplyRef } from '../messages/replyRef.js';
 import { newId, filePathFor } from './attachmentStorage.js';
 import { generateThumbnail, THUMBNAIL_SOURCE_MIME_TYPES } from './attachmentThumbnails.js';
+import { discardStaged, findOwnedStaged, stageFile } from './stagedAttachments.js';
+import type { StagedAttachment } from '../../db/schema.js';
 import { getUsage, sendUsageToUser } from './attachmentQuota.js';
 import { exceedsLimit, getUserStorageBytes, limitMax } from '../limits/limits.js';
 import {
@@ -70,6 +72,9 @@ export async function handleAttachmentInit(request: FastifyRequest, reply: Fasti
   // only the file that creates the message uses it; resolved at complete
   // time, so a target deleted while the bytes were uploading just drops it
   const replyTo = Number.isInteger(body.replyTo) ? Number(body.replyTo) : undefined;
+  // staged: complete prepares the file without publishing anything; the
+  // message with the whole batch is created later by one correlated send
+  const stage = body.stage === true;
 
   const totalSize = Number(body.totalSize);
   if (!Number.isInteger(totalSize) || totalSize <= 0 || totalSize > config.MAX_ATTACHMENT_BYTES) {
@@ -106,7 +111,7 @@ export async function handleAttachmentInit(request: FastifyRequest, reply: Fasti
   try {
     await fs.mkdir(tmpDirFor(uploadId), { recursive: true });
     await fs.writeFile(manifestPathFor(uploadId), JSON.stringify({
-      uploadId, userId: sess.userId, conversationId, fileName, mimeType, totalSize, caption, replyTo,
+      uploadId, userId: sess.userId, conversationId, fileName, mimeType, totalSize, caption, replyTo, ...(stage ? { stage: true as const } : {}),
       chunkSize, totalChunks, createdAt: new Date().toISOString(),
     } satisfies UploadManifest));
   } catch (err) {
@@ -155,6 +160,12 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
   if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
 
   const manifest = await readManifest(uploadId);
+  if (!manifest) {
+    // a retried complete whose first reply got lost: the manifest is gone
+    // because it already succeeded
+    const staged = await findOwnedStaged(uploadId, sess.userId);
+    if (staged) return sendJson(reply, 200, { staged: stagedPayload(staged) });
+  }
   if (!manifest || manifest.userId !== sess.userId) return sendError(reply, 404, 'upload_not_found', 'Upload não encontrado.');
 
   // optional — present only when this file is the 2nd-4th attachment of a
@@ -197,6 +208,11 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
     const usage = await getUsage();
     if (usage.totalBytes + manifest.totalSize > config.MAX_STORAGE_BYTES) {
       return sendError(reply, 400, 'storage_full', 'Armazenamento cheio (30GB no total). Apague arquivos antigos antes de enviar mais.');
+    }
+
+    if (manifest.stage) {
+      if (targetMsgId != null) return sendError(reply, 400, 'invalid_target', 'Um arquivo preparado não é anexado a uma mensagem existente.');
+      return await completeStaged(reply, manifest, sess.userId);
     }
 
     const destPath = filePathFor(uploadId);
@@ -314,6 +330,51 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
   }
 }
 
+function stagedPayload(row: StagedAttachment) {
+  return { id: row.id, name: row.fileName, mime: row.mimeType, size: row.size, ...(row.thumbId ? { thumbId: row.thumbId } : {}) };
+}
+
+/** The staged half of complete: the file (and its thumbnail) end up on disk
+ * and in staged_attachments, counted against the quota, visible to no one. */
+async function completeStaged(reply: FastifyReply, manifest: UploadManifest, userId: string): Promise<void> {
+  const { uploadId } = manifest;
+  const destPath = filePathFor(uploadId);
+  let thumb: { id: string; mime: string; size: number } | null = null;
+  let staged: StagedAttachment;
+  try {
+    await assembleChunks(uploadId, manifest, destPath);
+    if (THUMBNAIL_SOURCE_MIME_TYPES.has(manifest.mimeType)) {
+      const generated = await generateThumbnail(destPath);
+      if (generated) {
+        const thumbId = newId();
+        try {
+          await fs.writeFile(filePathFor(thumbId), generated.buffer);
+          thumb = { id: thumbId, mime: generated.mime, size: generated.buffer.length };
+        } catch (err) {
+          log.warn('failed to save thumbnail', { err: err instanceof Error ? err.message : String(err) });
+          await fs.unlink(filePathFor(thumbId)).catch(() => {});
+        }
+      }
+    }
+    staged = await stageFile({
+      id: uploadId, ownerId: userId, conversationId: manifest.conversationId,
+      fileName: manifest.fileName, mimeType: manifest.mimeType, size: manifest.totalSize,
+      thumbId: thumb?.id ?? null, thumbMimeType: thumb?.mime ?? null, thumbSize: thumb?.size ?? null,
+    });
+  } catch (err) {
+    // chunks stay, so complete can be retried without re-uploading
+    await fs.unlink(destPath).catch(() => {});
+    if (thumb) await fs.unlink(filePathFor(thumb.id)).catch(() => {});
+    throw err;
+  }
+  await fs.rm(tmpDirFor(uploadId), { recursive: true, force: true })
+    .catch((err) => log.error('failed to delete chunks after assembly', err));
+  releaseUpload(uploadId);
+  await sendUsageToUser(userId);
+  log.info('upload staged', { uploadId, userId, conversationId: manifest.conversationId, bytes: manifest.totalSize });
+  sendJson(reply, 201, { staged: stagedPayload(staged) });
+}
+
 /** Cancels an in-progress upload session — deletes chunks immediately
  * instead of waiting for the sweep. Idempotent. */
 export async function handleAttachmentCancel(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> {
@@ -327,5 +388,7 @@ export async function handleAttachmentCancel(request: FastifyRequest<{ Params: {
     await fs.rm(tmpDirFor(uploadId), { recursive: true, force: true }).catch(() => {});
     releaseUpload(uploadId);
   }
+  // or a file that finished staging and was then dropped from the batch
+  if (await discardStaged(uploadId, sess.userId)) await sendUsageToUser(sess.userId);
   sendJson(reply, 200, { ok: true });
 }

@@ -1,15 +1,21 @@
 import { uploadDir } from './isolatedUploadDir.js';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
 import { after, describe, it } from 'node:test';
 import Fastify from 'fastify';
 import sharp from 'sharp';
 import { and, eq } from 'drizzle-orm';
 import { config } from '../../src/config/env.js';
-import { attachments as attachmentsTable, messages } from '../../src/db/schema.js';
+import { attachments as attachmentsTable, conversationMembers, messageSendOperations, messages, stagedAttachments } from '../../src/db/schema.js';
+import { getByMessageIds } from '../../src/modules/attachments/attachments.js';
+import { getUserUsage } from '../../src/modules/attachments/attachmentQuota.js';
+import { STAGED_TTL_MS, stagedFileIds, sweepExpiredStaged } from '../../src/modules/attachments/stagedAttachments.js';
+import { handlers as chatHandlers } from '../../src/modules/messages/messages.js';
 import { registerAttachmentRoutes } from '../../src/modules/attachments/attachments.js';
 import { createSession } from '../../src/modules/auth/session.js';
-import { db, makeGroupWithMembers, makeUser, pool } from './helpers.js';
+import { cleanupParticipant, db, joinNew, makeGroupWithMembers, makeUser, pool } from './helpers.js';
 
 const app = Fastify();
 registerAttachmentRoutes(app);
@@ -100,5 +106,116 @@ describe('upload de anexos (Postgres real)', () => {
     const [row] = await db.select({ replyTo: messages.replyTo }).from(messages)
       .where(and(eq(messages.id, message.msgId), eq(messages.conversationId, conversationId)));
     assert.equal(row!.replyTo, null);
+  });
+});
+
+describe('upload preparado e publicacao do lote (Postgres real)', () => {
+  async function stage(cookie: string, conversationId: string, buffer = bigPng, fileName = 'foto.png'): Promise<string> {
+    const init = await app.inject({
+      method: 'POST', url: '/api/attachments/init', headers: { cookie },
+      payload: { conversationId, fileName, mimeType: 'image/png', totalSize: buffer.length, stage: true },
+    });
+    assert.equal(init.statusCode, 201, init.body);
+    const { uploadId } = init.json() as { uploadId: string };
+    const chunk = await app.inject({ method: 'POST', url: `/api/attachments/${uploadId}/chunk/0`, headers: { cookie, 'content-type': 'application/octet-stream' }, payload: buffer });
+    assert.equal(chunk.statusCode, 200, chunk.body);
+    const complete = await app.inject({ method: 'POST', url: `/api/attachments/${uploadId}/complete`, headers: { cookie }, payload: {} });
+    assert.equal(complete.statusCode, 201, complete.body);
+    return (complete.json() as { staged: { id: string } }).staged.id;
+  }
+
+  async function member() {
+    const owner = await makeUser('st');
+    const conversationId = await makeGroupWithMembers(owner.id, []);
+    return { owner, conversationId, cookie: await sessionFor(owner.id) };
+  }
+
+  const correlatedSend = async (owner: { id: string; username: string }, conversationId: string, attachmentIds: string[], text = '', clientMessageId = crypto.randomUUID()) => {
+    const { socket, sent, participant } = joinNew(owner);
+    try {
+      await chatHandlers.chat!(socket, { conversationId, text, requestId: 'r', clientMessageId, attachmentIds });
+      return sent.filter((s) => s.event === 'chat-send-result').map((s) => s.payload)[0];
+    } finally {
+      cleanupParticipant(participant);
+    }
+  };
+
+  it('preparar nao publica nada, nao serve o arquivo a ninguem e conta na cota', async () => {
+    const { owner, conversationId, cookie } = await member();
+    const before = await getUserUsage(owner.id);
+    const id = await stage(cookie, conversationId);
+
+    assert.equal((await db.select().from(messages).where(eq(messages.conversationId, conversationId))).length, 0);
+    assert.equal((await db.select().from(attachmentsTable).where(eq(attachmentsTable.id, id))).length, 0);
+    const served = await app.inject({ method: 'GET', url: `/uploads/${id}`, headers: { cookie } });
+    assert.equal(served.statusCode, 404);
+    const after = await getUserUsage(owner.id);
+    assert.ok(after.totalBytes >= before.totalBytes + bigPng.length, 'bytes preparados contam na cota');
+    assert.ok((await stagedFileIds()).includes(id), 'a limpeza de orfaos enxerga o arquivo preparado');
+  });
+
+  it('repetir o complete depois do sucesso devolve o mesmo arquivo preparado', async () => {
+    const { conversationId, cookie } = await member();
+    const id = await stage(cookie, conversationId);
+    const again = await app.inject({ method: 'POST', url: `/api/attachments/${id}/complete`, headers: { cookie }, payload: {} });
+    assert.equal(again.statusCode, 200, again.body);
+    assert.equal((again.json() as { staged: { id: string } }).staged.id, id);
+  });
+
+  it('o envio publica o lote inteiro na ordem escolhida, numa mensagem so, sem duplicar miniaturas', async () => {
+    const { owner, conversationId, cookie } = await member();
+    const small = await sharp({ create: { width: 40, height: 40, channels: 3, background: '#00ff00' } }).png().toBuffer();
+    // finished out of order on purpose: the order sent is what counts
+    const [c, a, b] = [await stage(cookie, conversationId, small, 'c.png'), await stage(cookie, conversationId, bigPng, 'a.png'), await stage(cookie, conversationId, small, 'b.png')];
+    const clientMessageId = crypto.randomUUID();
+
+    const result = await correlatedSend(owner, conversationId, [a!, b!, c!], 'lote', clientMessageId);
+    assert.deepEqual(result.message.attachments.map((x: { name: string }) => x.name), ['a.png', 'b.png', 'c.png']);
+    assert.ok(result.message.attachments[0].thumbId, 'a imagem grande leva miniatura');
+
+    const history = await getByMessageIds([result.message.msgId]);
+    assert.deepEqual(history.get(result.message.msgId)!.map((x) => x.fileName), ['a.png', 'b.png', 'c.png']);
+    assert.equal((await db.select().from(stagedAttachments).where(eq(stagedAttachments.ownerId, owner.id))).length, 0);
+
+    const retry = await correlatedSend(owner, conversationId, [a!, b!, c!], 'lote', clientMessageId);
+    assert.equal(retry.message.msgId, result.message.msgId);
+    assert.equal((await db.select().from(messages).where(eq(messages.conversationId, conversationId))).length, 1);
+  });
+
+  it('arquivo preparado por outra conta nao pode ser publicado; nada muda e a chave fica livre', async () => {
+    const victim = await member();
+    const victimFile = await stage(victim.cookie, victim.conversationId);
+    const attacker = await makeUser('st');
+    await db.insert(conversationMembers).values({ conversationId: victim.conversationId, userId: attacker.id, role: 'member' });
+    const clientMessageId = crypto.randomUUID();
+
+    const result = await correlatedSend(attacker, victim.conversationId, [victimFile], '', clientMessageId);
+    assert.equal(result.error.code, 'attachments_unavailable');
+    assert.equal((await db.select().from(messages).where(eq(messages.conversationId, victim.conversationId))).length, 0);
+    assert.equal((await db.select().from(stagedAttachments).where(eq(stagedAttachments.id, victimFile))).length, 1);
+    assert.equal((await db.select().from(messageSendOperations).where(eq(messageSendOperations.clientMessageId, clientMessageId))).length, 0);
+  });
+
+  it('arquivo preparado para outra conversa nao entra nesta', async () => {
+    const { owner, conversationId, cookie } = await member();
+    const otherConversation = await makeGroupWithMembers(owner.id, []);
+    const id = await stage(cookie, otherConversation);
+    const result = await correlatedSend(owner, conversationId, [id]);
+    assert.equal(result.error.code, 'attachments_unavailable');
+  });
+
+  it('descartar remove o registro e o arquivo; vencidos sao varridos', async () => {
+    const { owner, conversationId, cookie } = await member();
+    const kept = await stage(cookie, conversationId);
+    const dropped = await stage(cookie, conversationId);
+
+    const cancel = await app.inject({ method: 'DELETE', url: `/api/attachments/${dropped}`, headers: { cookie } });
+    assert.equal(cancel.statusCode, 200);
+    assert.equal(fs.existsSync(path.join(uploadDir, dropped)), false);
+    assert.equal((await db.select().from(stagedAttachments).where(eq(stagedAttachments.id, dropped))).length, 0);
+
+    await sweepExpiredStaged(Date.now() + STAGED_TTL_MS + 1000);
+    assert.equal((await db.select().from(stagedAttachments).where(eq(stagedAttachments.ownerId, owner.id))).length, 0);
+    assert.equal(fs.existsSync(path.join(uploadDir, kept)), false);
   });
 });

@@ -31,6 +31,7 @@ export interface UploadManifest {
   totalSize: number;
   caption: string;
   replyTo?: number;
+  stage?: true;
   chunkSize: number;
   totalChunks: number;
   createdAt: string;

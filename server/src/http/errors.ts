@@ -115,6 +115,7 @@ export const ERROR_REGISTRY = {
   invalid_message: { statuses: [], channel: 'socket' },
   message_too_long: { statuses: [], channel: 'socket' },
   message_deleted: { statuses: [], channel: 'socket' },
+  attachments_unavailable: { statuses: [], channel: 'socket' },
 } as const satisfies Record<string, ErrorSpec>;
 
 export type ErrorCode = keyof typeof ERROR_REGISTRY;

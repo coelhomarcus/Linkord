@@ -22,6 +22,7 @@ import { deleteForMessage } from '../attachments/attachmentCleanup.js';
 import * as reactions from './reactions.js';
 import { buildReplyRef, normalizeReplyRef, type ReplyRef } from './replyRef.js';
 import { insertMessageOnce, isValidClientMessageId, sendPayloadHash } from './sendOperations.js';
+import { publishStaged, StagedUnavailableError } from '../attachments/stagedAttachments.js';
 import { ERROR_CODES, type ErrorCode } from '../../http/errors.js';
 import { loadInvitationCards, type InvitationCard } from '../conversations/invitationCards.js';
 import { revokeInvitationForDeletedCard } from '../conversations/invitationsRepository.js';
@@ -367,6 +368,18 @@ interface ChatSendRequest {
   replyTo?: unknown;
   requestId?: unknown;
   clientMessageId?: unknown;
+  attachmentIds?: unknown;
+}
+
+const ATTACHMENT_ID_RE = /^[0-9a-f]{32}$/;
+
+/** Staged file ids for a batch send, in the sender's order; null when the
+ * field is malformed (not merely absent). */
+function parseAttachmentIds(raw: unknown): string[] | null {
+  if (raw == null) return [];
+  if (!Array.isArray(raw) || raw.length > config.MAX_ATTACHMENTS_PER_MESSAGE) return null;
+  if (!raw.every((id) => typeof id === 'string' && ATTACHMENT_ID_RE.test(id))) return null;
+  return new Set(raw).size === raw.length ? raw as string[] : null;
 }
 
 /** Every outcome of a correlated send gets an answer — a client waiting on
@@ -410,7 +423,10 @@ async function handleCorrelatedChat(socket: AppSocket, msg: ChatSendRequest, cli
   try {
     const conversationId = conversationIdFrom(msg);
     const rawText = String(msg.text ?? '').trim();
-    if (!conversationId || !rawText) return fail('invalid_message', 'Mensagem vazia.');
+    const attachmentIds = parseAttachmentIds(msg.attachmentIds);
+    if (!attachmentIds) return fail('invalid_message', `Anexos inválidos (máximo ${config.MAX_ATTACHMENTS_PER_MESSAGE}).`);
+    // a batch may go without a caption; a plain message may not be empty
+    if (!conversationId || (!rawText && !attachmentIds.length)) return fail('invalid_message', 'Mensagem vazia.');
     // unlike the legacy path, never cut it: the client shows a counter
     if (rawText.length > config.MAX_CHAT_LEN) return fail('message_too_long', `A mensagem passa de ${config.MAX_CHAT_LEN} caracteres.`);
     if (!(await conversationExistsForUser(conversationId, p.userId))) return fail('conversation_not_found', 'Conversa não encontrada.');
@@ -419,12 +435,24 @@ async function handleCorrelatedChat(socket: AppSocket, msg: ChatSendRequest, cli
       return fail(ERROR_CODES.relationshipRequired, 'Vocês precisam ser amigos pra conversar por aqui.');
     }
     const replyTo = await buildReplyRef(conversationId, msg.replyTo);
-    const outcome = await insertMessageOnce({
-      authorId: p.userId,
-      clientMessageId,
-      payloadHash: sendPayloadHash({ conversationId, text: rawText, replyTo: replyTo?.msgId ?? null }),
-      values: { conversationId, authorId: p.userId, text: rawText, replyTo: replyTo || null },
-    });
+    let outcome;
+    try {
+      outcome = await insertMessageOnce({
+        authorId: p.userId,
+        clientMessageId,
+        payloadHash: sendPayloadHash({ conversationId, text: rawText, replyTo: replyTo?.msgId ?? null, attachmentIds }),
+        values: { conversationId, authorId: p.userId, text: rawText, replyTo: replyTo || null },
+        // access was re-checked above, at publish time, not only at upload init
+        attach: attachmentIds.length
+          ? (tx, row) => publishStaged(tx, { ids: attachmentIds, ownerId: p.userId, conversationId, messageId: row.id })
+          : undefined,
+      });
+    } catch (err) {
+      if (err instanceof StagedUnavailableError) {
+        return fail('attachments_unavailable', 'Algum anexo expirou ou não está mais disponível. Escolha os arquivos de novo.');
+      }
+      throw err;
+    }
     if (outcome.status === 'conflict') return fail(ERROR_CODES.conflict, 'Essa chave de envio já foi usada para outra mensagem.');
     if (outcome.status === 'deleted') return fail('message_deleted', 'Essa mensagem foi enviada e depois apagada.');
     if (outcome.status === 'duplicate') {
@@ -435,7 +463,7 @@ async function handleCorrelatedChat(socket: AppSocket, msg: ChatSendRequest, cli
       if (!existing) return fail('message_deleted', 'Essa mensagem foi enviada e depois apagada.');
       return sendChatResult(socket, msg, { message: { ...existing, clientMessageId } });
     }
-    const message = { ...rowToMessage(rowWithParticipant(outcome.row, p)), clientMessageId };
+    const message = { ...rowToMessage(rowWithParticipant(outcome.row, p), outcome.attachments), clientMessageId };
     // answered before the broadcast: a failure fanning out must not make a
     // persisted send look failed and invite a retry
     sendChatResult(socket, msg, { message });
