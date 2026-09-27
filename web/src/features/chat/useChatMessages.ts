@@ -4,9 +4,22 @@ import { playSound } from '@/shared/sounds';
 import { notifyIncomingChatMessage } from '@/shared/notifications';
 import { messagePreviewText } from '@/features/chat/messagePreview';
 import { mentionsUsername } from '@/shared/lib/mentions';
+import { useMessageOutbox } from './useMessageOutbox';
 import type { ChatMessage, ClientMessage, Conversation, PublicUser, ReactionEmoji, ServerMessage } from '@/shared/types/protocol';
 
 const CHAT_CLIENT_LIMIT = 300;
+// correlated, idempotent chat sends (see useMessageOutbox)
+const CORRELATED_SEND_PROTOCOL = 3;
+
+/** Adds `message` once, in msgId order — a send's result and its broadcast
+ * both deliver it, in either order, and it may land after newer messages. */
+function withMessage(list: ChatMessage[], message: ChatMessage): ChatMessage[] {
+  if (list.some((existing) => existing.msgId === message.msgId)) return list;
+  let index = list.length;
+  while (index > 0 && list[index - 1]!.msgId > message.msgId) index--;
+  const next = [...list.slice(0, index), message, ...list.slice(index)];
+  return next.length > CHAT_CLIENT_LIMIT ? next.slice(next.length - CHAT_CLIENT_LIMIT) : next;
+}
 
 function displayNameForConversation(conversation: Conversation | undefined, meUserId: string | null, users: Map<string, PublicUser>): string {
   if (!conversation) return 'Conversa';
@@ -55,6 +68,17 @@ export function useChatMessages(deps: ChatMessagesDeps) {
   const [unreadByConversation, setUnreadByConversation] = useState<Map<string, number>>(new Map());
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
+  const correlatedSendRef = useRef(false);
+
+  const insertConfirmed = useCallback((message: ChatMessage) => {
+    setMessagesByConversation((prev) => {
+      const list = prev.get(message.conversationId) || [];
+      const next = withMessage(list, message);
+      return next === list ? prev : new Map(prev).set(message.conversationId, next);
+    });
+  }, []);
+  const outbox = useMessageOutbox({ sendWs, onConfirmed: insertConfirmed });
+  const { enqueue: enqueuePending, onEcho: onPendingEcho, onReconnected: onOutboxReconnected } = outbox;
 
   const clearUnread = useCallback((conversationId: string) => {
     setUnreadByConversation((prev) => {
@@ -109,8 +133,22 @@ export function useChatMessages(deps: ChatMessagesDeps) {
   const sendChatMessage = useCallback((conversationId: string, text: string, replyTo?: number) => {
     const trimmed = text.trim();
     if (!trimmed) return false;
+    if (correlatedSendRef.current) {
+      const original = replyTo ? messagesByConversationRef.current.get(conversationId)?.find((msg) => msg.msgId === replyTo) : undefined;
+      // only for showing the pending copy; the server builds the real one
+      const replyRef = original ? { msgId: original.msgId, authorId: original.id, text: original.text.slice(0, 120) } : undefined;
+      enqueuePending(conversationId, trimmed, replyRef);
+      return true;
+    }
     return sendWs({ t: 'chat', conversationId, text: trimmed, ...(replyTo ? { replyTo } : {}) });
-  }, [sendWs]);
+  }, [sendWs, enqueuePending]);
+
+  /** Every welcome, including after a reconnect: learns what this server
+   * supports and resends whatever was still unconfirmed. */
+  const onWelcome = useCallback((protocolVersion: number | undefined) => {
+    correlatedSendRef.current = (protocolVersion ?? 0) >= CORRELATED_SEND_PROTOCOL;
+    onOutboxReconnected();
+  }, [onOutboxReconnected]);
   const deleteChatMessage = useCallback((msgId: number) => sendWs({ t: 'chat-delete', msgId }), [sendWs]);
   const editChatMessage = useCallback((msgId: number, text: string) => {
     const trimmed = text.trim();
@@ -155,11 +193,11 @@ export function useChatMessages(deps: ChatMessagesDeps) {
 
   const onChat = useCallback((m: Extract<ServerMessage, { t: 'chat' }>) => {
     const conversationId = m.message.conversationId;
-    setMessagesByConversation((prev) => {
-      const existing = prev.get(conversationId) || [];
-      const next = [...existing, m.message];
-      return new Map(prev).set(conversationId, next.length > CHAT_CLIENT_LIMIT ? next.slice(next.length - CHAT_CLIENT_LIMIT) : next);
-    });
+    onPendingEcho(m.message);
+    // a repeated delivery (or one that lost the race to its own send result)
+    // must not notify or count as unread twice
+    if (messagesByConversationRef.current.get(conversationId)?.some((msg) => msg.msgId === m.message.msgId)) return;
+    insertConfirmed(m.message);
     // your own message is never unread — it can land in a conversation you
     // left (an upload finishing after a switch, or another tab/device)
     if (conversationId !== activeConversationIdRef.current && m.message.id !== myUserIdRef.current) {
@@ -180,7 +218,7 @@ export function useChatMessages(deps: ChatMessagesDeps) {
         mentioned: mentionsUsername(m.message.text, myUsernameRef.current),
       });
     }
-  }, [activeConversationIdRef, clearTypingEntry, activeViewRef, myUserIdRef, conversationsRef, allUsersRef, myUsernameRef]);
+  }, [activeConversationIdRef, clearTypingEntry, activeViewRef, myUserIdRef, conversationsRef, allUsersRef, myUsernameRef, onPendingEcho, insertConfirmed]);
 
   const onChatDeleted = useCallback((m: Extract<ServerMessage, { t: 'chat-deleted' }>) => {
     setMessagesByConversation((prev) => {
@@ -263,6 +301,9 @@ export function useChatMessages(deps: ChatMessagesDeps) {
     messagesByConversation, hasMoreByConversation, hasMoreAfterByConversation, loadingOlderByConversation, unreadByConversation,
     clearUnread, loadOlderMessages, pendingJumpTarget, clearPendingJumpTarget, cancelPendingJump, jumpToMessage,
     sendChatMessage, deleteChatMessage, editChatMessage, reactToChatMessage,
+    onWelcome, onChatSendResult: outbox.onChatSendResult,
+    pendingByConversation: outbox.pendingByConversation,
+    retryPendingMessage: outbox.retry, discardPendingMessage: outbox.discard,
     replyingTo, setReplyingTo, editingMsgId, setEditingMsgId,
     onConversationHistory, onConversationHistoryAround, onConversationHistoryMore,
     onChat, onChatDeleted, onChatEdited, onInvitationUpdated, onChatAttachmentAdded, onChatReactionUpdated, onConversationDeleted, onConversationRead,

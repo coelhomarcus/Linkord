@@ -18,6 +18,7 @@ import { cn } from '@/shared/lib/utils';
 import { useKeepPopoverWarm } from '@/shared/hooks/useKeepPopoverWarm';
 import { useRoom } from '@/state/RoomContext';
 import type { ChatMessage, PublicUser, ReactionEmoji } from '@/shared/types/protocol';
+import type { OutboxEntry } from './useMessageOutbox';
 
 const DELETED_AUTHOR_NAME = 'Usuário apagado';
 
@@ -67,10 +68,27 @@ interface MessageRowProps {
   onOpenProfile: (userId: string) => void;
   onReply: () => void;
   onJumpTo: (msgId: number) => void;
+  /** Set while the server hasn't confirmed this send: no msgId-based
+   * actions yet, just its delivery state. */
+  pending?: OutboxEntry;
 }
 
-export function MessageRow({ message, showHeader, highlighted, allUsers, mentionLookup, onOpenProfile, onReply, onJumpTo }: MessageRowProps) {
-  const { state, deleteChatMessage, editChatMessage, reactToChatMessage, editingMsgId, setEditingMsgId } = useRoom();
+function PendingStatus({ entry, offline, onRetry, onDiscard }: { entry: OutboxEntry; offline: boolean; onRetry: (id: string) => void; onDiscard: (id: string) => void }) {
+  // queued sends go out on their own after reconnecting; say why they wait
+  if (entry.state === 'sending' && offline) return <p className="mt-0.5 text-caption text-text-muted">Aguardando conexão…</p>;
+  if (entry.state === 'sending') return <span className="sr-only">Enviando</span>;
+  if (entry.state === 'unknown') return <p className="mt-0.5 text-caption text-text-muted">Confirmando envio…</p>;
+  return (
+    <p role="alert" className="mt-0.5 flex flex-wrap items-center gap-x-2 text-caption text-red">
+      <span>Não enviada{entry.error ? `: ${entry.error}` : '.'}</span>
+      <button type="button" onClick={() => onRetry(entry.clientMessageId)} className="font-medium underline hover:text-text-primary">Tentar novamente</button>
+      <button type="button" onClick={() => onDiscard(entry.clientMessageId)} className="text-text-muted underline hover:text-text-secondary">Descartar</button>
+    </p>
+  );
+}
+
+export function MessageRow({ message, showHeader, highlighted, allUsers, mentionLookup, onOpenProfile, onReply, onJumpTo, pending }: MessageRowProps) {
+  const { state, deleteChatMessage, editChatMessage, reactToChatMessage, editingMsgId, setEditingMsgId, retryPendingMessage, discardPendingMessage } = useRoom();
   const [editText, setEditText] = useState(message.text);
   const [reportOpen, setReportOpen] = useState(false);
   const isMine = message.id === state.me.userId;
@@ -83,7 +101,7 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
   const mentionsMe = !isMine && mentionsUser(message.text, mentionLookup, state.me.userId);
   const isInvite = message.kind === 'group_invite';
   const canReport = !isMine && !isInvite && !!message.id;
-  const isEditing = !isInvite && editingMsgId === message.msgId;
+  const isEditing = !pending && !isInvite && editingMsgId === message.msgId;
 
   function saveEdit() {
     const trimmed = editText.trim();
@@ -110,8 +128,10 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
 
   return (
     <div
-      data-msg-id={message.msgId}
-      data-message-id={message.msgId}
+      // pending rows have no server id yet: nothing may jump to or act on them
+      data-msg-id={pending ? undefined : message.msgId}
+      data-message-id={pending ? undefined : message.msgId}
+      data-pending={pending?.state}
       className={cn(
         'group/row relative flex gap-3 rounded-md px-4 py-0.5',
         showHeader ? 'mt-[17px]' : 'mt-0',
@@ -190,7 +210,7 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
               <InviteCard invitation={message.invitation} />
             ) : (
             <>
-              <div className="text-body leading-[1.375rem] text-text-secondary">
+              <div className={cn('text-body leading-[1.375rem] text-text-secondary', pending && pending.state !== 'failed' && 'opacity-60')}>
                 <ChatMessageText text={message.text} mentionLookup={mentionLookup} myUserId={state.me.userId} onOpenProfile={onOpenProfile} />
                 {message.editedAt && <span className="ml-1 text-caption text-text-muted">(editado)</span>}
               </div>
@@ -206,7 +226,9 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
           )}
         </div>
 
-        {message.reactions && (
+        {pending && <PendingStatus entry={pending} offline={state.reconnecting} onRetry={retryPendingMessage} onDiscard={discardPendingMessage} />}
+
+        {!pending && message.reactions && (
           <div className="mt-1 flex flex-wrap gap-1">
             {(Object.entries(message.reactions) as [ReactionEmoji, string[]][]).map(([emoji, userIds]) => {
               if (!userIds?.length) return null;
@@ -238,7 +260,7 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
           moment the mouse leaves the row (e.g. to move onto the open emoji
           picker, which is portaled outside this row), snapping the open
           popover to the viewport's top-left corner. */}
-      <div className="absolute right-3 top-0 hidden -translate-y-1/2 items-center gap-0.5 rounded-full border border-white/10 bg-[rgb(20_20_23)] p-0.5 opacity-0 shadow-popover transition-opacity pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto md:flex">
+      {!pending && <div className="absolute right-3 top-0 hidden -translate-y-1/2 items-center gap-0.5 rounded-full border border-white/10 bg-[rgb(20_20_23)] p-0.5 opacity-0 shadow-popover transition-opacity pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto md:flex">
         {!isInvite && <ReactionButton onPick={(emoji) => reactToChatMessage(message.msgId, emoji)} />}
         {!isInvite && (
           <Button type="button" variant="ghost" size="icon-xs" aria-label="Responder" onClick={onReply}>
@@ -260,11 +282,11 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
             <Trash2 size={13} />
           </Button>
         )}
-      </div>
+      </div>}
 
       {/* Mobile — no hover, so the toolbar above is unreachable; a persistent
           reaction button plus a tap menu for the rest cover the same actions. */}
-      <div className="absolute right-3 top-1 flex items-center gap-0.5 md:hidden">
+      {!pending && <div className="absolute right-3 top-1 flex items-center gap-0.5 md:hidden">
         {!isInvite && <ReactionButton onPick={(emoji) => reactToChatMessage(message.msgId, emoji)} />}
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Acoes" />}>
@@ -277,7 +299,7 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
             {canDelete && <DropdownMenuItem variant="destructive" onClick={() => deleteChatMessage(message.msgId)}><Trash2 size={14} />Apagar</DropdownMenuItem>}
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
+      </div>}
       {reportOpen && (
         <ReportDialog target={{ type: 'message', id: String(message.msgId), label: `mensagem de ${displayedName}` }} open onOpenChange={setReportOpen} />
       )}

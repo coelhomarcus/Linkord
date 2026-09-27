@@ -31,3 +31,23 @@ describe('buildTimelineItems', () => {
     expect(date!.key).toBe(`date-${new Date(base).toDateString()}`);
   });
 });
+
+describe('buildTimelineItems — envios pendentes', () => {
+  const pending = { clientMessageId: 'k1', conversationId: 'c', text: 'indo', createdAt: base + 60_000, state: 'sending' as const };
+  const me = { userId: 'ana', name: 'Ana', avatar: '' };
+
+  it('a pendente entra no fim, agrupada com a mensagem anterior do mesmo autor', () => {
+    const items = buildTimelineItems([msg(1, 'ana', 0)], [pending], me);
+    const last = items[items.length - 1]!;
+    expect(last.type === 'message' && last.pending?.clientMessageId).toBe('k1');
+    expect(last.type === 'message' && last.showHeader).toBe(false);
+  });
+
+  it('a key e a mesma antes e depois da confirmacao (a linha nao remonta)', () => {
+    const before = buildTimelineItems([], [pending], me).at(-1)!;
+    const confirmed = { ...msg(9, 'ana', 1), clientMessageId: 'k1' };
+    const after = buildTimelineItems([confirmed], [pending], me);
+    expect(after.filter((item) => item.type === 'message')).toHaveLength(1);
+    expect(after.at(-1)!.key).toBe(before.key);
+  });
+});

@@ -57,3 +57,47 @@ describe('useChatMessages — nao lidas', () => {
     expect(result.current.unreadByConversation.get('outra')).toBe(1);
   });
 });
+
+describe('useChatMessages — envio correlacionado', () => {
+  function setupWith(sendWs = vi.fn(() => true)) {
+    const ref = <T,>(current: T) => ({ current });
+    const hook = renderHook(() => useChatMessages({
+      sendWs, activeConversationIdRef: ref<string | null>('dm'), setActiveConversation: vi.fn(),
+      conversationsRef: ref([]), allUsersRef: ref(new Map()), myUserIdRef: ref<string | null>('b'), myUsernameRef: ref<string | null>('b'),
+      activeViewRef: ref<'chat' | 'call'>('chat'), clearTypingEntry: vi.fn(),
+    }));
+    return { ...hook, sendWs };
+  }
+
+  it('servidor antigo (sem protocolVersion): envia do jeito legado, sem chave', () => {
+    const { result, sendWs } = setupWith();
+    act(() => result.current.onWelcome(undefined));
+    act(() => { result.current.sendChatMessage('dm', 'oi'); });
+    expect(sendWs).toHaveBeenCalledWith({ t: 'chat', conversationId: 'dm', text: 'oi' });
+    expect(result.current.pendingByConversation.size).toBe(0);
+  });
+
+  it('servidor 3+: envia pela outbox e a confirmacao entra no historico uma vez so', () => {
+    const { result, sendWs } = setupWith();
+    act(() => result.current.onWelcome(3));
+    act(() => { result.current.sendChatMessage('dm', 'oi'); });
+    const req = (sendWs.mock.calls.at(-1) as unknown as [{ requestId: string; clientMessageId: string }])[0];
+    expect(result.current.pendingByConversation.get('dm')).toHaveLength(1);
+
+    const confirmed = message(50, { text: 'oi', id: 'b', clientMessageId: req.clientMessageId });
+    act(() => result.current.onChatSendResult({ t: 'chat-send-result', requestId: req.requestId, clientMessageId: req.clientMessageId, message: confirmed }));
+    act(() => result.current.onChat({ t: 'chat', message: confirmed }));
+
+    expect(result.current.messagesByConversation.get('dm')!.map((m) => m.msgId)).toEqual([50]);
+    expect(result.current.pendingByConversation.get('dm')).toBeUndefined();
+  });
+
+  it('chat repetido nao duplica a mensagem nem a contagem de nao lidas', () => {
+    const { result } = setupWith();
+    const other = message(7, { conversationId: 'outra', id: 'a' });
+    act(() => result.current.onChat({ t: 'chat', message: other }));
+    act(() => result.current.onChat({ t: 'chat', message: other }));
+    expect(result.current.messagesByConversation.get('outra')).toHaveLength(1);
+    expect(result.current.unreadByConversation.get('outra')).toBe(1);
+  });
+});

@@ -4,8 +4,10 @@ import { useRoom } from '@/state/RoomContext';
 import type { ChatMessage } from '@/shared/types/protocol';
 import { MessageRow } from './MessageRow';
 import { buildTimelineItems } from './messageTimelineItems';
+import type { OutboxEntry } from './useMessageOutbox';
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
+const EMPTY_PENDING: OutboxEntry[] = [];
 
 export function MessageTimeline({ conversationId, onReply, onOpenProfile, bottomPadding }: {
   conversationId: string;
@@ -23,6 +25,8 @@ export function MessageTimeline({ conversationId, onReply, onOpenProfile, bottom
     pendingJumpTarget,
     clearPendingJumpTarget,
     openConversation,
+    pendingByConversation,
+    state,
   } = useRoom();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -50,7 +54,20 @@ export function MessageTimeline({ conversationId, onReply, onOpenProfile, bottom
   const messages = messagesByConversation.get(conversationId) ?? EMPTY_MESSAGES;
   const hasMoreHistory = hasMoreByConversation.get(conversationId) !== false;
   const isLoadingOlder = loadingOlderByConversation.has(conversationId);
-  const items = useMemo(() => buildTimelineItems(messages), [messages]);
+  const pending = pendingByConversation.get(conversationId) ?? EMPTY_PENDING;
+  const { userId: myUserId, displayName: myName, avatar: myAvatar } = state.me;
+  const items = useMemo(
+    () => buildTimelineItems(messages, pending, { userId: myUserId, name: myName, avatar: myAvatar }),
+    [messages, pending, myUserId, myName, myAvatar],
+  );
+  // your own send brings you back to the present, even from old history
+  const pendingCount = pending.length;
+  const prevPendingCountRef = useRef(pendingCount);
+  // declared before the snap effect below, which it has to run ahead of
+  useLayoutEffect(() => {
+    if (pendingCount > prevPendingCountRef.current) stickToBottomRef.current = true;
+    prevPendingCountRef.current = pendingCount;
+  }, [pendingCount]);
 
   useLayoutEffect(() => {
     stickToBottomRef.current = true;
@@ -78,7 +95,7 @@ export function MessageTimeline({ conversationId, onReply, onOpenProfile, bottom
     // element's own scrollHeight without resizing contentRef below, so the
     // ResizeObserver in the next effect never sees it — this dependency is
     // what re-snaps to the true bottom when that happens.
-  }, [messages, bottomPadding]);
+  }, [items, bottomPadding]);
 
   useEffect(() => {
     const scrollEl = scrollRef.current;
@@ -157,6 +174,7 @@ export function MessageTimeline({ conversationId, onReply, onOpenProfile, bottom
               message={item.message}
               showHeader={item.showHeader}
               highlighted={highlightedMsgId === item.message.msgId}
+              pending={item.pending}
               allUsers={allUsers}
               mentionLookup={mentionLookup}
               onReply={() => onReply(item.message)}

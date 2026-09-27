@@ -170,6 +170,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           participants: m.participants,
         });
         conversationsList.setInitial(m.conversations ?? []);
+        chatMessages.onWelcome(m.protocolVersion);
         presence.setInitial(m.knownUsers, m.onlineUserIds, m.friendIds);
         attachmentsUpload.setStorageUsage(m.storageUsage);
         {
@@ -230,6 +231,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         break;
       case 'chat':
         chatMessages.onChat(m);
+        break;
+      case 'chat-send-result':
+        chatMessages.onChatSendResult(m);
         break;
       case 'typing':
         typingIndicator.onTyping(m);
@@ -376,6 +380,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         accessNotice, clearAccessNotice: () => setAccessNotice(null),
         socialRevision,
         sendChatMessage: chatMessages.sendChatMessage, deleteChatMessage: chatMessages.deleteChatMessage,
+        pendingByConversation: chatMessages.pendingByConversation,
+        retryPendingMessage: chatMessages.retryPendingMessage, discardPendingMessage: chatMessages.discardPendingMessage,
         editChatMessage: chatMessages.editChatMessage, reactToChatMessage: chatMessages.reactToChatMessage,
         replyingTo: chatMessages.replyingTo, setReplyingTo: chatMessages.setReplyingTo,
         editingMsgId: chatMessages.editingMsgId, setEditingMsgId: chatMessages.setEditingMsgId,

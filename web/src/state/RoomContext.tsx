@@ -5,6 +5,7 @@ import type { ChatMessage, ClientMessage, Conversation, PublicUser, ReactionEmoj
 import type { RoomAction, RoomState } from './roomReducer';
 import type { TileKind } from '../features/calls/tileTypes';
 import type { SendAttachmentsRequest } from '@/features/chat/useAttachmentsUpload';
+import type { OutboxEntry } from '@/features/chat/useMessageOutbox';
 
 export interface ReactionEvent {
   key: number;
@@ -125,6 +126,10 @@ export interface RoomContextValue {
   clearAccessNotice: () => void;
   /** False when nothing was sent (empty text, or the socket is down). */
   sendChatMessage: (conversationId: string, text: string, replyTo?: number) => boolean;
+  /** Your sends the server hasn't confirmed yet, per conversation, in order. */
+  pendingByConversation: Map<string, OutboxEntry[]>;
+  retryPendingMessage: (clientMessageId: string) => void;
+  discardPendingMessage: (clientMessageId: string) => void;
   deleteChatMessage: (msgId: number) => void;
   editChatMessage: (msgId: number, text: string) => void;
   reactToChatMessage: (msgId: number, emoji: ReactionEmoji) => void;

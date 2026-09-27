@@ -24,7 +24,7 @@ export interface Participant {
 export type ReactionEmoji = string;
 
 /** Wire protocol version this build speaks; the server refuses older ones (client_outdated). */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 export interface ChatReplyRef {
   msgId: number;
@@ -65,6 +65,9 @@ export interface ChatMessage {
   kind?: 'text' | 'group_invite';
   // `null` on a group_invite message = the group is gone (tombstone)
   invitation?: InvitationCard | null;
+  // the author's send key, present when the send was correlated — lets the
+  // author's client swap its pending copy for this one without remounting
+  clientMessageId?: string;
 }
 
 export interface ChatAttachment {
@@ -165,7 +168,7 @@ export type ClientMessage =
   | { t: 'load-more-messages'; conversationId: string; beforeMsgId: number }
   | { t: 'load-messages-around'; conversationId: string; msgId: number }
   | { t: 'message-search'; query: string; conversationId?: string }
-  | { t: 'chat'; conversationId: string; text: string; replyTo?: number }
+  | { t: 'chat'; conversationId: string; text: string; replyTo?: number; requestId?: string; clientMessageId?: string }
   | { t: 'chat-delete'; msgId: number }
   | { t: 'chat-edit'; msgId: number; text: string }
   | { t: 'chat-react'; msgId: number; emoji: ReactionEmoji }
@@ -185,6 +188,8 @@ export type ServerMessage =
       conversations: Conversation[]; knownUsers: PublicUser[]; onlineUserIds: string[]; friendIds: string[];
       storageUsage: StorageUsage;
       livekitUrl: string;
+      // absent from servers before protocol 3 (no correlated chat sends)
+      protocolVersion?: number;
     }
   | { t: 'call-token'; conversationId: string; livekitUrl: string; livekitToken: string }
   | { t: 'conversation-opened'; conversationId: string; conversation: Conversation }
@@ -204,6 +209,7 @@ export type ServerMessage =
   | { t: 'reaction'; id: string; emoji: ReactionEmoji }
   | { t: 'message-search-results'; query: string; conversationId?: string; results: SearchResult[] }
   | { t: 'chat'; message: ChatMessage }
+  | { t: 'chat-send-result'; requestId: string; clientMessageId: string; message?: ChatMessage; error?: { code: string; message: string } }
   | { t: 'chat-deleted'; conversationId: string; msgId: number }
   | { t: 'chat-edited'; message: ChatMessage }
   | { t: 'invitation-updated'; invitation: InvitationCard }
