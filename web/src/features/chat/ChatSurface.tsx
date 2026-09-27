@@ -8,6 +8,11 @@ import { MessageComposer, type MessageComposerHandle } from './MessageComposer';
 import { MessageTimeline } from './MessageTimeline';
 import { TypingIndicator } from './TypingIndicator';
 
+// Typing lives in a fixed-height rail above the composer, outside the box
+// the ResizeObserver measures: someone starting or stopping typing must not
+// change the list's bottom padding, or a list pinned to the bottom jumps.
+const STATUS_RAIL_HEIGHT = 24;
+
 function hasFiles(e: DragEvent<HTMLDivElement>): boolean {
   return Array.from(e.dataTransfer.types).includes('Files');
 }
@@ -63,22 +68,24 @@ export function ChatSurface({ conversationId, onOpenProfile }: { conversationId:
   return (
     <div
       ref={rootRef}
-      className="relative flex min-h-0 flex-1 flex-col"
+      className="@container/chat relative flex min-h-0 flex-1 flex-col"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       <ChatSurfaceWidthProvider width={surfaceWidth}>
-        <MessageTimeline conversationId={conversationId} onReply={setReplyingTo} onOpenProfile={onOpenProfile} bottomPadding={composerHeight + 24} />
+        <MessageTimeline conversationId={conversationId} onReply={setReplyingTo} onOpenProfile={onOpenProfile} bottomPadding={composerHeight + STATUS_RAIL_HEIGHT + 8} />
       </ChatSurfaceWidthProvider>
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-bg-primary to-transparent"
-        style={{ height: composerHeight + 48 }}
+        style={{ height: composerHeight + STATUS_RAIL_HEIGHT + 24 }}
       />
-      <div ref={composerWrapRef} className="absolute inset-x-0 bottom-0">
+      <div className="pointer-events-none absolute inset-x-0" style={{ bottom: composerHeight, height: STATUS_RAIL_HEIGHT }}>
         <TypingIndicator conversationId={conversationId} />
+      </div>
+      <div ref={composerWrapRef} className="absolute inset-x-0 bottom-0">
         <DirectComposerGate conversationId={conversationId}>
           <MessageComposer ref={composerRef} conversationId={conversationId} />
         </DirectComposerGate>
