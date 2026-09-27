@@ -50,6 +50,8 @@ export async function handleAttachmentInit(request: FastifyRequest, reply: Fasti
   if (!sess) return sendError(reply, 401, 'unauthenticated', 'Não autenticado.');
 
   if (!floodControl.allow(`attachment-init:${sess.userId}`, ATTACHMENT_INIT_LIMIT)) {
+    // the batch client waits exactly this long and tries again
+    reply.header('Retry-After', String(Math.ceil(floodControl.retryAfterMs(`attachment-init:${sess.userId}`, ATTACHMENT_INIT_LIMIT) / 1000) || 1));
     return sendError(reply, 429, 'rate_limited', 'Muitos envios em pouco tempo. Tente de novo em instantes.');
   }
 

@@ -23,7 +23,7 @@ async function toApiError(res: Response): Promise<ApiError> {
   let body: unknown = null;
   try { body = await res.json(); } catch {  }
   const err = (body && typeof body === 'object' ? (body as { error?: { code?: string; message?: string } }).error : null) || {};
-  return new ApiError(res.status, err.code || 'unknown_error', err.message || 'Erro inesperado.');
+  return new ApiError(res.status, err.code || 'unknown_error', err.message || 'Erro inesperado.', res.headers.get('Retry-After') ?? undefined);
 }
 
 async function runWithConcurrency(count: number, limit: number, task: (i: number) => Promise<void>): Promise<void> {
@@ -47,6 +47,8 @@ async function runWithConcurrency(count: number, limit: number, task: (i: number
 const MAX_CHUNK_RETRIES = 3;
 const MAX_CONCURRENT_CHUNKS = 3;
 const RETRY_BASE_MS = 500;
+const MAX_INIT_RATE_LIMIT_WAITS = 3;
+const MAX_RETRY_AFTER_MS = 60_000;
 
 export interface StagedFile { id: string; name: string; mime: string; size: number; thumbId?: string }
 
@@ -71,14 +73,23 @@ interface UploadRun extends ChunkedUploadOptions {
 
 async function runUpload({ conversationId, file, caption, replyTo, targetMsgId, onProgress, stage, signal }: UploadRun): Promise<unknown> {
   if (!conversationId) throw new ApiError(400, 'missing_conversation', 'Conversa não informada.');
-  const initRes = await fetch('/api/attachments/init', {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ conversationId, fileName: file.name, mimeType: file.type || 'application/octet-stream', totalSize: file.size, caption, replyTo, ...(stage ? { stage: true } : {}) }),
-    signal,
-  });
-  if (!initRes.ok) throw await toApiError(initRes);
+  let initRes: Response;
+  // several batches in a row can hit the server's per-minute cap on new
+  // uploads; wait out its Retry-After rather than failing the file
+  for (let attempt = 0; ; attempt++) {
+    initRes = await fetch('/api/attachments/init', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId, fileName: file.name, mimeType: file.type || 'application/octet-stream', totalSize: file.size, caption, replyTo, ...(stage ? { stage: true } : {}) }),
+      signal,
+    });
+    if (initRes.ok) break;
+    const err = await toApiError(initRes);
+    if (err.status !== 429 || attempt >= MAX_INIT_RATE_LIMIT_WAITS) throw err;
+    const seconds = Number(err.retryAfter);
+    await wait(Math.min(MAX_RETRY_AFTER_MS, Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : RETRY_BASE_MS * 2 ** attempt), signal);
+  }
   const { uploadId, chunkSize, totalChunks } = await initRes.json() as InitResponse;
 
   const sentPerChunk = new Array(totalChunks).fill(0);
