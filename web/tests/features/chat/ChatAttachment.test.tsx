@@ -31,6 +31,18 @@ describe('ChatAttachment', () => {
     await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledWith('/uploads/img-id', expect.objectContaining({ credentials: 'same-origin' })));
   });
 
+  it.each([
+    ['video/mp4', 'clip.mp4'],
+    ['audio/mpeg', 'song.mp3'],
+    ['application/zip', 'projeto.zip'],
+  ])('%s nao baixa o arquivo como blob de imagem', async (mime, name) => {
+    const fetchMock = vi.fn(async () => ({ ok: true, blob: async () => new Blob() }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<ChatAttachment attachment={{ id: 'file-id', name, mime, size: 2 * 1024 ** 3 }} />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).not.toHaveBeenCalledWith('/uploads/file-id', expect.anything());
+  });
+
   it('arquivo generico (nao previsualizavel) vira link de download simples', () => {
     render(<ChatAttachment attachment={{ id: 'zip-id', name: 'projeto.zip', mime: 'application/zip', size: 999 }} />);
     const link = screen.getByText('projeto.zip').closest('a');
