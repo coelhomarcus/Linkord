@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { config } from '../../config/env.js';
 import { db } from '../../db/client.js';
@@ -207,7 +207,10 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
           // attach to the SAME message can't both pass the count check
           // below before either commits.
           await tx.execute(sql`select id from ${messages} where ${messages.id} = ${targetId} for update`);
-          const existingCount = (await tx.select({ id: attachmentsTable.id }).from(attachmentsTable).where(eq(attachmentsTable.messageId, targetId))).length;
+          // thumbnails share the message id but aren't attachments the
+          // user sent — counting them refused the 3rd original of a batch
+          const existingCount = (await tx.select({ id: attachmentsTable.id }).from(attachmentsTable)
+            .where(and(eq(attachmentsTable.messageId, targetId), eq(attachmentsTable.isThumbnail, false)))).length;
           if (existingCount >= config.MAX_ATTACHMENTS_PER_MESSAGE) {
             throw Object.assign(new Error('too_many_attachments'), { code: 'too_many_attachments' });
           }
