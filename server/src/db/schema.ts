@@ -250,6 +250,28 @@ export const messages = pgTable('messages', {
   check('messages_kind_reference_check', sql`(${t.kind} = 'text' AND ${t.groupInvitationId} IS NULL) OR (${t.kind} = 'group_invite')`),
 ]);
 
+// One row per send intent (the client's clientMessageId), so a retry after a
+// lost reply returns the original message instead of inserting a second one.
+// Kept apart from `messages` on purpose: deleting the message SETs NULL here
+// instead of erasing the record, so a late retry of a deleted message can't
+// quietly bring it back. Swept after a retention window (see
+// modules/messages/sendOperations.ts).
+export const messageSendOperations = pgTable('message_send_operations', {
+  authorId: text('author_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  clientMessageId: varchar('client_message_id', { length: 64 }).notNull(),
+  // hash of the canonical payload: the same key with different content is a
+  // conflict, not a retry
+  payloadHash: varchar('payload_hash', { length: 64 }).notNull(),
+  messageId: integer('message_id').references(() => messages.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.authorId, t.clientMessageId] }),
+  index('message_send_operations_created_at_idx').on(t.createdAt),
+  index('message_send_operations_message_id_idx').on(t.messageId),
+]);
+
+export type MessageSendOperation = typeof messageSendOperations.$inferSelect;
+
 /** One row per (message, user, emoji) — a user can react to the same
  * message with several DIFFERENT emoji at once, but only once per emoji
  * (that's the toggle in modules/chat.ts#handleChatReact: reacting again

@@ -4,7 +4,9 @@
 // of direct member adds, scoped presence. A client that does not announce a
 // compatible version is told to update, instead of half-working against a
 // `welcome` it does not understand.
-export const PROTOCOL_VERSION = 2;
+// 3 adds correlated, idempotent chat sends (`clientMessageId` →
+// `chat-send-result`), additively: a version-2 client still works.
+export const PROTOCOL_VERSION = 3;
 export const MIN_PROTOCOL_VERSION = 2;
 
 export function isClientCompatible(version: unknown): boolean {

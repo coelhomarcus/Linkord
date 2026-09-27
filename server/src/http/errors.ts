@@ -17,7 +17,7 @@ export const ERROR_REGISTRY = {
   not_found: { statuses: [404], channel: 'both' },
   conflict: { statuses: [409], channel: 'both' },
   rate_limited: { statuses: [429], channel: 'both' },
-  internal_error: { statuses: [500], channel: 'http' },
+  internal_error: { statuses: [500], channel: 'both' },
   invalid_json: { statuses: [400], channel: 'http' },
   invalid_request: { statuses: [400], channel: 'http' },
   invalid_body: { statuses: [400], channel: 'http' },
@@ -69,7 +69,7 @@ export const ERROR_REGISTRY = {
   too_many_invitees: { statuses: [400], channel: 'http' },
 
   // conversations, messages, attachments
-  conversation_not_found: { statuses: [404], channel: 'http' },
+  conversation_not_found: { statuses: [404], channel: 'both' },
   conversation_mismatch: { statuses: [400], channel: 'http' },
   not_your_message: { statuses: [403], channel: 'http' },
   target_message_not_found: { statuses: [404], channel: 'http' },
@@ -111,6 +111,10 @@ export const ERROR_REGISTRY = {
   'call-not-allowed': { statuses: [], channel: 'socket' },
   'livekit-unavailable': { statuses: [], channel: 'socket' },
   'message-not-found': { statuses: [], channel: 'socket' },
+  // chat-send-result refusals (a correlated send, see messages.ts)
+  invalid_message: { statuses: [], channel: 'socket' },
+  message_too_long: { statuses: [], channel: 'socket' },
+  message_deleted: { statuses: [], channel: 'socket' },
 } as const satisfies Record<string, ErrorSpec>;
 
 export type ErrorCode = keyof typeof ERROR_REGISTRY;
