@@ -56,25 +56,3 @@ export async function setPresence(messageId: number, userId: string, emoji: stri
   return { changed, userIds: rows.map((r) => r.userId) };
 }
 
-/** Atomic toggle: tries to insert first, letting the primary key itself be
- * the race-free decision point — if the insert lands, the reaction is now
- * "on"; if ON CONFLICT DO NOTHING inserted nothing, it was already there,
- * so this call means "off" and it deletes that exact row. No transaction
- * needed: there's no read-modify-write to protect (see chat.ts#handleChatReact,
- * which replaced a lost-update-prone JSONB read-modify-write with this). */
-export async function toggle(messageId: number, userId: string, emoji: string): Promise<string[]> {
-  const inserted = await db.insert(messageReactions)
-    .values({ messageId, userId, emoji })
-    .onConflictDoNothing()
-    .returning({ userId: messageReactions.userId });
-  if (inserted.length === 0) {
-    await db.delete(messageReactions).where(and(
-      eq(messageReactions.messageId, messageId),
-      eq(messageReactions.userId, userId),
-      eq(messageReactions.emoji, emoji),
-    ));
-  }
-  const rows = await db.select({ userId: messageReactions.userId }).from(messageReactions)
-    .where(and(eq(messageReactions.messageId, messageId), eq(messageReactions.emoji, emoji)));
-  return rows.map((r) => r.userId);
-}

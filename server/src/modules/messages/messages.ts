@@ -437,26 +437,12 @@ export function rejectCorrelated(event: string, socket: AppSocket, msg: unknown,
   return false;
 }
 
+/** The only send path: idempotent per `clientMessageId`, always answered
+ * with `chat-send-result`. A request without a valid key is malformed —
+ * there's no way to correlate a reply to it, so it's just dropped. */
 async function handleChat(socket: AppSocket, msg: ChatSendRequest): Promise<void> {
-  if (isValidClientMessageId(msg.clientMessageId)) return handleCorrelatedChat(socket, msg, msg.clientMessageId);
-  const p = participants.get(socket.participantId ?? '');
-  if (!p || p.socket !== socket) return;
-  const conversationId = conversationIdFrom(msg);
-  const text = sanitizeChatText(msg.text);
-  if (!conversationId || !text || !(await conversationExistsForUser(conversationId, p.userId))) return;
-  if (!(await assertCanWriteToConversation(socket, conversationId, p.userId))) return;
-  const replyTo = await buildReplyRef(conversationId, msg.replyTo);
-  const [row] = await db.insert(messages).values({
-    conversationId, authorId: p.userId, text,
-    replyTo: replyTo || null,
-  }).returning();
-  await touchConversation(conversationId, row!.createdAt);
-  await broadcastToConversationMembers(conversationId, { t: 'chat', message: rowToMessage(rowWithParticipant(row!, p)) });
-}
-
-/** The send path of clients that announce a `clientMessageId`: idempotent
- * per intent, and always answered with `chat-send-result`. */
-async function handleCorrelatedChat(socket: AppSocket, msg: ChatSendRequest, clientMessageId: string): Promise<void> {
+  if (!isValidClientMessageId(msg.clientMessageId)) return;
+  const clientMessageId = msg.clientMessageId;
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
   const fail = (code: ErrorCode, message: string) => sendChatResult(socket, msg, { error: { code, message } });
@@ -467,7 +453,7 @@ async function handleCorrelatedChat(socket: AppSocket, msg: ChatSendRequest, cli
     if (!attachmentIds) return fail('invalid_message', `Anexos inválidos (máximo ${config.MAX_ATTACHMENTS_PER_MESSAGE}).`);
     // a batch may go without a caption; a plain message may not be empty
     if (!conversationId || (!rawText && !attachmentIds.length)) return fail('invalid_message', 'Mensagem vazia.');
-    // unlike the legacy path, never cut it: the client shows a counter
+    // never cut it silently: the client shows a counter instead
     if (rawText.length > config.MAX_CHAT_LEN) return fail('message_too_long', `A mensagem passa de ${config.MAX_CHAT_LEN} caracteres.`);
     if (!(await conversationExistsForUser(conversationId, p.userId))) return fail('conversation_not_found', 'Conversa não encontrada.');
     const peerId = await getDirectPeerId(conversationId, p.userId);
@@ -534,8 +520,8 @@ async function editMessage(p: Participant, msg: { msgId?: unknown; text?: string
   const msgId = Number(msg.msgId);
   const rawText = String(msg.text ?? '').trim();
   if (!Number.isFinite(msgId) || !rawText) return { code: 'invalid_message', message: 'Mensagem vazia.' };
-  // a correlated client shows a counter, so it is told instead of cut
-  if (isRequestId(msg.requestId) && rawText.length > config.MAX_CHAT_LEN) return { code: 'message_too_long', message: `A mensagem passa de ${config.MAX_CHAT_LEN} caracteres.` };
+  // never cut it silently: the client shows a counter instead
+  if (rawText.length > config.MAX_CHAT_LEN) return { code: 'message_too_long', message: `A mensagem passa de ${config.MAX_CHAT_LEN} caracteres.` };
   const text = sanitizeChatText(rawText);
   const [existing] = await db.select().from(messages).where(eq(messages.id, msgId)).limit(1);
   if (!existing) return { code: 'not_found', message: 'Essa mensagem não existe mais.' };
@@ -562,9 +548,7 @@ async function editMessage(p: Participant, msg: { msgId?: unknown; text?: string
 async function handleChatEdit(socket: AppSocket, msg: { msgId?: unknown; text?: string; requestId?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
-  const failure = await editMessage(p, msg);
-  if (!isRequestId(msg.requestId) && failure?.code === ERROR_CODES.relationshipRequired) sendSocketError(socket, failure.code, failure.message);
-  answerAction(socket, msg, failure);
+  answerAction(socket, msg, await editMessage(p, msg));
 }
 
 /** Toggles (not just adds) — reacting again with the same emoji removes
@@ -572,16 +556,15 @@ async function handleChatEdit(socket: AppSocket, msg: { msgId?: unknown; text?: 
 async function handleChatReact(socket: AppSocket, msg: { msgId?: unknown; emoji?: string; present?: unknown; requestId?: unknown }): Promise<void> {
   const p = participants.get(socket.participantId ?? '');
   if (!p || p.socket !== socket) return;
-  // protocol 5: a desired state (present true/false), answered; older
-  // clients send neither and get the toggle, silently, as before
-  const desired = typeof msg.present === 'boolean' ? msg.present : null;
-  const fail = (failure: ActionFailure) => {
-    if (desired === null && failure.code === ERROR_CODES.relationshipRequired) sendSocketError(socket, failure.code, failure.message);
-    answerAction(socket, msg, failure);
-  };
+  // a desired state (present: true/false), never a toggle — repeating the
+  // same request can't undo it
+  const fail = (failure: ActionFailure) => answerAction(socket, msg, failure);
   const msgId = Number(msg.msgId);
   const emoji = String(msg.emoji || '');
-  if (!Number.isFinite(msgId) || !isSingleEmoji(emoji)) return fail({ code: 'invalid_message', message: 'Reação inválida.' });
+  const desired = msg.present;
+  if (!Number.isFinite(msgId) || !isSingleEmoji(emoji) || typeof desired !== 'boolean') {
+    return fail({ code: 'invalid_message', message: 'Reação inválida.' });
+  }
   const [existing] = await db.select({ conversationId: messages.conversationId, kind: messages.kind }).from(messages).where(eq(messages.id, msgId)).limit(1);
   if (!existing) return fail({ code: 'not_found', message: 'Essa mensagem não existe mais.' });
   if (existing.kind !== 'text') return fail({ code: 'forbidden', message: 'Convites não recebem reações.' });
@@ -589,15 +572,10 @@ async function handleChatReact(socket: AppSocket, msg: { msgId?: unknown; emoji?
   const peerId = await getDirectPeerId(existing.conversationId, p.userId);
   if (peerId && !(await canSendDirectMessage(p.userId, peerId))) return fail({ code: ERROR_CODES.relationshipRequired, message: 'Vocês precisam ser amigos pra conversar por aqui.' });
 
-  let userIds: string[];
-  if (desired === null) {
-    userIds = await reactions.toggle(msgId, p.userId, emoji);
-  } else {
-    const result = await reactions.setPresence(msgId, p.userId, emoji, desired);
-    // a repeat that changed nothing has nothing new to tell anyone
-    if (!result.changed) return answerAction(socket, msg, null);
-    userIds = result.userIds;
-  }
+  const result = await reactions.setPresence(msgId, p.userId, emoji, desired);
+  // a repeat that changed nothing has nothing new to tell anyone
+  if (!result.changed) return answerAction(socket, msg, null);
+  const userIds = result.userIds;
   await broadcastToConversationMembers(existing.conversationId, {
     t: 'chat-reaction-updated',
     conversationId: existing.conversationId,

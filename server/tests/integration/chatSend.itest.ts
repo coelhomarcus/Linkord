@@ -110,10 +110,10 @@ describe('chat correlacionado (Postgres real)', () => {
     }
   });
 
-  it('cliente antigo (sem clientMessageId) continua funcionando e nao recebe chat-send-result', () => withMember(async ({ socket, sent, conversationId }) => {
-    await handlers.chat!(socket, { conversationId, text: 'legado' });
+  it('sem clientMessageId: requisicao malformada, descartada sem persistir nem responder', () => withMember(async ({ socket, sent, conversationId }) => {
+    await handlers.chat!(socket, { conversationId, text: 'sem chave' });
     assert.equal(results(sent).length, 0);
-    assert.equal((await rowsIn(conversationId)).length, 1);
+    assert.equal((await rowsIn(conversationId)).length, 0);
   }));
 
   it('a limpeza por retencao remove operacoes mais velhas que a janela', () => withMember(async ({ socket, conversationId, userId }) => {
@@ -170,10 +170,13 @@ describe('editar e apagar com resultado (Postgres real)', () => {
     assert.equal((await rowsIn(ctx.conversationId)).length, 0);
   }));
 
-  it('sem requestId (cliente antigo) nao ha resposta', () => withMember(async (ctx) => {
+  it('sem requestId: a acao ainda ocorre, so nao ha com o que responder', () => withMember(async (ctx) => {
     const msgId = await ownMessage(ctx);
     await handlers['chat-edit']!(ctx.socket, { msgId, text: 'novo' });
+    const [row] = await db.select().from(messages).where(eq(messages.id, msgId));
+    assert.equal(row!.text, 'novo');
     await handlers['chat-delete']!(ctx.socket, { msgId });
+    assert.equal((await rowsIn(ctx.conversationId)).length, 0);
     assert.equal(actionResults(ctx.sent).length, 0);
   }));
 });
@@ -200,13 +203,14 @@ describe('reacoes por estado desejado (Postgres real)', () => {
     assert.deepEqual(reactionBroadcasts(ctx.sent).map((b) => b.userIds), [[ctx.userId], []]);
   }));
 
-  it('cliente antigo continua alternando, sem resposta', () => withMember(async (ctx) => {
+  it('sem "present" (nem true nem false): reacao invalida, sem broadcast', () => withMember(async (ctx) => {
     await handlers.chat!(ctx.socket, { conversationId: ctx.conversationId, text: 'reaja', requestId: 's', clientMessageId: key() });
     const msgId = results(ctx.sent)[0].message.msgId;
     await handlers['chat-react']!(ctx.socket, { msgId, emoji: '😂' });
-    await handlers['chat-react']!(ctx.socket, { msgId, emoji: '😂' });
-    assert.equal(actionResults(ctx.sent).length, 0);
-    assert.deepEqual(reactionBroadcasts(ctx.sent).map((b) => b.userIds), [[ctx.userId], []]);
+    assert.equal(reactionBroadcasts(ctx.sent).length, 0);
+    // with a requestId it's answered as a refusal, not silently dropped
+    await handlers['chat-react']!(ctx.socket, { msgId, emoji: '😂', requestId: 'r' });
+    assert.equal(actionResults(ctx.sent)[0]!.error.code, 'invalid_message');
   }));
 
   it('DM sem amizade recusa com resultado', async () => {
