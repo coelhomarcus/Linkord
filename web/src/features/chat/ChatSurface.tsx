@@ -18,7 +18,7 @@ function hasFiles(e: DragEvent<HTMLDivElement>): boolean {
   return Array.from(e.dataTransfer.types).includes('Files');
 }
 
-export function ChatSurface({ conversationId, onOpenProfile }: { conversationId: string; onOpenProfile: (userId: string) => void }) {
+export function ChatSurface({ conversationId, onOpenProfile, surfaceId = 'main' }: { conversationId: string; onOpenProfile: (userId: string) => void; surfaceId?: 'main' | 'call' }) {
   const { state, setReplyingTo, windowGenerationByConversation } = useRoom();
   const composerRef = useRef<MessageComposerHandle>(null);
   const composerWrapRef = useRef<HTMLDivElement | null>(null);
@@ -77,7 +77,7 @@ export function ChatSurface({ conversationId, onOpenProfile }: { conversationId:
     >
       <ChatSurfaceWidthProvider width={surfaceWidth}>
         <MediaViewerProvider>
-          <MessageTimeline key={`${conversationId}:${windowGenerationByConversation.get(conversationId) ?? 0}`} conversationId={conversationId} onReply={setReplyingTo} onOpenProfile={onOpenProfile} bottomPadding={composerHeight + STATUS_RAIL_HEIGHT + 8} />
+          <MessageTimeline key={`${conversationId}:${windowGenerationByConversation.get(conversationId) ?? 0}`} surfaceId={surfaceId} conversationId={conversationId} onReply={setReplyingTo} onOpenProfile={onOpenProfile} bottomPadding={composerHeight + STATUS_RAIL_HEIGHT + 8} />
         </MediaViewerProvider>
       </ChatSurfaceWidthProvider>
       <div

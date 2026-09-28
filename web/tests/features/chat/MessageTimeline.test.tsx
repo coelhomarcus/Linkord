@@ -5,6 +5,7 @@ import type { RoomContextValue } from '@/state/RoomContext';
 import { createFakeRoomContextValue } from '@tests/fixtures/roomContextFixture';
 import type { ChatMessage } from '@/shared/types/protocol';
 import { MessageTimeline } from '@/features/chat/MessageTimeline';
+import { __resetReadingPositionsForTests, readingPositionFor } from '@/features/chat/readingPositions';
 
 // jsdom has no layout: give the scroll container and each row a height, the
 // way the virtualizer reads them (offsetHeight), and record scrollTo calls.
@@ -41,6 +42,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  __resetReadingPositionsForTests();
   if (originalOffsetHeight) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', originalOffsetHeight);
   if (originalScrollHeight) Object.defineProperty(Element.prototype, 'scrollHeight', originalScrollHeight);
   if (originalClientHeight) Object.defineProperty(Element.prototype, 'clientHeight', originalClientHeight);
@@ -148,5 +150,48 @@ describe('MessageTimeline — salto para mensagem', () => {
     const quote = await screen.findByText('antiga');
     fireEvent.click(quote);
     expect(jumpToMessage).toHaveBeenCalledWith('conv-1', 7);
+  });
+});
+
+describe('MessageTimeline — posicao de leitura e midia ativa', () => {
+  const scrollRootOf = (container: HTMLElement) => container.querySelector('[data-scroll-root]') as HTMLElement;
+  const scrollRootTo = (root: HTMLElement, top: number) => { root.scrollTo({ top }); };
+
+  it('voltar a conversa restaura a linha onde a leitura parou, nao o fim', async () => {
+    const messages = Array.from({ length: 300 }, (_, i) => message(i + 1));
+    const first = renderTimeline({ messagesByConversation: new Map([['conv-1', messages]]) });
+    await waitFor(() => expect(first.container.querySelector('[data-msg-id="300"]')).not.toBeNull());
+    await new Promise((r) => setTimeout(r, 50));
+    scrollRootTo(scrollRootOf(first.container), 4000);
+    const saved = readingPositionFor('main', 'conv-1')!;
+    expect(saved).toMatchObject({ atEnd: false });
+    first.unmount();
+
+    const second = renderTimeline({ messagesByConversation: new Map([['conv-1', messages]]) });
+    await waitFor(() => expect(second.container.querySelector(`[data-msg-id="${saved.key}"]`)).not.toBeNull());
+    expect(second.container.querySelector('[data-msg-id="300"]')).toBeNull();
+  });
+
+  it('estava no fim: volta ao fim', async () => {
+    const messages = Array.from({ length: 300 }, (_, i) => message(i + 1));
+    const first = renderTimeline({ messagesByConversation: new Map([['conv-1', messages]]) });
+    await waitFor(() => expect(first.container.querySelector('[data-msg-id="300"]')).not.toBeNull());
+    first.unmount();
+    const second = renderTimeline({ messagesByConversation: new Map([['conv-1', messages]]) });
+    await waitFor(() => expect(second.container.querySelector('[data-msg-id="300"]')).not.toBeNull());
+  });
+
+  it('linha com midia tocando continua montada ao rolar para longe', async () => {
+    const messages = Array.from({ length: 300 }, (_, i) => message(i + 1));
+    const { container } = renderTimeline({ messagesByConversation: new Map([['conv-1', messages]]) });
+    await waitFor(() => expect(container.querySelector('[data-msg-id="300"]')).not.toBeNull());
+    const row = container.querySelector('[data-msg-id="300"]')!;
+    const audio = document.createElement('audio');
+    row.appendChild(audio);
+    audio.dispatchEvent(new Event('play'));
+
+    scrollRootTo(scrollRootOf(container), 0);
+    await waitFor(() => expect(container.querySelector('[data-msg-id="1"]')).not.toBeNull());
+    expect(container.querySelector('[data-msg-id="300"]')).not.toBeNull();
   });
 });

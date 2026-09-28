@@ -7,6 +7,7 @@ import type { ChatMessage } from '@/shared/types/protocol';
 import { MessageRow } from './MessageRow';
 import { buildTimelineItems, type TimelineItem } from './messageTimelineItems';
 import type { OutboxEntry } from './useMessageOutbox';
+import { readingPositionFor, saveReadingPosition } from './readingPositions';
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
 const EMPTY_PENDING: OutboxEntry[] = [];
@@ -31,7 +32,10 @@ function estimateSize(item: TimelineItem | undefined): number {
   return size;
 }
 
-export function MessageTimeline({ conversationId, onReply, onOpenProfile, bottomPadding }: {
+export function MessageTimeline({ surfaceId = 'main', conversationId, onReply, onOpenProfile, bottomPadding }: {
+  /** Scopes the remembered reading position: two panels showing the same
+   * conversation each keep their own. */
+  surfaceId?: string;
   conversationId: string;
   onReply: (message: ChatMessage) => void;
   onOpenProfile: (userId: string) => void;
@@ -71,14 +75,51 @@ export function MessageTimeline({ conversationId, onReply, onOpenProfile, bottom
     [messages, pending, myUserId, myName, myAvatar],
   );
 
-  // An open editor must survive scrolling away: its row stays mounted even
-  // outside the rendered range (it's the only exception, and it's one row).
-  const editingIndex = editingMsgId == null ? -1 : items.findIndex((item) => item.type === 'message' && item.message.msgId === editingMsgId);
+  // Rows playing audio/video are tracked from the media events themselves
+  // (they don't bubble, but they do pass the container in capture).
+  const [playingMsgIds, setPlayingMsgIds] = useState<Set<number>>(new Set());
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = (event: Event, playing: boolean) => {
+      const row = (event.target as Element | null)?.closest?.('[data-msg-id]');
+      const msgId = Number(row?.getAttribute('data-msg-id'));
+      if (!Number.isFinite(msgId)) return;
+      setPlayingMsgIds((prev) => {
+        if (prev.has(msgId) === playing) return prev;
+        const next = new Set(prev);
+        if (playing) next.add(msgId); else next.delete(msgId);
+        return next;
+      });
+    };
+    const onPlay = (event: Event) => update(event, true);
+    const onStop = (event: Event) => update(event, false);
+    el.addEventListener('play', onPlay, true);
+    el.addEventListener('pause', onStop, true);
+    el.addEventListener('ended', onStop, true);
+    return () => {
+      el.removeEventListener('play', onPlay, true);
+      el.removeEventListener('pause', onStop, true);
+      el.removeEventListener('ended', onStop, true);
+    };
+  }, []);
+
+  // Rows that must survive scrolling away stay mounted outside the rendered
+  // range: an open editor (its text), and media that's playing (unmounting
+  // would silently stop it). A handful at most.
+  const retainedIndexes = useMemo(() => {
+    const out: number[] = [];
+    items.forEach((item, index) => {
+      if (item.type !== 'message') return;
+      if (item.message.msgId === editingMsgId || playingMsgIds.has(item.message.msgId)) out.push(index);
+    });
+    return out;
+  }, [items, editingMsgId, playingMsgIds]);
   const rangeExtractor = useCallback((range: Range) => {
     const indexes = defaultRangeExtractor(range);
-    if (editingIndex < 0 || indexes.includes(editingIndex)) return indexes;
-    return [...indexes, editingIndex].sort((a, b) => a - b);
-  }, [editingIndex]);
+    const extra = retainedIndexes.filter((index) => !indexes.includes(index));
+    return extra.length ? [...indexes, ...extra].sort((a, b) => a - b) : indexes;
+  }, [retainedIndexes]);
 
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -109,18 +150,32 @@ export function MessageTimeline({ conversationId, onReply, onOpenProfile, bottom
   // waits for it, or the first render — sitting at the top before this
   // scroll — would fetch history nobody asked for.
   const [ready, setReady] = useState(false);
+  // the scroll listener must not record the jumps of the initial placement
+  const readyRef = useRef(false);
+  useEffect(() => { readyRef.current = ready; }, [ready]);
   useLayoutEffect(() => {
     if (ready || !items.length) return;
+    const saved = jumpIndex < 0 ? readingPositionFor(surfaceId, conversationId) : undefined;
+    const savedIndex = saved && !saved.atEnd ? items.findIndex((item) => item.key === saved.key) : -1;
     if (jumpIndex >= 0) {
       // the jump effect below centers it again once rows are measured, and
       // highlights it
       virtualizer.scrollToIndex(jumpIndex, { align: 'center' });
+    } else if (savedIndex >= 0) {
+      virtualizer.scrollToIndex(savedIndex, { align: 'start' });
     } else {
       virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
     }
-    const frame = requestAnimationFrame(() => setReady(true));
+    const frame = requestAnimationFrame(() => {
+      // back where the reader left it: the same row, the same distance in
+      if (savedIndex >= 0 && saved) {
+        const start = virtualizer.measurementsCache[savedIndex]?.start;
+        if (start !== undefined) virtualizer.scrollToOffset(start + saved.offset);
+      }
+      setReady(true);
+    });
     return () => cancelAnimationFrame(frame);
-  }, [ready, items, jumpIndex, virtualizer]);
+  }, [ready, items, jumpIndex, virtualizer, surfaceId, conversationId]);
 
   // Your own send brings you back to the present, even from old history.
   const pendingCount = pending.length;
@@ -149,10 +204,13 @@ export function MessageTimeline({ conversationId, onReply, onOpenProfile, bottom
       const end = el.scrollHeight - el.scrollTop - el.clientHeight <= AT_END_THRESHOLD;
       setAtEnd(end);
       if (end) setUnseen(0);
+      if (!readyRef.current) return;
+      const top = virtualizer.getVirtualItemForOffset(el.scrollTop);
+      if (top) saveReadingPosition(surfaceId, conversationId, { key: String(top.key), offset: el.scrollTop - top.start, atEnd: end });
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
-  }, []);
+  }, [virtualizer, surfaceId, conversationId]);
   const lastKey = items[items.length - 1]?.key;
   const prevLastKeyRef = useRef(lastKey);
   const prevLengthRef = useRef(items.length);

@@ -33,7 +33,7 @@ export function CallChatPanel({ conversationId, open, onOpenChange, onOpenProfil
         <h2 className="min-w-0 flex-1 truncate text-title font-semibold">{title}</h2>
         <CloseButton label="Fechar chat" onClick={() => onOpenChange(false)} />
       </div>
-      <ChatSurface conversationId={conversation.id} onOpenProfile={onOpenProfile} />
+      <ChatSurface surfaceId="call" conversationId={conversation.id} onOpenProfile={onOpenProfile} />
     </>
   );
 
