@@ -105,3 +105,60 @@ describe('Tile — espelhamento da propria camera', () => {
     expect(container.querySelector('video')).not.toHaveStyle({ transform: 'scaleX(-1)' });
   });
 });
+
+describe('Tile — pilula de acoes agrupada', () => {
+  it('so com "Configuracoes da transmissao": nenhum divisor, e o botao de reativar audio nao aparece', () => {
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+    });
+    expect(screen.getByLabelText('Configurações da transmissão')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Reativar áudio')).not.toBeInTheDocument();
+  });
+
+  it('com audio mutado pra mim, os dois botoes ficam na mesma pilula (mesmo pai)', () => {
+    const audio = new Audio();
+    audio.volume = 0;
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants: new Map([['p-2', fakeParticipant()]]) },
+      audioRegistry: { current: new Map([['p-2', { element: audio }]]) },
+    });
+    const unmute = screen.getByLabelText('Reativar áudio');
+    const gear = screen.getByLabelText('Configurações da transmissão');
+    expect(unmute.parentElement).toBe(gear.parentElement);
+  });
+
+  it('a pilula de acoes fica no canto superior esquerdo, nao mais a direita', () => {
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+    });
+    const pill = screen.getByLabelText('Configurações da transmissão').parentElement;
+    expect(pill).toHaveClass('left-1.5');
+    expect(pill?.className).not.toMatch(/\bright-/);
+  });
+});
+
+describe('Tile — moldura estavel ao falar', () => {
+  it('a largura da borda nao muda entre falando e nao falando (sem pulo de layout)', () => {
+    const { container: notSpeaking } = renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant({ speaking: false })]]) },
+    });
+    const root = notSpeaking.querySelector('.tile-fullscreen-target');
+    expect(root).toHaveClass('border-[3.5px]');
+  });
+});
+
+describe('Tile — nome no padrao de grid', () => {
+  it('densidade padrao (grid) usa o texto pequeno de 12px', () => {
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+    });
+    expect(screen.getByText('Fulana')).toHaveClass('text-caption');
+  });
+
+  it('densidade "label" (tile em foco) usa o texto um pouco maior', () => {
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} nameSize="label" />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+    });
+    expect(screen.getByText('Fulana')).toHaveClass('text-label');
+  });
+});

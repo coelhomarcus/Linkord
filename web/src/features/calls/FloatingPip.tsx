@@ -91,7 +91,10 @@ export function FloatingPip({ allIds, onExpand }: FloatingPipProps) {
       style={dragPos ? { left: dragPos.x, top: dragPos.y } : undefined}
     >
       <div className="pointer-events-none absolute inset-0">
-        <Tile participantId={current.participantId} kind={current.kind} loading={current.loading} isMine={current.participantId === state.me.id} />
+        {/* cover, not the new contain default: this wrapper doesn't center a
+            shrunk tile the way TileGrid's does — revisit together with the
+            rest of the PiP's own redesign */}
+        <Tile participantId={current.participantId} kind={current.kind} loading={current.loading} isMine={current.participantId === state.me.id} fit="cover" />
       </div>
       <div onPointerDown={handlePointerDown} className="absolute inset-0 cursor-move touch-none select-none" />
 

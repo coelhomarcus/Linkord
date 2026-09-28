@@ -23,7 +23,7 @@ interface TileProps {
   nameSize?: 'body' | 'label';
 }
 
-export function Tile({ participantId, kind, isMine, loading = false, fit = 'cover', avatarSize = 96, nameSize = 'body' }: TileProps) {
+export function Tile({ participantId, kind, isMine, loading = false, fit = 'contain', avatarSize = 96, nameSize = 'body' }: TileProps) {
   const { state, dispatch, openTileMenu, tileDomRegistry, deafened, showTileBanners, mirrorCameraPreview } = useRoom();
   const key = tileKey(participantId, kind);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -132,7 +132,7 @@ export function Tile({ participantId, kind, isMine, loading = false, fit = 'cove
   return (
     <div
       ref={rootRef}
-      className={`tile-fullscreen-target relative h-full w-full cursor-pointer overflow-hidden rounded-xl border bg-bg-tertiary transition-colors ${
+      className={`tile-fullscreen-target relative h-full w-full cursor-pointer overflow-hidden rounded-xl border-[3.5px] bg-bg-tertiary transition-colors ${
         showSpeakingBorder ? '' : 'border-transparent'
       }`}
       style={{
@@ -150,7 +150,7 @@ export function Tile({ participantId, kind, isMine, loading = false, fit = 'cove
           autoPlay
           playsInline
           muted={isMine}
-          className={`relative h-full w-full object-cover ${kind === 'screen' ? 'bg-black' : ''}`}
+          className={`relative h-full w-full object-cover ${kind === 'screen' ? 'bg-bg-call' : ''}`}
           // presentation only — the track actually published/sent is never touched
           style={isMine && kind === 'camera' && mirrorCameraPreview ? { transform: 'scaleX(-1)' } : undefined}
         />
@@ -168,11 +168,11 @@ export function Tile({ participantId, kind, isMine, loading = false, fit = 'cove
       )}
 
       <div className={cn(
-        'absolute bottom-2 left-2 flex max-w-[calc(100%-16px)] items-center gap-1.5 rounded-full bg-bg-tertiary/85 py-1 pr-2.5',
+        'absolute bottom-1.5 left-1.5 flex max-w-[calc(100%-12px)] items-center gap-1.5 rounded-[9px] border border-white/10 bg-black/85 py-1 pr-2.5',
         showsVideo ? 'pl-1' : 'pl-2.5'
       )}>
         {showsVideo && <Avatar id={participantId} name={name} avatar={avatar} poster={avatarPoster} frozen={!isSpeaking} avatarColor={avatarColor} size={20} />}
-        <span className={cn('select-none truncate font-medium text-text-primary', nameSize === 'label' ? 'text-label' : 'text-body')}>{name}</span>
+        <span className={cn('select-none truncate font-medium text-text-primary', nameSize === 'label' ? 'text-label' : 'text-caption')}>{name}</span>
         {isDeafened ? (
           <HeadphoneOff size={14} className="flex-none text-red" />
         ) : (
@@ -188,29 +188,32 @@ export function Tile({ participantId, kind, isMine, loading = false, fit = 'cove
         )}
       </div>
 
-      {hasMutableAudio && mutedForMe && (
+      {/* one grouped pill for tile-level actions, not separate floating
+          buttons — a thin divider only appears when there's more than one */}
+      <div className="absolute left-1.5 top-1.5 flex h-6 items-stretch divide-x divide-white/10 overflow-hidden rounded-lg border border-white/10 bg-black/85">
+        {hasMutableAudio && mutedForMe && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Reativar áudio"
+            onClick={handleUnmuteClick}
+            className="h-full w-7 rounded-none text-red hover:bg-white/10 hover:text-red"
+          >
+            <VolumeX size={14} />
+          </Button>
+        )}
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="Reativar áudio"
-          onClick={handleUnmuteClick}
-          className="absolute right-11 top-2 bg-bg-tertiary/75 text-red hover:bg-primary hover:text-text-primary"
+          aria-label="Configurações da transmissão"
+          onClick={handleGearClick}
+          className="h-full w-7 rounded-none text-white/90 hover:bg-white/10 hover:text-white"
         >
-          <VolumeX size={14} />
+          <Settings size={14} />
         </Button>
-      )}
-
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Configurações da transmissão"
-        onClick={handleGearClick}
-        className="absolute right-2 top-2 bg-bg-tertiary/75 text-text-primary hover:bg-primary"
-      >
-        <Settings size={14} />
-      </Button>
+      </div>
     </div>
   );
 }

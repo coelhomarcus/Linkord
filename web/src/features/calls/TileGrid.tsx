@@ -66,22 +66,22 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
     ? (thumbs.length ? `minmax(0, 1fr) repeat(${thumbRows}, ${THUMB_H}px)` : 'minmax(0, 1fr)')
     : `repeat(${actualRows}, ${tileH}px)`;
 
-  const renderTile = (d: TileDescriptor, isFocused: boolean, width: number | string, height: number | string) => (
+  // Contain-fit tiles shrink their own root to the media's aspect ratio (see
+  // Tile.tsx), so their wrapper has to actively center them — a cover-fit
+  // tile (only the thumbnail strip, small previews read fine cropped) fills
+  // its wrapper exactly and needs no centering.
+  const renderTile = (d: TileDescriptor, isFocused: boolean, width: number | string, height: number | string, fit: 'cover' | 'contain' = 'contain') => (
     <div
       key={d.key}
       style={{ width, height }}
-      className={
-        isFocused
-          ? 'flex min-h-0 min-w-0 items-center justify-center'
-          : 'min-h-0 min-w-0'
-      }
+      className={fit === 'contain' ? 'flex min-h-0 min-w-0 items-center justify-center' : 'min-h-0 min-w-0'}
     >
       <Tile
         participantId={d.participantId}
         kind={d.kind}
         loading={d.loading}
         isMine={isMine(d.participantId)}
-        fit={isFocused ? 'contain' : 'cover'}
+        fit={fit}
         avatarSize={isFocused ? 104 : focus ? 32 : 96}
         nameSize={isFocused ? 'label' : 'body'}
       />
@@ -140,7 +140,7 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
           style={{ gridColumn: '1 / -1', gridRow: String(rowIndex + 2) }}
           className="flex min-h-0 min-w-0 justify-center gap-3"
         >
-          {row.map((d) => renderTile(d, false, THUMB_W, THUMB_H))}
+          {row.map((d) => renderTile(d, false, THUMB_W, THUMB_H, 'cover'))}
         </div>
       ))}
     </div>
