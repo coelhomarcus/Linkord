@@ -70,11 +70,6 @@ export const ERROR_REGISTRY = {
 
   // conversations, messages, attachments
   conversation_not_found: { statuses: [404], channel: 'both' },
-  conversation_mismatch: { statuses: [400], channel: 'http' },
-  not_your_message: { statuses: [403], channel: 'http' },
-  target_message_not_found: { statuses: [404], channel: 'http' },
-  target_message_too_old: { statuses: [400], channel: 'http' },
-  too_many_attachments: { statuses: [400], channel: 'http' },
   upload_not_found: { statuses: [404], channel: 'http' },
   already_completing: { statuses: [409], channel: 'http' },
   incomplete_upload: { statuses: [400], channel: 'http' },

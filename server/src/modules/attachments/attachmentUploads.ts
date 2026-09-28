@@ -1,15 +1,11 @@
 import fs from 'node:fs/promises';
-import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { config } from '../../config/env.js';
-import { db } from '../../db/client.js';
-import { attachments as attachmentsTable, messages, type Attachment } from '../../db/schema.js';
 import { sendJson, sendError, jsonBody } from '../../http/respond.js';
 import { parseCookies } from '../../http/cookies.js';
 import { resolveSession } from '../auth/session.js';
-import { broadcastToConversationMembers, conversationExistsForUser, getDirectPeerId, touchConversation, recordConversationActivity } from '../conversations/conversationsRepository.js';
+import { conversationExistsForUser, getDirectPeerId } from '../conversations/conversationsRepository.js';
 import { canSendDirectMessage } from '../friendships/friendshipsRepository.js';
-import { buildReplyRef } from '../messages/replyRef.js';
 import { newId, filePathFor } from './attachmentStorage.js';
 import { generateThumbnail, readImageDimensions, THUMBNAIL_SOURCE_MIME_TYPES } from './attachmentThumbnails.js';
 import { discardStaged, findOwnedStaged, stageFile } from './stagedAttachments.js';
@@ -70,13 +66,6 @@ export async function handleAttachmentInit(request: FastifyRequest, reply: Fasti
 
   const fileName = sanitizeFileName(body.fileName);
   const mimeType = String(body.mimeType || 'application/octet-stream').split(';')[0]!.trim() || 'application/octet-stream';
-  const caption = String(body.caption || '').trim().slice(0, config.MAX_CHAT_LEN);
-  // only the file that creates the message uses it; resolved at complete
-  // time, so a target deleted while the bytes were uploading just drops it
-  const replyTo = Number.isInteger(body.replyTo) ? Number(body.replyTo) : undefined;
-  // staged: complete prepares the file without publishing anything; the
-  // message with the whole batch is created later by one correlated send
-  const stage = body.stage === true;
 
   const totalSize = Number(body.totalSize);
   if (!Number.isInteger(totalSize) || totalSize <= 0 || totalSize > config.MAX_ATTACHMENT_BYTES) {
@@ -113,7 +102,7 @@ export async function handleAttachmentInit(request: FastifyRequest, reply: Fasti
   try {
     await fs.mkdir(tmpDirFor(uploadId), { recursive: true });
     await fs.writeFile(manifestPathFor(uploadId), JSON.stringify({
-      uploadId, userId: sess.userId, conversationId, fileName, mimeType, totalSize, caption, replyTo, ...(stage ? { stage: true as const } : {}),
+      uploadId, userId: sess.userId, conversationId, fileName, mimeType, totalSize,
       chunkSize, totalChunks, createdAt: new Date().toISOString(),
     } satisfies UploadManifest));
   } catch (err) {
@@ -153,8 +142,9 @@ export async function handleAttachmentChunk(request: FastifyRequest<{ Params: { 
 }
 
 /** Step 3/3 — confirms all chunks arrived, streams them into the final file
- * (never fully in memory), then creates the message/attachment row. Chunks
- * are only deleted from disk AFTER the transaction commits. */
+ * (never fully in memory), then stages it (see completeStaged): nothing is
+ * published to anyone here. The message that carries it is created later,
+ * with the whole batch, by a correlated `chat` send (messages.ts). */
 export async function handleAttachmentComplete(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> {
   const uploadId = request.params.id;
   const cookies = parseCookies(request.headers.cookie || '');
@@ -167,28 +157,9 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
     // because it already succeeded
     const staged = await findOwnedStaged(uploadId, sess.userId);
     if (staged) return sendJson(reply, 200, { staged: stagedPayload(staged) });
+    return sendError(reply, 404, 'upload_not_found', 'Upload não encontrado.');
   }
-  if (!manifest || manifest.userId !== sess.userId) return sendError(reply, 404, 'upload_not_found', 'Upload não encontrado.');
-
-  // optional — present only when this file is the 2nd-4th attachment of a
-  // message whose FIRST attachment already created it (see
-  // chunkedUpload.ts/RoomProvider.tsx#sendAttachments). The client now
-  // always sends a JSON body here (possibly `{}`), even for the common
-  // single-attachment case.
-  const body = jsonBody(request.body);
-  let targetMsgId: number | null = null;
-  if (body.targetMsgId != null) {
-    targetMsgId = Number(body.targetMsgId);
-    if (!Number.isFinite(targetMsgId)) return sendError(reply, 400, 'invalid_target', 'targetMsgId inválido.');
-    const [existing] = await db.select().from(messages).where(eq(messages.id, targetMsgId)).limit(1);
-    if (!existing) return sendError(reply, 404, 'target_message_not_found', 'Mensagem de destino não encontrada.');
-    if (existing.authorId !== sess.userId) return sendError(reply, 403, 'not_your_message', 'Você só pode anexar arquivos às suas próprias mensagens.');
-    if (existing.kind !== 'text') return sendError(reply, 400, 'invalid_target', 'Não dá para anexar arquivos a esse tipo de mensagem.');
-    if (existing.conversationId !== manifest.conversationId) return sendError(reply, 400, 'conversation_mismatch', 'A conversa não corresponde ao upload.');
-    if (Date.now() - existing.createdAt.getTime() > config.ATTACH_TO_MESSAGE_WINDOW_MS) {
-      return sendError(reply, 400, 'target_message_too_old', 'A mensagem de destino é antiga demais para receber mais anexos.');
-    }
-  }
+  if (manifest.userId !== sess.userId) return sendError(reply, 404, 'upload_not_found', 'Upload não encontrado.');
 
   if (completingUploads.has(uploadId)) return sendError(reply, 409, 'already_completing', 'O upload já está sendo finalizado.');
   completingUploads.add(uploadId);
@@ -212,124 +183,7 @@ export async function handleAttachmentComplete(request: FastifyRequest<{ Params:
       return sendError(reply, 400, 'storage_full', 'Armazenamento cheio (30GB no total). Apague arquivos antigos antes de enviar mais.');
     }
 
-    if (manifest.stage) {
-      if (targetMsgId != null) return sendError(reply, 400, 'invalid_target', 'Um arquivo preparado não é anexado a uma mensagem existente.');
-      return await completeStaged(reply, manifest, sess.userId);
-    }
-
-    const destPath = filePathFor(uploadId);
-    let row: Attachment;
-    let message: typeof messages.$inferSelect | null = null;
-    try {
-      await assembleChunks(uploadId, manifest, destPath);
-      if (targetMsgId != null) {
-        const targetId = targetMsgId;
-        row = await db.transaction(async (tx) => {
-          // locks the message row so two concurrent completes racing to
-          // attach to the SAME message can't both pass the count check
-          // below before either commits.
-          await tx.execute(sql`select id from ${messages} where ${messages.id} = ${targetId} for update`);
-          // thumbnails share the message id but aren't attachments the
-          // user sent — counting them refused the 3rd original of a batch
-          const existingCount = (await tx.select({ id: attachmentsTable.id }).from(attachmentsTable)
-            .where(and(eq(attachmentsTable.messageId, targetId), eq(attachmentsTable.isThumbnail, false)))).length;
-          if (existingCount >= config.MAX_ATTACHMENTS_PER_MESSAGE) {
-            throw Object.assign(new Error('too_many_attachments'), { code: 'too_many_attachments' });
-          }
-          const [attachmentRow] = await tx.insert(attachmentsTable).values({
-            id: uploadId, messageId: targetId, fileName: manifest.fileName, mimeType: manifest.mimeType, size: manifest.totalSize,
-          }).returning();
-          return attachmentRow!;
-        });
-      } else {
-        const replyTo = await buildReplyRef(manifest.conversationId, manifest.replyTo);
-        const inserted = await db.transaction(async (tx) => {
-          const [messageRow] = await tx.insert(messages).values({
-            conversationId: manifest.conversationId, authorId: sess.userId, text: manifest.caption, replyTo: replyTo ?? null,
-          }).returning();
-          const [attachmentRow] = await tx.insert(attachmentsTable).values({
-            id: uploadId, messageId: messageRow!.id, fileName: manifest.fileName, mimeType: manifest.mimeType, size: manifest.totalSize,
-          }).returning();
-          return { messageRow: messageRow!, attachmentRow: attachmentRow! };
-        });
-        row = inserted.attachmentRow;
-        message = inserted.messageRow;
-      }
-    } catch (err) {
-      // keep the CHUNKS on purpose — client can retry complete() without
-      // re-uploading everything; only the (partial/invalid) final file is
-      // discarded.
-      await fs.unlink(destPath).catch(() => {});
-      if (err instanceof Error && (err as { code?: string }).code === 'too_many_attachments') {
-        return sendError(reply, 400, 'too_many_attachments', 'Essa mensagem já tem o máximo de anexos.');
-      }
-      throw err;
-    }
-
-    // only deleted after a successful commit; a failed delete here just
-    // logs — sweepStaleUploads cleans it up later.
-    await fs.rm(tmpDirFor(uploadId), { recursive: true, force: true })
-      .catch((err) => log.error('failed to delete chunks after assembly', err));
-    releaseUpload(uploadId);
-
-    // Best-effort: a thumbnail that fails to generate/save just means this
-    // attachment serves its full original for the inline preview too — never
-    // fails the upload itself.
-    let thumbId: string | null = null;
-    if (THUMBNAIL_SOURCE_MIME_TYPES.has(row.mimeType)) {
-      const thumb = await generateThumbnail(destPath);
-      if (thumb) {
-        const newThumbId = newId();
-        try {
-          await fs.writeFile(filePathFor(newThumbId), thumb.buffer);
-          await db.insert(attachmentsTable).values({
-            id: newThumbId, messageId: row.messageId, fileName: row.fileName, mimeType: thumb.mime, size: thumb.buffer.length, isThumbnail: true,
-          });
-          await db.update(attachmentsTable).set({ thumbId: newThumbId }).where(eq(attachmentsTable.id, row.id));
-          thumbId = newThumbId;
-        } catch (err) {
-          log.warn('failed to save thumbnail', { err: err instanceof Error ? err.message : String(err) });
-          await fs.unlink(filePathFor(newThumbId)).catch(() => {});
-        }
-      }
-    }
-
-    // best effort, like the thumbnail: no size just means no reserved box
-    const dims = THUMBNAIL_SOURCE_MIME_TYPES.has(row.mimeType) ? await readImageDimensions(destPath) : null;
-    if (dims) await db.update(attachmentsTable).set(dims).where(eq(attachmentsTable.id, row.id));
-    const attachmentPayload = { id: row.id, name: row.fileName, mime: row.mimeType, size: row.size, ...(thumbId ? { thumbId } : {}), ...(dims ?? {}) };
-    if (message) {
-      const chatMessage = {
-        msgId: message.id,
-        conversationId: message.conversationId,
-        id: message.authorId,
-        name: sess.displayName,
-        avatar: sess.avatar,
-        text: message.text,
-        ts: message.createdAt.getTime(),
-        ...(message.replyTo ? { replyTo: message.replyTo } : {}),
-        attachments: [attachmentPayload],
-      };
-      await touchConversation(message.conversationId, message.createdAt);
-      await broadcastToConversationMembers(message.conversationId, { t: 'chat', message: chatMessage });
-      await sendUsageToUser(sess.userId);
-      log.info('upload completed', { uploadId, userId: sess.userId, conversationId: manifest.conversationId, bytes: manifest.totalSize });
-      sendJson(reply, 201, { message: chatMessage });
-    } else {
-      // an EXISTING message just got another attachment (2nd-4th file of a
-      // multi-file upload) — not a new message, so this doesn't touch
-      // lastMessageAt either (see conversationsRepository.ts#recordConversationActivity).
-      await recordConversationActivity(manifest.conversationId);
-      await broadcastToConversationMembers(manifest.conversationId, {
-        t: 'chat-attachment-added',
-        conversationId: manifest.conversationId,
-        msgId: targetMsgId!,
-        attachment: attachmentPayload,
-      });
-      await sendUsageToUser(sess.userId);
-      log.info('upload completed', { uploadId, userId: sess.userId, conversationId: manifest.conversationId, bytes: manifest.totalSize, attachedTo: targetMsgId });
-      sendJson(reply, 201, { attachment: attachmentPayload });
-    }
+    return await completeStaged(reply, manifest, sess.userId);
   } finally {
     completingUploads.delete(uploadId);
   }

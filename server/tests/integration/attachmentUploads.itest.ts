@@ -6,7 +6,7 @@ import path from 'node:path';
 import { after, describe, it } from 'node:test';
 import Fastify from 'fastify';
 import sharp from 'sharp';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { config } from '../../src/config/env.js';
 import { attachments as attachmentsTable, conversationMembers, messageSendOperations, messages, stagedAttachments } from '../../src/db/schema.js';
 import { getByMessageIds } from '../../src/modules/attachments/attachments.js';
@@ -35,85 +35,11 @@ async function sessionFor(userId: string): Promise<string> {
   return `${config.SESSION_COOKIE}=${rawToken}`;
 }
 
-async function upload(cookie: string, conversationId: string, extra: { targetMsgId?: number; replyTo?: number; caption?: string } = {}) {
-  const init = await app.inject({
-    method: 'POST', url: '/api/attachments/init', headers: { cookie },
-    payload: { conversationId, fileName: 'foto.png', mimeType: 'image/png', totalSize: bigPng.length, caption: extra.caption ?? '', replyTo: extra.replyTo },
-  });
-  assert.equal(init.statusCode, 201, init.body);
-  const { uploadId } = init.json() as { uploadId: string };
-  const chunk = await app.inject({
-    method: 'POST', url: `/api/attachments/${uploadId}/chunk/0`,
-    headers: { cookie, 'content-type': 'application/octet-stream' }, payload: bigPng,
-  });
-  assert.equal(chunk.statusCode, 200, chunk.body);
-  return app.inject({
-    method: 'POST', url: `/api/attachments/${uploadId}/complete`, headers: { cookie },
-    payload: extra.targetMsgId != null ? { targetMsgId: extra.targetMsgId } : {},
-  });
-}
-
-describe('upload de anexos (Postgres real)', () => {
-  it('miniaturas nao contam no limite: 4 imagens grandes cabem numa mensagem, a 5a nao', async () => {
-    const owner = await makeUser('up');
-    const conversationId = await makeGroupWithMembers(owner.id, []);
-    const cookie = await sessionFor(owner.id);
-
-    const first = await upload(cookie, conversationId);
-    assert.equal(first.statusCode, 201, first.body);
-    const msgId = (first.json() as { message: { msgId: number } }).message.msgId;
-    for (let i = 0; i < 3; i++) {
-      const res = await upload(cookie, conversationId, { targetMsgId: msgId });
-      assert.equal(res.statusCode, 201, `anexo ${i + 2}: ${res.body}`);
-    }
-
-    const rows = await db.select().from(attachmentsTable).where(eq(attachmentsTable.messageId, msgId));
-    assert.equal(rows.filter((r) => !r.isThumbnail).length, 4);
-    assert.ok(rows.some((r) => r.isThumbnail), 'o teste so prova algo se miniaturas foram geradas');
-
-    const fifth = await upload(cookie, conversationId, { targetMsgId: msgId });
-    assert.equal(fifth.statusCode, 400);
-    assert.equal((fifth.json() as { error: { code: string } }).error.code, 'too_many_attachments');
-  });
-
-  it('resposta com anexo guarda a referencia da mensagem respondida', async () => {
-    const owner = await makeUser('up');
-    const conversationId = await makeGroupWithMembers(owner.id, []);
-    const cookie = await sessionFor(owner.id);
-    const [original] = await db.insert(messages).values({ conversationId, authorId: owner.id, text: 'mensagem original' }).returning();
-
-    const res = await upload(cookie, conversationId, { replyTo: original!.id, caption: 'olha isso' });
-    assert.equal(res.statusCode, 201, res.body);
-    const { message } = res.json() as { message: { msgId: number; replyTo?: { msgId: number; text: string } } };
-    assert.equal(message.replyTo?.msgId, original!.id);
-    assert.equal(message.replyTo?.text, 'mensagem original');
-
-    const [row] = await db.select({ replyTo: messages.replyTo }).from(messages).where(eq(messages.id, message.msgId));
-    assert.equal((row!.replyTo as { msgId: number }).msgId, original!.id);
-  });
-
-  it('resposta a uma mensagem de outra conversa e descartada, sem falhar o upload', async () => {
-    const owner = await makeUser('up');
-    const conversationId = await makeGroupWithMembers(owner.id, []);
-    const otherConversationId = await makeGroupWithMembers(owner.id, []);
-    const cookie = await sessionFor(owner.id);
-    const [elsewhere] = await db.insert(messages).values({ conversationId: otherConversationId, authorId: owner.id, text: 'outra conversa' }).returning();
-
-    const res = await upload(cookie, conversationId, { replyTo: elsewhere!.id });
-    assert.equal(res.statusCode, 201, res.body);
-    const { message } = res.json() as { message: { msgId: number; replyTo?: unknown } };
-    assert.equal(message.replyTo, undefined);
-    const [row] = await db.select({ replyTo: messages.replyTo }).from(messages)
-      .where(and(eq(messages.id, message.msgId), eq(messages.conversationId, conversationId)));
-    assert.equal(row!.replyTo, null);
-  });
-});
-
 describe('upload preparado e publicacao do lote (Postgres real)', () => {
   async function stage(cookie: string, conversationId: string, buffer = bigPng, fileName = 'foto.png'): Promise<string> {
     const init = await app.inject({
       method: 'POST', url: '/api/attachments/init', headers: { cookie },
-      payload: { conversationId, fileName, mimeType: 'image/png', totalSize: buffer.length, stage: true },
+      payload: { conversationId, fileName, mimeType: 'image/png', totalSize: buffer.length },
     });
     assert.equal(init.statusCode, 201, init.body);
     const { uploadId } = init.json() as { uploadId: string };
@@ -218,11 +144,67 @@ describe('upload preparado e publicacao do lote (Postgres real)', () => {
     assert.equal((await db.select().from(stagedAttachments).where(eq(stagedAttachments.ownerId, owner.id))).length, 0);
     assert.equal(fs.existsSync(path.join(uploadDir, kept)), false);
   });
+
+  it('miniaturas nao contam no limite: 4 imagens grandes publicam juntas, um 5o id e recusado antes de publicar', async () => {
+    const { owner, conversationId, cookie } = await member();
+    const ids: string[] = [];
+    for (let i = 0; i < 4; i++) ids.push((await stage(cookie, conversationId, bigPng, `f${i}.png`))!);
+
+    const ok = await correlatedSend(owner, conversationId, ids, 'quatro');
+    const rows = await db.select().from(attachmentsTable).where(eq(attachmentsTable.messageId, ok.message.msgId));
+    assert.equal(rows.filter((r) => !r.isThumbnail).length, 4);
+    assert.ok(rows.some((r) => r.isThumbnail), 'o teste so prova algo se miniaturas foram geradas');
+
+    const fifthId = await stage(cookie, conversationId, bigPng, 'f4.png');
+    const refused = await correlatedSend(owner, conversationId, [...ids, fifthId!], 'cinco');
+    assert.equal(refused.error.code, 'invalid_message');
+    // the 5th file is still staged, untouched — the send never got that far
+    assert.equal((await db.select().from(stagedAttachments).where(eq(stagedAttachments.id, fifthId!))).length, 1);
+  });
+
+  it('resposta com anexo guarda a referencia da mensagem respondida', async () => {
+    const { owner, conversationId, cookie } = await member();
+    const [original] = await db.insert(messages).values({ conversationId, authorId: owner.id, text: 'mensagem original' }).returning();
+    const id = await stage(cookie, conversationId);
+
+    const { socket, sent, participant } = joinNew(owner);
+    let result: any;
+    try {
+      await chatHandlers.chat!(socket, { conversationId, text: 'olha isso', replyTo: original!.id, requestId: 'r', clientMessageId: crypto.randomUUID(), attachmentIds: [id] });
+      result = sent.find((s) => s.event === 'chat-send-result')!.payload;
+    } finally {
+      cleanupParticipant(participant);
+    }
+    assert.equal(result.message.replyTo?.msgId, original!.id);
+    assert.equal(result.message.replyTo?.text, 'mensagem original');
+    const [row] = await db.select({ replyTo: messages.replyTo }).from(messages).where(eq(messages.id, result.message.msgId));
+    assert.equal((row!.replyTo as { msgId: number }).msgId, original!.id);
+  });
+
+  it('resposta a uma mensagem de outra conversa e descartada, sem falhar o envio com anexo', async () => {
+    const { owner, conversationId, cookie } = await member();
+    const otherConversationId = await makeGroupWithMembers(owner.id, []);
+    const [elsewhere] = await db.insert(messages).values({ conversationId: otherConversationId, authorId: owner.id, text: 'outra conversa' }).returning();
+    const id = await stage(cookie, conversationId);
+
+    const { socket, sent, participant } = joinNew(owner);
+    let result: any;
+    try {
+      await chatHandlers.chat!(socket, { conversationId, text: '', replyTo: elsewhere!.id, requestId: 'r', clientMessageId: crypto.randomUUID(), attachmentIds: [id] });
+      result = sent.find((s) => s.event === 'chat-send-result')!.payload;
+    } finally {
+      cleanupParticipant(participant);
+    }
+    assert.equal(result.message.replyTo, undefined);
+    const [row] = await db.select({ replyTo: messages.replyTo, conversationId: messages.conversationId }).from(messages).where(eq(messages.id, result.message.msgId));
+    assert.equal(row!.conversationId, conversationId);
+    assert.equal(row!.replyTo, null);
+  });
 });
 
 describe('dimensoes de midia (Postgres real)', () => {
   async function stageBuffer(cookie: string, conversationId: string, buffer: Buffer, fileName: string, mimeType: string) {
-    const init = await app.inject({ method: 'POST', url: '/api/attachments/init', headers: { cookie }, payload: { conversationId, fileName, mimeType, totalSize: buffer.length, stage: true } });
+    const init = await app.inject({ method: 'POST', url: '/api/attachments/init', headers: { cookie }, payload: { conversationId, fileName, mimeType, totalSize: buffer.length } });
     const { uploadId } = init.json() as { uploadId: string };
     await app.inject({ method: 'POST', url: `/api/attachments/${uploadId}/chunk/0`, headers: { cookie, 'content-type': 'application/octet-stream' }, payload: buffer });
     const complete = await app.inject({ method: 'POST', url: `/api/attachments/${uploadId}/complete`, headers: { cookie }, payload: {} });
