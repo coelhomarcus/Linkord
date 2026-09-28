@@ -5,6 +5,7 @@ import { buildMentionLookup } from '@/shared/lib/mentions';
 import { useRoom } from '@/state/RoomContext';
 import type { ChatMessage } from '@/shared/types/protocol';
 import { MessageRow } from './MessageRow';
+import { ArrivalMotion } from './ArrivalMotion';
 import { buildTimelineItems, type TimelineItem } from './messageTimelineItems';
 import type { OutboxEntry } from './useMessageOutbox';
 import { readingPositionFor, saveReadingPosition } from './readingPositions';
@@ -288,17 +289,19 @@ export function MessageTimeline({ surfaceId = 'main', conversationId, onReply, o
                       <span className="flex-none text-caption font-medium text-text-muted opacity-60">{item.label}</span>
                     </div>
                   ) : (
-                    <MessageRow
-                      message={item.message}
-                      showHeader={item.showHeader}
-                      highlighted={highlightedMsgId === item.message.msgId}
-                      pending={item.pending}
-                      allUsers={allUsers}
-                      mentionLookup={mentionLookup}
-                      onReply={() => onReply(item.message)}
-                      onOpenProfile={onOpenProfile}
-                      onJumpTo={onJumpTo}
-                    />
+                    <ArrivalMotion surfaceId={surfaceId} itemKey={item.key}>
+                      <MessageRow
+                        message={item.message}
+                        showHeader={item.showHeader}
+                        highlighted={highlightedMsgId === item.message.msgId}
+                        pending={item.pending}
+                        allUsers={allUsers}
+                        mentionLookup={mentionLookup}
+                        onReply={() => onReply(item.message)}
+                        onOpenProfile={onOpenProfile}
+                        onJumpTo={onJumpTo}
+                      />
+                    </ArrivalMotion>
                   )}
                 </div>
               );

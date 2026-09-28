@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Users } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Avatar } from '@/shared/Avatar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/ui/primitives/dialog';
 import { cn } from '@/shared/lib/utils';
@@ -26,6 +27,7 @@ interface MessageReactionsProps {
 
 export function MessageReactions({ reactions, myUserId, allUsers, onToggle }: MessageReactionsProps) {
   const [participantsOpen, setParticipantsOpen] = useState(false);
+  const reduced = useReducedMotion();
   const entries = (Object.entries(reactions) as [ReactionEmoji, string[]][]).filter(([, userIds]) => userIds?.length);
   const [activeEmoji, setActiveEmoji] = useState<ReactionEmoji | null>(null);
   if (!entries.length) return null;
@@ -51,7 +53,20 @@ export function MessageReactions({ reactions, myUserId, allUsers, onToggle }: Me
           >
             <span>{emoji}</span>
             {/* fixed box so a count going 9 → 10 doesn't shift the chips */}
-            <span className="min-w-[1ch] tabular-nums">{userIds.length}</span>
+            <span className="relative inline-grid min-w-[1ch] overflow-hidden tabular-nums">
+              {/* initial={false}: only a change animates, not the first paint */}
+              <AnimatePresence initial={false} mode="popLayout">
+                <motion.span
+                  key={userIds.length}
+                  initial={reduced ? { opacity: 0 } : { opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={reduced ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                  transition={{ duration: 0.15, ease: 'easeOut' }}
+                >
+                  {userIds.length}
+                </motion.span>
+              </AnimatePresence>
+            </span>
           </button>
         );
       })}

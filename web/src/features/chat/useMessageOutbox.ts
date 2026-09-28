@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { discardStagedFile, stageFileInChunks, type StagedFile } from '@/shared/lib/chunkedUpload';
 import { compressImageFile } from '@/shared/lib/compressImageFile';
 import type { ChatMessage, ChatReplyRef, ClientMessage, ServerMessage } from '@/shared/types/protocol';
+import { markArrival } from './arrivals';
 
 /** `uploading`: files still being staged; the message itself waits. */
 export type OutboxState = 'uploading' | 'sending' | 'unknown' | 'failed';
@@ -231,6 +232,8 @@ export function useMessageOutbox({ sendWs, onConfirmed, stageFile = stageFileInC
       });
     }
     trackingRef.current.set(clientMessageId, tracked);
+    // the stored copy keeps this key, so confirming it won't enter again
+    markArrival(`c:${clientMessageId}`);
     publish();
     if (files.length) stageMissing(clientMessageId); else pump(conversationId);
     return clientMessageId;

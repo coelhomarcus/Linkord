@@ -8,6 +8,7 @@ import { useMessageOutbox } from './useMessageOutbox';
 import { useMessageActionRequests } from './useMessageActionRequests';
 import { useReactionIntents } from './useReactionIntents';
 import { MAX_WINDOW, withNewerMessages, withOlderPage } from './historyWindow';
+import { markArrival } from './arrivals';
 import type { ChatMessage, ClientMessage, Conversation, PublicUser, ReactionEmoji, ServerMessage } from '@/shared/types/protocol';
 
 // correlated, idempotent chat sends (see useMessageOutbox)
@@ -377,6 +378,7 @@ export function useChatMessages(deps: ChatMessagesDeps) {
     if (hasMoreAfterRef.current.get(conversationId) === true) {
       setNewerCountByConversation((prev) => new Map(prev).set(conversationId, (prev.get(conversationId) ?? 0) + 1));
     } else {
+      markArrival(m.message.clientMessageId ? `c:${m.message.clientMessageId}` : String(m.message.msgId));
       insertConfirmed(m.message);
     }
     // your own message is never unread — it can land in a conversation you

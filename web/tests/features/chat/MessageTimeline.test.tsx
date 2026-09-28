@@ -6,6 +6,7 @@ import { createFakeRoomContextValue } from '@tests/fixtures/roomContextFixture';
 import type { ChatMessage } from '@/shared/types/protocol';
 import { MessageTimeline } from '@/features/chat/MessageTimeline';
 import { __resetReadingPositionsForTests, readingPositionFor } from '@/features/chat/readingPositions';
+import { __resetArrivalsForTests, markArrival } from '@/features/chat/arrivals';
 
 // jsdom has no layout: give the scroll container and each row a height, the
 // way the virtualizer reads them (offsetHeight), and record scrollTo calls.
@@ -43,6 +44,7 @@ beforeEach(() => {
 
 afterEach(() => {
   __resetReadingPositionsForTests();
+  __resetArrivalsForTests();
   if (originalOffsetHeight) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', originalOffsetHeight);
   if (originalScrollHeight) Object.defineProperty(Element.prototype, 'scrollHeight', originalScrollHeight);
   if (originalClientHeight) Object.defineProperty(Element.prototype, 'clientHeight', originalClientHeight);
@@ -193,5 +195,25 @@ describe('MessageTimeline — posicao de leitura e midia ativa', () => {
     scrollRootTo(scrollRootOf(container), 0);
     await waitFor(() => expect(container.querySelector('[data-msg-id="1"]')).not.toBeNull());
     expect(container.querySelector('[data-msg-id="300"]')).not.toBeNull();
+  });
+});
+
+describe('MessageTimeline — animacao de chegada', () => {
+  // an animated row sits inside the entrance wrapper; any other row is a
+  // direct child of the positioned, measured wrapper
+  const animated = (container: HTMLElement, id: number) => !container.querySelector(`[data-msg-id="${id}"]`)!.parentElement!.hasAttribute('data-index');
+
+  it('mensagem que acabou de chegar entra uma vez; remontar nao repete', async () => {
+    const messages = [message(1), message(2)];
+    markArrival('2');
+    const first = renderTimeline({ messagesByConversation: new Map([['conv-1', messages]]) });
+    await waitFor(() => expect(first.container.querySelector('[data-msg-id="2"]')).not.toBeNull());
+    expect(animated(first.container, 2)).toBe(true);
+    expect(animated(first.container, 1)).toBe(false);
+    first.unmount();
+
+    const second = renderTimeline({ messagesByConversation: new Map([['conv-1', messages]]) });
+    await waitFor(() => expect(second.container.querySelector('[data-msg-id="2"]')).not.toBeNull());
+    expect(animated(second.container, 2)).toBe(false);
   });
 });
