@@ -11,13 +11,6 @@ import { MAX_WINDOW, withNewerMessages, withOlderPage } from './historyWindow';
 import { markArrival } from './arrivals';
 import type { ChatMessage, ClientMessage, Conversation, PublicUser, ReactionEmoji, ServerMessage } from '@/shared/types/protocol';
 
-// correlated, idempotent chat sends (see useMessageOutbox)
-const CORRELATED_SEND_PROTOCOL = 3;
-// edits and deletes answered with chat-action-result
-const CORRELATED_ACTIONS_PROTOCOL = 4;
-// reactions as a desired state instead of a toggle
-const REACTION_INTENTS_PROTOCOL = 5;
-
 /** Adds `message` once, in msgId order — a send's result and its broadcast
  * both deliver it, in either order, and it may land after newer messages. */
 function withMessage(list: ChatMessage[], message: ChatMessage): ChatMessage[] {
@@ -123,9 +116,6 @@ export function useChatMessages(deps: ChatMessagesDeps) {
   const [unreadByConversation, setUnreadByConversation] = useState<Map<string, number>>(new Map());
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
-  const correlatedSendRef = useRef(false);
-  const correlatedActionsRef = useRef(false);
-  const reactionIntentsRef = useRef(false);
   const actionRequests = useMessageActionRequests(sendWs);
   const { request: requestAction } = actionRequests;
   // shared by the row and the right-click menu, which both delete
@@ -262,44 +252,32 @@ export function useChatMessages(deps: ChatMessagesDeps) {
     return original ? { msgId: original.msgId, authorId: original.id, text: original.text.slice(0, 120) } : undefined;
   }, []);
 
-  /** A batch goes through the outbox (staged, then published with its
-   * message). False on a server too old for that — the caller falls back
-   * to the legacy upload. */
+  /** A batch goes through the outbox: staged, then published with its
+   * message once every file is ready. */
   const queueMessageWithFiles = useCallback((conversationId: string, text: string, replyTo: number | undefined, files: { file: File; compress: boolean }[]) => {
-    if (!correlatedSendRef.current) return false;
     returnToPresentIfBehind(conversationId);
     enqueuePending(conversationId, text.trim(), pendingReplyRef(conversationId, replyTo), files);
-    return true;
   }, [enqueuePending, pendingReplyRef, returnToPresentIfBehind]);
 
   const sendChatMessage = useCallback((conversationId: string, text: string, replyTo?: number) => {
     const trimmed = text.trim();
-    if (!trimmed) return false;
-    if (correlatedSendRef.current) {
-      returnToPresentIfBehind(conversationId);
-      enqueuePending(conversationId, trimmed, pendingReplyRef(conversationId, replyTo));
-      return true;
-    }
-    return sendWs({ t: 'chat', conversationId, text: trimmed, ...(replyTo ? { replyTo } : {}) });
-  }, [sendWs, enqueuePending, pendingReplyRef, returnToPresentIfBehind]);
+    if (!trimmed) return;
+    returnToPresentIfBehind(conversationId);
+    enqueuePending(conversationId, trimmed, pendingReplyRef(conversationId, replyTo));
+  }, [enqueuePending, pendingReplyRef, returnToPresentIfBehind]);
 
-  /** Every welcome, including after a reconnect: learns what this server
-   * supports and resends whatever was still unconfirmed. */
-  const onWelcome = useCallback((protocolVersion: number | undefined) => {
-    correlatedSendRef.current = (protocolVersion ?? 0) >= CORRELATED_SEND_PROTOCOL;
-    correlatedActionsRef.current = (protocolVersion ?? 0) >= CORRELATED_ACTIONS_PROTOCOL;
-    reactionIntentsRef.current = (protocolVersion ?? 0) >= REACTION_INTENTS_PROTOCOL;
+  /** Every welcome, including after a reconnect: resends whatever was still
+   * unconfirmed from before the (re)connection. */
+  const onWelcome = useCallback(() => {
     onOutboxReconnected();
   }, [onOutboxReconnected]);
   const dismissMessageActionError = useCallback((msgId: number) => {
     setMessageActionErrors((prev) => { if (!prev.has(msgId)) return prev; const next = new Map(prev); next.delete(msgId); return next; });
   }, []);
 
-  /** Resolves once the server removed it (older servers: once sent). A
-   * failure stays visible on the row instead of the message silently
-   * staying put. */
+  /** Resolves once the server removed it. A failure stays visible on the
+   * row instead of the message silently staying put. */
   const deleteChatMessage = useCallback(async (msgId: number): Promise<void> => {
-    if (!correlatedActionsRef.current) { sendWs({ t: 'chat-delete', msgId }); return; }
     dismissMessageActionError(msgId);
     setDeletingMsgIds((prev) => new Set(prev).add(msgId));
     try {
@@ -309,24 +287,22 @@ export function useChatMessages(deps: ChatMessagesDeps) {
     } finally {
       setDeletingMsgIds((prev) => { const next = new Set(prev); next.delete(msgId); return next; });
     }
-  }, [sendWs, requestAction, dismissMessageActionError]);
+  }, [requestAction, dismissMessageActionError]);
 
   /** Rejects with the server's reason, so the editor can stay open with it. */
   const editChatMessage = useCallback(async (msgId: number, text: string): Promise<void> => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    if (!correlatedActionsRef.current) { sendWs({ t: 'chat-edit', msgId, text: trimmed }); return; }
     await requestAction({ t: 'chat-edit', msgId, text: trimmed });
-  }, [sendWs, requestAction]);
+  }, [requestAction]);
   const reactToChatMessage = useCallback((msgId: number, emoji: ReactionEmoji) => {
-    if (!reactionIntentsRef.current) { sendWs({ t: 'chat-react', msgId, emoji }); return; }
     let mineOnServer = false;
     for (const list of messagesByConversationRef.current.values()) {
       const message = list.find((msg) => msg.msgId === msgId);
       if (message) { mineOnServer = !!myUserIdRef.current && !!message.reactions?.[emoji]?.includes(myUserIdRef.current); break; }
     }
     reactWithIntent(msgId, emoji, mineOnServer);
-  }, [sendWs, reactWithIntent, myUserIdRef]);
+  }, [reactWithIntent, myUserIdRef]);
 
   const onConversationHistory = useCallback((m: Extract<ServerMessage, { t: 'conversation-history' }>) => {
     resetPages(m.conversationId);

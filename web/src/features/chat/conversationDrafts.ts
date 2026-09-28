@@ -10,19 +10,15 @@ export interface ConversationDraft {
   text: string;
   pendingFiles: PendingAttachment[];
   attachError: string | null;
-  /** Non-null while a batch is uploading — it also blocks a second submit. */
-  upload: { activeFileId: string | null; progress: number } | null;
-  /** The message a partially-failed batch already created; the next submit
-   * appends the remaining files to it instead of publishing a second one. */
-  partialBatchMsgId: number | null;
 }
 
-// The composer is one instance shared by every conversation, and an upload
-// outlives whichever conversation is on screen when it finishes — so the
-// draft lives here, keyed by conversation, instead of in component state
-// where a late callback would clear whatever conversation is open by then.
+// The composer is one instance shared by every conversation, and a batch's
+// upload outlives whichever conversation is on screen when it finishes (it's
+// owned by the outbox, see useMessageOutbox.ts) — so the draft lives here,
+// keyed by conversation, instead of in component state where a late callback
+// would clear whatever conversation is open by then.
 
-const EMPTY_DRAFT: ConversationDraft = { text: '', pendingFiles: [], attachError: null, upload: null, partialBatchMsgId: null };
+const EMPTY_DRAFT: ConversationDraft = { text: '', pendingFiles: [], attachError: null };
 const STORAGE_PREFIX = 'linkord:draft:v1:';
 const PERSIST_DELAY_MS = 300;
 

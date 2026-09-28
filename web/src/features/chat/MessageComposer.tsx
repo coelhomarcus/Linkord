@@ -10,14 +10,10 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { Textarea } from '@/shared/ui/primitives/textarea';
 import { Avatar } from '@/shared/Avatar';
 import { DocumentAttachmentCard } from '@/features/media/DocumentAttachmentCard';
-import { UploadProgressBar } from '@/shared/UploadProgressBar';
 import { useKeepPopoverWarm } from '@/shared/hooks/useKeepPopoverWarm';
-import { compressImageFile } from '@/shared/lib/compressImageFile';
 import { formatFileSize, formatSizeLimit } from '@/shared/lib/formatBytes';
 import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
-import { ApiError } from '@/shared/api/api';
-import { PartialAttachmentError } from './useAttachmentsUpload';
 import { readDraft, useConversationDraft, type PendingAttachment } from './conversationDrafts';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE } from '@/shared/types/protocol';
 import type { PublicUser } from '@/shared/types/protocol';
@@ -47,19 +43,15 @@ function getMentionQuery(text: string, cursor: number): { start: number; query: 
   return { start: atIndex, query: match[1] ?? '' };
 }
 
-// A retry that tries to extend the message and is told it can't (too old,
-// deleted, full) has to fall back to a fresh message for the remaining files.
-const UNRESUMABLE_TARGET_CODES = new Set(['target_message_too_old', 'target_message_not_found', 'too_many_attachments', 'not_your_message']);
-
 export interface MessageComposerHandle {
   addFiles: (files: File[]) => void;
 }
 
 export const MessageComposer = forwardRef<MessageComposerHandle, { conversationId: string }>(function MessageComposer({ conversationId }, ref) {
-  const { state, allUsers, conversations, sendChatMessage, sendAttachments, queueMessageWithFiles, sendTyping, replyingTo, setReplyingTo, compressImagesDefault, setCompressImagesDefault } = useRoom();
+  const { state, allUsers, conversations, sendChatMessage, queueMessageWithFiles, sendTyping, replyingTo, setReplyingTo, compressImagesDefault, setCompressImagesDefault } = useRoom();
   const accountId = state.me.userId ?? '';
   const [draft, updateDraft] = useConversationDraft(accountId, conversationId);
-  const { text, pendingFiles, attachError, upload } = draft;
+  const { text, pendingFiles, attachError } = draft;
   const setText = (next: string) => updateDraft(() => ({ text: next }));
   const [compressImages, setCompressImages] = useState(compressImagesDefault);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -82,7 +74,7 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
   const typingThrottleRef = useRef<number | null>(null); // Date.now() of the last emitted typing:true
   const typingIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
-  const disabled = !state.joined || upload !== null;
+  const disabled = !state.joined;
   const tooLong = text.length > MAX_MESSAGE_LEN;
   const canSubmit = !disabled && !tooLong && (text.trim().length > 0 || pendingFiles.length > 0);
 
@@ -207,11 +199,11 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
     setCompressImagesDefault(next);
   }
 
-  async function submit() {
+  function submit() {
     // read from the store, not this render: Enter and a click landing in the
     // same tick would otherwise both see the text as unsent
     const current = readDraft(accountId, conversationId);
-    if (!state.joined || current.upload) return;
+    if (!state.joined) return;
     const trimmed = current.text.trim();
     const batch = current.pendingFiles;
     if (!batch.length && !trimmed) return;
@@ -223,77 +215,17 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
     const clearReplyIfStillHere = () => { if (conversationIdRef.current === conversationId) setReplyingTo(null); };
 
     if (!batch.length) {
-      if (!sendChatMessage(conversationId, trimmed, replyTo)) {
-        updateDraft(() => ({ attachError: 'Sem conexão com o servidor. A mensagem não foi enviada; tente de novo quando reconectar.' }));
-        return;
-      }
+      sendChatMessage(conversationId, trimmed, replyTo);
       updateDraft(() => ({ text: '', attachError: null }));
       clearReplyIfStillHere();
       return;
     }
 
-    const resumeMsgId = current.partialBatchMsgId;
     // the batch is owned by the outbox from here: the field is free for the
-    // next message while the files upload
-    if (resumeMsgId == null && queueMessageWithFiles(conversationId, trimmed, replyTo, batch.map((item) => ({ file: item.file, compress: compressImages })))) {
-      updateDraft(() => ({ text: '', pendingFiles: [], attachError: null }));
-      clearReplyIfStillHere();
-      return;
-    }
-    // Mark the first file as "uploading" immediately, before the network
-    // round-trip, so the UI reacts the instant the user submits instead of
-    // waiting on the first progress event to arrive.
-    updateDraft(() => ({ attachError: null, upload: { activeFileId: batch[0]!.id, progress: 0 } }));
-    try {
-      const filesToSend = compressImages
-        ? await Promise.all(batch.map((item) => (
-            item.file.type.startsWith('image/') ? compressImageFile(item.file) : item.file
-          )))
-        : batch.map((item) => item.file);
-      await sendAttachments({
-        conversationId,
-        files: filesToSend,
-        // on resume the caption and reply already went out with the first file
-        caption: resumeMsgId != null ? '' : trimmed,
-        replyTo: resumeMsgId != null ? undefined : replyTo,
-        targetMsgId: resumeMsgId ?? undefined,
-        onProgress: (fileIndex, fraction) => {
-          updateDraft(() => ({ upload: { activeFileId: batch[fileIndex]?.id ?? null, progress: fraction } }));
-        },
-        onFileSent: (fileIndex, msgId) => {
-          const sentId = batch[fileIndex]!.id;
-          const createdMessage = resumeMsgId == null && fileIndex === 0;
-          updateDraft((d) => ({
-            pendingFiles: d.pendingFiles.filter((file) => file.id !== sentId),
-            ...(createdMessage ? { partialBatchMsgId: msgId, text: '' } : {}),
-          }));
-          if (createdMessage) clearReplyIfStillHere();
-        },
-      });
-      // typed after a partial failure: the resumed files carry no caption,
-      // so the text goes out as its own message rather than being dropped
-      if (resumeMsgId != null && trimmed) sendChatMessage(conversationId, trimmed, replyTo);
-      updateDraft(() => ({ partialBatchMsgId: null, text: '' }));
-      clearReplyIfStillHere();
-    } catch (err) {
-      if (err instanceof PartialAttachmentError) {
-        const failed = err.totalCount - err.failedIndex;
-        updateDraft(() => ({
-          attachError: failed === 1
-            ? 'Um anexo não foi enviado. Envie de novo para tentar só ele.'
-            : `${failed} anexos não foram enviados. Envie de novo para tentar só esses.`,
-        }));
-      } else if (resumeMsgId != null && err instanceof ApiError && UNRESUMABLE_TARGET_CODES.has(err.code)) {
-        updateDraft(() => ({
-          partialBatchMsgId: null,
-          attachError: 'Não deu para completar a mensagem anterior. Envie de novo para mandar os anexos restantes numa nova mensagem.',
-        }));
-      } else {
-        updateDraft(() => ({ attachError: err instanceof Error ? err.message : 'Falha ao enviar.' }));
-      }
-    } finally {
-      updateDraft(() => ({ upload: null }));
-    }
+    // next message while the files upload in the background
+    queueMessageWithFiles(conversationId, trimmed, replyTo, batch.map((item) => ({ file: item.file, compress: compressImages })));
+    updateDraft(() => ({ text: '', pendingFiles: [], attachError: null }));
+    clearReplyIfStillHere();
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
@@ -406,34 +338,26 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
             >
               {/* one scrolling row keeps the tray from eating the history on a phone */}
               <div className="flex gap-2 overflow-x-auto px-2 pt-2">
-                {pendingFiles.map((item) => {
-                  const uploading = upload?.activeFileId === item.id;
-                  return (
-                    <motion.div
-                      key={item.id}
-                      layout
-                      title={`${item.file.name} - ${formatFileSize(item.file.size)}`}
-                      className={cn(
-                        'relative flex-none overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]',
-                        item.previewUrl ? 'size-18' : 'flex w-56 items-center py-2.5 pl-2.5 pr-8'
-                      )}
-                    >
-                      {item.previewUrl ? (
-                        <img src={item.previewUrl} alt={item.file.name} className="size-full object-cover" />
-                      ) : (
-                        <DocumentAttachmentCard name={item.file.name} size={item.file.size} mime={item.file.type} className="min-w-0" />
-                      )}
-                      {uploading ? (
-                        <>
-                          <div className="absolute inset-0 bg-black/55" />
-                          <div className="absolute inset-x-1.5 bottom-1.5"><UploadProgressBar progress={upload?.progress ?? 0} /></div>
-                        </>
-                      ) : (
-                        <CloseButton variant="overlay" size="xs" label="Remover anexo" onClick={() => removeFile(item.id)} className="absolute right-1 top-1" />
-                      )}
-                    </motion.div>
-                  );
-                })}
+                {pendingFiles.map((item) => (
+                  <motion.div
+                    key={item.id}
+                    layout
+                    title={`${item.file.name} - ${formatFileSize(item.file.size)}`}
+                    className={cn(
+                      'relative flex-none overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]',
+                      item.previewUrl ? 'size-18' : 'flex w-56 items-center py-2.5 pl-2.5 pr-8'
+                    )}
+                  >
+                    {item.previewUrl ? (
+                      <img src={item.previewUrl} alt={item.file.name} className="size-full object-cover" />
+                    ) : (
+                      <DocumentAttachmentCard name={item.file.name} size={item.file.size} mime={item.file.type} className="min-w-0" />
+                    )}
+                    {/* uploading happens after submit, tracked by the outbox
+                        on the message row — a file here was never sent yet */}
+                    <CloseButton variant="overlay" size="xs" label="Remover anexo" onClick={() => removeFile(item.id)} className="absolute right-1 top-1" />
+                  </motion.div>
+                ))}
               </div>
             </motion.div>
           )}

@@ -69,17 +69,9 @@ describe('useChatMessages — envio correlacionado', () => {
     return { ...hook, sendWs };
   }
 
-  it('servidor antigo (sem protocolVersion): envia do jeito legado, sem chave', () => {
+  it('envia pela outbox e a confirmacao entra no historico uma vez so', () => {
     const { result, sendWs } = setupWith();
-    act(() => result.current.onWelcome(undefined));
-    act(() => { result.current.sendChatMessage('dm', 'oi'); });
-    expect(sendWs).toHaveBeenCalledWith({ t: 'chat', conversationId: 'dm', text: 'oi' });
-    expect(result.current.pendingByConversation.size).toBe(0);
-  });
-
-  it('servidor 3+: envia pela outbox e a confirmacao entra no historico uma vez so', () => {
-    const { result, sendWs } = setupWith();
-    act(() => result.current.onWelcome(3));
+    act(() => result.current.onWelcome());
     act(() => { result.current.sendChatMessage('dm', 'oi'); });
     const req = (sendWs.mock.calls.at(-1) as unknown as [{ requestId: string; clientMessageId: string }])[0];
     expect(result.current.pendingByConversation.get('dm')).toHaveLength(1);
@@ -160,7 +152,7 @@ describe('useChatMessages — janela de historico', () => {
 
   it('enviar a partir de uma janela antiga volta ao presente', () => {
     const { result, sendWs } = setupWindow();
-    act(() => result.current.onWelcome(5));
+    act(() => result.current.onWelcome());
     act(() => result.current.jumpToMessage('dm', 5));
     act(() => result.current.onConversationHistoryAround({ t: 'conversation-history-around', conversationId: 'dm', msgId: 5, messages: [message(5)], hasMoreBefore: false, hasMoreAfter: true }));
     act(() => { result.current.sendChatMessage('dm', 'oi'); });

@@ -10,15 +10,6 @@ interface InitResponse {
   totalChunks: number;
 }
 
-export interface ChunkedUploadOptions {
-  conversationId: string;
-  file: File;
-  caption: string;
-  replyTo?: number;
-  targetMsgId?: number;
-  onProgress?: (fraction: number) => void;
-}
-
 async function toApiError(res: Response): Promise<ApiError> {
   let body: unknown = null;
   try { body = await res.json(); } catch {  }
@@ -66,12 +57,17 @@ function wait(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-interface UploadRun extends ChunkedUploadOptions {
-  stage?: boolean;
+interface UploadRun {
+  conversationId: string;
+  file: File;
+  onProgress?: (fraction: number) => void;
   signal?: AbortSignal;
 }
 
-async function runUpload({ conversationId, file, caption, replyTo, targetMsgId, onProgress, stage, signal }: UploadRun): Promise<unknown> {
+/** Stages the file: uploaded in chunks, but not published to anyone. The
+ * message that carries it (with the whole batch) is created later by one
+ * correlated `chat` send — see stageFileInChunks below, its only caller. */
+async function runUpload({ conversationId, file, onProgress, signal }: UploadRun): Promise<unknown> {
   if (!conversationId) throw new ApiError(400, 'missing_conversation', 'Conversa não informada.');
   let initRes: Response;
   // several batches in a row can hit the server's per-minute cap on new
@@ -81,7 +77,7 @@ async function runUpload({ conversationId, file, caption, replyTo, targetMsgId, 
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversationId, fileName: file.name, mimeType: file.type || 'application/octet-stream', totalSize: file.size, caption, replyTo, ...(stage ? { stage: true } : {}) }),
+      body: JSON.stringify({ conversationId, fileName: file.name, mimeType: file.type || 'application/octet-stream', totalSize: file.size }),
       signal,
     });
     if (initRes.ok) break;
@@ -131,22 +127,22 @@ async function runUpload({ conversationId, file, caption, replyTo, targetMsgId, 
     throw err;
   }
 
-  // complete is safe to repeat in staged mode (the server answers a repeat
-  // with the same file), so a lost reply is retried instead of failing
+  // complete is safe to repeat (the server answers a repeat with the same
+  // staged file), so a lost reply is retried instead of failing the file
   for (let attempt = 0; ; attempt++) {
     try {
       const completeRes = await fetch(`/api/attachments/${uploadId}/complete`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(targetMsgId != null ? { targetMsgId } : {}),
+        body: JSON.stringify({}),
         signal,
       });
       if (!completeRes.ok) throw await toApiError(completeRes);
       return await completeRes.json();
     } catch (err) {
-      if (!stage || signal?.aborted || attempt >= MAX_CHUNK_RETRIES || !isRetryable(err)) {
-        if (stage) fetch(`/api/attachments/${uploadId}`, { method: 'DELETE', credentials: 'same-origin' }).catch(() => {});
+      if (signal?.aborted || attempt >= MAX_CHUNK_RETRIES || !isRetryable(err)) {
+        fetch(`/api/attachments/${uploadId}`, { method: 'DELETE', credentials: 'same-origin' }).catch(() => {});
         throw err;
       }
       await wait(RETRY_BASE_MS * 2 ** attempt, signal);
@@ -154,17 +150,10 @@ async function runUpload({ conversationId, file, caption, replyTo, targetMsgId, 
   }
 }
 
-/** Legacy path: the first file creates the message, later ones attach to it. */
-export async function uploadFileInChunks(options: ChunkedUploadOptions): Promise<number> {
-  const body = await runUpload(options) as { message?: { msgId: number } };
-  if (options.targetMsgId != null) return options.targetMsgId;
-  return body.message!.msgId;
-}
-
 /** Uploads the file without publishing it; the message that carries it is
  * created later, with the whole batch, by one correlated chat send. */
 export async function stageFileInChunks(options: { conversationId: string; file: File; onProgress?: (fraction: number) => void; signal?: AbortSignal }): Promise<StagedFile> {
-  const body = await runUpload({ ...options, caption: '', stage: true }) as { staged: StagedFile };
+  const body = await runUpload(options) as { staged: StagedFile };
   return body.staged;
 }
 

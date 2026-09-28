@@ -23,8 +23,11 @@ export interface Participant {
 
 export type ReactionEmoji = string;
 
-/** Wire protocol version this build speaks; the server refuses older ones (client_outdated). */
-export const PROTOCOL_VERSION = 3;
+/** Wire protocol version this build speaks; the server refuses older ones
+ * (client_outdated). Keep in sync with server/src/realtime/protocolVersion.ts
+ * — the server's MIN_PROTOCOL_VERSION now requires 5 (correlated sends,
+ * actions and reactions; staged-only attachments), with no legacy fallback. */
+export const PROTOCOL_VERSION = 5;
 
 export interface ChatReplyRef {
   msgId: number;

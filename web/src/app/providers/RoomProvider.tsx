@@ -17,7 +17,7 @@ import { useChatMessages } from '@/features/chat/useChatMessages';
 import { useTypingIndicator } from '@/state/hooks/useTypingIndicator';
 import { useMessageReactions } from '@/features/calls/useMessageReactions';
 import { useMessageSearch } from '@/features/chat/useMessageSearch';
-import { useAttachmentsUpload } from '@/features/chat/useAttachmentsUpload';
+import { useStorageUsage } from '@/features/chat/useStorageUsage';
 import { usePresence } from '@/state/hooks/usePresence';
 import { useCallLifecycle } from '@/features/calls/useCallLifecycle';
 import { useRoomSettings } from '@/features/settings/useRoomSettings';
@@ -29,8 +29,6 @@ import { logger } from '@/shared/lib/logger';
 import { ERROR_CODES } from '@/shared/api/errorCodes';
 
 const log = logger.child({ component: 'room' });
-
-export { PartialAttachmentError } from '@/features/chat/useAttachmentsUpload';
 
 export function RoomProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(roomReducer, initialRoomState);
@@ -101,7 +99,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   });
   const messageReactions = useMessageReactions(sendWs, myIdRef);
   const messageSearch = useMessageSearch(sendWs);
-  const attachmentsUpload = useAttachmentsUpload();
+  const attachmentsUpload = useStorageUsage();
 
   const { startSharing, stopSharing } = useScreenShare(livekitRoom, dispatch);
   const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch);
@@ -170,7 +168,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           participants: m.participants,
         });
         conversationsList.setInitial(m.conversations ?? []);
-        chatMessages.onWelcome(m.protocolVersion);
+        chatMessages.onWelcome();
         presence.setInitial(m.knownUsers, m.onlineUserIds, m.friendIds);
         attachmentsUpload.setStorageUsage(m.storageUsage);
         {
@@ -402,7 +400,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         clearPendingJumpTarget: chatMessages.clearPendingJumpTarget, jumpToMessage: chatMessages.jumpToMessage,
         searchResults: messageSearch.searchResults, searchLoading: messageSearch.searchLoading, searchError: messageSearch.searchError,
         clearSearchError: messageSearch.clearSearchError, searchMessages: messageSearch.searchMessages,
-        storageUsage: attachmentsUpload.storageUsage, sendAttachments: attachmentsUpload.sendAttachments,
+        storageUsage: attachmentsUpload.storageUsage,
       }}
     >
       {children}

@@ -6,14 +6,7 @@ import { createFakeRoomContextValue, renderWithRoom } from '@tests/fixtures/room
 import { RoomContext } from '@/state/RoomContext';
 import { MessageComposer } from '@/features/chat/MessageComposer';
 import { clearAllDrafts } from '@/features/chat/conversationDrafts';
-import { compressImageFile } from '@/shared/lib/compressImageFile';
 import type { Conversation, PublicUser } from '@/shared/types/protocol';
-import { ApiError } from '@/shared/api/api';
-import { PartialAttachmentError, type SendAttachmentsRequest } from '@/features/chat/useAttachmentsUpload';
-
-vi.mock('@/shared/lib/compressImageFile', () => ({
-  compressImageFile: vi.fn(async (file: File) => file),
-}));
 
 const joinedState = { ...initialRoomState, joined: true };
 
@@ -40,18 +33,6 @@ describe('MessageComposer', () => {
 
     expect(sendChatMessage).toHaveBeenCalledWith('conv-1', 'ola pessoal', undefined);
     expect(textarea).toHaveValue('');
-  });
-
-  it('sem conexao, a mensagem nao e descartada: o texto fica e um aviso aparece', async () => {
-    const user = userEvent.setup();
-    const sendChatMessage = vi.fn(() => false);
-    renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendChatMessage });
-
-    const textarea = screen.getByPlaceholderText('Mensagem');
-    await user.type(textarea, 'importante{Enter}');
-
-    expect(textarea).toHaveValue('importante');
-    expect(screen.getByText(/Sem conexão com o servidor/)).toBeInTheDocument();
   });
 
   it('shift+enter nao envia, so quebra linha', async () => {
@@ -149,11 +130,11 @@ describe('MessageComposer', () => {
     expect(sendChatMessage).not.toHaveBeenCalled();
   });
 
-  it('com o toggle ligado, comprime cada imagem antes de enviar', async () => {
+  it('com o toggle ligado, o lote vai para a outbox marcado para comprimir', async () => {
     const user = userEvent.setup();
-    const sendAttachments = vi.fn(async () => {});
+    const queueMessageWithFiles = vi.fn();
     const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, {
-      state: joinedState, compressImagesDefault: true, sendAttachments,
+      state: joinedState, compressImagesDefault: true, queueMessageWithFiles,
     });
     const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
     const original = fakeFile('foto.jpg', 'image/jpeg');
@@ -161,16 +142,14 @@ describe('MessageComposer', () => {
 
     await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
 
-    expect(compressImageFile).toHaveBeenCalledTimes(1);
-    expect(compressImageFile).toHaveBeenCalledWith(original);
-    expect(sendAttachments).toHaveBeenCalledWith(expect.objectContaining({ conversationId: 'conv-1', files: [original], caption: '' }));
+    expect(queueMessageWithFiles).toHaveBeenCalledWith('conv-1', '', undefined, [{ file: original, compress: true }]);
   });
 
-  it('com o toggle desligado, envia os arquivos originais sem comprimir', async () => {
+  it('com o toggle desligado, o lote vai para a outbox sem marcar compressao', async () => {
     const user = userEvent.setup();
-    const sendAttachments = vi.fn(async () => {});
+    const queueMessageWithFiles = vi.fn();
     const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, {
-      state: joinedState, compressImagesDefault: false, sendAttachments,
+      state: joinedState, compressImagesDefault: false, queueMessageWithFiles,
     });
     const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
     const original = fakeFile('foto.jpg', 'image/jpeg');
@@ -178,16 +157,14 @@ describe('MessageComposer', () => {
 
     await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
 
-    expect(compressImageFile).not.toHaveBeenCalled();
-    expect(sendAttachments).toHaveBeenCalledWith(expect.objectContaining({ conversationId: 'conv-1', files: [original], caption: '' }));
+    expect(queueMessageWithFiles).toHaveBeenCalledWith('conv-1', '', undefined, [{ file: original, compress: false }]);
   });
 
-  it('servidor com lotes preparados: o envio vai para a outbox e o campo fica livre na hora', async () => {
+  it('o envio vai para a outbox e o campo fica livre na hora', async () => {
     const user = userEvent.setup();
-    const sendAttachments = vi.fn(async () => {});
-    const queueMessageWithFiles = vi.fn(() => true);
+    const queueMessageWithFiles = vi.fn();
     const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, {
-      state: joinedState, compressImagesDefault: true, sendAttachments, queueMessageWithFiles,
+      state: joinedState, compressImagesDefault: true, queueMessageWithFiles,
     });
     const doc = fakeFile('doc.pdf', 'application/pdf');
     await user.upload(container.querySelector<HTMLInputElement>('input[type="file"]')!, doc);
@@ -195,98 +172,25 @@ describe('MessageComposer', () => {
     await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
 
     expect(queueMessageWithFiles).toHaveBeenCalledWith('conv-1', 'segue', undefined, [{ file: doc, compress: true }]);
-    expect(sendAttachments).not.toHaveBeenCalled();
     expect(screen.getByRole('textbox')).toHaveValue('');
     expect(screen.getByRole('textbox')).toBeEnabled();
+    // the tray unmounts via a framer-motion exit animation, not synchronously
+    await waitFor(() => expect(screen.queryByText('doc.pdf')).not.toBeInTheDocument());
   });
 
   it('respondendo a uma mensagem, o envio de anexos leva a referencia da resposta', async () => {
     const user = userEvent.setup();
-    const sendAttachments = vi.fn(async () => {});
+    const queueMessageWithFiles = vi.fn();
     const replyingTo = { msgId: 42, conversationId: 'conv-1', id: 'u2', name: 'Ana', avatar: '', text: 'oi', ts: 0 };
     const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, {
-      state: joinedState, compressImagesDefault: false, sendAttachments, replyingTo,
+      state: joinedState, compressImagesDefault: false, queueMessageWithFiles, replyingTo,
     });
     const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
     await user.upload(input, fakeFile('doc.pdf', 'application/pdf'));
 
     await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
 
-    expect(sendAttachments).toHaveBeenCalledWith(expect.objectContaining({ replyTo: 42 }));
-  });
-
-  it('falha no meio do lote: so os arquivos que faltaram voltam, e o reenvio completa a mesma mensagem', async () => {
-    const user = userEvent.setup();
-    const sendChatMessage = vi.fn(() => true);
-    const sendAttachments = vi.fn<(req: SendAttachmentsRequest) => Promise<void>>(async ({ onFileSent }) => {
-      onFileSent?.(0, 99);
-      throw new PartialAttachmentError(99, 1, 2, new Error('rede'));
-    });
-    const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, {
-      state: joinedState, compressImagesDefault: false, sendAttachments, sendChatMessage,
-    });
-    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
-    const first = fakeFile('um.pdf', 'application/pdf');
-    const second = fakeFile('dois.pdf', 'application/pdf');
-    await user.upload(input, [first, second]);
-    await user.type(screen.getByRole('textbox'), 'legenda');
-
-    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
-
-    expect(await screen.findByText('Um anexo não foi enviado. Envie de novo para tentar só ele.')).toBeInTheDocument();
-    expect(screen.queryByText('um.pdf')).not.toBeInTheDocument();
-    expect(screen.getByText('dois.pdf')).toBeInTheDocument();
-    // the caption went out with the first file
-    expect(screen.getByRole('textbox')).toHaveValue('');
-
-    sendAttachments.mockImplementationOnce(async () => {});
-    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
-
-    expect(sendAttachments).toHaveBeenLastCalledWith(expect.objectContaining({ files: [second], caption: '', targetMsgId: 99 }));
-    expect(sendChatMessage).not.toHaveBeenCalled();
-  });
-
-  it('falha no primeiro arquivo: nada foi publicado, texto e arquivos continuam para reenviar do zero', async () => {
-    const user = userEvent.setup();
-    const sendAttachments = vi.fn(async () => { throw new ApiError(500, 'internal_error', 'Falhou.'); });
-    const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, {
-      state: joinedState, compressImagesDefault: false, sendAttachments,
-    });
-    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
-    await user.upload(input, [fakeFile('um.pdf', 'application/pdf'), fakeFile('dois.pdf', 'application/pdf')]);
-    await user.type(screen.getByRole('textbox'), 'legenda');
-
-    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
-
-    expect(await screen.findByText('Falhou.')).toBeInTheDocument();
-    expect(screen.getByText('um.pdf')).toBeInTheDocument();
-    expect(screen.getByText('dois.pdf')).toBeInTheDocument();
-    expect(screen.getByRole('textbox')).toHaveValue('legenda');
-
-    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
-    expect(sendAttachments).toHaveBeenLastCalledWith(expect.objectContaining({ caption: 'legenda', targetMsgId: undefined }));
-  });
-
-  it('mensagem anterior nao aceita mais anexos: o proximo envio cria uma mensagem nova', async () => {
-    const user = userEvent.setup();
-    const sendAttachments = vi.fn<(req: SendAttachmentsRequest) => Promise<void>>(async ({ onFileSent }) => {
-      onFileSent?.(0, 99);
-      throw new PartialAttachmentError(99, 1, 2, new Error('rede'));
-    });
-    const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, {
-      state: joinedState, compressImagesDefault: false, sendAttachments,
-    });
-    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
-    await user.upload(input, [fakeFile('um.pdf', 'application/pdf'), fakeFile('dois.pdf', 'application/pdf')]);
-    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
-
-    sendAttachments.mockImplementationOnce(async () => { throw new ApiError(400, 'target_message_too_old', 'Antiga.'); });
-    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
-    expect(await screen.findByText(/Não deu para completar a mensagem anterior/)).toBeInTheDocument();
-
-    sendAttachments.mockImplementationOnce(async () => {});
-    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
-    expect(sendAttachments).toHaveBeenLastCalledWith(expect.objectContaining({ targetMsgId: undefined }));
+    expect(queueMessageWithFiles).toHaveBeenCalledWith('conv-1', '', 42, expect.anything());
   });
 });
 
@@ -466,41 +370,28 @@ describe('MessageComposer — rascunho por conversa', () => {
     expect(screen.getByText('um.pdf')).toBeInTheDocument();
   });
 
-  it('upload que termina depois da troca de conversa nao apaga o texto da conversa nova', async () => {
+  it('enviar um lote libera a conversa na hora: trocar em seguida nao apaga nem reenvia nada', async () => {
     const user = userEvent.setup();
-    let finish!: () => void;
     const setReplyingTo = vi.fn();
-    const sendAttachments = vi.fn<(req: SendAttachmentsRequest) => Promise<void>>(({ onFileSent }) => new Promise((resolve) => {
-      finish = () => { onFileSent?.(0, 5); resolve(); };
-    }));
-    const { container, switchTo } = renderComposer('conv-1', { sendAttachments, setReplyingTo });
+    const queueMessageWithFiles = vi.fn();
+    const { container, switchTo } = renderComposer('conv-1', { queueMessageWithFiles, setReplyingTo });
     await user.upload(container.querySelector<HTMLInputElement>('input[type="file"]')!, fakeFile('um.pdf', 'application/pdf'));
     await user.type(screen.getByRole('textbox'), 'legenda');
     await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
 
+    // ownership already moved to the outbox — the draft is clean before the switch
+    expect(queueMessageWithFiles).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('textbox')).toHaveValue('');
+    // the tray unmounts via a framer-motion exit animation, not synchronously
+    await waitFor(() => expect(screen.queryByText('um.pdf')).not.toBeInTheDocument());
+
     switchTo('conv-2');
     await user.type(screen.getByRole('textbox'), 'texto novo');
-    await act(async () => finish());
-
-    expect(screen.getByRole('textbox')).toHaveValue('texto novo');
-    expect(setReplyingTo).not.toHaveBeenCalled();
     switchTo('conv-1');
+
     expect(screen.getByRole('textbox')).toHaveValue('');
-    await waitFor(() => expect(screen.queryByText('um.pdf')).not.toBeInTheDocument());
-  });
-
-  it('upload em andamento numa conversa nao bloqueia o envio em outra', async () => {
-    const user = userEvent.setup();
-    const sendChatMessage = vi.fn(() => true);
-    const sendAttachments = vi.fn(() => new Promise<void>(() => {}));
-    const { container, switchTo } = renderComposer('conv-1', { sendAttachments, sendChatMessage });
-    await user.upload(container.querySelector<HTMLInputElement>('input[type="file"]')!, fakeFile('um.pdf', 'application/pdf'));
-    await user.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
-
     switchTo('conv-2');
-    await user.type(screen.getByRole('textbox'), 'oi{Enter}');
-
-    expect(sendChatMessage).toHaveBeenCalledWith('conv-2', 'oi', undefined);
+    expect(screen.getByRole('textbox')).toHaveValue('texto novo');
   });
 
   it('texto salvo no sessionStorage volta depois de recarregar a pagina', () => {

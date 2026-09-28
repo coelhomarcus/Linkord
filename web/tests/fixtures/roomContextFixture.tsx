@@ -87,11 +87,11 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     clearGroupActionError: noop,
     accessNotice: null,
     clearAccessNotice: noop,
-    sendChatMessage: () => true,
+    sendChatMessage: noop,
     pendingByConversation: new Map(),
     retryPendingMessage: noop,
     discardPendingMessage: noop,
-    queueMessageWithFiles: () => false,
+    queueMessageWithFiles: noop,
     deleteChatMessage: asyncNoop,
     editChatMessage: asyncNoop,
     deletingMsgIds: new Set(),
@@ -113,7 +113,6 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     clearSearchError: noop,
     searchMessages: noop,
     storageUsage: { totalBytes: 0, totalFiles: 0, maxBytes: 0 },
-    sendAttachments: asyncNoop,
   };
   return { ...base, ...overrides };
 }

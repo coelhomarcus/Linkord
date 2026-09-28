@@ -4,7 +4,6 @@ import type { Room } from 'livekit-client';
 import type { ChatMessage, ClientMessage, Conversation, PublicUser, ReactionEmoji, SearchResult, StorageUsage } from '@/shared/types/protocol';
 import type { RoomAction, RoomState } from './roomReducer';
 import type { TileKind } from '../features/calls/tileTypes';
-import type { SendAttachmentsRequest } from '@/features/chat/useAttachmentsUpload';
 import type { OutboxEntry } from '@/features/chat/useMessageOutbox';
 
 export interface ReactionEvent {
@@ -132,13 +131,13 @@ export interface RoomContextValue {
   accessNotice: string | null;
   clearAccessNotice: () => void;
   /** False when nothing was sent (empty text, or the socket is down). */
-  sendChatMessage: (conversationId: string, text: string, replyTo?: number) => boolean;
+  sendChatMessage: (conversationId: string, text: string, replyTo?: number) => void;
   /** Your sends the server hasn't confirmed yet, per conversation, in order. */
   pendingByConversation: Map<string, OutboxEntry[]>;
   retryPendingMessage: (clientMessageId: string) => void;
-  /** Sends a message with files through the outbox; false when the server
-   * doesn't support staged batches (use sendAttachments then). */
-  queueMessageWithFiles: (conversationId: string, text: string, replyTo: number | undefined, files: { file: File; compress: boolean }[]) => boolean;
+  /** Sends a message with files through the outbox: staged, then published
+   * with the message once every file is ready. */
+  queueMessageWithFiles: (conversationId: string, text: string, replyTo: number | undefined, files: { file: File; compress: boolean }[]) => void;
   discardPendingMessage: (clientMessageId: string) => void;
   /** Settles once the server answered (protocol 4); a failure lands in
    * messageActionErrors. */
@@ -165,7 +164,6 @@ export interface RoomContextValue {
   clearSearchError: () => void;
   searchMessages: (query: string, conversationId?: string) => void;
   storageUsage: StorageUsage;
-  sendAttachments: (request: SendAttachmentsRequest) => Promise<void>;
 }
 
 export const RoomContext = createContext<RoomContextValue | null>(null);
