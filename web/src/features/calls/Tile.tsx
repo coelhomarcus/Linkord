@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { ConnectionQuality } from 'livekit-client';
-import { HeadphoneOff, MicOff, Settings, SignalLow, SignalZero, VolumeX } from 'lucide-react';
+import { HeadphoneOff, Loader2, MicOff, Settings, SignalLow, SignalZero, VolumeX } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { useParticipantMedia, useAttachTrack, useIsSpeaking, useConnectionQuality } from './useLiveKitTrack';
 import { useMuteForMe } from './useMuteForMe';
@@ -15,12 +15,15 @@ interface TileProps {
   participantId: string;
   kind: TileKind;
   isMine: boolean;
+  /** Publication exists and isn't muted, but its track hasn't attached yet —
+   * see TileDescriptor. Only meaningful while `kind === 'avatar'`. */
+  loading?: boolean;
   fit?: 'cover' | 'contain';
   avatarSize?: number;
   nameSize?: 'body' | 'label';
 }
 
-export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 96, nameSize = 'body' }: TileProps) {
+export function Tile({ participantId, kind, isMine, loading = false, fit = 'cover', avatarSize = 96, nameSize = 'body' }: TileProps) {
   const { state, dispatch, openTileMenu, tileDomRegistry, deafened, showTileBanners } = useRoom();
   const key = tileKey(participantId, kind);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -145,7 +148,14 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
         <video ref={videoRef} autoPlay playsInline muted={isMine} className={`relative h-full w-full object-cover ${kind === 'screen' ? 'bg-black' : ''}`} />
       ) : (
         <div className="relative flex h-full w-full flex-col items-center justify-center gap-2.5">
-          <Avatar id={participantId} name={name} avatar={avatar} poster={avatarPoster} frozen={!isSpeaking} avatarColor={avatarColor} size={avatarSize} />
+          <Avatar id={participantId} name={name} avatar={avatar} poster={avatarPoster} frozen={!isSpeaking} avatarColor={avatarColor} size={avatarSize} className={loading ? 'opacity-50' : undefined} />
+          {/* the camera is on and about to show video — just not here yet
+              (still subscribing); a plain avatar would read as "camera off" */}
+          {loading && (
+            <span aria-hidden className="absolute" style={{ width: avatarSize, height: avatarSize }}>
+              <Loader2 size={Math.max(20, avatarSize / 3)} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 animate-spin text-text-muted" />
+            </span>
+          )}
         </div>
       )}
 

@@ -28,6 +28,16 @@ export function activeTrack(participant: Participant, source: Track.Source): LKT
   return pub && !pub.isMuted ? (pub.track ?? null) : null;
 }
 
+/** True while a publication exists and isn't muted, but its track hasn't
+ * attached yet — e.g. right after a remote participant connects, before
+ * subscription finishes. Distinct from "no publication" (camera/share
+ * genuinely off) and from "muted" — both of those also return null from
+ * `activeTrack`, but only this one means "it's coming, just not here yet". */
+export function isTrackPending(participant: Participant, source: Track.Source): boolean {
+  const pub = participant.getTrackPublication(source);
+  return !!pub && !pub.isMuted && !pub.track;
+}
+
 function readMedia(room: Room, identity: string): ParticipantMedia {
   const participant = getParticipant(room, identity);
   if (!participant) return EMPTY_MEDIA;

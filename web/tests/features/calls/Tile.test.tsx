@@ -55,3 +55,19 @@ describe('Tile — indicador de mutado (para mim)', () => {
     expect(screen.queryByLabelText('Reativar áudio')).not.toBeInTheDocument();
   });
 });
+
+describe('Tile — carregando (publicacao sem track ainda)', () => {
+  it('mostra um indicador de carregamento sobre o avatar, nao so um avatar comum', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} loading />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+    });
+    expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+  });
+
+  it('sem loading, o avatar aparece normal e sem spinner', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+    });
+    expect(container.querySelector('.animate-spin')).not.toBeInTheDocument();
+  });
+});

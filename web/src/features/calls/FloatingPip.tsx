@@ -91,7 +91,7 @@ export function FloatingPip({ allIds, onExpand }: FloatingPipProps) {
       style={dragPos ? { left: dragPos.x, top: dragPos.y } : undefined}
     >
       <div className="pointer-events-none absolute inset-0">
-        <Tile participantId={current.participantId} kind={current.kind} isMine={current.participantId === state.me.id} />
+        <Tile participantId={current.participantId} kind={current.kind} loading={current.loading} isMine={current.participantId === state.me.id} />
       </div>
       <div onPointerDown={handlePointerDown} className="absolute inset-0 cursor-move touch-none select-none" />
 

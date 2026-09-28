@@ -34,6 +34,7 @@ function descriptors(count: number): TileDescriptor[] {
     key: `p-${index}:avatar`,
     participantId: `p-${index}`,
     kind: 'avatar' as const,
+    loading: false,
   }));
 }
 

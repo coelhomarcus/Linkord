@@ -79,6 +79,7 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
       <Tile
         participantId={d.participantId}
         kind={d.kind}
+        loading={d.loading}
         isMine={isMine(d.participantId)}
         fit={isFocused ? 'contain' : 'cover'}
         avatarSize={isFocused ? 104 : focus ? 32 : 96}
