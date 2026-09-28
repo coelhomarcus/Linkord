@@ -1,6 +1,5 @@
 import { forwardRef, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, ClipboardEvent, KeyboardEvent as ReactKeyboardEvent, SyntheticEvent } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
 import { ArrowUp, ImagePlus, Paperclip, Plus, Reply, Smile } from 'lucide-react';
 import { CloseButton } from '@/shared/ui/primitives/close-button';
 import { Button } from '@/shared/ui/primitives/button';
@@ -9,9 +8,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/primitives/
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/shared/ui/primitives/dropdown-menu';
 import { Textarea } from '@/shared/ui/primitives/textarea';
 import { Avatar } from '@/shared/Avatar';
-import { DocumentAttachmentCard } from '@/features/media/DocumentAttachmentCard';
+import { ComposerAttachmentTray } from './ComposerAttachmentTray';
 import { useKeepPopoverWarm } from '@/shared/hooks/useKeepPopoverWarm';
-import { formatFileSize, formatSizeLimit } from '@/shared/lib/formatBytes';
+import { formatSizeLimit } from '@/shared/lib/formatBytes';
 import { cn } from '@/shared/lib/utils';
 import { useRoom } from '@/state/RoomContext';
 import { readDraft, useConversationDraft, type PendingAttachment } from './conversationDrafts';
@@ -326,42 +325,7 @@ export const MessageComposer = forwardRef<MessageComposerHandle, { conversationI
           </div>
         )}
 
-        <AnimatePresence initial={false}>
-          {pendingFiles.length > 0 && (
-            <motion.div
-              key="attachments"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.18, ease: 'easeOut' }}
-              className="overflow-hidden"
-            >
-              {/* one scrolling row keeps the tray from eating the history on a phone */}
-              <div className="flex gap-2 overflow-x-auto px-2 pt-2">
-                {pendingFiles.map((item) => (
-                  <motion.div
-                    key={item.id}
-                    layout
-                    title={`${item.file.name} - ${formatFileSize(item.file.size)}`}
-                    className={cn(
-                      'relative flex-none overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]',
-                      item.previewUrl ? 'size-18' : 'flex w-56 items-center py-2.5 pl-2.5 pr-8'
-                    )}
-                  >
-                    {item.previewUrl ? (
-                      <img src={item.previewUrl} alt={item.file.name} className="size-full object-cover" />
-                    ) : (
-                      <DocumentAttachmentCard name={item.file.name} size={item.file.size} mime={item.file.type} className="min-w-0" />
-                    )}
-                    {/* uploading happens after submit, tracked by the outbox
-                        on the message row — a file here was never sent yet */}
-                    <CloseButton variant="overlay" size="xs" label="Remover anexo" onClick={() => removeFile(item.id)} className="absolute right-1 top-1" />
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <ComposerAttachmentTray files={pendingFiles} onRemove={removeFile} fallbackFocusRef={textareaRef} />
 
         {attachError && <p role="alert" className="mx-2 mt-2 rounded-lg border border-red/20 bg-red/10 px-3 py-2 text-label text-red">{attachError}</p>}
 

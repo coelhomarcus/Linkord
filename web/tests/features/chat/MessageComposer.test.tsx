@@ -175,7 +175,7 @@ describe('MessageComposer', () => {
     expect(screen.getByRole('textbox')).toHaveValue('');
     expect(screen.getByRole('textbox')).toBeEnabled();
     // the tray unmounts via a framer-motion exit animation, not synchronously
-    await waitFor(() => expect(screen.queryByText('doc.pdf')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByTitle('doc.pdf')).not.toBeInTheDocument());
   });
 
   it('respondendo a uma mensagem, o envio de anexos leva a referencia da resposta', async () => {
@@ -365,9 +365,9 @@ describe('MessageComposer — rascunho por conversa', () => {
 
     switchTo('conv-2');
     // the tray has an exit animation, so the node leaves a moment later
-    await waitFor(() => expect(screen.queryByText('um.pdf')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByTitle('um.pdf')).not.toBeInTheDocument());
     switchTo('conv-1');
-    expect(screen.getByText('um.pdf')).toBeInTheDocument();
+    expect(screen.getByTitle('um.pdf')).toBeInTheDocument();
   });
 
   it('enviar um lote libera a conversa na hora: trocar em seguida nao apaga nem reenvia nada', async () => {
@@ -383,7 +383,7 @@ describe('MessageComposer — rascunho por conversa', () => {
     expect(queueMessageWithFiles).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('textbox')).toHaveValue('');
     // the tray unmounts via a framer-motion exit animation, not synchronously
-    await waitFor(() => expect(screen.queryByText('um.pdf')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByTitle('um.pdf')).not.toBeInTheDocument());
 
     switchTo('conv-2');
     await user.type(screen.getByRole('textbox'), 'texto novo');

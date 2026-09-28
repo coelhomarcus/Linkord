@@ -1,3 +1,4 @@
+import { forwardRef } from "react"
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 import { X } from "lucide-react"
@@ -28,15 +29,13 @@ const closeButtonVariants = cva(
 
 const ICON_SIZE = { xs: 13, sm: 16, md: 18 } as const
 
-function CloseButton({
-  className,
-  variant = "ghost",
-  size = "sm",
-  label = "Fechar",
-  ...props
-}: Omit<ButtonPrimitive.Props, "children"> & VariantProps<typeof closeButtonVariants> & { label?: string }) {
+const CloseButton = forwardRef<
+  HTMLButtonElement,
+  Omit<ButtonPrimitive.Props, "children"> & VariantProps<typeof closeButtonVariants> & { label?: string }
+>(function CloseButton({ className, variant = "ghost", size = "sm", label = "Fechar", ...props }, ref) {
   return (
     <ButtonPrimitive
+      ref={ref}
       data-slot="close-button"
       aria-label={label}
       className={cn(closeButtonVariants({ variant, size }), className)}
@@ -45,6 +44,6 @@ function CloseButton({
       <X size={ICON_SIZE[size ?? "sm"]} aria-hidden />
     </ButtonPrimitive>
   )
-}
+})
 
 export { CloseButton }
