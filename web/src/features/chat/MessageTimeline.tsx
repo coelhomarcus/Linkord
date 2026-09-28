@@ -18,6 +18,7 @@ const AT_END_THRESHOLD = 80;
 // Rows from an edge at which the next page is requested.
 const PAGE_TRIGGER_ROWS = 3;
 const HIGHLIGHT_MS = 1500;
+const PREPEND_SETTLE_FRAMES = 3;
 
 /** First guess at a row's height before it's measured; only affects how
  * far off the scrollbar is until then. */
@@ -139,6 +140,7 @@ export function MessageTimeline({ surfaceId = 'main', conversationId, onReply, o
     paddingStart: 12,
     paddingEnd: bottomPadding,
     rangeExtractor,
+    useAnimationFrameWithResizeObserver: true,
   });
   const virtualItems = virtualizer.getVirtualItems();
 
@@ -188,11 +190,72 @@ export function MessageTimeline({ surfaceId = 'main', conversationId, onReply, o
 
   const firstIndex = virtualItems[0]?.index ?? 0;
   const lastIndex = virtualItems[virtualItems.length - 1]?.index ?? 0;
+
+  // After an older page lands, the virtualizer moves the scroll position to
+  // keep the reader's row in place — in WebKit a frame or so after the
+  // render. Asking for the next page in that gap (still "at the top") made
+  // it anchor that page on the uncorrected position and lose the first
+  // correction; so the next one waits until the position has settled.
+  //
+  // The virtualizer anchors on whatever row sits at the scroll offset, and at
+  // the very top that is a date divider — which, unlike a message, moves: an
+  // older page of the same day puts that day's divider in front of it. So the
+  // first visible MESSAGE is tracked too, and after a prepend it is put back
+  // exactly where it was if the virtualizer's own anchoring missed.
+  const messageAnchorRef = useRef<{ key: string; offset: number } | null>(null);
+  const itemsRef = useRef(items);
+  const virtualizerRef = useRef(virtualizer);
+  useLayoutEffect(() => { itemsRef.current = items; virtualizerRef.current = virtualizer; });
+  const captureMessageAnchor = useCallback(() => {
+    const scrollTop = scrollRef.current?.scrollTop ?? 0;
+    const row = virtualizer.getVirtualItems().find((v) => items[v.index]?.type === 'message' && v.end > scrollTop);
+    messageAnchorRef.current = row ? { key: String(row.key), offset: scrollTop - row.start } : null;
+  }, [virtualizer, items]);
+
+  // the first MESSAGE, not the first item: a same-day older page leaves the
+  // leading date divider's key unchanged
+  const firstKey = items.find((item) => item.type === 'message')?.key;
+  const prevFirstKeyRef = useRef(firstKey);
+  const [settlingPrepend, setSettlingPrepend] = useState(false);
+  const settlingRef = useRef(false);
+  useEffect(() => { settlingRef.current = settlingPrepend; }, [settlingPrepend]);
+  const captureMessageAnchorRef = useRef(captureMessageAnchor);
+  useEffect(() => { captureMessageAnchorRef.current = captureMessageAnchor; }, [captureMessageAnchor]);
+  useLayoutEffect(() => {
+    if (firstKey === prevFirstKeyRef.current) return;
+    prevFirstKeyRef.current = firstKey;
+    const anchor = messageAnchorRef.current;
+    setSettlingPrepend(true);
+    let frames = 0;
+    // latest items/measurements through refs: this must keep running across
+    // the re-renders the prepend itself causes
+    const restore = () => {
+      if (!anchor) return;
+      const index = itemsRef.current.findIndex((item) => item.key === anchor.key);
+      const start = index >= 0 ? virtualizerRef.current.measurementsCache[index]?.start : undefined;
+      if (start === undefined) return;
+      const expected = start + anchor.offset;
+      const el = scrollRef.current;
+      // written to the element, not through the virtualizer: in WebKit its
+      // scrollToOffset here left its own offset out of step with the real
+      // one (it kept rendering the top rows); the native scroll event this
+      // fires is what it listens to anyway
+      if (el && Math.abs(el.scrollTop - expected) > 1) el.scrollTop = expected;
+    };
+    restore();
+    let handle = requestAnimationFrame(function tick() {
+      restore();
+      if (++frames < PREPEND_SETTLE_FRAMES) { handle = requestAnimationFrame(tick); return; }
+      setSettlingPrepend(false);
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [firstKey]);
+
   useEffect(() => {
     if (!ready || !items.length) return;
-    if (firstIndex <= PAGE_TRIGGER_ROWS && hasMoreBefore && !isLoadingOlder) loadOlderMessages(conversationId);
+    if (firstIndex <= PAGE_TRIGGER_ROWS && hasMoreBefore && !isLoadingOlder && !settlingPrepend) loadOlderMessages(conversationId);
     if (lastIndex >= items.length - 1 - PAGE_TRIGGER_ROWS && hasMoreAfter && !isLoadingNewer) loadNewerMessages(conversationId);
-  }, [ready, firstIndex, lastIndex, items.length, hasMoreBefore, hasMoreAfter, isLoadingOlder, isLoadingNewer, loadOlderMessages, loadNewerMessages, conversationId]);
+  }, [ready, firstIndex, lastIndex, items.length, hasMoreBefore, hasMoreAfter, isLoadingOlder, isLoadingNewer, settlingPrepend, loadOlderMessages, loadNewerMessages, conversationId]);
 
   // "At the present" drives the new-messages pill: messages appended while
   // reading above are counted instead of yanking the view down.
@@ -206,6 +269,7 @@ export function MessageTimeline({ surfaceId = 'main', conversationId, onReply, o
       setAtEnd(end);
       if (end) setUnseen(0);
       if (!readyRef.current) return;
+      if (!settlingRef.current) captureMessageAnchorRef.current();
       const top = virtualizer.getVirtualItemForOffset(el.scrollTop);
       if (top) saveReadingPosition(surfaceId, conversationId, { key: String(top.key), offset: el.scrollTop - top.start, atEnd: end });
     };
