@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
+import { RoomContext } from '@/state/RoomContext';
+import { createFakeRoomContextValue, renderWithRoom } from '@tests/fixtures/roomContextFixture';
 import type { TileDescriptor } from '@/features/calls/tileTypes';
 import { TileGrid } from '@/features/calls/TileGrid';
 
@@ -39,21 +40,34 @@ function descriptors(count: number): TileDescriptor[] {
 }
 
 describe('TileGrid', () => {
-  it('usa uma única linha real para dois tiles', () => {
-    const { container } = renderWithRoom(<TileGrid descriptors={descriptors(2)} focusedId={null} />);
+  it('lista plana: cada tile e filho direto do grid, sem wrapper de linha', () => {
+    const { container } = renderWithRoom(<TileGrid descriptors={descriptors(5)} focusedId={null} />);
     const grid = container.querySelector('[data-tile-grid]');
 
-    expect(grid?.children).toHaveLength(1);
-    expect(grid?.children[0]?.children).toHaveLength(2);
+    expect(grid?.children).toHaveLength(5);
+    expect(container.querySelectorAll('[data-tile-row]')).toHaveLength(0);
   });
 
-  it('mantém os dois tiles da última linha na mesma linha para cinco tiles', () => {
+  it('o grid normal usa flex-wrap centralizado (o CSS cuida de centralizar a ultima linha, sem JS agrupando por linha)', () => {
     const { container } = renderWithRoom(<TileGrid descriptors={descriptors(5)} focusedId={null} />);
-    const rows = container.querySelectorAll('[data-tile-row]');
+    const grid = container.querySelector('[data-tile-grid]');
 
-    expect(rows).toHaveLength(2);
-    expect(rows[0]?.children).toHaveLength(3);
-    expect(rows[1]?.children).toHaveLength(2);
+    expect(grid).toHaveClass('flex', 'flex-wrap', 'justify-center');
+  });
+
+  it('trocar a quantidade de tiles nao remonta os que ja existiam (mesmo no DOM, so um pai)', () => {
+    const value = createFakeRoomContextValue();
+    const { container, rerender } = renderWithRoom(<TileGrid descriptors={descriptors(3)} focusedId={null} />);
+    const firstTileBefore = container.querySelector('[data-testid="tile-p-0"]');
+
+    rerender(
+      <RoomContext.Provider value={value}>
+        <TileGrid descriptors={descriptors(4)} focusedId={null} />
+      </RoomContext.Provider>
+    );
+    const firstTileAfter = container.querySelector('[data-testid="tile-p-0"]');
+
+    expect(firstTileAfter).toBe(firstTileBefore);
   });
 
   it.each([2, 3, 5])('centraliza as miniaturas no modo de foco com %i miniaturas', (thumbnailCount) => {

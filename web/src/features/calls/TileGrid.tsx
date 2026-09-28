@@ -1,36 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRoom } from '../../state/RoomContext';
 import { Tile } from './Tile';
+import { fitGrid, gridGap } from './callLayoutMetrics';
+import { cn } from '@/shared/lib/utils';
 import type { TileDescriptor } from './tileTypes';
 
 interface TileGridProps {
   descriptors: TileDescriptor[];
   focusedId: string | null;
+  /** 220 in the normal grid, 148 in a compact stage (a call sidebar) — see
+   * the calls redesign plan §5.2. Below this, fitGrid still returns its
+   * best candidate (never hides anyone), just flagged `meetsMinimum: false`
+   * for a future caller to act on (switching to focus mode is E6's job). */
+  minTileWidth?: number;
 }
 
 const THUMB_W = 160;
 const THUMB_H = 90;
-
-const TILE_ASPECT_RATIO = 16 / 9;
 const GRID_GAP = 12;
+const DEFAULT_MIN_TILE_WIDTH = 220;
 
-function referenceCount(n: number): number {
-  if (n <= 1) return n;
-  return Math.max(n, 4);
-}
-
-function fitTileSize(cols: number, rows: number, containerW: number, containerH: number): { tileW: number; tileH: number } {
-  if (containerW <= 0 || containerH <= 0) return { tileW: 0, tileH: 0 };
-  let tileW = (containerW - GRID_GAP * (cols - 1)) / cols;
-  let tileH = tileW / TILE_ASPECT_RATIO;
-  if (tileH * rows + GRID_GAP * (rows - 1) > containerH) {
-    tileH = (containerH - GRID_GAP * (rows - 1)) / rows;
-    tileW = tileH * TILE_ASPECT_RATIO;
-  }
-  return { tileW: Math.max(0, tileW), tileH: Math.max(0, tileH) };
-}
-
-export function TileGrid({ descriptors, focusedId }: TileGridProps) {
+export function TileGrid({ descriptors, focusedId, minTileWidth = DEFAULT_MIN_TILE_WIDTH }: TileGridProps) {
   const { state } = useRoom();
   const keys = useMemo(() => descriptors.map((d) => d.key), [descriptors]);
   const focus = focusedId && keys.includes(focusedId) ? focusedId : null;
@@ -51,20 +41,12 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
   const isMine = (participantId: string) => participantId === state.me.id;
 
   const n = descriptors.length;
-  const refN = referenceCount(n);
-  const cols = Math.max(1, Math.ceil(Math.sqrt(refN || 1)));
-  const refRows = Math.max(1, Math.ceil(refN / cols));
-  const actualRows = Math.max(1, Math.ceil(n / cols));
-  const { tileW, tileH } = fitTileSize(cols, refRows, containerSize.w, containerSize.h);
+  const gridFit = fitGrid(n, containerSize.w, containerSize.h, minTileWidth);
   const thumbs = focus ? descriptors.filter((d) => d.key !== focus) : [];
   const thumbCols = focus ? Math.max(1, Math.floor((containerSize.w + GRID_GAP) / (THUMB_W + GRID_GAP))) : 1;
   const thumbRows = focus ? Math.max(1, Math.ceil(thumbs.length / thumbCols)) : 1;
-  const gridTemplateColumns = focus
-    ? `repeat(${thumbCols}, minmax(0, 1fr))`
-    : `repeat(${cols}, ${tileW}px)`;
-  const gridTemplateRows = focus
-    ? (thumbs.length ? `minmax(0, 1fr) repeat(${thumbRows}, ${THUMB_H}px)` : 'minmax(0, 1fr)')
-    : `repeat(${actualRows}, ${tileH}px)`;
+  const gridTemplateColumns = `repeat(${thumbCols}, minmax(0, 1fr))`;
+  const gridTemplateRows = thumbs.length ? `minmax(0, 1fr) repeat(${thumbRows}, ${THUMB_H}px)` : 'minmax(0, 1fr)';
 
   // Contain-fit tiles shrink their own root to the media's aspect ratio (see
   // Tile.tsx), so their wrapper has to actively center them — a cover-fit
@@ -74,7 +56,7 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
     <div
       key={d.key}
       style={{ width, height }}
-      className={fit === 'contain' ? 'flex min-h-0 min-w-0 items-center justify-center' : 'min-h-0 min-w-0'}
+      className={cn('flex-none', fit === 'contain' ? 'flex min-h-0 min-w-0 items-center justify-center' : 'min-h-0 min-w-0')}
     >
       <Tile
         participantId={d.participantId}
@@ -89,28 +71,19 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
   );
 
   if (!focus) {
-    const rows: TileDescriptor[][] = [];
-    for (let index = 0; index < descriptors.length; index += cols) {
-      rows.push(descriptors.slice(index, index + cols));
-    }
-
+    // A flat list in a single flex-wrap container — no per-row wrapper divs.
+    // Each tile keeps the same DOM parent no matter how the tile count (and
+    // so the column count) changes, so React never has to unmount/remount
+    // one just because it moved from one computed row to another; wrapping
+    // a fixed-width flex item also centers an incomplete last row natively.
     return (
       <div
         ref={containerRef}
         data-tile-grid
-        className="grid h-full w-full place-content-center gap-3"
-        style={{ gridTemplateColumns, gridTemplateRows }}
+        className="flex h-full w-full flex-wrap content-center justify-center"
+        style={{ gap: gridFit ? gridGap(n) : 0 }}
       >
-        {rows.map((row, rowIndex) => (
-          <div
-            key={`row-${rowIndex}`}
-            data-tile-row
-            style={{ gridColumn: '1 / -1', gridRow: String(rowIndex + 1) }}
-            className="flex min-h-0 min-w-0 justify-center gap-3"
-          >
-            {row.map((d) => renderTile(d, false, tileW, tileH))}
-          </div>
-        ))}
+        {descriptors.map((d) => renderTile(d, false, gridFit?.tileW ?? 0, gridFit?.tileH ?? 0))}
       </div>
     );
   }
