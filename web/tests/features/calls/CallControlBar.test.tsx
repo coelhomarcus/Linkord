@@ -101,4 +101,29 @@ describe('CallControlBar', () => {
     renderWithRoom(<CallControlBar />);
     expect(screen.getByLabelText('Sair da chamada').className).toMatch(/bg-red\b/);
   });
+
+  it('mostra o botao de tela cheia e aciona toggleCallFullscreen ao clicar', () => {
+    const toggleCallFullscreen = vi.fn();
+    renderWithRoom(<CallControlBar />, { toggleCallFullscreen });
+    fireEvent.click(screen.getByLabelText('Tela cheia'));
+    expect(toggleCallFullscreen).toHaveBeenCalledTimes(1);
+  });
+
+  it('quando ja esta em tela cheia, o botao oferece sair', () => {
+    renderWithRoom(<CallControlBar />, { isCallFullscreen: true });
+    expect(screen.getByLabelText('Sair da tela cheia')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Tela cheia')).not.toBeInTheDocument();
+  });
+
+  it('sem hudVisible (padrao true), a barra fica visivel', () => {
+    renderWithRoom(<CallControlBar />);
+    const bar = screen.getByLabelText('Sair da chamada').closest('div.absolute');
+    expect(bar).toHaveClass('opacity-100');
+  });
+
+  it('com hudVisible=false, a barra fica com opacidade zero mas continua no DOM', () => {
+    renderWithRoom(<CallControlBar hudVisible={false} />);
+    const bar = screen.getByLabelText('Sair da chamada').closest('div.absolute');
+    expect(bar).toHaveClass('opacity-0', 'pointer-events-none');
+  });
 });

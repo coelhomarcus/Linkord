@@ -62,13 +62,13 @@ function SettingsShortcutItem() {
 }
 
 export function MicQuickMenu({ className }: { className?: string }) {
-  const { livekitRoom, noiseSuppressionEnabled, setNoiseSuppressionEnabled, noiseSuppressionPending } = useRoom();
+  const { livekitRoom, noiseSuppressionEnabled, setNoiseSuppressionEnabled, noiseSuppressionPending, fullscreenElement } = useRoom();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger aria-label="Configurações do microfone" className={cn(CORNER_TRIGGER, className)}>
         <ChevronDown size={10} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start">
+      <DropdownMenuContent side="top" align="start" container={fullscreenElement ?? undefined}>
         <DeviceRadioList room={livekitRoom} kind="audioinput" heading="Entrada de áudio" label="Microfone" />
         <DropdownMenuSeparator />
         <DropdownMenuCheckboxItem
@@ -86,13 +86,13 @@ export function MicQuickMenu({ className }: { className?: string }) {
 }
 
 export function SpeakerQuickMenu({ className }: { className?: string }) {
-  const { livekitRoom } = useRoom();
+  const { livekitRoom, fullscreenElement } = useRoom();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger aria-label="Configurações de saída de áudio" className={cn(CORNER_TRIGGER, className)}>
         <ChevronDown size={10} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start">
+      <DropdownMenuContent side="top" align="start" container={fullscreenElement ?? undefined}>
         <DeviceRadioList room={livekitRoom} kind="audiooutput" heading="Saída de áudio" label="Alto-falante" />
         <DropdownMenuSeparator />
         <SettingsShortcutItem />
@@ -102,7 +102,7 @@ export function SpeakerQuickMenu({ className }: { className?: string }) {
 }
 
 export function ScreenShareQuickMenu({ className }: { className?: string }) {
-  const { state, shareQuality, setShareQuality, changeSource, pauseSharePreview, resumeSharePreview } = useRoom();
+  const { state, shareQuality, setShareQuality, changeSource, pauseSharePreview, resumeSharePreview, fullscreenElement } = useRoom();
   const sharing = state.me.sharing;
   const myMedia = useParticipantMedia(state.me.id ?? '');
   return (
@@ -110,7 +110,7 @@ export function ScreenShareQuickMenu({ className }: { className?: string }) {
       <DropdownMenuTrigger aria-label="Configurações de compartilhamento de tela" className={cn(CORNER_TRIGGER, className)}>
         <ChevronDown size={10} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start">
+      <DropdownMenuContent side="top" align="start" container={fullscreenElement ?? undefined}>
         <DropdownMenuGroup>
           <DropdownMenuLabel>Qualidade</DropdownMenuLabel>
           <DropdownMenuRadioGroup value={shareQuality} onValueChange={(v) => { if (v) setShareQuality(v as ShareQualityId); }}>
@@ -140,13 +140,13 @@ export function ScreenShareQuickMenu({ className }: { className?: string }) {
 }
 
 export function CameraQuickMenu({ className }: { className?: string }) {
-  const { livekitRoom, mirrorCameraPreview, setMirrorCameraPreview } = useRoom();
+  const { livekitRoom, mirrorCameraPreview, setMirrorCameraPreview, fullscreenElement } = useRoom();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger aria-label="Configurações da câmera" className={cn(CORNER_TRIGGER, className)}>
         <ChevronDown size={10} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start">
+      <DropdownMenuContent side="top" align="start" container={fullscreenElement ?? undefined}>
         <DeviceRadioList room={livekitRoom} kind="videoinput" heading="Câmera" label="Câmera" />
         <DropdownMenuSeparator />
         <DropdownMenuCheckboxItem checked={mirrorCameraPreview} onCheckedChange={setMirrorCameraPreview}>

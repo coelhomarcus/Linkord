@@ -47,6 +47,17 @@ export interface RoomContextValue {
   sendWs: (msg: ClientMessage) => boolean;
   tileDomRegistry: MutableRefObject<Map<string, TileDomHandle>>;
   audioRegistry: MutableRefObject<Map<string, AudioHandle>>;
+  /** Attached by Stage.tsx to its own root — the fullscreen target for
+   * `toggleCallFullscreen`. Null whenever Stage isn't mounted. */
+  callStageRef: MutableRefObject<HTMLElement | null>;
+  /** True specifically when the STAGE (not a single tile) is fullscreen. */
+  isCallFullscreen: boolean;
+  toggleCallFullscreen: () => Promise<void>;
+  /** Whatever element is actually fullscreen right now (the stage, or a
+   * single tile via TileMenu's own "Tela cheia") — menus/popovers portal
+   * into this instead of `document.body`, which the Fullscreen API renders
+   * underneath and so would otherwise hide them. */
+  fullscreenElement: HTMLElement | null;
   audioUnlocked: boolean;
   deafened: boolean;
   toggleDeafened: () => void;

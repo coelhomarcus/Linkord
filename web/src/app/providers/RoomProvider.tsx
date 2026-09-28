@@ -9,6 +9,7 @@ import { useAuth } from '@/state/AuthContext';
 import { saveIdentity } from '@/shared/lib/identitySession';
 import { useSocketConnection } from '@/state/hooks/useSocketConnection';
 import { useScreenShare } from '@/features/calls/useScreenShare';
+import { useCallFullscreen } from '@/features/calls/useCallFullscreen';
 import { useCamera } from '@/features/calls/useCamera';
 import { useMicrophone } from '@/features/calls/useMicrophone';
 import { useTileMenu } from '@/features/calls/useTileMenu';
@@ -40,6 +41,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const tokenRef = useRef<string | null>(null);
   const tileDomRegistry = useRef<Map<string, TileDomHandle>>(new Map());
   const audioRegistry = useRef<Map<string, AudioHandle>>(new Map());
+  const callStageRef = useRef<HTMLElement | null>(null);
+  const { isCallFullscreen, toggleCallFullscreen, fullscreenElement } = useCallFullscreen(callStageRef);
   // owned here (not inside useSocketConnection) because sendWs needs to
   // read it and is constructed before that hook runs — nearly every domain
   // hook below needs sendWs too.
@@ -351,6 +354,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     <RoomContext.Provider
       value={{
         state, dispatch, sendWs, tileDomRegistry, audioRegistry,
+        callStageRef, isCallFullscreen, toggleCallFullscreen, fullscreenElement,
         audioUnlocked: callLifecycle.audioUnlocked, deafened: callLifecycle.deafened, toggleDeafened: callLifecycle.toggleDeafened,
         reconnecting: callLifecycle.reconnecting,
         livekitRoom, notifyActiveView,

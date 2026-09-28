@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Headphones, HeadphoneOff, Mic, MicOff, Monitor, MonitorX, PhoneOff, Smile, Video, VideoOff } from 'lucide-react';
+import { Headphones, HeadphoneOff, Maximize2, Mic, MicOff, Minimize2, Monitor, MonitorX, PhoneOff, Smile, Video, VideoOff } from 'lucide-react';
 import { CloseButton } from '@/shared/ui/primitives/close-button';
 import { useRoom } from '../../state/RoomContext';
 import type { MicProblem } from '@/state/roomReducer';
@@ -38,8 +38,17 @@ const BAR_BUTTON_RED = 'bg-red/16 text-red hover:bg-red/24';
 const BAR_BUTTON_GREEN = 'bg-green/16 text-green hover:bg-green/24';
 const BAR_ICON = 'size-[22px] max-[480px]:size-5 max-[360px]:size-[19px]';
 
-export function CallControlBar() {
-  const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, activateMic, toggleMicMuted, deafened, toggleDeafened, leaveCall, sendReaction, reconnecting } = useRoom();
+interface CallControlBarProps {
+  /** Fades out (but stays mounted, never affecting layout) when the HUD
+   * auto-hides after inactivity — see useCallHud.ts. */
+  hudVisible?: boolean;
+}
+
+export function CallControlBar({ hudVisible = true }: CallControlBarProps) {
+  const {
+    state, dispatch, startCamera, stopCamera, startSharing, stopSharing, activateMic, toggleMicMuted, deafened, toggleDeafened,
+    leaveCall, sendReaction, reconnecting, isCallFullscreen, toggleCallFullscreen, fullscreenElement,
+  } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
   const cameraOn = state.me.cameraOn;
   const sharing = state.me.sharing;
@@ -57,7 +66,10 @@ export function CallControlBar() {
   }
 
   return (
-    <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
+    <div className={cn(
+      'absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2 transition-opacity duration-200 motion-reduce:transition-none',
+      hudVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
+    )}>
       {reconnecting && (
         <div className="rounded-md border border-strong bg-bg-floating px-3 py-2 text-label text-text-secondary shadow-popover">
           Reconectando à chamada…
@@ -84,7 +96,7 @@ export function CallControlBar() {
           >
             <Smile className={BAR_ICON} />
           </PopoverTrigger>
-          <PopoverContent className="w-auto p-1.5" side="top">
+          <PopoverContent className="w-auto p-1.5" side="top" container={fullscreenElement ?? undefined}>
             <div className="flex gap-1">
               {CALL_REACTIONS.map((emoji) => (
                 <button
@@ -156,6 +168,17 @@ export function CallControlBar() {
           </Tooltip>
           <ScreenShareQuickMenu />
         </div>
+
+        <Tooltip>
+          <TooltipTrigger
+            onClick={() => void toggleCallFullscreen()}
+            aria-label={isCallFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+            className={cn(BAR_BUTTON, BAR_BUTTON_NEUTRAL)}
+          >
+            {isCallFullscreen ? <Minimize2 className={BAR_ICON} /> : <Maximize2 className={BAR_ICON} />}
+          </TooltipTrigger>
+          <TooltipContent>{isCallFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}</TooltipContent>
+        </Tooltip>
 
         <div aria-hidden className="mx-0.5 h-6 w-px flex-none bg-white/10" />
 

@@ -73,7 +73,7 @@ export function TileMenu({ onOpenProfile }: TileMenuProps) {
   const {
     state, dispatch, menuTarget, closeTileMenu, tileDomRegistry, showStats, kickFromCall,
     activeCallConversationId, conversations, mirrorCameraPreview, setMirrorCameraPreview, stopCamera,
-    stopSharing, changeSource, pauseSharePreview, resumeSharePreview, shareQuality, setShareQuality,
+    stopSharing, changeSource, pauseSharePreview, resumeSharePreview, shareQuality, setShareQuality, fullscreenElement,
   } = useRoom();
   const [bitrateKbps, setBitrateKbps] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
@@ -208,6 +208,7 @@ export function TileMenu({ onOpenProfile }: TileMenuProps) {
         align="start"
         sideOffset={6}
         className="w-64"
+        container={fullscreenElement ?? undefined}
       >
         <DropdownMenuItem onClick={toggleFocus}>
           <Crosshair size={16} />
@@ -264,7 +265,7 @@ export function TileMenu({ onOpenProfile }: TileMenuProps) {
                 <Gauge size={16} />
                 <span>Qualidade</span>
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
+              <DropdownMenuSubContent container={fullscreenElement ?? undefined}>
                 <DropdownMenuRadioGroup value={shareQuality} onValueChange={(v) => setShareQuality(v as ShareQualityId)}>
                   {(Object.entries(SHARE_QUALITY_PRESETS) as [ShareQualityId, typeof SHARE_QUALITY_PRESETS[ShareQualityId]][]).map(([id, preset]) => (
                     <DropdownMenuRadioItem key={id} value={id}>{preset.label}</DropdownMenuRadioItem>
