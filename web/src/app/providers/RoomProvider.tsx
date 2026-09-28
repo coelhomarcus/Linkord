@@ -17,7 +17,7 @@ import { useChatMessages } from '@/features/chat/useChatMessages';
 import { useTypingIndicator } from '@/state/hooks/useTypingIndicator';
 import { useMessageReactions } from '@/features/calls/useMessageReactions';
 import { useMessageSearch } from '@/features/chat/useMessageSearch';
-import { useAttachmentsUpload } from '@/features/chat/useAttachmentsUpload';
+import { useStorageUsage } from '@/features/chat/useStorageUsage';
 import { usePresence } from '@/state/hooks/usePresence';
 import { useCallLifecycle } from '@/features/calls/useCallLifecycle';
 import { useRoomSettings } from '@/features/settings/useRoomSettings';
@@ -29,8 +29,6 @@ import { logger } from '@/shared/lib/logger';
 import { ERROR_CODES } from '@/shared/api/errorCodes';
 
 const log = logger.child({ component: 'room' });
-
-export { PartialAttachmentError } from '@/features/chat/useAttachmentsUpload';
 
 export function RoomProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(roomReducer, initialRoomState);
@@ -53,8 +51,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     dynacast: true,
   }));
 
-  const sendWs = useCallback((msg: ClientMessage) => {
-    if (socketRef.current?.connected) socketRef.current.emit(msg.t, msg);
+  const sendWs = useCallback((msg: ClientMessage): boolean => {
+    if (!socketRef.current?.connected) return false;
+    socketRef.current.emit(msg.t, msg);
+    return true;
   }, []);
   const isSocketConnected = useCallback(() => !!socketRef.current?.connected, []);
 
@@ -99,7 +99,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   });
   const messageReactions = useMessageReactions(sendWs, myIdRef);
   const messageSearch = useMessageSearch(sendWs);
-  const attachmentsUpload = useAttachmentsUpload();
+  const attachmentsUpload = useStorageUsage();
 
   const { startSharing, stopSharing } = useScreenShare(livekitRoom, dispatch);
   const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch);
@@ -168,6 +168,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           participants: m.participants,
         });
         conversationsList.setInitial(m.conversations ?? []);
+        chatMessages.onWelcome();
         presence.setInitial(m.knownUsers, m.onlineUserIds, m.friendIds);
         attachmentsUpload.setStorageUsage(m.storageUsage);
         {
@@ -226,8 +227,17 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       case 'conversation-history-more':
         chatMessages.onConversationHistoryMore(m);
         break;
+      case 'conversation-history-newer':
+        chatMessages.onConversationHistoryNewer(m);
+        break;
       case 'chat':
         chatMessages.onChat(m);
+        break;
+      case 'chat-send-result':
+        chatMessages.onChatSendResult(m);
+        break;
+      case 'chat-action-result':
+        chatMessages.onChatActionResult(m);
         break;
       case 'typing':
         typingIndicator.onTyping(m);
@@ -366,6 +376,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         transferGroupOwnership: conversationsList.transferGroupOwnership,
         messagesByConversation: chatMessages.messagesByConversation, hasMoreByConversation: chatMessages.hasMoreByConversation,
         loadingOlderByConversation: chatMessages.loadingOlderByConversation, loadOlderMessages: chatMessages.loadOlderMessages,
+        loadNewerMessages: chatMessages.loadNewerMessages, loadingNewerByConversation: chatMessages.loadingNewerByConversation,
+        newerCountByConversation: chatMessages.newerCountByConversation,
+        windowGenerationByConversation: chatMessages.windowGenerationByConversation,
         unreadByConversation: chatMessages.unreadByConversation,
         typingByConversation: typingIndicator.typingByConversation, sendTyping: typingIndicator.sendTyping,
         allUsers: presence.allUsers, onlineUserIds: presence.onlineUserIds, friendUserIds: presence.friendUserIds,
@@ -374,6 +387,12 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         accessNotice, clearAccessNotice: () => setAccessNotice(null),
         socialRevision,
         sendChatMessage: chatMessages.sendChatMessage, deleteChatMessage: chatMessages.deleteChatMessage,
+        pendingByConversation: chatMessages.pendingByConversation,
+        retryPendingMessage: chatMessages.retryPendingMessage, discardPendingMessage: chatMessages.discardPendingMessage,
+        queueMessageWithFiles: chatMessages.queueMessageWithFiles,
+        deletingMsgIds: chatMessages.deletingMsgIds, messageActionErrors: chatMessages.messageActionErrors,
+        dismissMessageActionError: chatMessages.dismissMessageActionError,
+        pendingReactions: chatMessages.pendingReactions,
         editChatMessage: chatMessages.editChatMessage, reactToChatMessage: chatMessages.reactToChatMessage,
         replyingTo: chatMessages.replyingTo, setReplyingTo: chatMessages.setReplyingTo,
         editingMsgId: chatMessages.editingMsgId, setEditingMsgId: chatMessages.setEditingMsgId,
@@ -381,7 +400,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         clearPendingJumpTarget: chatMessages.clearPendingJumpTarget, jumpToMessage: chatMessages.jumpToMessage,
         searchResults: messageSearch.searchResults, searchLoading: messageSearch.searchLoading, searchError: messageSearch.searchError,
         clearSearchError: messageSearch.clearSearchError, searchMessages: messageSearch.searchMessages,
-        storageUsage: attachmentsUpload.storageUsage, sendAttachments: attachmentsUpload.sendAttachments,
+        storageUsage: attachmentsUpload.storageUsage,
       }}
     >
       {children}

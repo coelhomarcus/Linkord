@@ -32,7 +32,7 @@ export async function getByMessageIds(messageIds: number[]): Promise<Map<number,
     // isThumbnail rows share their parent's messageId on purpose (see
     // schema.ts) but must never surface as a second, duplicate attachment.
     .where(and(inArray(attachmentsTable.messageId, messageIds), eq(attachmentsTable.isThumbnail, false)))
-    .orderBy(asc(attachmentsTable.createdAt));
+    .orderBy(asc(attachmentsTable.position), asc(attachmentsTable.createdAt));
   for (const row of rows) {
     if (row.messageId === null) continue;
     const list = map.get(row.messageId);

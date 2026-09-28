@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
+import { __resetLinkPreviewCacheForTests } from '@/shared/lib/linkPreviewCache';
 import userEvent from '@testing-library/user-event';
 import { LinkPreview } from '@/features/media/LinkPreview';
 
@@ -57,5 +58,28 @@ describe('LinkPreview', () => {
       expect(img?.style.maxWidth).toBe('');
       expect(img?.className.split(/\s+/)).toContain('w-full');
     });
+  });
+});
+
+describe('LinkPreview — previa de link so perto da tela', () => {
+  afterEach(() => { vi.unstubAllGlobals(); __resetLinkPreviewCacheForTests(); });
+
+  it('nao busca enquanto o card esta longe; busca quando se aproxima', async () => {
+    let fire: (visible: boolean) => void = () => {};
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(cb: IntersectionObserverCallback) { fire = (visible) => cb([{ isIntersecting: visible } as IntersectionObserverEntry], this as unknown as IntersectionObserver); }
+      observe() {}
+      disconnect() {}
+    });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ url: 'https://ex.com', title: 'Exemplo', description: null, image: null, video: null, favicon: null, siteName: 'ex.com', themeColor: null }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<LinkPreview embed={{ kind: 'link', url: 'https://ex.com' }} />);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    act(() => fire(true));
+    expect(await screen.findByText('Exemplo')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

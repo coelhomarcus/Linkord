@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import ReactPlayer from 'react-player';
 import { ExternalLink, Play } from 'lucide-react';
 import type { DetectedEmbed } from '@/shared/lib/chatEmbeds';
-import { loadLinkPreview } from '@/shared/lib/linkPreviewCache';
+import { getCachedLinkPreview, loadLinkPreview } from '@/shared/lib/linkPreviewCache';
+import { useNearViewport } from './useNearViewport';
 import type { LinkPreviewData } from '@/shared/api/api';
 import { availableAttachmentWidth, useChatSurfaceWidth } from '@/shared/lib/chatSurfaceWidth';
 import { VideoPlayer } from './MediaPlayers';
@@ -64,14 +65,21 @@ export function GenericEmbed({ embed, className = '', edgeToEdge }: GenericEmbed
   const surfaceWidth = useChatSurfaceWidth(384 + 120);
   const maxWidth = availableAttachmentWidth(surfaceWidth, 384);
   const { url } = embed;
-  const [data, setData] = useState<LinkPreviewData | null>(null);
+  // a remount (conversation switch, scrolling back) paints from the cache
+  // at once instead of flashing the skeleton
+  const [data, setData] = useState<LinkPreviewData | null>(() => getCachedLinkPreview(url) ?? null);
+  const skeletonRef = useRef<HTMLDivElement | null>(null);
+  const near = useNearViewport(skeletonRef);
   const [imageFailed, setImageFailed] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
   const [faviconFailed, setFaviconFailed] = useState(false);
 
   useEffect(() => {
+    // fetched only when the card is about to be seen: a long history full
+    // of links doesn't fire a request per link on open
+    if (!near) return;
     let cancelled = false;
-    setData(null);
+    setData(getCachedLinkPreview(url) ?? null);
     setImageFailed(false);
     setVideoFailed(false);
     setFaviconFailed(false);
@@ -79,14 +87,14 @@ export function GenericEmbed({ embed, className = '', edgeToEdge }: GenericEmbed
       .then((d) => { if (!cancelled) setData(d); })
       .catch(() => { if (!cancelled) setData({ url, title: null, description: null, image: null, video: null, favicon: null, siteName: url, themeColor: null }); });
     return () => { cancelled = true; };
-  }, [url]);
+  }, [url, near]);
 
   const known = KNOWN_SITE[embed.kind];
   const hasKnownPlayer = !!known;
 
   if (!data) {
     return (
-      <div style={{ maxWidth }} className={`flex w-full animate-pulse flex-col gap-1.5 ${cardBorderClass} bg-bg-tertiary px-3 py-2.5 ${className}`}>
+      <div ref={skeletonRef} style={{ maxWidth }} className={`flex w-full animate-pulse flex-col gap-1.5 ${cardBorderClass} bg-bg-tertiary px-3 py-2.5 ${className}`}>
         <div className="h-2.5 w-1/3 rounded-sm bg-bg-hover" />
         <div className="h-3.5 w-3/4 rounded-sm bg-bg-hover" />
       </div>

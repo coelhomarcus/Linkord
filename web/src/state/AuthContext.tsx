@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import type { ReactNode } from 'react';
 import { ApiError, fetchMe, linkEmail as apiLinkEmail, login as apiLogin, logout as apiLogout, register as apiRegister } from '@/shared/api/api';
 import type { ApiUser } from '@/shared/api/api';
+import { clearAllDrafts } from '@/features/chat/conversationDrafts';
 
 
 type AuthStatus = 'loading' | 'anon' | 'authed';
@@ -62,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try { await apiLogout(); } catch {  }
+    clearAllDrafts();
     setUser(null);
     setStatus('anon');
   }, []);

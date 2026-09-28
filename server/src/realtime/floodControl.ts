@@ -35,6 +35,15 @@ export function allow(key: string, rule: Rule): boolean {
 // Every rule in ACTION_LIMITS (see realtime/socket.ts) uses a window well
 // under this, so a key whose newest timestamp is already this old is stale
 // no matter which rule wrote it.
+/** How long until `key` may act again under `rule` (0 if it already may) —
+ * for a Retry-After a client can wait on instead of guessing. */
+export function retryAfterMs(key: string, rule: Rule): number {
+  const list = timestampsByKey.get(key);
+  if (!list || list.length < rule.max) return 0;
+  const oldestInWindow = list[list.length - rule.max]!;
+  return Math.max(0, oldestInWindow + rule.windowMs - Date.now());
+}
+
 const STALE_AFTER_MS = 5 * 60 * 1000;
 const sweepTimer = setInterval(() => {
   const now = Date.now();

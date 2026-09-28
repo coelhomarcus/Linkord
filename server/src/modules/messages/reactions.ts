@@ -34,25 +34,25 @@ export async function getByMessageIds(messageIds: number[]): Promise<Map<number,
   return groupReactionRows(rows);
 }
 
-/** Atomic toggle: tries to insert first, letting the primary key itself be
- * the race-free decision point — if the insert lands, the reaction is now
- * "on"; if ON CONFLICT DO NOTHING inserted nothing, it was already there,
- * so this call means "off" and it deletes that exact row. No transaction
- * needed: there's no read-modify-write to protect (see chat.ts#handleChatReact,
- * which replaced a lost-update-prone JSONB read-modify-write with this). */
-export async function toggle(messageId: number, userId: string, emoji: string): Promise<string[]> {
-  const inserted = await db.insert(messageReactions)
-    .values({ messageId, userId, emoji })
-    .onConflictDoNothing()
-    .returning({ userId: messageReactions.userId });
-  if (inserted.length === 0) {
-    await db.delete(messageReactions).where(and(
+/** Sets the viewer's reaction to a desired state instead of flipping it —
+ * repeating the same request (a retry, a double click) can't undo it.
+ * `changed` false means it already was that way. */
+export async function setPresence(messageId: number, userId: string, emoji: string, present: boolean): Promise<{ changed: boolean; userIds: string[] }> {
+  let changed: boolean;
+  if (present) {
+    const inserted = await db.insert(messageReactions).values({ messageId, userId, emoji }).onConflictDoNothing().returning({ userId: messageReactions.userId });
+    changed = inserted.length > 0;
+  } else {
+    const removed = await db.delete(messageReactions).where(and(
       eq(messageReactions.messageId, messageId),
       eq(messageReactions.userId, userId),
       eq(messageReactions.emoji, emoji),
-    ));
+    )).returning({ userId: messageReactions.userId });
+    changed = removed.length > 0;
   }
   const rows = await db.select({ userId: messageReactions.userId }).from(messageReactions)
-    .where(and(eq(messageReactions.messageId, messageId), eq(messageReactions.emoji, emoji)));
-  return rows.map((r) => r.userId);
+    .where(and(eq(messageReactions.messageId, messageId), eq(messageReactions.emoji, emoji)))
+    .orderBy(asc(messageReactions.createdAt));
+  return { changed, userIds: rows.map((r) => r.userId) };
 }
+

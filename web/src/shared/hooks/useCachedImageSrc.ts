@@ -15,9 +15,13 @@ import { useEffect, useState } from 'react';
 // their next reload — this only skips redundant re-fetches of something the
 // tab already has in memory, the same thing the browser's own HTTP cache
 // already keeps on disk regardless.
-interface Entry { objectUrl: string; refCount: number }
+interface Entry { objectUrl: string; refCount: number; bytes: number }
 const cache = new Map<string, Entry>(); // insertion order doubles as LRU order for refCount === 0 entries
 const MAX_IDLE_ENTRIES = 200;
+// Counting entries alone let a few hundred full-size pictures pin hundreds
+// of MB after scrolling through a media-heavy chat; idle ones also answer to
+// a byte budget. Whatever is on screen is never dropped.
+const MAX_IDLE_BYTES = 64 * 1024 * 1024;
 
 function touch(url: string, entry: Entry) {
   cache.delete(url);
@@ -25,13 +29,21 @@ function touch(url: string, entry: Entry) {
 }
 
 function evictIdleEntries() {
-  if (cache.size <= MAX_IDLE_ENTRIES) return;
+  let idleBytes = 0;
+  for (const entry of cache.values()) if (entry.refCount <= 0) idleBytes += entry.bytes;
+  if (cache.size <= MAX_IDLE_ENTRIES && idleBytes <= MAX_IDLE_BYTES) return;
   for (const [url, entry] of cache) {
-    if (cache.size <= MAX_IDLE_ENTRIES) break;
+    if (cache.size <= MAX_IDLE_ENTRIES && idleBytes <= MAX_IDLE_BYTES) break;
     if (entry.refCount > 0) continue; // never drop something currently on screen
     URL.revokeObjectURL(entry.objectUrl);
     cache.delete(url);
+    idleBytes -= entry.bytes;
   }
+}
+
+/** Test-only: how many blobs are held right now. */
+export function __cachedImageCountForTests(): number {
+  return cache.size;
 }
 
 /** Test-only: without this, two tests mocking different bytes for the same
@@ -72,7 +84,7 @@ export function useCachedImageSrc(url: string | null | undefined): string | null
       .then((blob) => {
         if (cancelled) return;
         const objectUrl = URL.createObjectURL(blob);
-        cache.set(url, { objectUrl, refCount: 1 });
+        cache.set(url, { objectUrl, refCount: 1, bytes: blob.size });
         evictIdleEntries();
         setSrc(objectUrl);
       })

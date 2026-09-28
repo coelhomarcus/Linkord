@@ -23,8 +23,11 @@ export interface Participant {
 
 export type ReactionEmoji = string;
 
-/** Wire protocol version this build speaks; the server refuses older ones (client_outdated). */
-export const PROTOCOL_VERSION = 2;
+/** Wire protocol version this build speaks; the server refuses older ones
+ * (client_outdated). Keep in sync with server/src/realtime/protocolVersion.ts
+ * — the server's MIN_PROTOCOL_VERSION now requires 5 (correlated sends,
+ * actions and reactions; staged-only attachments), with no legacy fallback. */
+export const PROTOCOL_VERSION = 5;
 
 export interface ChatReplyRef {
   msgId: number;
@@ -65,6 +68,9 @@ export interface ChatMessage {
   kind?: 'text' | 'group_invite';
   // `null` on a group_invite message = the group is gone (tombstone)
   invitation?: InvitationCard | null;
+  // the author's send key, present when the send was correlated — lets the
+  // author's client swap its pending copy for this one without remounting
+  clientMessageId?: string;
 }
 
 export interface ChatAttachment {
@@ -76,6 +82,10 @@ export interface ChatAttachment {
   // resized copy for thumbnails. The ORIGINAL (`id`) is still what full-size
   // views (lightbox, download) use.
   thumbId?: string;
+  // Displayed size of an image, when the server could read it — lets the
+  // row reserve the final box before the pixels arrive.
+  width?: number;
+  height?: number;
 }
 export const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_MESSAGE = 4;
@@ -162,13 +172,14 @@ export type ClientMessage =
   | { t: 'group-update'; conversationId: string; title?: string; avatar?: string }
   | { t: 'group-members-remove'; conversationId: string; userId: string }
   | { t: 'group-transfer-owner'; conversationId: string; userId: string }
-  | { t: 'load-more-messages'; conversationId: string; beforeMsgId: number }
-  | { t: 'load-messages-around'; conversationId: string; msgId: number }
+  | { t: 'load-more-messages'; conversationId: string; beforeMsgId: number; requestId?: string }
+  | { t: 'load-messages-after'; conversationId: string; afterMsgId: number; requestId?: string }
+  | { t: 'load-messages-around'; conversationId: string; msgId: number; requestId?: string }
   | { t: 'message-search'; query: string; conversationId?: string }
-  | { t: 'chat'; conversationId: string; text: string; replyTo?: number }
-  | { t: 'chat-delete'; msgId: number }
-  | { t: 'chat-edit'; msgId: number; text: string }
-  | { t: 'chat-react'; msgId: number; emoji: ReactionEmoji }
+  | { t: 'chat'; conversationId: string; text: string; replyTo?: number; requestId?: string; clientMessageId?: string; attachmentIds?: string[] }
+  | { t: 'chat-delete'; msgId: number; requestId?: string }
+  | { t: 'chat-edit'; msgId: number; text: string; requestId?: string }
+  | { t: 'chat-react'; msgId: number; emoji: ReactionEmoji; present?: boolean; requestId?: string }
   | { t: 'typing'; conversationId: string; value: boolean }
   | { t: 'call-join'; conversationId: string }
   | { t: 'call-leave' }
@@ -185,6 +196,8 @@ export type ServerMessage =
       conversations: Conversation[]; knownUsers: PublicUser[]; onlineUserIds: string[]; friendIds: string[];
       storageUsage: StorageUsage;
       livekitUrl: string;
+      // absent from servers before protocol 3 (no correlated chat sends)
+      protocolVersion?: number;
     }
   | { t: 'call-token'; conversationId: string; livekitUrl: string; livekitToken: string }
   | { t: 'conversation-opened'; conversationId: string; conversation: Conversation }
@@ -195,7 +208,8 @@ export type ServerMessage =
   | { t: 'conversation-pinned'; conversationId: string; pinnedAt: number | null }
   | { t: 'conversation-read'; conversationId: string; lastReadMessageId: number }
   | { t: 'conversation-history'; conversationId: string; messages: ChatMessage[]; hasMore: boolean }
-  | { t: 'conversation-history-more'; conversationId: string; messages: ChatMessage[]; hasMore: boolean }
+  | { t: 'conversation-history-more'; conversationId: string; messages: ChatMessage[]; hasMore: boolean; requestId?: string }
+  | { t: 'conversation-history-newer'; conversationId: string; messages: ChatMessage[]; hasMoreAfter: boolean; requestId?: string }
   | { t: 'conversation-history-around'; conversationId: string; msgId: number; messages: ChatMessage[]; hasMoreBefore: boolean; hasMoreAfter: boolean }
   | { t: 'conversation-deleted'; conversationId: string; reason?: 'removed' | 'deleted' }
   | { t: 'participant-joined'; participant: Participant }
@@ -204,8 +218,10 @@ export type ServerMessage =
   | { t: 'reaction'; id: string; emoji: ReactionEmoji }
   | { t: 'message-search-results'; query: string; conversationId?: string; results: SearchResult[] }
   | { t: 'chat'; message: ChatMessage }
+  | { t: 'chat-send-result'; requestId: string; clientMessageId: string; message?: ChatMessage; error?: { code: string; message: string } }
   | { t: 'chat-deleted'; conversationId: string; msgId: number }
   | { t: 'chat-edited'; message: ChatMessage }
+  | { t: 'chat-action-result'; requestId: string; error?: { code: string; message: string } }
   | { t: 'invitation-updated'; invitation: InvitationCard }
   | { t: 'role-updated'; role: 'user' | 'admin' }
   | { t: 'chat-reaction-updated'; conversationId: string; msgId: number; emoji: ReactionEmoji; userIds: string[] }

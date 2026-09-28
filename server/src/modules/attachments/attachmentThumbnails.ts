@@ -19,6 +19,21 @@ const THUMBNAIL_MAX_DIMENSION = 640;
  * there's nothing worth generating — the source is already thumbnail-sized,
  * or sharp failed for any reason; either way the original attachment still
  * serves fine without a thumbnail. */
+/** The size an image is DISPLAYED at — EXIF orientations 5–8 swap width
+ * and height — so the client can reserve the right box before it loads.
+ * One frame's height for an animation. Null when it can't be read. */
+export async function readImageDimensions(srcPath: string): Promise<{ width: number; height: number } | null> {
+  try {
+    const meta = await sharp(srcPath, { animated: true }).metadata();
+    const width = meta.width ?? 0;
+    const height = meta.pageHeight ?? meta.height ?? 0;
+    if (!width || !height) return null;
+    return (meta.orientation ?? 1) >= 5 ? { width: height, height: width } : { width, height };
+  } catch {
+    return null;
+  }
+}
+
 export async function generateThumbnail(srcPath: string): Promise<{ buffer: Buffer; mime: string } | null> {
   try {
     const image = sharp(srcPath, { animated: true });
@@ -27,7 +42,9 @@ export async function generateThumbnail(srcPath: string): Promise<{ buffer: Buff
     if (!meta.width || !frameHeight) return null;
     if (meta.width <= THUMBNAIL_MAX_DIMENSION && frameHeight <= THUMBNAIL_MAX_DIMENSION) return null;
 
-    const resized = image.resize({
+    // .rotate() with no angle applies the EXIF orientation: the thumbnail
+    // loses its metadata, so a phone photo would otherwise come out sideways
+    const resized = image.rotate().resize({
       width: THUMBNAIL_MAX_DIMENSION, height: THUMBNAIL_MAX_DIMENSION, fit: 'inside', withoutEnlargement: true,
     });
     if ((meta.pages ?? 1) > 1) {

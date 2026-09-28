@@ -21,10 +21,6 @@ const CHAT_HISTORY_LIMIT = 50; // messages kept to give context to whoever joins
 const SEARCH_RESULT_LIMIT = 30; // server-fixed, not client-controlled — same posture as CHAT_HISTORY_LIMIT
 const MAX_SEARCH_QUERY_LEN = 200;
 const MAX_ATTACHMENTS_PER_MESSAGE = 4;
-// how long after creating a message its author can still attach more files
-// to it (2nd-4th attachment) — without this, `targetMsgId` would let someone
-// inject media into an arbitrarily old message of theirs at any time.
-const ATTACH_TO_MESSAGE_WINDOW_MS = 5 * 60 * 1000;
 // after a friend request is declined/cancelled/removed, how long the SAME
 // requester has to wait before requesting that account again — an initial
 // guess (docs/plano-rede-social.md §10.2.8: "valores iniciais precisam de
@@ -139,7 +135,7 @@ const ORPHAN_SWEEP_DRY_RUN = process.env.ORPHAN_SWEEP_DRY_RUN !== '0';
 export const config = {
   PORT, HOST_BIND, MAX_PARTICIPANTS, TRUST_PROXY, MAX_MSG_BYTES, RECONNECT_GRACE_MS,
   MAX_AVATAR_LEN, MAX_BANNER_LEN, MAX_PROFILE_BIO_LEN, MAX_PROFILE_LINKS, MAX_PROFILE_LINK_LEN,
-  MAX_CHAT_LEN, CHAT_HISTORY_LIMIT, SEARCH_RESULT_LIMIT, MAX_SEARCH_QUERY_LEN, MAX_ATTACHMENTS_PER_MESSAGE, ATTACH_TO_MESSAGE_WINDOW_MS,
+  MAX_CHAT_LEN, CHAT_HISTORY_LIMIT, SEARCH_RESULT_LIMIT, MAX_SEARCH_QUERY_LEN, MAX_ATTACHMENTS_PER_MESSAGE,
   FRIEND_REQUEST_COOLDOWN_MS, MAX_GROUP_MEMBERS, MAX_INVITEES_PER_REQUEST,
   UPLOAD_DIR, MAX_ATTACHMENT_BYTES, MAX_STORAGE_BYTES, MAX_AVATAR_BYTES,
   UPLOAD_CHUNK_BYTES, UPLOAD_SESSION_TTL_MS,

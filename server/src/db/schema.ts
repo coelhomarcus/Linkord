@@ -250,6 +250,28 @@ export const messages = pgTable('messages', {
   check('messages_kind_reference_check', sql`(${t.kind} = 'text' AND ${t.groupInvitationId} IS NULL) OR (${t.kind} = 'group_invite')`),
 ]);
 
+// One row per send intent (the client's clientMessageId), so a retry after a
+// lost reply returns the original message instead of inserting a second one.
+// Kept apart from `messages` on purpose: deleting the message SETs NULL here
+// instead of erasing the record, so a late retry of a deleted message can't
+// quietly bring it back. Swept after a retention window (see
+// modules/messages/sendOperations.ts).
+export const messageSendOperations = pgTable('message_send_operations', {
+  authorId: text('author_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  clientMessageId: varchar('client_message_id', { length: 64 }).notNull(),
+  // hash of the canonical payload: the same key with different content is a
+  // conflict, not a retry
+  payloadHash: varchar('payload_hash', { length: 64 }).notNull(),
+  messageId: integer('message_id').references(() => messages.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.authorId, t.clientMessageId] }),
+  index('message_send_operations_created_at_idx').on(t.createdAt),
+  index('message_send_operations_message_id_idx').on(t.messageId),
+]);
+
+export type MessageSendOperation = typeof messageSendOperations.$inferSelect;
+
 /** One row per (message, user, emoji) — a user can react to the same
  * message with several DIFFERENT emoji at once, but only once per emoji
  * (that's the toggle in modules/chat.ts#handleChatReact: reacting again
@@ -327,9 +349,45 @@ export const attachments = pgTable('attachments', {
   // Every query that lists "this message's attachments" must filter
   // isThumbnail = false (see getByMessageIds, modules/media.ts).
   isThumbnail: boolean('is_thumbnail').notNull().default(false),
+  // Order within the message, as the sender picked the files — not when
+  // each upload happened to finish. Legacy rows are all 0 and fall back to
+  // createdAt.
+  position: integer('position').notNull().default(0),
+  // Displayed size of an image (EXIF orientation applied), read on upload,
+  // so the client reserves its box before the pixels arrive. Null for other
+  // types, for files that couldn't be read, and for rows from before this.
+  width: integer('width'),
+  height: integer('height'),
 }, (t) => [
   index('attachments_message_id_idx').on(t.messageId),
 ]);
+
+// A file fully uploaded but not yet part of any message: the batch it belongs
+// to is published in one step (see modules/messages/messages.ts, correlated
+// chat with attachmentIds). Its own table on purpose — an `attachments` row
+// with no message means a public profile image, and a staged file must never
+// be served to anyone. The file lives on disk under the same id; its bytes
+// count against the owner's quota while it waits here.
+export const stagedAttachments = pgTable('staged_attachments', {
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  conversationId: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+  fileName: text('file_name').notNull(),
+  mimeType: text('mime_type').notNull(),
+  size: bigint('size', { mode: 'number' }).notNull(),
+  thumbId: text('thumb_id'),
+  thumbMimeType: text('thumb_mime_type'),
+  thumbSize: bigint('thumb_size', { mode: 'number' }),
+  width: integer('width'),
+  height: integer('height'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (t) => [
+  index('staged_attachments_owner_id_idx').on(t.ownerId),
+  index('staged_attachments_expires_at_idx').on(t.expiresAt),
+]);
+
+export type StagedAttachment = typeof stagedAttachments.$inferSelect;
 
 /** The recipient's inbox/read-state for a social event — scoped for now to
  * the resources that exist this etapa (friend requests, group invitations).

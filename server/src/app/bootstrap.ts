@@ -4,6 +4,8 @@ import { createApp } from '../http/app.js';
 import { createWsServer } from '../realtime/socket.js';
 import { describeBlockedMigration, runMigrations } from '../db/migrate.js';
 import { sweepExpiredSessions } from '../modules/auth/session.js';
+import { sweepSendOperations } from '../modules/messages/sendOperations.js';
+import { sweepExpiredStaged } from '../modules/attachments/stagedAttachments.js';
 import { ensureUploadDir, sweepStaleUploads } from '../modules/attachments/uploadSession.js';
 import { sweepOrphans } from '../modules/attachments/orphanSweeper.js';
 import { drainOutbox, pruneNotifications } from '../modules/notifications/outboxWorker.js';
@@ -74,6 +76,7 @@ export async function bootstrap(): Promise<void> {
   // checking hourly is enough to avoid orphaned chunks piling up on disk.
   const uploadSweepTimer = setInterval(() => {
     sweepStaleUploads().catch((err) => log.error('failed to clean up abandoned uploads', err));
+    sweepExpiredStaged().catch((err) => log.error('failed to clean up expired staged attachments', err));
   }, 60 * 60 * 1000);
   uploadSweepTimer.unref();
 
@@ -88,6 +91,10 @@ export async function bootstrap(): Promise<void> {
     pruneNotifications().catch((err) => log.error('failed to prune', err));
   }, 24 * 60 * 60 * 1000);
   pruneTimer.unref();
+  const sendOpsTimer = setInterval(() => {
+    sweepSendOperations().catch((err) => log.error('failed to prune chat send operations', err));
+  }, 24 * 60 * 60 * 1000);
+  sendOpsTimer.unref();
 
   // Files on disk with no row behind them (a failed unlink, a crash mid-commit).
   // The scheduled run only reports unless ORPHAN_SWEEP_DRY_RUN=0; an admin can

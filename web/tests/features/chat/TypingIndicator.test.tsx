@@ -9,11 +9,11 @@ function user(id: string, displayName: string): PublicUser {
 }
 
 describe('TypingIndicator', () => {
-  it('ninguem digitando: nao renderiza nada', () => {
-    const { container } = renderWithRoom(<TypingIndicator conversationId="conv-1" />, {
+  it('ninguem digitando: a regiao de status existe, mas vazia (anuncia a primeira mudanca)', () => {
+    renderWithRoom(<TypingIndicator conversationId="conv-1" />, {
       typingByConversation: new Map(),
     });
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
   });
 
   it('uma pessoa digitando: mostra o avatar dela e o texto', () => {
@@ -44,10 +44,10 @@ describe('TypingIndicator', () => {
   });
 
   it('nao trava se o usuario que digita ja saiu do allUsers (race de presenca)', () => {
-    const { container } = renderWithRoom(<TypingIndicator conversationId="conv-1" />, {
+    renderWithRoom(<TypingIndicator conversationId="conv-1" />, {
       allUsers: new Map(),
       typingByConversation: new Map([['conv-1', new Set(['ghost'])]]),
     });
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
   });
 });

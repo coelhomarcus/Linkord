@@ -54,9 +54,13 @@ export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) 
   // Left unset (not thumbUrl) while the cache warms — see useCachedImageSrc,
   // a fallback src here would fire a second, concurrent request for the
   // same image.
-  const cachedThumbUrl = useCachedImageSrc(thumbUrl);
+  // Hooks can't sit behind the MIME branch below, so the url is nulled
+  // instead — otherwise a 2 GiB video or zip would be downloaded whole into
+  // a blob just to never be shown as an image.
+  const isImage = IMAGE_MIME_TYPES.has(attachment.mime);
+  const cachedThumbUrl = useCachedImageSrc(isImage ? thumbUrl : null);
 
-  if (IMAGE_MIME_TYPES.has(attachment.mime)) {
+  if (isImage) {
     return (
       <>
         <button type="button" onClick={() => setLightboxOpen(true)} className={cn('block max-w-full cursor-zoom-in', !edgeToEdge && 'mt-1.5')}>

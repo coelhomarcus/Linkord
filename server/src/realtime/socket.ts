@@ -19,7 +19,7 @@ import * as moderation from '../modules/moderation/moderation.js';
 import { parseCookies } from '../http/cookies.js';
 import { resolveSession } from '../modules/auth/session.js';
 import { isSocketOriginAllowed } from '../http/originGuard.js';
-import { isClientCompatible } from './protocolVersion.js';
+import { isClientCompatible, PROTOCOL_VERSION } from './protocolVersion.js';
 import type { AppSocket, HandlerTable } from '../types.js';
 import { logger } from '../lib/logger.js';
 
@@ -110,6 +110,9 @@ async function handleJoin(socket: AppSocket, msg: JoinMessage): Promise<void> {
     conversations: await listForUser(p.userId),
     storageUsage: await getUserUsage(p.userId),
     livekitUrl: config.LIVEKIT_URL,
+    // lets a newer client use what this server supports (3: correlated,
+    // idempotent chat sends) and fall back otherwise
+    protocolVersion: PROTOCOL_VERSION,
   });
   broadcastToKnownPeers(p.userId, { t: 'participant-joined', participant: publicParticipant(p) }, p.id);
   if (justCameOnline) broadcastToKnownPeers(p.userId, { t: 'user-online', userId: p.userId });
@@ -227,7 +230,9 @@ export function createWsServer(httpServer: HttpServer): Server {
         // !== socket` guard already no-ops it, nothing to rate-limit.
         if (userId && !floodControl.allow(`${eventName}:${userId}`, rule)) {
           log.warn('socket action rate limited', { event: eventName, userId });
-          sendSocketError(socket, 'rate_limited', 'Você está enviando rápido demais. Espere um pouco.');
+          const message = 'Você está enviando rápido demais. Espere um pouco.';
+          if (chat.rejectCorrelated(eventName, socket, payload, 'rate_limited', message)) return;
+          sendSocketError(socket, 'rate_limited', message);
           return;
         }
       }

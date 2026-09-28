@@ -29,7 +29,6 @@ export interface UploadManifest {
   fileName: string;
   mimeType: string;
   totalSize: number;
-  caption: string;
   chunkSize: number;
   totalChunks: number;
   createdAt: string;

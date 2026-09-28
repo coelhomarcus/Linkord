@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { initialRoomState } from '@/state/roomReducer';
 import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
 import { MessageRow } from '@/features/chat/MessageRow';
 import type { ChatMessage, PublicUser } from '@/shared/types/protocol';
+import type { OutboxEntry } from '@/features/chat/useMessageOutbox';
 
 function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -235,5 +236,81 @@ describe('MessageRow — denunciar', () => {
     unmount();
     row(makeMessage({ id: 'user-2', kind: 'group_invite', text: '', invitation: null }));
     expect(screen.queryByRole('button', { name: 'Denunciar' })).not.toBeInTheDocument();
+  });
+});
+
+describe('MessageRow — envio pendente', () => {
+  const pendingMessage = { msgId: -1, conversationId: 'c', id: 'me', name: 'Eu', avatar: '', text: 'na fila', ts: Date.now(), clientMessageId: 'k1' };
+  const entry = (over: Partial<OutboxEntry> = {}): OutboxEntry => ({ clientMessageId: 'k1', conversationId: 'c', text: 'na fila', createdAt: Date.now(), state: 'sending', ...over });
+  const renderPending = (pending: OutboxEntry, room: Parameters<typeof renderWithRoom>[1] = {}) => renderWithRoom(
+    <MessageRow message={pendingMessage} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={() => {}} onReply={() => {}} onJumpTo={() => {}} pending={pending} />,
+    room,
+  );
+
+  it('sem id do servidor: nao expoe data-msg-id nem acoes de mensagem', () => {
+    const { container } = renderPending(entry());
+    expect(container.querySelector('[data-msg-id]')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Responder' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reagir' })).not.toBeInTheDocument();
+  });
+
+  it('offline: diz que aguarda conexao', () => {
+    renderPending(entry(), { state: { ...initialRoomState, reconnecting: true } });
+    expect(screen.getByText('Aguardando conexão…')).toBeInTheDocument();
+  });
+
+  it('falha: mostra o motivo e as acoes de tentar de novo e descartar', async () => {
+    const retryPendingMessage = vi.fn();
+    const discardPendingMessage = vi.fn();
+    renderPending(entry({ state: 'failed', error: 'Sem permissão.' }), { retryPendingMessage, discardPendingMessage });
+    expect(screen.getByRole('alert')).toHaveTextContent('Não enviada: Sem permissão.');
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Descartar' }));
+    expect(retryPendingMessage).toHaveBeenCalledWith('k1');
+    expect(discardPendingMessage).toHaveBeenCalledWith('k1');
+  });
+});
+
+describe('MessageRow — editar e apagar com confirmacao', () => {
+  const mine = makeMessage({ id: 'me', text: 'texto antigo' });
+  const me = { ...initialRoomState, me: { ...initialRoomState.me, userId: 'me' } };
+  const renderMine = (room: Parameters<typeof renderWithRoom>[1] = {}) => renderWithRoom(
+    <MessageRow message={mine} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={() => {}} onReply={() => {}} onJumpTo={() => {}} />,
+    { state: me, editingMsgId: mine.msgId, ...room },
+  );
+
+  it('edicao recusada: o editor continua aberto com o texto e o motivo', async () => {
+    const user = userEvent.setup();
+    const setEditingMsgId = vi.fn();
+    const editChatMessage = vi.fn(async () => { throw new Error('Vocês precisam ser amigos pra conversar por aqui.'); });
+    renderMine({ editChatMessage, setEditingMsgId });
+    const editor = screen.getByRole('textbox');
+    await user.clear(editor);
+    await user.type(editor, 'texto novo{Enter}');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Vocês precisam ser amigos');
+    expect(editor).toHaveValue('texto novo');
+    expect(setEditingMsgId).not.toHaveBeenCalledWith(null);
+  });
+
+  it('edicao confirmada fecha o editor', async () => {
+    const user = userEvent.setup();
+    const setEditingMsgId = vi.fn();
+    const editChatMessage = vi.fn(async () => {});
+    renderMine({ editChatMessage, setEditingMsgId });
+    await user.type(screen.getByRole('textbox'), ' editado{Enter}');
+    expect(editChatMessage).toHaveBeenCalledWith(mine.msgId, 'texto antigo editado');
+    expect(setEditingMsgId).toHaveBeenCalledWith(null);
+  });
+
+  it('apagando: a linha avisa; falha aparece na linha e pode ser dispensada', () => {
+    const dismissMessageActionError = vi.fn();
+    const { rerender } = renderMine({ editingMsgId: null, deletingMsgIds: new Set([mine.msgId]) });
+    expect(screen.getByText('Apagando…')).toBeInTheDocument();
+    rerender(<></>);
+    renderMine({ editingMsgId: null, messageActionErrors: new Map([[mine.msgId, 'Não foi possível apagar: sem conexão']]), dismissMessageActionError });
+    expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível apagar');
+    fireEvent.click(screen.getByRole('button', { name: 'Dispensar aviso' }));
+    expect(dismissMessageActionError).toHaveBeenCalledWith(mine.msgId);
   });
 });
