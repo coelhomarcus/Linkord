@@ -7,7 +7,6 @@ import { useParticipantMedia } from './useLiveKitTrack';
 import type { ReactionEmoji } from '@/shared/types/protocol';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/primitives/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/primitives/popover';
-import { buttonVariants } from '@/shared/ui/primitives/button';
 import { cn } from '@/shared/lib/utils';
 
 // Floating call reactions (burst animation on everyone's screen) stay a
@@ -27,6 +26,17 @@ const MIC_PROBLEM_NOTICE = {
   unavailable: 'Não foi possível iniciar o microfone — ele pode estar em uso por outro aplicativo. Você está na chamada, mas ninguém te ouve; clique no botão do microfone para tentar de novo.',
 } as const;
 
+// The bar is intentionally theme-independent (black material, white-based
+// states) — it stays the same over the dark call stage regardless of the
+// app's own light/dark theme, matching the Fluxer reference. Sizes shrink
+// at 480/360px (viewport width, not the stage's own measured width — the
+// stage doesn't expose that yet; see the calls redesign plan's E5/E10).
+const BAR_BUTTON = 'grid size-11 flex-none place-items-center rounded-2xl transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-white/50 active:translate-y-px max-[480px]:size-10 max-[480px]:rounded-[14px] max-[360px]:size-9 max-[360px]:rounded-[13px]';
+const BAR_BUTTON_NEUTRAL = 'bg-white/5 text-white/90 hover:bg-white/12';
+const BAR_BUTTON_RED = 'bg-red/16 text-red hover:bg-red/24';
+const BAR_BUTTON_GREEN = 'bg-green/16 text-green hover:bg-green/24';
+const BAR_ICON = 'size-[22px] max-[480px]:size-5 max-[360px]:size-[19px]';
+
 export function CallControlBar() {
   const { state, dispatch, startCamera, stopCamera, startSharing, stopSharing, activateMic, toggleMicMuted, deafened, toggleDeafened, leaveCall, sendReaction, reconnecting } = useRoom();
   const myMedia = useParticipantMedia(state.me.id ?? '');
@@ -44,8 +54,6 @@ export function CallControlBar() {
     sendReaction(emoji);
     setReactionsOpen(false);
   }
-
-  const callButtonClass = 'h-11 w-11 rounded-full border border-strong bg-bg-floating/90 text-text-secondary shadow-popover backdrop-blur-xl hover:text-text-primary';
 
   return (
     <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
@@ -67,17 +75,13 @@ export function CallControlBar() {
           <CloseButton size="xs" label="Dispensar aviso" onClick={() => setDismissedMicProblem(micProblem)} />
         </div>
       )}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 rounded-3xl border border-white/10 bg-black p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.45)] max-[480px]:gap-0.75 max-[480px]:p-1.25 max-[360px]:gap-0.5 max-[360px]:p-1">
         <Popover open={reactionsOpen} onOpenChange={setReactionsOpen}>
           <PopoverTrigger
             aria-label="Reagir"
-            className={cn(
-              buttonVariants({ variant: 'ghost', size: 'icon-lg' }),
-              'h-11 w-11 rounded-full border border-strong bg-bg-floating/90 shadow-popover backdrop-blur-xl',
-              reactionsOpen ? 'text-text-primary' : 'text-text-secondary hover:text-text-primary'
-            )}
+            className={cn(BAR_BUTTON, reactionsOpen ? 'bg-white/12 text-white' : BAR_BUTTON_NEUTRAL)}
           >
-            <Smile size={18} />
+            <Smile className={BAR_ICON} />
           </PopoverTrigger>
           <PopoverContent className="w-auto p-1.5" side="top">
             <div className="flex gap-1">
@@ -99,10 +103,10 @@ export function CallControlBar() {
           <TooltipTrigger
             onClick={() => { void (myMedia.micActivated ? toggleMicMuted() : activateMic()); }}
             aria-label={micLabel}
-            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), callButtonClass, 'relative')}
+            className={cn(BAR_BUTTON, 'relative', myMedia.micMuted || micProblem ? BAR_BUTTON_RED : BAR_BUTTON_NEUTRAL)}
           >
-            {myMedia.micMuted ? <MicOff size={18} className="text-red" /> : <Mic size={18} />}
-            {micProblem && <span aria-hidden className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full border-2 border-bg-floating bg-red" />}
+            {myMedia.micMuted ? <MicOff className={BAR_ICON} /> : <Mic className={BAR_ICON} />}
+            {micProblem && <span aria-hidden className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full border-2 border-black bg-red" />}
           </TooltipTrigger>
           <TooltipContent>{micLabel}</TooltipContent>
         </Tooltip>
@@ -111,9 +115,9 @@ export function CallControlBar() {
           <TooltipTrigger
             onClick={toggleDeafened}
             aria-label={deafened ? 'Voltar a ouvir' : 'Parar de ouvir'}
-            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), callButtonClass)}
+            className={cn(BAR_BUTTON, deafened ? BAR_BUTTON_RED : BAR_BUTTON_NEUTRAL)}
           >
-            {deafened ? <HeadphoneOff size={18} className="text-red" /> : <Headphones size={18} />}
+            {deafened ? <HeadphoneOff className={BAR_ICON} /> : <Headphones className={BAR_ICON} />}
           </TooltipTrigger>
           <TooltipContent>{deafened ? 'Voltar a ouvir' : 'Parar de ouvir'}</TooltipContent>
         </Tooltip>
@@ -122,9 +126,9 @@ export function CallControlBar() {
           <TooltipTrigger
             onClick={() => { void (cameraOn ? stopCamera() : startCamera()); }}
             aria-label={cameraOn ? 'Parar câmera' : 'Ligar câmera'}
-            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), callButtonClass)}
+            className={cn(BAR_BUTTON, cameraOn ? BAR_BUTTON_GREEN : BAR_BUTTON_NEUTRAL)}
           >
-            {cameraOn ? <Video size={18} className="text-green" /> : <VideoOff size={18} />}
+            {cameraOn ? <Video className={BAR_ICON} /> : <VideoOff className={BAR_ICON} />}
           </TooltipTrigger>
           <TooltipContent>{cameraOn ? 'Parar câmera' : 'Ligar câmera'}</TooltipContent>
         </Tooltip>
@@ -133,20 +137,22 @@ export function CallControlBar() {
           <TooltipTrigger
             onClick={() => { void (sharing ? stopSharing() : startSharing()); }}
             aria-label={sharing ? 'Parar compartilhamento' : 'Compartilhar tela'}
-            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), callButtonClass)}
+            className={cn(BAR_BUTTON, sharing ? BAR_BUTTON_GREEN : BAR_BUTTON_NEUTRAL)}
           >
-            {sharing ? <MonitorX size={18} className="text-primary" /> : <Monitor size={18} />}
+            {sharing ? <MonitorX className={BAR_ICON} /> : <Monitor className={BAR_ICON} />}
           </TooltipTrigger>
           <TooltipContent>{sharing ? 'Parar compartilhamento' : 'Compartilhar tela'}</TooltipContent>
         </Tooltip>
+
+        <div aria-hidden className="mx-0.5 h-6 w-px flex-none bg-white/10" />
 
         <Tooltip>
           <TooltipTrigger
             onClick={leaveCall}
             aria-label="Sair da chamada"
-            className={cn(buttonVariants({ variant: 'ghost', size: 'icon-lg' }), 'h-11 w-11 rounded-full bg-red text-white shadow-popover hover:bg-red-hover')}
+            className={cn(BAR_BUTTON, 'bg-red text-white hover:bg-red-hover')}
           >
-            <PhoneOff size={18} />
+            <PhoneOff className={BAR_ICON} />
           </TooltipTrigger>
           <TooltipContent>Sair da chamada</TooltipContent>
         </Tooltip>

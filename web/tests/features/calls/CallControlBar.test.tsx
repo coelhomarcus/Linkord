@@ -72,4 +72,33 @@ describe('CallControlBar', () => {
     expect(screen.getByLabelText('Microfone indisponível')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('em uso por outro aplicativo');
   });
+
+  it('camera e compartilhamento ativos usam o mesmo tratamento visual (verde)', () => {
+    renderWithRoom(<CallControlBar />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, cameraOn: true, sharing: true } },
+    });
+    expect(screen.getByLabelText('Parar câmera').className).toMatch(/bg-green/);
+    expect(screen.getByLabelText('Parar compartilhamento').className).toMatch(/bg-green/);
+  });
+
+  it('camera e compartilhamento desligados nao usam a cor de ativo', () => {
+    renderWithRoom(<CallControlBar />);
+    expect(screen.getByLabelText('Ligar câmera').className).not.toMatch(/bg-green/);
+    expect(screen.getByLabelText('Compartilhar tela').className).not.toMatch(/bg-green/);
+  });
+
+  it('microfone mutado e ensurdecido usam o tratamento vermelho', () => {
+    const livekitRoom = new Room();
+    vi.spyOn(livekitRoom.localParticipant, 'getTrackPublication').mockImplementation((source) => (
+      source === Track.Source.Microphone ? { isMuted: true, track: undefined } as never : undefined
+    ));
+    renderWithRoom(<CallControlBar />, { livekitRoom, deafened: true });
+    expect(screen.getByLabelText('Desmutar').className).toMatch(/bg-red/);
+    expect(screen.getByLabelText('Voltar a ouvir').className).toMatch(/bg-red/);
+  });
+
+  it('sair da chamada continua com destaque vermelho proprio, fora do agrupamento neutro', () => {
+    renderWithRoom(<CallControlBar />);
+    expect(screen.getByLabelText('Sair da chamada').className).toMatch(/bg-red\b/);
+  });
 });
