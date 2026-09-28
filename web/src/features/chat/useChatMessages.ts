@@ -26,6 +26,11 @@ function withMessage(list: ChatMessage[], message: ChatMessage): ChatMessage[] {
   return [...list.slice(0, index), message, ...list.slice(index)];
 }
 
+// Conversations whose history stays in memory once you've moved on; older
+// ones are dropped and fetched again when reopened. Unsent messages live in
+// the outbox and drafts in their own store, so neither goes with them.
+const MAX_CACHED_CONVERSATIONS = 5;
+
 // A page request that never gets an answer mustn't leave its direction
 // "loading" forever — after this the user can scroll to try again.
 const PAGE_TIMEOUT_MS = 10_000;
@@ -91,6 +96,23 @@ export function useChatMessages(deps: ChatMessagesDeps) {
   // timeline starts over from its new position instead of keeping a scroll
   // offset that belonged to rows no longer there
   const [windowGenerationByConversation, setWindowGeneration] = useState<Map<string, number>>(new Map());
+  const recentConversationsRef = useRef<string[]>([]);
+  const touchConversationCache = useCallback((conversationId: string) => {
+    const recent = [conversationId, ...recentConversationsRef.current.filter((id) => id !== conversationId)];
+    const evicted = recent.slice(MAX_CACHED_CONVERSATIONS);
+    recentConversationsRef.current = recent.slice(0, MAX_CACHED_CONVERSATIONS);
+    if (!evicted.length) return;
+    const drop = <V,>(prev: Map<string, V>) => {
+      if (!evicted.some((id) => prev.has(id))) return prev;
+      const next = new Map(prev);
+      for (const id of evicted) next.delete(id);
+      return next;
+    };
+    setMessagesByConversation(drop);
+    setHasMoreByConversation(drop);
+    setHasMoreAfterByConversation(drop);
+    setNewerCountByConversation(drop);
+  }, []);
   const bumpWindow = useCallback((conversationId: string) => {
     setWindowGeneration((prev) => new Map(prev).set(conversationId, (prev.get(conversationId) ?? 0) + 1));
   }, []);
@@ -308,10 +330,11 @@ export function useChatMessages(deps: ChatMessagesDeps) {
   const onConversationHistory = useCallback((m: Extract<ServerMessage, { t: 'conversation-history' }>) => {
     resetPages(m.conversationId);
     bumpWindow(m.conversationId);
+    touchConversationCache(m.conversationId);
     setMessagesByConversation((prev) => new Map(prev).set(m.conversationId, m.messages));
     setHasMoreByConversation((prev) => new Map(prev).set(m.conversationId, m.hasMore));
     setHasMoreAfterByConversation((prev) => new Map(prev).set(m.conversationId, false));
-  }, [resetPages, bumpWindow]);
+  }, [resetPages, bumpWindow, touchConversationCache]);
 
   const onConversationHistoryAround = useCallback((m: Extract<ServerMessage, { t: 'conversation-history-around' }>) => {
     const pending = pendingJumpRef.current;

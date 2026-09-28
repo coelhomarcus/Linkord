@@ -167,3 +167,18 @@ describe('useChatMessages — janela de historico', () => {
     expect(sentOf(sendWs, 'conversation-open')).toHaveLength(1);
   });
 });
+
+describe('useChatMessages — memoria', () => {
+  it('guarda o historico so das 5 conversas abertas mais recentemente', () => {
+    const ref = <T,>(current: T) => ({ current });
+    const { result } = renderHook(() => useChatMessages({
+      sendWs: vi.fn(() => true), activeConversationIdRef: ref<string | null>('c6'), setActiveConversation: vi.fn(),
+      conversationsRef: ref([]), allUsersRef: ref(new Map()), myUserIdRef: ref<string | null>('b'), myUsernameRef: ref<string | null>('b'),
+      activeViewRef: ref<'chat' | 'call'>('chat'), clearTypingEntry: vi.fn(),
+    }));
+    for (let i = 1; i <= 6; i++) {
+      act(() => result.current.onConversationHistory({ t: 'conversation-history', conversationId: `c${i}`, hasMore: false, messages: [message(i, { conversationId: `c${i}` })] }));
+    }
+    expect([...result.current.messagesByConversation.keys()].sort()).toEqual(['c2', 'c3', 'c4', 'c5', 'c6']);
+  });
+});
