@@ -39,15 +39,22 @@ function ParticipantAudio({ participantId }: { participantId: string }) {
       micEl.volume = userId ? loadCallVolume(userId) : 1;
       audioRegistry.current.set(participantId, { element: micEl });
     }
-    if (screenEl) {
+    // Only register once there's an actual track, not just because the
+    // (always-mounted) <audio> element exists — a screen share with no
+    // audio must never look "mutable" in the tile menu's volume slider
+    // (see the calls redesign plan §8.3: "não mostrar 'áudio compartilhado'
+    // apenas porque foi solicitado").
+    if (screenEl && media.screenAudioTrack) {
       screenEl.volume = userId ? loadCallVolume(`${userId}:screen`) : 1;
       audioRegistry.current.set(screenKey, { element: screenEl });
+    } else {
+      audioRegistry.current.delete(screenKey);
     }
     return () => {
       audioRegistry.current.delete(participantId);
       audioRegistry.current.delete(screenKey);
     };
-  }, [participantId, userId, audioRegistry]);
+  }, [participantId, userId, audioRegistry, media.screenAudioTrack]);
 
   return (
     <>
