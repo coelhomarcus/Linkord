@@ -56,6 +56,8 @@ export function createFakeRoomContextValue(overrides: Partial<RoomContextValue> 
     setNoiseSuppressionEnabled: asyncNoop,
     noiseSuppressionPending: false,
     noiseSuppressionError: null,
+    mirrorCameraPreview: true,
+    setMirrorCameraPreview: noop,
     conversations: [],
     activeConversationId: null,
     openConversation: noop,

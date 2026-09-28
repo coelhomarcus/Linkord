@@ -24,7 +24,7 @@ interface TileProps {
 }
 
 export function Tile({ participantId, kind, isMine, loading = false, fit = 'cover', avatarSize = 96, nameSize = 'body' }: TileProps) {
-  const { state, dispatch, openTileMenu, tileDomRegistry, deafened, showTileBanners } = useRoom();
+  const { state, dispatch, openTileMenu, tileDomRegistry, deafened, showTileBanners, mirrorCameraPreview } = useRoom();
   const key = tileKey(participantId, kind);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -145,7 +145,15 @@ export function Tile({ participantId, kind, isMine, loading = false, fit = 'cove
     >
       {kind !== 'screen' && banner && <div className="absolute inset-0" style={bannerLayerStyle} />}
       {showsVideo ? (
-        <video ref={videoRef} autoPlay playsInline muted={isMine} className={`relative h-full w-full object-cover ${kind === 'screen' ? 'bg-black' : ''}`} />
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted={isMine}
+          className={`relative h-full w-full object-cover ${kind === 'screen' ? 'bg-black' : ''}`}
+          // presentation only — the track actually published/sent is never touched
+          style={isMine && kind === 'camera' && mirrorCameraPreview ? { transform: 'scaleX(-1)' } : undefined}
+        />
       ) : (
         <div className="relative flex h-full w-full flex-col items-center justify-center gap-2.5">
           <Avatar id={participantId} name={name} avatar={avatar} poster={avatarPoster} frozen={!isSpeaking} avatarColor={avatarColor} size={avatarSize} className={loading ? 'opacity-50' : undefined} />

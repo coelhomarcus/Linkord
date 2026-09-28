@@ -7,6 +7,7 @@ import { useParticipantMedia } from './useLiveKitTrack';
 import type { ReactionEmoji } from '@/shared/types/protocol';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/primitives/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/primitives/popover';
+import { CameraQuickMenu, MicQuickMenu, SpeakerQuickMenu } from './CallDeviceMenus';
 import { cn } from '@/shared/lib/utils';
 
 // Floating call reactions (burst animation on everyone's screen) stay a
@@ -99,39 +100,48 @@ export function CallControlBar() {
           </PopoverContent>
         </Popover>
 
-        <Tooltip>
-          <TooltipTrigger
-            onClick={() => { void (myMedia.micActivated ? toggleMicMuted() : activateMic()); }}
-            aria-label={micLabel}
-            className={cn(BAR_BUTTON, 'relative', myMedia.micMuted || micProblem ? BAR_BUTTON_RED : BAR_BUTTON_NEUTRAL)}
-          >
-            {myMedia.micMuted ? <MicOff className={BAR_ICON} /> : <Mic className={BAR_ICON} />}
-            {micProblem && <span aria-hidden className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full border-2 border-black bg-red" />}
-          </TooltipTrigger>
-          <TooltipContent>{micLabel}</TooltipContent>
-        </Tooltip>
+        <div className="relative">
+          <Tooltip>
+            <TooltipTrigger
+              onClick={() => { void (myMedia.micActivated ? toggleMicMuted() : activateMic()); }}
+              aria-label={micLabel}
+              className={cn(BAR_BUTTON, 'relative', myMedia.micMuted || micProblem ? BAR_BUTTON_RED : BAR_BUTTON_NEUTRAL)}
+            >
+              {myMedia.micMuted ? <MicOff className={BAR_ICON} /> : <Mic className={BAR_ICON} />}
+              {micProblem && <span aria-hidden className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full border-2 border-black bg-red" />}
+            </TooltipTrigger>
+            <TooltipContent>{micLabel}</TooltipContent>
+          </Tooltip>
+          <MicQuickMenu />
+        </div>
 
-        <Tooltip>
-          <TooltipTrigger
-            onClick={toggleDeafened}
-            aria-label={deafened ? 'Voltar a ouvir' : 'Parar de ouvir'}
-            className={cn(BAR_BUTTON, deafened ? BAR_BUTTON_RED : BAR_BUTTON_NEUTRAL)}
-          >
-            {deafened ? <HeadphoneOff className={BAR_ICON} /> : <Headphones className={BAR_ICON} />}
-          </TooltipTrigger>
-          <TooltipContent>{deafened ? 'Voltar a ouvir' : 'Parar de ouvir'}</TooltipContent>
-        </Tooltip>
+        <div className="relative">
+          <Tooltip>
+            <TooltipTrigger
+              onClick={toggleDeafened}
+              aria-label={deafened ? 'Voltar a ouvir' : 'Parar de ouvir'}
+              className={cn(BAR_BUTTON, deafened ? BAR_BUTTON_RED : BAR_BUTTON_NEUTRAL)}
+            >
+              {deafened ? <HeadphoneOff className={BAR_ICON} /> : <Headphones className={BAR_ICON} />}
+            </TooltipTrigger>
+            <TooltipContent>{deafened ? 'Voltar a ouvir' : 'Parar de ouvir'}</TooltipContent>
+          </Tooltip>
+          <SpeakerQuickMenu />
+        </div>
 
-        <Tooltip>
-          <TooltipTrigger
-            onClick={() => { void (cameraOn ? stopCamera() : startCamera()); }}
-            aria-label={cameraOn ? 'Parar câmera' : 'Ligar câmera'}
-            className={cn(BAR_BUTTON, cameraOn ? BAR_BUTTON_GREEN : BAR_BUTTON_NEUTRAL)}
-          >
-            {cameraOn ? <Video className={BAR_ICON} /> : <VideoOff className={BAR_ICON} />}
-          </TooltipTrigger>
-          <TooltipContent>{cameraOn ? 'Parar câmera' : 'Ligar câmera'}</TooltipContent>
-        </Tooltip>
+        <div className="relative">
+          <Tooltip>
+            <TooltipTrigger
+              onClick={() => { void (cameraOn ? stopCamera() : startCamera()); }}
+              aria-label={cameraOn ? 'Parar câmera' : 'Ligar câmera'}
+              className={cn(BAR_BUTTON, cameraOn ? BAR_BUTTON_GREEN : BAR_BUTTON_NEUTRAL)}
+            >
+              {cameraOn ? <Video className={BAR_ICON} /> : <VideoOff className={BAR_ICON} />}
+            </TooltipTrigger>
+            <TooltipContent>{cameraOn ? 'Parar câmera' : 'Ligar câmera'}</TooltipContent>
+          </Tooltip>
+          <CameraQuickMenu />
+        </div>
 
         <Tooltip>
           <TooltipTrigger

@@ -71,3 +71,37 @@ describe('Tile — carregando (publicacao sem track ainda)', () => {
     expect(container.querySelector('.animate-spin')).not.toBeInTheDocument();
   });
 });
+
+describe('Tile — espelhamento da propria camera', () => {
+  it('minha camera com a preferencia ligada aparece espelhada', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-1" kind="camera" isMine />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
+      mirrorCameraPreview: true,
+    });
+    expect(container.querySelector('video')).toHaveStyle({ transform: 'scaleX(-1)' });
+  });
+
+  it('com a preferencia desligada, nao espelha', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-1" kind="camera" isMine />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
+      mirrorCameraPreview: false,
+    });
+    expect(container.querySelector('video')).not.toHaveStyle({ transform: 'scaleX(-1)' });
+  });
+
+  it('a camera de outro participante nunca espelha, mesmo com a preferencia ligada', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="camera" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+      mirrorCameraPreview: true,
+    });
+    expect(container.querySelector('video')).not.toHaveStyle({ transform: 'scaleX(-1)' });
+  });
+
+  it('compartilhamento de tela nunca espelha, mesmo sendo meu', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-1" kind="screen" isMine />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
+      mirrorCameraPreview: true,
+    });
+    expect(container.querySelector('video')).not.toHaveStyle({ transform: 'scaleX(-1)' });
+  });
+});
