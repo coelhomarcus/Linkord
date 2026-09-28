@@ -26,7 +26,7 @@ describe('MessageMedia', () => {
     expect(within(grid as HTMLElement).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual([
       'Abrir a.png (1 de 3)', 'Abrir b.png (2 de 3)', 'Abrir c.png (3 de 3)',
     ]);
-    expect(screen.getByText('rel.pdf').compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    expect(screen.getByTitle('rel.pdf').compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   });
 
   it('abre o visualizador na imagem clicada e navega pela colecao', () => {

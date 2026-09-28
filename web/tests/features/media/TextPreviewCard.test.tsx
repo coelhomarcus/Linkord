@@ -60,6 +60,6 @@ describe('TextPreviewCard', () => {
     render(<TextPreviewCard attachment={{ id: 'bin-id', name: 'dados.log', mime: 'text/plain', size: 50 }} />);
 
     await waitFor(() => expect(screen.queryByRole('button', { name: /Mostrar mais/ })).not.toBeInTheDocument());
-    expect(screen.getByText('dados.log')).toBeInTheDocument();
+    expect(screen.getByTitle('dados.log')).toBeInTheDocument();
   });
 });

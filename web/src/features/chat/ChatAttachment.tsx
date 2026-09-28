@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { Download } from 'lucide-react';
 import type { ChatAttachment as ChatAttachmentData } from '@/shared/types/protocol';
-import { DocumentAttachmentCard } from '@/features/media/DocumentAttachmentCard';
+import { FileAttachmentCard, FILE_CARD_MAX_WIDTH } from '@/features/media/FileAttachmentCard';
 import { ImageLightbox } from '@/features/media/ImageLightbox';
 import { AudioPlayer, VideoPlayer } from '@/features/media/MediaPlayers';
 import { TextPreviewCard } from '@/features/media/TextPreviewCard';
@@ -12,9 +11,10 @@ import { cn } from '../../shared/lib/utils';
 export const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 export const VIDEO_MIME_TYPES = new Set(['video/mp4', 'video/webm', 'video/ogg']);
 export const AUDIO_MIME_TYPES = new Set(['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4']);
-// Mirrors server/src/modules/attachments.ts#TEXT_PREVIEW_EXTENSIONS — no
-// shared package between web/ and server/, so this is duplicated on
-// purpose, same as the mime sets above vs INLINE_MIME_TYPES.
+// Mirrors server/src/modules/attachments.ts#TEXT_PREVIEW_EXTENSIONS and
+// features/media/filePresentation.ts#TEXT_CODE_EXTENSIONS — no shared
+// package between those, so this is duplicated on purpose, same as the mime
+// sets above vs INLINE_MIME_TYPES.
 const TEXT_PREVIEW_EXTENSIONS = new Set([
   'md', 'markdown', 'txt', 'json', 'jsonc', 'yaml', 'yml', 'csv', 'tsv', 'xml', 'log', 'env',
   'js', 'jsx', 'ts', 'tsx', 'py', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'rb', 'php',
@@ -49,8 +49,8 @@ export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) 
   // lightbox below always opens the full original, same as the download.
   const thumbUrl = attachment.thumbId ? `/uploads/${attachment.thumbId}` : url;
   const [lightboxOpen, setLightboxOpen] = useState(false);
-  const surfaceWidth = useChatSurfaceWidth(384 + 120);
-  const maxWidth = availableAttachmentWidth(surfaceWidth, 384);
+  const surfaceWidth = useChatSurfaceWidth(FILE_CARD_MAX_WIDTH + 120);
+  const maxWidth = availableAttachmentWidth(surfaceWidth, FILE_CARD_MAX_WIDTH);
   // Left unset (not thumbUrl) while the cache warms — see useCachedImageSrc,
   // a fallback src here would fire a second, concurrent request for the
   // same image.
@@ -85,7 +85,7 @@ export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) 
       <VideoPlayer
         src={url}
         title={attachment.name}
-        className={edgeToEdge ? 'rounded-2xl border-0' : 'mt-1.5'}
+        className={edgeToEdge ? 'rounded-2xl border-0' : undefined}
       />
     );
   }
@@ -95,7 +95,7 @@ export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) 
       <AudioPlayer
         src={url}
         title={attachment.name}
-        className={edgeToEdge ? 'max-w-full rounded-2xl border-0 bg-transparent shadow-none' : 'mt-1.5'}
+        className={edgeToEdge ? 'max-w-full rounded-2xl border-0 bg-transparent shadow-none' : undefined}
       />
     );
   }
@@ -104,16 +104,5 @@ export function ChatAttachment({ attachment, edgeToEdge }: ChatAttachmentProps) 
     return <TextPreviewCard attachment={attachment} maxWidth={maxWidth} />;
   }
 
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      download={attachment.name}
-      className="mt-1.5 flex w-full max-w-sm items-center gap-3 rounded-xl border border-white/10 bg-bg-tertiary px-3 py-2.5 transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-    >
-      <DocumentAttachmentCard name={attachment.name} size={attachment.size} mime={attachment.mime} className="flex-1" />
-      <Download size={16} className="flex-none text-text-muted" />
-    </a>
-  );
+  return <FileAttachmentCard name={attachment.name} size={attachment.size} mime={attachment.mime} url={url} maxWidth={maxWidth} />;
 }

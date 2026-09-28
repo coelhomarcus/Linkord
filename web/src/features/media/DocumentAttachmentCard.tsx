@@ -1,13 +1,6 @@
-import { File as FileIcon } from 'lucide-react';
 import { formatFileSize } from '@/shared/lib/formatBytes';
 import { cn } from '@/shared/lib/utils';
-
-function fileTypeLabel(name: string, mime: string): string {
-  const ext = name.includes('.') ? name.split('.').pop() ?? '' : '';
-  if (ext && ext.length <= 5) return ext.toUpperCase();
-  const sub = mime.split('/')[1];
-  return sub ? sub.slice(0, 4).toUpperCase() : 'ARQUIVO';
-}
+import { presentFile } from './filePresentation';
 
 interface DocumentAttachmentCardProps {
   name: string;
@@ -16,19 +9,30 @@ interface DocumentAttachmentCardProps {
   className?: string;
 }
 
-/** Standardized "generic file" identity: type badge, name, size — used for
- * both a still-uploading attachment chip and the sent message's file card,
- * so a document reads the same everywhere in the app. */
+/** Standardized file identity — icon by family, name (extension always kept
+ * visible when truncated), type and size. Used by the draft tray, the
+ * pending (outbox) chip and the published card, so a document reads the
+ * same everywhere in the app. No download control, no card chrome: those
+ * belong to whichever surface wraps this (see FileAttachmentCard). */
 export function DocumentAttachmentCard({ name, size, mime, className }: DocumentAttachmentCardProps) {
+  const { icon: Icon, iconBgClassName, iconTextClassName, badge, typeLabel, baseName, extension } = presentFile(name, mime);
   return (
     <div className={cn('flex min-w-0 items-center gap-3', className)}>
-      <div className="grid size-10 flex-none place-items-center rounded-lg bg-bg-secondary">
-        <FileIcon size={20} className="text-text-muted" />
+      <div className={cn('relative grid size-10 flex-none place-items-center rounded-lg', iconBgClassName)}>
+        <Icon size={20} className={iconTextClassName} />
+        {badge && (
+          <span className="absolute -bottom-1 -right-1 rounded bg-red px-1 text-[9px] font-bold leading-3.5 text-white">
+            {badge}
+          </span>
+        )}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-label font-medium text-text-secondary">{name}</p>
+        <p title={name} className="flex min-w-0 items-baseline text-label font-medium text-text-secondary">
+          <span className="truncate">{baseName}</span>
+          {extension && <span className="flex-none overflow-hidden text-ellipsis">.{extension}</span>}
+        </p>
         <p className="truncate text-caption text-text-muted">
-          {fileTypeLabel(name, mime)} · {formatFileSize(size)}
+          {typeLabel} · {formatFileSize(size)}
         </p>
       </div>
     </div>

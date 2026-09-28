@@ -50,7 +50,7 @@ describe('ChatSurface — drag and drop', () => {
 
     dropFiles(dropzone, [fakeFile('relatorio.pdf', 'application/pdf')]);
 
-    expect(screen.getByText('relatorio.pdf')).toBeInTheDocument();
+    expect(screen.getByTitle('relatorio.pdf')).toBeInTheDocument();
   });
 
   it('nao anexa nada quando o usuario ainda nao entrou na conversa', () => {
