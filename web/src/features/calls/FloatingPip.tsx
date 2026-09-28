@@ -22,15 +22,29 @@ interface FloatingPipProps {
 export function FloatingPip({ allIds, onExpand }: FloatingPipProps) {
   const { state } = useRoom();
   const descriptors = useCallTiles(allIds).filter((d) => d.kind !== 'avatar');
-  const [index, setIndex] = useState(0);
+  // The user's own explicit prev/next pick — takes priority over following
+  // focus, same "manual never gets overridden automatically" rule as the
+  // Stage's own focus (useAutoFocusScreenShare). Cleared once its source is
+  // genuinely gone, not kept trying to match a dead key forever.
+  const [manualKey, setManualKey] = useState<string | null>(null);
   const [dragPos, setDragPos] = useState<DragPos | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const boxRef = useRef<HTMLDivElement | null>(null);
   const dragStartRef = useRef({ x: 0, y: 0, left: 0, top: 0 });
   const didDragRef = useRef(false);
 
-  const safeIndex = descriptors.length ? Math.min(index, descriptors.length - 1) : 0;
-  const current = descriptors[safeIndex];
+  // Selects by stable key, never by array index (plan §10: "seleciona por
+  // identidade estável, priorizando a fonte em foco"): a manual pick wins
+  // while it still exists; otherwise the focused source; otherwise the
+  // first available — never a stale index silently pointing at whoever
+  // happens to occupy that slot now.
+  const manualDescriptor = manualKey ? descriptors.find((d) => d.key === manualKey) : undefined;
+  const focusedDescriptor = state.focusedId ? descriptors.find((d) => d.key === state.focusedId) : undefined;
+  const current = manualDescriptor ?? focusedDescriptor ?? descriptors[0];
+
+  useEffect(() => {
+    if (manualKey && !manualDescriptor) setManualKey(null);
+  }, [manualKey, manualDescriptor]);
 
   function handlePointerDown(e: ReactPointerEvent<HTMLDivElement>) {
     if (e.button !== 0) return;
@@ -94,7 +108,7 @@ export function FloatingPip({ allIds, onExpand }: FloatingPipProps) {
         {/* cover, not the new contain default: this wrapper doesn't center a
             shrunk tile the way TileGrid's does — revisit together with the
             rest of the PiP's own redesign */}
-        <Tile participantId={current.participantId} kind={current.kind} loading={current.loading} isMine={current.participantId === state.me.id} fit="cover" />
+        <Tile participantId={current.participantId} kind={current.kind} loading={current.loading} paused={current.paused} isMine={current.participantId === state.me.id} fit="cover" />
       </div>
       <div onPointerDown={handlePointerDown} className="absolute inset-0 cursor-move touch-none select-none" />
 
@@ -106,7 +120,10 @@ export function FloatingPip({ allIds, onExpand }: FloatingPipProps) {
             size="icon-xs"
             aria-label="Transmissão anterior"
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => setIndex((safeIndex - 1 + descriptors.length) % descriptors.length)}
+            onClick={() => {
+              const i = descriptors.findIndex((d) => d.key === current.key);
+              setManualKey(descriptors[(i - 1 + descriptors.length) % descriptors.length]!.key);
+            }}
             className="absolute left-1 top-1/2 -translate-y-1/2 bg-bg-tertiary/75 text-text-primary hover:bg-primary"
           >
             <ChevronLeft size={14} />
@@ -117,7 +134,10 @@ export function FloatingPip({ allIds, onExpand }: FloatingPipProps) {
             size="icon-xs"
             aria-label="Próxima transmissão"
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => setIndex((safeIndex + 1) % descriptors.length)}
+            onClick={() => {
+              const i = descriptors.findIndex((d) => d.key === current.key);
+              setManualKey(descriptors[(i + 1) % descriptors.length]!.key);
+            }}
             className="absolute right-1 top-1/2 -translate-y-1/2 bg-bg-tertiary/75 text-text-primary hover:bg-primary"
           >
             <ChevronRight size={14} />
