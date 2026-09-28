@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent } from 'react';
 import { ConnectionQuality } from 'livekit-client';
-import { HeadphoneOff, Loader2, MicOff, Settings, SignalLow, SignalZero, VolumeX } from 'lucide-react';
+import { EyeOff, HeadphoneOff, Loader2, MicOff, Settings, SignalLow, SignalZero, VolumeX } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { useParticipantMedia, useAttachTrack, useIsSpeaking, useConnectionQuality } from './useLiveKitTrack';
 import { useMuteForMe } from './useMuteForMe';
@@ -44,7 +44,11 @@ export function Tile({ participantId, kind, isMine, loading = false, fit = 'cont
   const connectionQuality = useConnectionQuality(participantId);
   const { hasAudio: hasMutableAudio, muted: mutedForMe, toggleMute: toggleMuteForMe } = useMuteForMe(participantId, kind, isMine);
 
-  const showsVideo = kind !== 'avatar';
+  // "Ocultar vídeo para mim" — presentation only: never unsubscribes or
+  // touches anyone else's view (see TileMenu.tsx). Not offered for your own
+  // camera (that's what turning it off is for) or for screens.
+  const hiddenForMe = kind === 'camera' && !isMine && state.hiddenVideoKeys.has(key);
+  const showsVideo = kind !== 'avatar' && !hiddenForMe;
   const videoTrack = kind === 'screen' ? media.screenTrack : kind === 'camera' ? media.cameraTrack : null;
   useAttachTrack(videoTrack, videoRef);
 
@@ -179,6 +183,14 @@ export function Tile({ participantId, kind, isMine, loading = false, fit = 'cont
           {loading && (
             <span aria-hidden className="absolute" style={{ width: avatarSize, height: avatarSize }}>
               <Loader2 size={Math.max(20, avatarSize / 3)} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 animate-spin text-text-muted" />
+            </span>
+          )}
+          {/* distinct from "camera off": their camera is on, this viewer just
+              chose not to see it — TileMenu's "Ocultar vídeo para mim" */}
+          {hiddenForMe && (
+            <span className="flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-caption text-text-muted">
+              <EyeOff size={12} />
+              Vídeo oculto
             </span>
           )}
         </div>

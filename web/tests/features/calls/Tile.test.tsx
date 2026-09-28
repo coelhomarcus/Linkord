@@ -163,6 +163,40 @@ describe('Tile — nome no padrao de grid', () => {
   });
 });
 
+describe('Tile — vídeo oculto para mim', () => {
+  it('camera de outra pessoa com a chave em hiddenVideoKeys: nao renderiza <video>, mostra o selo "Vídeo oculto"', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="camera" isMine={false} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants: new Map([['p-2', fakeParticipant()]]), hiddenVideoKeys: new Set(['p-2:participant']) },
+    });
+    expect(container.querySelector('video')).not.toBeInTheDocument();
+    expect(screen.getByText('Vídeo oculto')).toBeInTheDocument();
+  });
+
+  it('camera de outra pessoa sem a chave oculta: renderiza <video> normalmente, sem o selo', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="camera" isMine={false} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants: new Map([['p-2', fakeParticipant()]]), hiddenVideoKeys: new Set<string>() },
+    });
+    expect(container.querySelector('video')).toBeInTheDocument();
+    expect(screen.queryByText('Vídeo oculto')).not.toBeInTheDocument();
+  });
+
+  it('minha propria camera nunca oculta, mesmo se a chave estiver em hiddenVideoKeys', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-1" kind="camera" isMine />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, hiddenVideoKeys: new Set(['p-1:participant']) },
+    });
+    expect(container.querySelector('video')).toBeInTheDocument();
+    expect(screen.queryByText('Vídeo oculto')).not.toBeInTheDocument();
+  });
+
+  it('tela compartilhada nunca oculta, mesmo se a chave estiver em hiddenVideoKeys', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="screen" isMine={false} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants: new Map([['p-2', fakeParticipant()]]), hiddenVideoKeys: new Set(['p-2:screen']) },
+    });
+    expect(container.querySelector('video')).toBeInTheDocument();
+    expect(screen.queryByText('Vídeo oculto')).not.toBeInTheDocument();
+  });
+});
+
 describe('Tile — acessibilidade por teclado', () => {
   it('e focavel e tem papel de botao, com aria-pressed refletindo o foco atual', () => {
     renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {

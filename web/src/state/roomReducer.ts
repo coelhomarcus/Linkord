@@ -24,6 +24,10 @@ export interface RoomState {
   focusedId: string | null;
   /** Null whenever focusedId is null — see the SET_FOCUSED action. */
   focusOrigin: 'manual' | 'automatic' | null;
+  /** Tile keys whose video a viewer chose to stop seeing ("Ocultar vídeo
+   * para mim") — local-only, session-only, never synced to the server or
+   * to other participants. Cleared per-participant on PARTICIPANT_LEFT. */
+  hiddenVideoKeys: Set<string>;
   reconnecting: boolean;
   joined: boolean;
   roomError: string | null;
@@ -51,6 +55,7 @@ export const initialRoomState: RoomState = {
   participants: new Map(),
   focusedId: null,
   focusOrigin: null,
+  hiddenVideoKeys: new Set(),
   reconnecting: false,
   joined: false,
   roomError: null,
@@ -84,6 +89,7 @@ export type RoomAction =
   // a manual choice; the reducer nulls it out itself whenever id is null,
   // so callers never have to remember to pair them.
   | { type: 'SET_FOCUSED'; id: string | null; origin: 'manual' | 'automatic' }
+  | { type: 'TOGGLE_HIDDEN_VIDEO'; key: string }
   | { type: 'SET_SHARE_ERROR'; message: string | null }
   | { type: 'SET_MIC_PROBLEM'; problem: MicProblem }
   | { type: 'SET_CALL_JOIN_ERROR'; error: RoomState['callJoinError'] };
@@ -144,11 +150,19 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       const participants = new Map(state.participants);
       participants.delete(action.id);
       const stillThere = !state.focusedId?.startsWith(`${action.id}:`);
+      let hiddenVideoKeys = state.hiddenVideoKeys;
+      for (const key of hiddenVideoKeys) {
+        if (key.startsWith(`${action.id}:`)) {
+          if (hiddenVideoKeys === state.hiddenVideoKeys) hiddenVideoKeys = new Set(state.hiddenVideoKeys);
+          hiddenVideoKeys.delete(key);
+        }
+      }
       return {
         ...state,
         participants,
         focusedId: stillThere ? state.focusedId : null,
         focusOrigin: stillThere ? state.focusOrigin : null,
+        hiddenVideoKeys,
       };
     }
     case 'SET_RECONNECTING':
@@ -189,6 +203,11 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       return { ...state, me: { ...state.me, cameraOn: action.on } };
     case 'SET_FOCUSED':
       return { ...state, focusedId: action.id, focusOrigin: action.id ? action.origin : null };
+    case 'TOGGLE_HIDDEN_VIDEO': {
+      const hiddenVideoKeys = new Set(state.hiddenVideoKeys);
+      if (hiddenVideoKeys.has(action.key)) hiddenVideoKeys.delete(action.key); else hiddenVideoKeys.add(action.key);
+      return { ...state, hiddenVideoKeys };
+    }
     case 'SET_SHARE_ERROR':
       return { ...state, shareError: action.message };
     case 'SET_MIC_PROBLEM':

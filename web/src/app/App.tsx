@@ -236,7 +236,7 @@ function Shell() {
           onOpenChange={setCallChatOpen}
           onOpenProfile={setProfileUserId}
         />
-        <TileMenu />
+        <TileMenu onOpenProfile={setProfileUserId} />
         <ProfileModal userId={profileUserId} onClose={() => setProfileUserId(null)} />
         <CommandPaletteMount
           open={paletteOpen}
