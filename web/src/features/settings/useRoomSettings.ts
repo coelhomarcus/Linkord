@@ -5,6 +5,8 @@ import { loadShowTileBanners, saveShowTileBanners } from './useTileBannerPrefere
 import { loadCompressImages, saveCompressImages } from './useCompressImagesPreference';
 import { loadNoiseSuppression, saveNoiseSuppression } from './useNoiseSuppressionPreference';
 import { loadMirrorCameraPreview, saveMirrorCameraPreview } from './useCameraMirrorPreference';
+import { loadShareQuality, saveShareQuality } from './useShareQualityPreference';
+import type { ShareQualityId } from '@/features/calls/shareQualityPresets';
 import { setVolume } from '@/shared/sounds';
 import { setNotificationsModuleEnabled, loadNotificationsEnabled, saveNotificationsEnabled } from '@/shared/notifications';
 import type { NoiseSuppressionResult } from '@/features/calls/useMicrophone';
@@ -62,6 +64,12 @@ export function useRoomSettings(applyNoiseSuppression: (enabled: boolean) => Pro
     saveMirrorCameraPreview(value);
   }, []);
 
+  const [shareQuality, setShareQualityState] = useState(loadShareQuality);
+  const setShareQuality = useCallback((value: ShareQualityId) => {
+    setShareQualityState(value);
+    saveShareQuality(value);
+  }, []);
+
   const [noiseSuppressionEnabled, setNoiseSuppressionEnabledState] = useState(loadNoiseSuppression);
   const [noiseSuppressionPending, setNoiseSuppressionPending] = useState(false);
   const [noiseSuppressionError, setNoiseSuppressionError] = useState<string | null>(null);
@@ -102,6 +110,7 @@ export function useRoomSettings(applyNoiseSuppression: (enabled: boolean) => Pro
     showTileBanners, setShowTileBanners,
     compressImagesDefault, setCompressImagesDefault,
     mirrorCameraPreview, setMirrorCameraPreview,
+    shareQuality, setShareQuality,
     noiseSuppressionEnabled, setNoiseSuppressionEnabled, noiseSuppressionPending, noiseSuppressionError,
   };
 }

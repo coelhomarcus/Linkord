@@ -37,6 +37,7 @@ function descriptors(count: number): TileDescriptor[] {
     participantId: `p-${index}`,
     kind: 'avatar' as const,
     loading: false,
+    paused: false,
   }));
 }
 
@@ -131,8 +132,8 @@ describe('TileGrid', () => {
   });
 
   it('foca a camera e a tela da MESMA pessoa de forma independente (chaves distintas por fonte)', () => {
-    const camera: TileDescriptor = { key: 'u1:participant', participantId: 'u1', kind: 'camera', loading: false };
-    const screen: TileDescriptor = { key: 'u1:screen', participantId: 'u1', kind: 'screen', loading: false };
+    const camera: TileDescriptor = { key: 'u1:participant', participantId: 'u1', kind: 'camera', loading: false, paused: false };
+    const screen: TileDescriptor = { key: 'u1:screen', participantId: 'u1', kind: 'screen', loading: false, paused: false };
 
     // focusing the camera key: the main slot gets one tile, the strip gets
     // the other — proving the two sources of the same person are tracked

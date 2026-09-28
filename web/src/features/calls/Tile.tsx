@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent } from 'react';
 import { ConnectionQuality } from 'livekit-client';
-import { EyeOff, HeadphoneOff, Loader2, MicOff, Settings, SignalLow, SignalZero, VolumeX } from 'lucide-react';
+import { EyeOff, HeadphoneOff, Loader2, MicOff, MonitorOff, MonitorPause, Settings, SignalLow, SignalZero, VolumeX } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
-import { useParticipantMedia, useAttachTrack, useIsSpeaking, useConnectionQuality } from './useLiveKitTrack';
+import { useParticipantMedia, useAttachTrack, useIsSpeaking, useConnectionQuality, useWatchScreenShare } from './useLiveKitTrack';
 import { useMuteForMe } from './useMuteForMe';
 import { tileKey } from './tileTypes';
 import type { TileKind } from './tileTypes';
@@ -18,13 +18,16 @@ interface TileProps {
   /** Publication exists and isn't muted, but its track hasn't attached yet —
    * see TileDescriptor. Only meaningful while `kind === 'avatar'`. */
   loading?: boolean;
+  /** Only meaningful while `kind === 'screen'` — the presenter paused their
+   * own preview (see useScreenShare's pauseSharePreview). */
+  paused?: boolean;
   fit?: 'cover' | 'contain';
   avatarSize?: number;
   nameSize?: 'body' | 'label';
 }
 
-export function Tile({ participantId, kind, isMine, loading = false, fit = 'contain', avatarSize = 96, nameSize = 'body' }: TileProps) {
-  const { state, dispatch, openTileMenu, tileDomRegistry, deafened, showTileBanners, mirrorCameraPreview } = useRoom();
+export function Tile({ participantId, kind, isMine, loading = false, paused = false, fit = 'contain', avatarSize = 96, nameSize = 'body' }: TileProps) {
+  const { state, dispatch, openTileMenu, tileDomRegistry, deafened, showTileBanners, mirrorCameraPreview, livekitRoom } = useRoom();
   const key = tileKey(participantId, kind);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -48,7 +51,12 @@ export function Tile({ participantId, kind, isMine, loading = false, fit = 'cont
   // touches anyone else's view (see TileMenu.tsx). Not offered for your own
   // camera (that's what turning it off is for) or for screens.
   const hiddenForMe = kind === 'camera' && !isMine && state.hiddenVideoKeys.has(key);
-  const showsVideo = kind !== 'avatar' && !hiddenForMe;
+  // "Parar de assistir" a remote screen share — unlike hiddenForMe, this
+  // really unsubscribes (see useWatchScreenShare), a deliberate bandwidth
+  // saving rather than a purely local presentation choice.
+  const notWatching = kind === 'screen' && !isMine && state.unwatchedScreenKeys.has(key);
+  useWatchScreenShare(livekitRoom, participantId, notWatching);
+  const showsVideo = kind !== 'avatar' && !hiddenForMe && !notWatching && !paused;
   const videoTrack = kind === 'screen' ? media.screenTrack : kind === 'camera' ? media.cameraTrack : null;
   useAttachTrack(videoTrack, videoRef);
 
@@ -148,6 +156,7 @@ export function Tile({ participantId, kind, isMine, loading = false, fit = 'cont
   return (
     <div
       ref={rootRef}
+      data-tile-kind={kind}
       role="button"
       tabIndex={0}
       aria-pressed={isFocused}
@@ -175,6 +184,20 @@ export function Tile({ participantId, kind, isMine, loading = false, fit = 'cont
           // presentation only — the track actually published/sent is never touched
           style={isMine && kind === 'camera' && mirrorCameraPreview ? { transform: 'scaleX(-1)' } : undefined}
         />
+      ) : kind === 'screen' ? (
+        <div className="relative flex h-full w-full flex-col items-center justify-center gap-2 bg-bg-call">
+          {notWatching ? (
+            <span className="flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-caption text-text-muted">
+              <MonitorOff size={14} />
+              Você parou de assistir
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-caption text-text-muted">
+              <MonitorPause size={14} />
+              Prévia pausada
+            </span>
+          )}
+        </div>
       ) : (
         <div className="relative flex h-full w-full flex-col items-center justify-center gap-2.5">
           <Avatar id={participantId} name={name} avatar={avatar} poster={avatarPoster} frozen={!isSpeaking} avatarColor={avatarColor} size={avatarSize} className={loading ? 'opacity-50' : undefined} />

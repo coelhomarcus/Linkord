@@ -7,7 +7,7 @@ import { useParticipantMedia } from './useLiveKitTrack';
 import type { ReactionEmoji } from '@/shared/types/protocol';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/primitives/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/primitives/popover';
-import { CameraQuickMenu, MicQuickMenu, SpeakerQuickMenu } from './CallDeviceMenus';
+import { CameraQuickMenu, MicQuickMenu, ScreenShareQuickMenu, SpeakerQuickMenu } from './CallDeviceMenus';
 import { cn } from '@/shared/lib/utils';
 
 // Floating call reactions (burst animation on everyone's screen) stay a
@@ -143,16 +143,19 @@ export function CallControlBar() {
           <CameraQuickMenu />
         </div>
 
-        <Tooltip>
-          <TooltipTrigger
-            onClick={() => { void (sharing ? stopSharing() : startSharing()); }}
-            aria-label={sharing ? 'Parar compartilhamento' : 'Compartilhar tela'}
-            className={cn(BAR_BUTTON, sharing ? BAR_BUTTON_GREEN : BAR_BUTTON_NEUTRAL)}
-          >
-            {sharing ? <MonitorX className={BAR_ICON} /> : <Monitor className={BAR_ICON} />}
-          </TooltipTrigger>
-          <TooltipContent>{sharing ? 'Parar compartilhamento' : 'Compartilhar tela'}</TooltipContent>
-        </Tooltip>
+        <div className="relative">
+          <Tooltip>
+            <TooltipTrigger
+              onClick={() => { void (sharing ? stopSharing() : startSharing()); }}
+              aria-label={sharing ? 'Parar compartilhamento' : 'Compartilhar tela'}
+              className={cn(BAR_BUTTON, sharing ? BAR_BUTTON_GREEN : BAR_BUTTON_NEUTRAL)}
+            >
+              {sharing ? <MonitorX className={BAR_ICON} /> : <Monitor className={BAR_ICON} />}
+            </TooltipTrigger>
+            <TooltipContent>{sharing ? 'Parar compartilhamento' : 'Compartilhar tela'}</TooltipContent>
+          </Tooltip>
+          <ScreenShareQuickMenu />
+        </div>
 
         <div aria-hidden className="mx-0.5 h-6 w-px flex-none bg-white/10" />
 

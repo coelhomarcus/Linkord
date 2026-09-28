@@ -58,7 +58,7 @@ describe('useCallTiles', () => {
     livekitRoom.localParticipant.identity = 'me';
     act(() => { livekitRoom.emit(RoomEvent.Connected); });
 
-    expect(result.current).toEqual([{ key: expect.any(String), participantId: 'me', kind: 'avatar', loading: false }]);
+    expect(result.current).toEqual([{ key: expect.any(String), participantId: 'me', kind: 'avatar', loading: false, paused: false }]);
   });
 
   it('ligar a camera preserva a mesma chave do tile (nao remonta)', () => {
@@ -125,5 +125,42 @@ describe('useCallTiles', () => {
 
     const screenTile = result.current.find((d) => d.kind === 'screen');
     expect(screenTile).toMatchObject({ loading: true });
+  });
+
+  it('tela pausada (publicacao muted mas com track) continua aparecendo, marcada como "paused" — nao some', () => {
+    const livekitRoom = fakeRoom();
+    const remote = livekitRoom.addRemote('bia');
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <RoomContext.Provider value={createFakeRoomContextValue({ livekitRoom })}>{children}</RoomContext.Provider>
+    );
+    const { result } = renderHook(() => useCallTiles(['bia']), { wrapper });
+
+    remote.setPublication(Track.Source.ScreenShare, { isMuted: false, track: {} });
+    act(() => { livekitRoom.emit(RoomEvent.TrackSubscribed); });
+    expect(result.current.find((d) => d.kind === 'screen')).toMatchObject({ loading: false, paused: false });
+
+    remote.setPublication(Track.Source.ScreenShare, { isMuted: true, track: {} });
+    act(() => { livekitRoom.emit(RoomEvent.TrackMuted); });
+
+    const screenTile = result.current.find((d) => d.kind === 'screen');
+    expect(screenTile).toMatchObject({ loading: false, paused: true });
+  });
+
+  it('tela encerrada (sem publicacao) some do grid, nao fica "paused" para sempre', () => {
+    const livekitRoom = fakeRoom();
+    const remote = livekitRoom.addRemote('bia');
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <RoomContext.Provider value={createFakeRoomContextValue({ livekitRoom })}>{children}</RoomContext.Provider>
+    );
+    const { result } = renderHook(() => useCallTiles(['bia']), { wrapper });
+
+    remote.setPublication(Track.Source.ScreenShare, { isMuted: true, track: {} });
+    act(() => { livekitRoom.emit(RoomEvent.TrackMuted); });
+    expect(result.current.find((d) => d.kind === 'screen')).toMatchObject({ paused: true });
+
+    remote.setPublication(Track.Source.ScreenShare, undefined);
+    act(() => { livekitRoom.emit(RoomEvent.TrackUnpublished); });
+
+    expect(result.current.find((d) => d.kind === 'screen')).toBeUndefined();
   });
 });

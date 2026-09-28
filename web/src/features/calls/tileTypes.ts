@@ -9,6 +9,9 @@ export interface TileDescriptor {
    * be silently folded into `kind: 'avatar'` (or into not existing at all,
    * for screen). See useCallTiles.ts. */
   loading: boolean;
+  /** Only meaningful for `kind: 'screen'` — the share is paused (publication
+   * exists and still has a track, but muted), not absent. See Tile.tsx. */
+  paused: boolean;
 }
 
 /** avatar and camera are the same participant tile, just with or without

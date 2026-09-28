@@ -19,18 +19,27 @@ interface FakePublication {
 function fakeLivekitRoomWithRemote() {
   const listeners = new Map<string, Set<() => void>>();
   const publications = new Map<Track.Source, FakePublication>();
+  const localPublications = new Map<Track.Source, FakePublication>();
   const room = {
     on: vi.fn((event: string, fn: () => void) => { if (!listeners.has(event)) listeners.set(event, new Set()); listeners.get(event)!.add(fn); }),
     off: vi.fn((event: string, fn: () => void) => { listeners.get(event)?.delete(fn); }),
-    localParticipant: { identity: 'p-1', getTrackPublication: vi.fn(() => undefined) },
+    localParticipant: { identity: 'p-1', getTrackPublication: (source: Track.Source) => localPublications.get(source) },
     getParticipantByIdentity: vi.fn(() => ({ getTrackPublication: (source: Track.Source) => publications.get(source) })),
     emit(event: string) { for (const fn of listeners.get(event) ?? []) fn(); },
     setPublication(source: Track.Source, pub: FakePublication | undefined) {
       if (pub) publications.set(source, pub); else publications.delete(source);
       this.emit(RoomEvent.TrackPublished);
     },
+    setLocalPublication(source: Track.Source, pub: FakePublication | undefined) {
+      if (pub) localPublications.set(source, pub); else localPublications.delete(source);
+      this.emit(RoomEvent.TrackPublished);
+    },
   };
-  return room as unknown as LKRoom & { emit: (event: string) => void; setPublication: (source: Track.Source, pub: FakePublication | undefined) => void };
+  return room as unknown as LKRoom & {
+    emit: (event: string) => void;
+    setPublication: (source: Track.Source, pub: FakePublication | undefined) => void;
+    setLocalPublication: (source: Track.Source, pub: FakePublication | undefined) => void;
+  };
 }
 
 const fakeTrack = (width = 1280, height = 720) => ({
@@ -323,6 +332,32 @@ describe('TileMenu — invalidacao do alvo', () => {
     livekitRoom.setPublication(Track.Source.Camera, undefined);
     await waitFor(() => expect(closeTileMenu).toHaveBeenCalled());
   });
+
+  it('NAO fecha o menu da propria tela so por estar pausada — regressao: pausar (mute) fazia "media.screenTrack" ficar null, e isso era lido como "a fonte acabou"', async () => {
+    const closeTileMenu = vi.fn();
+    const livekitRoom = fakeLivekitRoomWithRemote();
+    livekitRoom.setLocalPublication(Track.Source.ScreenShare, { isMuted: true, track: fakeTrack() });
+    const value = createFakeRoomContextValue({
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
+      menuTarget: { ...menuTarget, key: 'p-1:screen', participantId: 'p-1', kind: 'screen' },
+      closeTileMenu,
+      livekitRoom,
+    });
+    const { rerender } = renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, { ...value });
+    await waitFor(() => expect(screen.getByText('Retomar prévia')).toBeInTheDocument());
+    expect(closeTileMenu).not.toHaveBeenCalled();
+
+    // simulates an unrelated participants-map update (e.g. someone else's
+    // speaking/mic state changing) re-running the invalidation effect while
+    // the screen stays paused — must still not close.
+    rerender(
+      <RoomContext.Provider value={{ ...value, state: { ...value.state, participants: new Map([['p-2', fakeParticipant()]]) } }}>
+        <TileMenu onOpenProfile={vi.fn()} />
+      </RoomContext.Provider>
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(closeTileMenu).not.toHaveBeenCalled();
+  });
 });
 
 describe('TileMenu — estatisticas com resolucao', () => {
@@ -346,5 +381,111 @@ describe('TileMenu — estatisticas com resolucao', () => {
       showStats: true,
     });
     expect(screen.queryByText(/Resolução/)).not.toBeInTheDocument();
+  });
+});
+
+describe('TileMenu — minha propria tela compartilhada', () => {
+  it('oferece trocar fonte, qualidade, pausar previa e encerrar — nunca assistir/parar de assistir', () => {
+    renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
+      menuTarget: { ...menuTarget, key: 'p-1:screen', participantId: 'p-1', kind: 'screen' },
+    });
+    expect(screen.getByText('Trocar fonte')).toBeInTheDocument();
+    expect(screen.getByText('Qualidade')).toBeInTheDocument();
+    expect(screen.getByText('Pausar prévia')).toBeInTheDocument();
+    expect(screen.getByText('Encerrar compartilhamento')).toBeInTheDocument();
+    expect(screen.queryByText('Assistir')).not.toBeInTheDocument();
+    expect(screen.queryByText('Parar de assistir')).not.toBeInTheDocument();
+  });
+
+  it('"Trocar fonte" chama changeSource', () => {
+    const changeSource = vi.fn(async () => undefined);
+    renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
+      menuTarget: { ...menuTarget, key: 'p-1:screen', participantId: 'p-1', kind: 'screen' },
+      changeSource,
+    });
+    fireEvent.click(screen.getByText('Trocar fonte'));
+    expect(changeSource).toHaveBeenCalled();
+  });
+
+  it('"Pausar prévia" chama pauseSharePreview quando nao esta pausada', () => {
+    const pauseSharePreview = vi.fn(async () => undefined);
+    renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
+      menuTarget: { ...menuTarget, key: 'p-1:screen', participantId: 'p-1', kind: 'screen' },
+      pauseSharePreview,
+    });
+    fireEvent.click(screen.getByText('Pausar prévia'));
+    expect(pauseSharePreview).toHaveBeenCalled();
+  });
+
+  it('quando ja esta pausada, mostra "Retomar prévia" e chama resumeSharePreview ao clicar', async () => {
+    const resumeSharePreview = vi.fn(async () => undefined);
+    const livekitRoom = fakeLivekitRoomWithRemote();
+    livekitRoom.setLocalPublication(Track.Source.ScreenShare, { isMuted: true, track: fakeTrack() });
+    renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
+      menuTarget: { ...menuTarget, key: 'p-1:screen', participantId: 'p-1', kind: 'screen' },
+      livekitRoom,
+      resumeSharePreview,
+    });
+    await waitFor(() => expect(screen.getByText('Retomar prévia')).toBeInTheDocument());
+    expect(screen.queryByText('Pausar prévia')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Retomar prévia'));
+    expect(resumeSharePreview).toHaveBeenCalled();
+  });
+
+  it('"Encerrar compartilhamento" chama stopSharing e fecha o menu', () => {
+    const stopSharing = vi.fn();
+    const closeTileMenu = vi.fn();
+    renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
+      menuTarget: { ...menuTarget, key: 'p-1:screen', participantId: 'p-1', kind: 'screen' },
+      stopSharing,
+      closeTileMenu,
+    });
+    fireEvent.click(screen.getByText('Encerrar compartilhamento'));
+    expect(stopSharing).toHaveBeenCalled();
+    expect(closeTileMenu).toHaveBeenCalled();
+  });
+});
+
+describe('TileMenu — assistir/parar de assistir tela de outra pessoa', () => {
+  it('oferece "Parar de assistir" — nunca as acoes da propria tela', () => {
+    const participants = new Map([['p-2', fakeParticipant()]]);
+    renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants },
+      menuTarget: { ...menuTarget, key: 'p-2:screen', kind: 'screen' },
+    });
+    expect(screen.getByText('Parar de assistir')).toBeInTheDocument();
+    expect(screen.queryByText('Trocar fonte')).not.toBeInTheDocument();
+    expect(screen.queryByText('Qualidade')).not.toBeInTheDocument();
+    expect(screen.queryByText('Encerrar compartilhamento')).not.toBeInTheDocument();
+  });
+
+  it('clicar despacha TOGGLE_SCREEN_WATCH com a chave certa', () => {
+    const dispatch = vi.fn();
+    const participants = new Map([['p-2', fakeParticipant()]]);
+    renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants },
+      menuTarget: { ...menuTarget, key: 'p-2:screen', kind: 'screen' },
+      dispatch,
+    });
+    fireEvent.click(screen.getByText('Parar de assistir'));
+    expect(dispatch).toHaveBeenCalledWith({ type: 'TOGGLE_SCREEN_WATCH', key: 'p-2:screen' });
+  });
+
+  it('quando ja nao esta assistindo, mostra "Assistir" no lugar', () => {
+    const participants = new Map([['p-2', fakeParticipant()]]);
+    renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
+      state: {
+        ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants,
+        unwatchedScreenKeys: new Set(['p-2:screen']),
+      },
+      menuTarget: { ...menuTarget, key: 'p-2:screen', kind: 'screen' },
+    });
+    expect(screen.getByText('Assistir')).toBeInTheDocument();
+    expect(screen.queryByText('Parar de assistir')).not.toBeInTheDocument();
   });
 });

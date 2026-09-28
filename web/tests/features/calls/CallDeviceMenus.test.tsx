@@ -3,8 +3,10 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Room } from 'livekit-client';
 import type { Room as LKRoom } from 'livekit-client';
+import { Track } from 'livekit-client';
 import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
-import { CameraQuickMenu, MicQuickMenu, SpeakerQuickMenu } from '@/features/calls/CallDeviceMenus';
+import { initialRoomState } from '@/state/roomReducer';
+import { CameraQuickMenu, MicQuickMenu, ScreenShareQuickMenu, SpeakerQuickMenu } from '@/features/calls/CallDeviceMenus';
 
 const navigate = vi.fn();
 vi.mock('react-router', () => ({ useNavigate: () => navigate }));
@@ -112,5 +114,79 @@ describe('SpeakerQuickMenu', () => {
 
     await user.click(screen.getByRole('button', { name: 'Configurações de saída de áudio' }));
     expect(await screen.findByText('Alto-falantes')).toBeInTheDocument();
+  });
+});
+
+function fakeLivekitRoomForShare(screenPub?: { isMuted: boolean; track: object }) {
+  const room = {
+    localParticipant: { identity: 'p-1', getTrackPublication: (source: Track.Source) => (source === Track.Source.ScreenShare ? screenPub : undefined) },
+    getParticipantByIdentity: vi.fn(() => undefined),
+    on: vi.fn(),
+    off: vi.fn(),
+  };
+  return room as unknown as LKRoom;
+}
+
+describe('ScreenShareQuickMenu', () => {
+  it('lista as 3 opcoes de qualidade e troca a preferencia ao escolher outra', async () => {
+    const user = userEvent.setup();
+    const setShareQuality = vi.fn();
+    renderWithRoom(<ScreenShareQuickMenu />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
+      livekitRoom: fakeLivekitRoomForShare(),
+      shareQuality: 'standard',
+      setShareQuality,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Configurações de compartilhamento de tela' }));
+    await user.click(await screen.findByText('Fluida, para vídeo ou jogos (720p, 30 fps)'));
+
+    expect(setShareQuality).toHaveBeenCalledWith('smooth');
+  });
+
+  it('sem compartilhamento ativo, nao mostra trocar fonte nem pausar previa', async () => {
+    const user = userEvent.setup();
+    renderWithRoom(<ScreenShareQuickMenu />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', sharing: false } },
+      livekitRoom: fakeLivekitRoomForShare(),
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Configurações de compartilhamento de tela' }));
+    expect(screen.queryByText('Trocar fonte')).not.toBeInTheDocument();
+    expect(screen.queryByText('Pausar prévia')).not.toBeInTheDocument();
+  });
+
+  it('compartilhando, oferece trocar fonte e pausar previa; clicar aciona cada acao', async () => {
+    const user = userEvent.setup();
+    const changeSource = vi.fn(async () => undefined);
+    const pauseSharePreview = vi.fn(async () => undefined);
+    renderWithRoom(<ScreenShareQuickMenu />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', sharing: true } },
+      livekitRoom: fakeLivekitRoomForShare({ isMuted: false, track: {} }),
+      changeSource,
+      pauseSharePreview,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Configurações de compartilhamento de tela' }));
+    await user.click(await screen.findByText('Trocar fonte'));
+    expect(changeSource).toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Configurações de compartilhamento de tela' }));
+    await user.click(await screen.findByText('Pausar prévia'));
+    expect(pauseSharePreview).toHaveBeenCalled();
+  });
+
+  it('compartilhamento pausado: mostra "Retomar prévia" e chama resumeSharePreview', async () => {
+    const user = userEvent.setup();
+    const resumeSharePreview = vi.fn(async () => undefined);
+    renderWithRoom(<ScreenShareQuickMenu />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', sharing: true } },
+      livekitRoom: fakeLivekitRoomForShare({ isMuted: true, track: {} }),
+      resumeSharePreview,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Configurações de compartilhamento de tela' }));
+    await user.click(await screen.findByText('Retomar prévia'));
+    expect(resumeSharePreview).toHaveBeenCalled();
   });
 });

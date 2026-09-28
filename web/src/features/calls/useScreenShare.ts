@@ -1,12 +1,24 @@
 import { useCallback } from 'react';
 import type { Dispatch } from 'react';
-import { ConnectionState, ScreenSharePresets } from 'livekit-client';
+import { ConnectionState, Track } from 'livekit-client';
 import type { Room } from 'livekit-client';
 import type { RoomAction } from '../../state/roomReducer';
+import { loadShareQuality } from '../settings/useShareQualityPreference';
+import { SHARE_QUALITY_PRESETS } from './shareQualityPresets';
 
 export interface ScreenShareApi {
   startSharing: () => Promise<void>;
   stopSharing: () => void;
+  /** Stops the current capture and immediately opens a fresh native picker
+   * — the only way to pick a different window/tab/screen, or to have a
+   * quality preference chosen mid-share actually take effect (see the calls
+   * redesign plan §8.3: "troca de fonte usa o seletor do navegador"). */
+  changeSource: () => Promise<void>;
+  /** Mutes the local screen-share publication without unpublishing it — the
+   * tile (mine and everyone else's) shows a "prévia pausada" state instead
+   * of vanishing, distinct from stopping the share entirely. */
+  pauseSharePreview: () => Promise<void>;
+  resumeSharePreview: () => Promise<void>;
 }
 
 export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): ScreenShareApi {
@@ -31,15 +43,17 @@ export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): Scre
       restrictOwnAudio: true,
     };
 
+    const quality = SHARE_QUALITY_PRESETS[loadShareQuality()];
+
     try {
       await room.localParticipant.setScreenShareEnabled(
         true,
         {
           audio: audioConstraints,
-          resolution: { width: 1920, height: 1080, frameRate: 30 },
+          resolution: quality.resolution,
           selfBrowserSurface: 'exclude',
         },
-        { videoEncoding: ScreenSharePresets.h1080fps30.encoding },
+        { videoEncoding: quality.encoding },
       );
     } catch (err) {
       const name = (err as DOMException)?.name;
@@ -57,5 +71,30 @@ export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): Scre
     dispatch({ type: 'SET_LOCAL_SHARING', sharing: false });
   }, [dispatch, room]);
 
-  return { startSharing, stopSharing };
+  const changeSource = useCallback(async () => {
+    stopSharing();
+    await startSharing();
+  }, [stopSharing, startSharing]);
+
+  const pauseSharePreview = useCallback(async () => {
+    const pub = room.localParticipant.getTrackPublication(Track.Source.ScreenShare);
+    if (!pub) return;
+    try {
+      await pub.mute();
+    } catch (err) {
+      dispatch({ type: 'SET_SHARE_ERROR', message: `Não foi possível pausar a prévia: ${(err as Error)?.message}` });
+    }
+  }, [room, dispatch]);
+
+  const resumeSharePreview = useCallback(async () => {
+    const pub = room.localParticipant.getTrackPublication(Track.Source.ScreenShare);
+    if (!pub) return;
+    try {
+      await pub.unmute();
+    } catch (err) {
+      dispatch({ type: 'SET_SHARE_ERROR', message: `Não foi possível retomar a prévia: ${(err as Error)?.message}` });
+    }
+  }, [room, dispatch]);
+
+  return { startSharing, stopSharing, changeSource, pauseSharePreview, resumeSharePreview };
 }

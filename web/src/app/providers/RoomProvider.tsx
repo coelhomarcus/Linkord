@@ -101,7 +101,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const messageSearch = useMessageSearch(sendWs);
   const attachmentsUpload = useStorageUsage();
 
-  const { startSharing, stopSharing } = useScreenShare(livekitRoom, dispatch);
+  const { startSharing, stopSharing, changeSource, pauseSharePreview, resumeSharePreview } = useScreenShare(livekitRoom, dispatch);
   const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch);
   const { activateMic, toggleMicMuted, setMicMuted, leaveMic, setNoiseSuppressionEnabled: applyNoiseSuppression } = useMicrophone(livekitRoom, dispatch);
 
@@ -356,7 +356,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         livekitRoom, notifyActiveView,
         registerRequestChatView, requestChatView,
         activeCallConversationId: callLifecycle.activeCallConversationId, joinCall: callLifecycle.joinCall, leaveCall: callLifecycle.leaveCall,
-        startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted,
+        startSharing, stopSharing, changeSource, pauseSharePreview, resumeSharePreview,
+        shareQuality: roomSettings.shareQuality, setShareQuality: roomSettings.setShareQuality,
+        startCamera, stopCamera, activateMic, toggleMicMuted,
         updateProfile: profileUpdate.updateProfile, uploadProfileImage: profileUpdate.uploadProfileImage, removeProfileImage: profileUpdate.removeProfileImage,
         menuTarget: tileMenu.menuTarget, openTileMenu: tileMenu.openTileMenu, closeTileMenu: tileMenu.closeTileMenu,
         reactions: messageReactions.reactions, sendReaction: messageReactions.sendReaction,

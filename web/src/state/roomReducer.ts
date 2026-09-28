@@ -28,6 +28,11 @@ export interface RoomState {
    * para mim") — local-only, session-only, never synced to the server or
    * to other participants. Cleared per-participant on PARTICIPANT_LEFT. */
   hiddenVideoKeys: Set<string>;
+  /** Screen-share tile keys a viewer chose to stop watching ("Parar de
+   * assistir") — unlike hiddenVideoKeys this actually drives an unsubscribe
+   * (see useWatchScreenShare), but is still local-only/session-only and
+   * never touches the presenter's publication. Cleared on PARTICIPANT_LEFT. */
+  unwatchedScreenKeys: Set<string>;
   reconnecting: boolean;
   joined: boolean;
   roomError: string | null;
@@ -56,6 +61,7 @@ export const initialRoomState: RoomState = {
   focusedId: null,
   focusOrigin: null,
   hiddenVideoKeys: new Set(),
+  unwatchedScreenKeys: new Set(),
   reconnecting: false,
   joined: false,
   roomError: null,
@@ -90,6 +96,7 @@ export type RoomAction =
   // so callers never have to remember to pair them.
   | { type: 'SET_FOCUSED'; id: string | null; origin: 'manual' | 'automatic' }
   | { type: 'TOGGLE_HIDDEN_VIDEO'; key: string }
+  | { type: 'TOGGLE_SCREEN_WATCH'; key: string }
   | { type: 'SET_SHARE_ERROR'; message: string | null }
   | { type: 'SET_MIC_PROBLEM'; problem: MicProblem }
   | { type: 'SET_CALL_JOIN_ERROR'; error: RoomState['callJoinError'] };
@@ -157,12 +164,20 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
           hiddenVideoKeys.delete(key);
         }
       }
+      let unwatchedScreenKeys = state.unwatchedScreenKeys;
+      for (const key of unwatchedScreenKeys) {
+        if (key.startsWith(`${action.id}:`)) {
+          if (unwatchedScreenKeys === state.unwatchedScreenKeys) unwatchedScreenKeys = new Set(state.unwatchedScreenKeys);
+          unwatchedScreenKeys.delete(key);
+        }
+      }
       return {
         ...state,
         participants,
         focusedId: stillThere ? state.focusedId : null,
         focusOrigin: stillThere ? state.focusOrigin : null,
         hiddenVideoKeys,
+        unwatchedScreenKeys,
       };
     }
     case 'SET_RECONNECTING':
@@ -207,6 +222,11 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       const hiddenVideoKeys = new Set(state.hiddenVideoKeys);
       if (hiddenVideoKeys.has(action.key)) hiddenVideoKeys.delete(action.key); else hiddenVideoKeys.add(action.key);
       return { ...state, hiddenVideoKeys };
+    }
+    case 'TOGGLE_SCREEN_WATCH': {
+      const unwatchedScreenKeys = new Set(state.unwatchedScreenKeys);
+      if (unwatchedScreenKeys.has(action.key)) unwatchedScreenKeys.delete(action.key); else unwatchedScreenKeys.add(action.key);
+      return { ...state, unwatchedScreenKeys };
     }
     case 'SET_SHARE_ERROR':
       return { ...state, shareError: action.message };

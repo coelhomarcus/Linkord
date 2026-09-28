@@ -12,11 +12,15 @@ export interface ParticipantMedia {
   micTrack: LKTrack | null;
   micActivated: boolean;
   micMuted: boolean;
+  /** The screen-share publication exists and still has a track, but it's
+   * muted — the owner paused their own preview (see useScreenShare's
+   * pauseSharePreview), not "no share"/"still loading". */
+  screenPaused: boolean;
 }
 
 const EMPTY_MEDIA: ParticipantMedia = {
   screenTrack: null, screenAudioTrack: null, cameraTrack: null, micTrack: null,
-  micActivated: false, micMuted: true,
+  micActivated: false, micMuted: true, screenPaused: false,
 };
 
 export function getParticipant(room: Room, identity: string): Participant | undefined {
@@ -38,6 +42,14 @@ export function isTrackPending(participant: Participant, source: Track.Source): 
   return !!pub && !pub.isMuted && !pub.track;
 }
 
+/** True when a screen-share publication exists, still has a track, but is
+ * muted — i.e. deliberately paused (see useScreenShare's pauseSharePreview),
+ * distinct from "no share" (no publication) and "loading" (no track yet). */
+export function isScreenPaused(participant: Participant): boolean {
+  const pub = participant.getTrackPublication(Track.Source.ScreenShare);
+  return !!pub && pub.isMuted && !!pub.track;
+}
+
 function readMedia(room: Room, identity: string): ParticipantMedia {
   const participant = getParticipant(room, identity);
   if (!participant) return EMPTY_MEDIA;
@@ -49,6 +61,7 @@ function readMedia(room: Room, identity: string): ParticipantMedia {
     micTrack: micPub?.track ?? null,
     micActivated: !!micPub,
     micMuted: micPub ? micPub.isMuted : true,
+    screenPaused: isScreenPaused(participant),
   };
 }
 
@@ -165,4 +178,31 @@ export function useAttachTrack(track: LKTrack | null, elRef: RefObject<HTMLMedia
     track.attach(el);
     return () => { track.detach(el); };
   }, [track, elRef]);
+}
+
+/** "Parar de assistir" a remote screen share: tells the server to stop
+ * sending this viewer video/audio data for it (`RemoteTrackPublication.
+ * setEnabled`), a real bandwidth saving — but it never touches the
+ * publication itself, so the presenter keeps publishing and every other
+ * viewer is unaffected (see the calls redesign plan §9.2: "'Parar de
+ * assistir' não encerra a publicação remota"). Re-applies whenever the
+ * publication (re)appears, so restarting a paused-for-me share stays off. */
+export function useWatchScreenShare(room: Room, participantId: string, notWatching: boolean): void {
+  useEffect(() => {
+    function apply() {
+      const participant = getParticipant(room, participantId);
+      if (!participant) return;
+      for (const source of [Track.Source.ScreenShare, Track.Source.ScreenShareAudio]) {
+        const pub = participant.getTrackPublication(source);
+        if (pub && !pub.isLocal) (pub as unknown as { setEnabled: (enabled: boolean) => void }).setEnabled(!notWatching);
+      }
+    }
+    apply();
+    room.on(RoomEvent.TrackPublished, apply);
+    room.on(RoomEvent.TrackSubscribed, apply);
+    return () => {
+      room.off(RoomEvent.TrackPublished, apply);
+      room.off(RoomEvent.TrackSubscribed, apply);
+    };
+  }, [room, participantId, notWatching]);
 }

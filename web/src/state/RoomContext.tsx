@@ -6,6 +6,7 @@ import type { RoomAction, RoomState } from './roomReducer';
 import type { TileKind } from '../features/calls/tileTypes';
 import type { OutboxEntry } from '@/features/chat/useMessageOutbox';
 import type { ReactionParticipantsTarget } from '@/features/chat/reactionParticipants';
+import type { ShareQualityId } from '@/features/calls/shareQualityPresets';
 
 export interface ReactionEvent {
   key: number;
@@ -59,6 +60,16 @@ export interface RoomContextValue {
   leaveCall: () => Promise<void>;
   startSharing: () => Promise<void>;
   stopSharing: () => void;
+  /** Stops and immediately restarts the capture with a fresh native picker —
+   * the only way to switch source, or to have a quality change mid-share
+   * take effect. */
+  changeSource: () => Promise<void>;
+  pauseSharePreview: () => Promise<void>;
+  resumeSharePreview: () => Promise<void>;
+  /** Applies to the next capture that starts (fresh share or changeSource),
+   * never live mid-share — see useShareQualityPreference.ts. */
+  shareQuality: ShareQualityId;
+  setShareQuality: (value: ShareQualityId) => void;
   startCamera: () => Promise<void>;
   stopCamera: () => void;
   activateMic: () => Promise<void>;

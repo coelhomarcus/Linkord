@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router';
-import { ChevronDown, FlipHorizontal, Settings } from 'lucide-react';
+import { ChevronDown, FlipHorizontal, Pause, Play, RefreshCw, Settings } from 'lucide-react';
 import type { Room } from 'livekit-client';
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel,
@@ -7,6 +7,9 @@ import {
 } from '@/shared/ui/primitives/dropdown-menu';
 import { useMediaDevices } from '@/features/settings/useMediaDevices';
 import { useRoom } from '@/state/RoomContext';
+import { useParticipantMedia } from './useLiveKitTrack';
+import { SHARE_QUALITY_PRESETS } from './shareQualityPresets';
+import type { ShareQualityId } from './shareQualityPresets';
 import { ROUTES } from '@/shared/lib/routes';
 import { cn } from '@/shared/lib/utils';
 
@@ -91,6 +94,44 @@ export function SpeakerQuickMenu({ className }: { className?: string }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start">
         <DeviceRadioList room={livekitRoom} kind="audiooutput" heading="Saída de áudio" label="Alto-falante" />
+        <DropdownMenuSeparator />
+        <SettingsShortcutItem />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+export function ScreenShareQuickMenu({ className }: { className?: string }) {
+  const { state, shareQuality, setShareQuality, changeSource, pauseSharePreview, resumeSharePreview } = useRoom();
+  const sharing = state.me.sharing;
+  const myMedia = useParticipantMedia(state.me.id ?? '');
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger aria-label="Configurações de compartilhamento de tela" className={cn(CORNER_TRIGGER, className)}>
+        <ChevronDown size={10} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Qualidade</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={shareQuality} onValueChange={(v) => { if (v) setShareQuality(v as ShareQualityId); }}>
+            {(Object.entries(SHARE_QUALITY_PRESETS) as [ShareQualityId, typeof SHARE_QUALITY_PRESETS[ShareQualityId]][]).map(([id, preset]) => (
+              <DropdownMenuRadioItem key={id} value={id}>{preset.label}</DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+        {sharing && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => void changeSource()}>
+              <RefreshCw size={14} />
+              Trocar fonte
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void (myMedia.screenPaused ? resumeSharePreview() : pauseSharePreview())}>
+              {myMedia.screenPaused ? <Play size={14} /> : <Pause size={14} />}
+              {myMedia.screenPaused ? 'Retomar prévia' : 'Pausar prévia'}
+            </DropdownMenuItem>
+          </>
+        )}
         <DropdownMenuSeparator />
         <SettingsShortcutItem />
       </DropdownMenuContent>

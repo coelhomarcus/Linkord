@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
-import { Crosshair, EyeOff, FlipHorizontal, Maximize2, PictureInPicture2, User, UserX, VideoOff, Volume2, VolumeX } from 'lucide-react';
+import {
+  Crosshair, Eye, EyeOff, FlipHorizontal, Gauge, Maximize2, MonitorX, Pause, PictureInPicture2, Play,
+  RefreshCw, User, UserX, VideoOff, Volume2, VolumeX,
+} from 'lucide-react';
 import type { Track as LKTrack } from 'livekit-client';
 import { useRoom } from '../../state/RoomContext';
 import type { AnchorRect } from '../../state/RoomContext';
 import { useParticipantMedia } from './useLiveKitTrack';
 import { useMuteForMe } from './useMuteForMe';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/shared/ui/primitives/dropdown-menu';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem,
+  DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger,
+} from '@/shared/ui/primitives/dropdown-menu';
 import { Slider } from '@/shared/ui/primitives/slider';
 import { canKickFromTile } from './canKickFromTile';
+import { SHARE_QUALITY_PRESETS } from './shareQualityPresets';
+import type { ShareQualityId } from './shareQualityPresets';
 
 type StatsCapableTrack = { getRTCStatsReport?: () => Promise<RTCStatsReport | undefined> };
 
@@ -65,6 +73,7 @@ export function TileMenu({ onOpenProfile }: TileMenuProps) {
   const {
     state, dispatch, menuTarget, closeTileMenu, tileDomRegistry, showStats, kickFromCall,
     activeCallConversationId, conversations, mirrorCameraPreview, setMirrorCameraPreview, stopCamera,
+    stopSharing, changeSource, pauseSharePreview, resumeSharePreview, shareQuality, setShareQuality,
   } = useRoom();
   const [bitrateKbps, setBitrateKbps] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
@@ -97,10 +106,13 @@ export function TileMenu({ onOpenProfile }: TileMenuProps) {
       return;
     }
     const participantGone = !isMe && !state.participants.has(participantId);
-    const sourceEnded = (kind === 'camera' && !media.cameraTrack) || (kind === 'screen' && !media.screenTrack);
+    // A paused screen (media.screenTrack null because muted, not gone — see
+    // useScreenShare's pauseSharePreview) must NOT read as "ended": that's
+    // the exact state this menu's own "Pausar prévia" action puts it in.
+    const sourceEnded = (kind === 'camera' && !media.cameraTrack) || (kind === 'screen' && !media.screenTrack && !media.screenPaused);
     const conversationChanged = activeCallConversationId !== openedConversationIdRef.current;
     if (participantGone || sourceEnded || conversationChanged) closeTileMenu();
-  }, [menuTarget, participantId, isMe, kind, state.participants, media.cameraTrack, media.screenTrack, activeCallConversationId, closeTileMenu]);
+  }, [menuTarget, participantId, isMe, kind, state.participants, media.cameraTrack, media.screenTrack, media.screenPaused, activeCallConversationId, closeTileMenu]);
 
   useEffect(() => {
     if (!key || !showStats || !mainTrack) { setBitrateKbps(0); setResolution(null); return; }
@@ -137,6 +149,8 @@ export function TileMenu({ onOpenProfile }: TileMenuProps) {
   const handle = tileDomRegistry.current.get(key);
   const isFocused = state.focusedId === key;
   const isHiddenForMe = state.hiddenVideoKeys.has(key);
+  const isNotWatching = state.unwatchedScreenKeys.has(key);
+  const isSharePaused = media.screenPaused;
   // "Remove from call" is a group-moderation power — not offered for 1:1
   // direct calls, where "leave call" already covers it (mirrors the
   // server-side check in modules/moderation.ts#handleCallKick).
@@ -177,6 +191,13 @@ export function TileMenu({ onOpenProfile }: TileMenuProps) {
   }
   function handleToggleHiddenForMe() {
     dispatch({ type: 'TOGGLE_HIDDEN_VIDEO', key: key! });
+  }
+  function handleToggleWatch() {
+    dispatch({ type: 'TOGGLE_SCREEN_WATCH', key: key! });
+  }
+  function handleStopSharing() {
+    stopSharing();
+    closeTileMenu();
   }
 
   return (
@@ -228,6 +249,45 @@ export function TileMenu({ onOpenProfile }: TileMenuProps) {
             <DropdownMenuItem onClick={handleToggleHiddenForMe}>
               <EyeOff size={16} />
               <span>{isHiddenForMe ? 'Restaurar vídeo' : 'Ocultar vídeo para mim'}</span>
+            </DropdownMenuItem>
+          </>
+        )}
+        {kind === 'screen' && isMe && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => void changeSource()}>
+              <RefreshCw size={16} />
+              <span>Trocar fonte</span>
+            </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Gauge size={16} />
+                <span>Qualidade</span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuRadioGroup value={shareQuality} onValueChange={(v) => setShareQuality(v as ShareQualityId)}>
+                  {(Object.entries(SHARE_QUALITY_PRESETS) as [ShareQualityId, typeof SHARE_QUALITY_PRESETS[ShareQualityId]][]).map(([id, preset]) => (
+                    <DropdownMenuRadioItem key={id} value={id}>{preset.label}</DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuItem onClick={() => void (isSharePaused ? resumeSharePreview() : pauseSharePreview())}>
+              {isSharePaused ? <Play size={16} /> : <Pause size={16} />}
+              <span>{isSharePaused ? 'Retomar prévia' : 'Pausar prévia'}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onClick={handleStopSharing}>
+              <MonitorX size={16} />
+              <span>Encerrar compartilhamento</span>
+            </DropdownMenuItem>
+          </>
+        )}
+        {kind === 'screen' && !isMe && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleToggleWatch}>
+              {isNotWatching ? <Eye size={16} /> : <EyeOff size={16} />}
+              <span>{isNotWatching ? 'Assistir' : 'Parar de assistir'}</span>
             </DropdownMenuItem>
           </>
         )}

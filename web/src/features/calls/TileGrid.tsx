@@ -64,6 +64,7 @@ export function TileGrid({ descriptors, focusedId, minTileWidth = DEFAULT_MIN_TI
         participantId={d.participantId}
         kind={d.kind}
         loading={d.loading}
+        paused={d.paused}
         isMine={isMine(d.participantId)}
         fit={fit}
         avatarSize={isFocused ? 104 : focus ? 32 : 96}

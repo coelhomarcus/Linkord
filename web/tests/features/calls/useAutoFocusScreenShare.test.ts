@@ -4,7 +4,7 @@ import { useAutoFocusScreenShare } from '@/features/calls/useAutoFocusScreenShar
 import type { TileDescriptor } from '@/features/calls/tileTypes';
 
 const tile = (key: string, kind: TileDescriptor['kind']): TileDescriptor => ({
-  key, participantId: key.split(':')[0]!, kind, loading: false,
+  key, participantId: key.split(':')[0]!, kind, loading: false, paused: false,
 });
 
 describe('useAutoFocusScreenShare', () => {

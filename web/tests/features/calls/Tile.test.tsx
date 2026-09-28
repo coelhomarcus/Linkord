@@ -197,6 +197,53 @@ describe('Tile — vídeo oculto para mim', () => {
   });
 });
 
+describe('Tile — tela compartilhada: pausada ou "parei de assistir"', () => {
+  it('tela normal (nao pausada, sendo assistida): mostra <video>, sem nenhum selo', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="screen" isMine={false} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants: new Map([['p-2', fakeParticipant()]]) },
+    });
+    expect(container.querySelector('video')).toBeInTheDocument();
+    expect(screen.queryByText('Prévia pausada')).not.toBeInTheDocument();
+    expect(screen.queryByText('Você parou de assistir')).not.toBeInTheDocument();
+  });
+
+  it('tela pausada pelo apresentador: nao renderiza <video>, mostra "Prévia pausada"', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="screen" isMine={false} paused />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants: new Map([['p-2', fakeParticipant()]]) },
+    });
+    expect(container.querySelector('video')).not.toBeInTheDocument();
+    expect(screen.getByText('Prévia pausada')).toBeInTheDocument();
+  });
+
+  it('a propria tela tambem mostra "Prévia pausada" quando pausada (nao e so pra quem assiste)', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-1" kind="screen" isMine paused />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
+    });
+    expect(container.querySelector('video')).not.toBeInTheDocument();
+    expect(screen.getByText('Prévia pausada')).toBeInTheDocument();
+  });
+
+  it('"parei de assistir" (chave em unwatchedScreenKeys): nao renderiza <video>, mostra o aviso — tem prioridade sobre "pausada"', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="screen" isMine={false} paused />, {
+      state: {
+        ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants: new Map([['p-2', fakeParticipant()]]),
+        unwatchedScreenKeys: new Set(['p-2:screen']),
+      },
+    });
+    expect(container.querySelector('video')).not.toBeInTheDocument();
+    expect(screen.getByText('Você parou de assistir')).toBeInTheDocument();
+    expect(screen.queryByText('Prévia pausada')).not.toBeInTheDocument();
+  });
+
+  it('"parei de assistir" nunca se aplica a propria tela, mesmo se a chave estiver presente', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-1" kind="screen" isMine />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, unwatchedScreenKeys: new Set(['p-1:screen']) },
+    });
+    expect(container.querySelector('video')).toBeInTheDocument();
+    expect(screen.queryByText('Você parou de assistir')).not.toBeInTheDocument();
+  });
+});
+
 describe('Tile — acessibilidade por teclado', () => {
   it('e focavel e tem papel de botao, com aria-pressed refletindo o foco atual', () => {
     renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
