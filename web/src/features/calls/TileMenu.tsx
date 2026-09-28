@@ -109,7 +109,7 @@ export function TileMenu() {
   const inPip = pipSupported && document.pictureInPictureElement === handle?.video;
 
   function toggleFocus() {
-    dispatch({ type: 'SET_FOCUSED', id: isFocused ? null : key });
+    dispatch({ type: 'SET_FOCUSED', id: isFocused ? null : key, origin: 'manual' });
   }
   function goFullscreen() {
     handle?.root.requestFullscreen?.().catch(() => {});

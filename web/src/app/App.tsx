@@ -149,7 +149,7 @@ function Shell() {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key !== 'Escape') return;
       if (closeTileMenu()) return;
-      if (state.focusedId) dispatch({ type: 'SET_FOCUSED', id: null });
+      if (state.focusedId) dispatch({ type: 'SET_FOCUSED', id: null, origin: 'manual' });
     }
     window.addEventListener('beforeunload', onBeforeUnload);
     window.addEventListener('pagehide', onPageHide);

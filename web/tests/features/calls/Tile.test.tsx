@@ -1,5 +1,5 @@
 import { fireEvent, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { initialRoomState } from '@/state/roomReducer';
 import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
 import { Tile } from '@/features/calls/Tile';
@@ -160,5 +160,67 @@ describe('Tile — nome no padrao de grid', () => {
       state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
     });
     expect(screen.getByText('Fulana')).toHaveClass('text-label');
+  });
+});
+
+describe('Tile — acessibilidade por teclado', () => {
+  it('e focavel e tem papel de botao, com aria-pressed refletindo o foco atual', () => {
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]), focusedId: null },
+    });
+    const tile = screen.getByRole('button', { name: /Destacar Fulana/ });
+    expect(tile).toHaveAttribute('tabindex', '0');
+    expect(tile).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('quando ja e o tile em foco, o rotulo e a acao oferecem desfazer', () => {
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]), focusedId: 'p-2:participant' },
+    });
+    const tile = screen.getByRole('button', { name: /Desfazer destaque de Fulana/ });
+    expect(tile).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('Enter no tile alterna o foco, igual um clique — com a origem "manual"', () => {
+    const dispatch = vi.fn();
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]), focusedId: null },
+      dispatch,
+    });
+    const tile = screen.getByRole('button', { name: /Destacar Fulana/ });
+    fireEvent.keyDown(tile, { key: 'Enter' });
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_FOCUSED', id: 'p-2:participant', origin: 'manual' });
+  });
+
+  it('Espaco no tile tambem alterna o foco', () => {
+    const dispatch = vi.fn();
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]), focusedId: null },
+      dispatch,
+    });
+    fireEvent.keyDown(screen.getByRole('button', { name: /Destacar Fulana/ }), { key: ' ' });
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_FOCUSED', id: 'p-2:participant', origin: 'manual' });
+  });
+
+  it('outras teclas nao acionam nada', () => {
+    const dispatch = vi.fn();
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+      dispatch,
+    });
+    fireEvent.keyDown(screen.getByRole('button', { name: /Destacar Fulana/ }), { key: 'a' });
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('Enter num botao aninhado (engrenagem) nao aciona TAMBEM o foco do tile', () => {
+    const dispatch = vi.fn();
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+      dispatch,
+      openTileMenu: vi.fn(),
+    });
+    const gear = screen.getByLabelText('Configurações da transmissão');
+    fireEvent.keyDown(gear, { key: 'Enter' });
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_FOCUSED' }));
   });
 });

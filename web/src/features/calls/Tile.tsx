@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { MouseEvent } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent } from 'react';
 import { ConnectionQuality } from 'livekit-client';
 import { HeadphoneOff, Loader2, MicOff, Settings, SignalLow, SignalZero, VolumeX } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
@@ -86,9 +86,21 @@ export function Tile({ participantId, kind, isMine, loading = false, fit = 'cont
     };
   }, [fit, showsVideo, videoTrack]);
 
+  const isFocused = state.focusedId === key;
+
   const handleClick = useCallback(() => {
-    dispatch({ type: 'SET_FOCUSED', id: state.focusedId === key ? null : key });
+    dispatch({ type: 'SET_FOCUSED', id: state.focusedId === key ? null : key, origin: 'manual' });
   }, [dispatch, key, state.focusedId]);
+
+  // Enter/Space on the tile itself toggle focus, same as a click — but not
+  // when they land on a nested real <button> (gear, unmute), which already
+  // handles its own activation and would otherwise double-fire.
+  const handleKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    handleClick();
+  }, [handleClick]);
 
   const handleContextMenu = useCallback((e: MouseEvent) => {
     e.preventDefault();
@@ -132,7 +144,11 @@ export function Tile({ participantId, kind, isMine, loading = false, fit = 'cont
   return (
     <div
       ref={rootRef}
-      className={`tile-fullscreen-target relative h-full w-full cursor-pointer overflow-hidden rounded-xl border-[3.5px] bg-bg-tertiary transition-colors ${
+      role="button"
+      tabIndex={0}
+      aria-pressed={isFocused}
+      aria-label={`${isFocused ? 'Desfazer destaque de' : 'Destacar'} ${name || 'participante'}`}
+      className={`tile-fullscreen-target relative h-full w-full cursor-pointer overflow-hidden rounded-xl border-[3.5px] bg-bg-tertiary transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${
         showSpeakingBorder ? '' : 'border-transparent'
       }`}
       style={{
@@ -141,6 +157,7 @@ export function Tile({ participantId, kind, isMine, loading = false, fit = 'cont
         ...(showSpeakingBorder ? { borderColor: tint } : {}),
       }}
       onClick={handleClick}
+      onKeyDown={handleKeyDown}
       onContextMenu={handleContextMenu}
     >
       {kind !== 'screen' && banner && <div className="absolute inset-0" style={bannerLayerStyle} />}

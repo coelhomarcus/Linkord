@@ -64,11 +64,12 @@ describe('roomReducer', () => {
   });
 
   describe('PARTICIPANT_LEFT', () => {
-    it('remove o participante e desfoca se o foco era NELE (prefixo `${id}:`)', () => {
-      const state = { ...initialRoomState, participants: new Map([['p1', participant()]]), focusedId: 'p1:screen' };
+    it('remove o participante e desfoca se o foco era NELE (prefixo `${id}:`), zerando a origem tambem', () => {
+      const state = { ...initialRoomState, participants: new Map([['p1', participant()]]), focusedId: 'p1:screen', focusOrigin: 'manual' as const };
       const next = roomReducer(state, { type: 'PARTICIPANT_LEFT', id: 'p1' });
       expect(next.participants.has('p1')).toBe(false);
       expect(next.focusedId).toBeNull();
+      expect(next.focusOrigin).toBeNull();
     });
 
     it('nao mexe no foco se o foco era de OUTRA pessoa', () => {
@@ -89,6 +90,33 @@ describe('roomReducer', () => {
       };
       const next = roomReducer(state, { type: 'PARTICIPANT_LEFT', id: 'p1x' });
       expect(next.focusedId).toBe('p1:screen');
+    });
+  });
+
+  describe('PARTICIPANTS_SYNC', () => {
+    it('desfoca (e zera a origem) se o dono do foco nao esta mais na lista sincronizada', () => {
+      const state = {
+        ...initialRoomState,
+        participants: new Map([['p1', participant()]]),
+        focusedId: 'p1:screen',
+        focusOrigin: 'manual' as const,
+      };
+      const next = roomReducer(state, { type: 'PARTICIPANTS_SYNC', participants: [] });
+      expect(next.focusedId).toBeNull();
+      expect(next.focusOrigin).toBeNull();
+    });
+
+    it('mantem o foco se o dono ainda esta na lista sincronizada', () => {
+      const state = { ...initialRoomState, focusedId: 'p1:camera', focusOrigin: 'manual' as const };
+      const next = roomReducer(state, { type: 'PARTICIPANTS_SYNC', participants: [participant()] });
+      expect(next.focusedId).toBe('p1:camera');
+      expect(next.focusOrigin).toBe('manual');
+    });
+
+    it('mantem o foco na propria pessoa mesmo se ela nao vier na lista de participantes remotos', () => {
+      const state = { ...initialRoomState, me: { ...initialRoomState.me, id: 'me-id' }, focusedId: 'me-id:camera', focusOrigin: 'manual' as const };
+      const next = roomReducer(state, { type: 'PARTICIPANTS_SYNC', participants: [] });
+      expect(next.focusedId).toBe('me-id:camera');
     });
   });
 
@@ -144,10 +172,24 @@ describe('roomReducer', () => {
     expect(next.me.cameraOn).toBe(true);
   });
 
-  it('SET_FOCUSED muda o id em foco (tile key, nao so participantId)', () => {
-    const next = roomReducer(initialRoomState, { type: 'SET_FOCUSED', id: 'p1:screen' });
-    expect(next.focusedId).toBe('p1:screen');
-    expect(roomReducer(next, { type: 'SET_FOCUSED', id: null }).focusedId).toBeNull();
+  describe('SET_FOCUSED', () => {
+    it('muda o id em foco (tile key, nao so participantId) e guarda a origem', () => {
+      const next = roomReducer(initialRoomState, { type: 'SET_FOCUSED', id: 'p1:screen', origin: 'manual' });
+      expect(next.focusedId).toBe('p1:screen');
+      expect(next.focusOrigin).toBe('manual');
+    });
+
+    it('desfocar (id: null) sempre zera a origem tambem, mesmo se "origin" for passado', () => {
+      const focused = roomReducer(initialRoomState, { type: 'SET_FOCUSED', id: 'p1:screen', origin: 'automatic' });
+      const next = roomReducer(focused, { type: 'SET_FOCUSED', id: null, origin: 'manual' });
+      expect(next.focusedId).toBeNull();
+      expect(next.focusOrigin).toBeNull();
+    });
+
+    it('guarda foco automatico separado de manual', () => {
+      const next = roomReducer(initialRoomState, { type: 'SET_FOCUSED', id: 'p2:screen', origin: 'automatic' });
+      expect(next.focusOrigin).toBe('automatic');
+    });
   });
 
   it('SET_SHARE_ERROR seta e limpa (null) o erro de compartilhamento/mic', () => {

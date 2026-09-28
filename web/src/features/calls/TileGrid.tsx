@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { Tile } from './Tile';
 import { fitGrid, gridGap } from './callLayoutMetrics';
@@ -17,8 +18,12 @@ interface TileGridProps {
 
 const THUMB_W = 160;
 const THUMB_H = 90;
-const GRID_GAP = 12;
 const DEFAULT_MIN_TILE_WIDTH = 220;
+// How many thumbnail rows show before the strip scrolls instead of growing
+// — otherwise a big call's secondary strip keeps eating rows until the
+// main tile is crushed to nothing (see the plan's "faixa recolhível...
+// não acumular linhas que eliminem o principal").
+const MAX_VISIBLE_THUMB_ROWS = 2;
 
 export function TileGrid({ descriptors, focusedId, minTileWidth = DEFAULT_MIN_TILE_WIDTH }: TileGridProps) {
   const { state } = useRoom();
@@ -39,14 +44,11 @@ export function TileGrid({ descriptors, focusedId, minTileWidth = DEFAULT_MIN_TI
   }, []);
 
   const isMine = (participantId: string) => participantId === state.me.id;
+  const [thumbsCollapsed, setThumbsCollapsed] = useState(false);
 
   const n = descriptors.length;
   const gridFit = fitGrid(n, containerSize.w, containerSize.h, minTileWidth);
   const thumbs = focus ? descriptors.filter((d) => d.key !== focus) : [];
-  const thumbCols = focus ? Math.max(1, Math.floor((containerSize.w + GRID_GAP) / (THUMB_W + GRID_GAP))) : 1;
-  const thumbRows = focus ? Math.max(1, Math.ceil(thumbs.length / thumbCols)) : 1;
-  const gridTemplateColumns = `repeat(${thumbCols}, minmax(0, 1fr))`;
-  const gridTemplateRows = thumbs.length ? `minmax(0, 1fr) repeat(${thumbRows}, ${THUMB_H}px)` : 'minmax(0, 1fr)';
 
   // Contain-fit tiles shrink their own root to the media's aspect ratio (see
   // Tile.tsx), so their wrapper has to actively center them — a cover-fit
@@ -89,33 +91,39 @@ export function TileGrid({ descriptors, focusedId, minTileWidth = DEFAULT_MIN_TI
   }
 
   const focusedDescriptor = descriptors.find((d) => d.key === focus);
-  const thumbnailRows: TileDescriptor[][] = [];
-  for (let index = 0; index < thumbs.length; index += thumbCols) {
-    thumbnailRows.push(thumbs.slice(index, index + thumbCols));
-  }
+  // Capped, not measured: the strip scrolls internally past
+  // MAX_VISIBLE_THUMB_ROWS instead of growing — a busy call's secondary
+  // strip must never keep eating rows until the main tile is crushed.
+  const thumbStripMaxHeight = MAX_VISIBLE_THUMB_ROWS * THUMB_H + (MAX_VISIBLE_THUMB_ROWS - 1) * 12;
 
   return (
-    <div
-      ref={containerRef}
-      data-tile-grid
-      className="grid h-full w-full items-center justify-items-center gap-3"
-      style={{ gridTemplateColumns, gridTemplateRows }}
-    >
+    <div ref={containerRef} data-tile-grid className="flex h-full w-full flex-col items-center gap-2">
       {focusedDescriptor && (
-        <div style={{ gridColumn: '1 / -1', gridRow: '1', width: '100%', height: '100%' }} className="flex min-h-0 min-w-0 items-center justify-center">
+        <div className="flex min-h-0 w-full flex-1 items-center justify-center">
           {renderTile(focusedDescriptor, true, '100%', '100%')}
         </div>
       )}
-      {thumbnailRows.map((row, rowIndex) => (
-        <div
-          key={`thumbnail-row-${rowIndex}`}
-          data-tile-row
-          style={{ gridColumn: '1 / -1', gridRow: String(rowIndex + 2) }}
-          className="flex min-h-0 min-w-0 justify-center gap-3"
-        >
-          {row.map((d) => renderTile(d, false, THUMB_W, THUMB_H, 'cover'))}
+      {thumbs.length > 0 && (
+        <div className="flex w-full flex-none flex-col items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setThumbsCollapsed((v) => !v)}
+            aria-expanded={!thumbsCollapsed}
+            aria-label={thumbsCollapsed ? 'Mostrar participantes' : 'Ocultar participantes'}
+            className="flex items-center gap-1 rounded-full px-2 py-0.5 text-caption text-text-muted transition-colors hover:bg-white/5 hover:text-text-secondary"
+          >
+            {thumbsCollapsed ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            {thumbs.length} participante{thumbs.length === 1 ? '' : 's'}
+          </button>
+          {!thumbsCollapsed && (
+            <div data-thumb-strip className="w-full overflow-y-auto" style={{ maxHeight: thumbStripMaxHeight }}>
+              <div className="flex flex-wrap justify-center gap-3">
+                {thumbs.map((d) => renderTile(d, false, THUMB_W, THUMB_H, 'cover'))}
+              </div>
+            </div>
+          )}
         </div>
-      ))}
+      )}
     </div>
   );
 }

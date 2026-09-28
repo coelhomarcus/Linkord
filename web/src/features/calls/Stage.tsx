@@ -1,7 +1,9 @@
+import { useCallback } from 'react';
 import { ArrowLeft, VideoOff } from 'lucide-react';
 import { useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { useRoom } from '../../state/RoomContext';
 import { useCallTiles } from './useCallTiles';
+import { useAutoFocusScreenShare } from './useAutoFocusScreenShare';
 import { TileGrid } from './TileGrid';
 import { Button } from '@/shared/ui/primitives/button';
 
@@ -10,10 +12,12 @@ interface StageProps {
 }
 
 export function Stage({ allIds }: StageProps) {
-  const { state, hideAudioOnlyTiles, setHideAudioOnlyTiles } = useRoom();
+  const { state, dispatch, hideAudioOnlyTiles, setHideAudioOnlyTiles } = useRoom();
   const { setOpenMobile } = useAnimatedSidebar();
   const allDescriptors = useCallTiles(allIds);
   const descriptors = hideAudioOnlyTiles ? allDescriptors.filter((d) => d.kind !== 'avatar') : allDescriptors;
+  const focusScreenShare = useCallback((key: string) => dispatch({ type: 'SET_FOCUSED', id: key, origin: 'automatic' }), [dispatch]);
+  useAutoFocusScreenShare(allDescriptors, state.focusOrigin, focusScreenShare);
   // "Ocultar sem vídeo" filtering everyone out reads as a black-screen bug
   // otherwise — nothing on stage explains why, since the option lives in a
   // right-click menu, not a visible toggle.
