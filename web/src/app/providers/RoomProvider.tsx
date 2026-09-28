@@ -396,6 +396,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         editChatMessage: chatMessages.editChatMessage, reactToChatMessage: chatMessages.reactToChatMessage,
         replyingTo: chatMessages.replyingTo, setReplyingTo: chatMessages.setReplyingTo,
         editingMsgId: chatMessages.editingMsgId, setEditingMsgId: chatMessages.setEditingMsgId,
+        reactionParticipantsTarget: chatMessages.reactionParticipantsTarget,
+        openReactionParticipants: chatMessages.openReactionParticipants, closeReactionParticipants: chatMessages.closeReactionParticipants,
         hasMoreAfterByConversation: chatMessages.hasMoreAfterByConversation, pendingJumpTarget: chatMessages.pendingJumpTarget,
         clearPendingJumpTarget: chatMessages.clearPendingJumpTarget, jumpToMessage: chatMessages.jumpToMessage,
         searchResults: messageSearch.searchResults, searchLoading: messageSearch.searchLoading, searchError: messageSearch.searchError,

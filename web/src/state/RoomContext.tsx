@@ -5,6 +5,7 @@ import type { ChatMessage, ClientMessage, Conversation, PublicUser, ReactionEmoj
 import type { RoomAction, RoomState } from './roomReducer';
 import type { TileKind } from '../features/calls/tileTypes';
 import type { OutboxEntry } from '@/features/chat/useMessageOutbox';
+import type { ReactionParticipantsTarget } from '@/features/chat/reactionParticipants';
 
 export interface ReactionEvent {
   key: number;
@@ -154,6 +155,10 @@ export interface RoomContextValue {
   setReplyingTo: (message: ChatMessage | null) => void;
   editingMsgId: number | null;
   setEditingMsgId: (msgId: number | null) => void;
+  /** Which message's full reaction list is open in ReactionParticipantsDialog. */
+  reactionParticipantsTarget: ReactionParticipantsTarget | null;
+  openReactionParticipants: (target: ReactionParticipantsTarget) => void;
+  closeReactionParticipants: () => void;
   hasMoreAfterByConversation: Map<string, boolean>;
   pendingJumpTarget: { conversationId: string; msgId: number } | null;
   clearPendingJumpTarget: () => void;

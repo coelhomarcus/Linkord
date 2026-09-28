@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Copy, Flag, MoreHorizontal, Pencil, Reply, SmilePlus, Trash2 } from 'lucide-react';
+import { Copy, Flag, MoreHorizontal, Pencil, Reply, SmilePlus, Trash2, Users } from 'lucide-react';
 import { Avatar } from '@/shared/Avatar';
 import { MessageMedia } from './MessageMedia';
 import { InviteCard } from '@/features/chat/InviteCard';
@@ -95,7 +95,7 @@ function PendingStatus({ entry, offline, onRetry, onDiscard }: { entry: OutboxEn
 export function MessageRow({ message, showHeader, highlighted, allUsers, mentionLookup, onOpenProfile, onReply, onJumpTo, pending }: MessageRowProps) {
   const {
     state, deleteChatMessage, editChatMessage, reactToChatMessage, editingMsgId, setEditingMsgId, retryPendingMessage, discardPendingMessage,
-    deletingMsgIds, messageActionErrors, dismissMessageActionError, pendingReactions,
+    deletingMsgIds, messageActionErrors, dismissMessageActionError, pendingReactions, openReactionParticipants,
   } = useRoom();
   const [editText, setEditText] = useState(message.text);
   const [editSaving, setEditSaving] = useState(false);
@@ -114,6 +114,8 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
   const isInvite = message.kind === 'group_invite';
   const canReport = can.report;
   const isEditing = !pending && !isInvite && editingMsgId === message.msgId;
+  const reactions = withPendingReactions(message.reactions, message.msgId, pendingReactions, state.me.userId);
+  const hasReactions = Object.values(reactions).some((ids) => ids && ids.length > 0);
 
   async function saveEdit() {
     const trimmed = editText.trim();
@@ -265,7 +267,7 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
 
         {!pending && (
           <MessageReactions
-            reactions={withPendingReactions(message.reactions, message.msgId, pendingReactions, state.me.userId)}
+            reactions={reactions}
             myUserId={state.me.userId}
             allUsers={allUsers}
             onToggle={(emoji) => reactToChatMessage(message.msgId, emoji)}
@@ -315,6 +317,11 @@ export function MessageRow({ message, showHeader, highlighted, allUsers, mention
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {can.reply && <DropdownMenuItem onClick={onReply}><Reply size={14} />Responder</DropdownMenuItem>}
+            {hasReactions && (
+              <DropdownMenuItem onClick={() => openReactionParticipants({ conversationId: message.conversationId, msgId: message.msgId })}>
+                <Users size={14} />Ver todas as reações
+              </DropdownMenuItem>
+            )}
             {can.copy && <DropdownMenuItem onClick={copyText}><Copy size={14} />Copiar texto</DropdownMenuItem>}
             {can.edit && <DropdownMenuItem onClick={startEdit}><Pencil size={14} />Editar</DropdownMenuItem>}
             {canReport && <DropdownMenuItem onClick={() => setReportOpen(true)}><Flag size={14} />Denunciar</DropdownMenuItem>}

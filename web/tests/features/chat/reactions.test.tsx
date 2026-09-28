@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, renderHook, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { reactionKey, withPendingReactions } from '@/features/chat/reactionState';
 import { useReactionIntents } from '@/features/chat/useReactionIntents';
 import { MessageReactions } from '@/features/chat/MessageReactions';
-import type { PublicUser } from '@/shared/types/protocol';
+import { ReactionParticipantsDialog } from '@/features/chat/ReactionParticipantsDialog';
+import { initialRoomState } from '@/state/roomReducer';
+import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
+import type { ChatMessage, PublicUser } from '@/shared/types/protocol';
 
 describe('withPendingReactions', () => {
   it('so a participacao do proprio usuario muda; a dos outros fica', () => {
@@ -72,20 +76,84 @@ describe('MessageReactions', () => {
     expect(chip).toHaveAccessibleName('Remover reação 👍 (2): Ana, Você');
   });
 
-  it('lista de quem reagiu por emoji, com fallback para conta removida', () => {
-    render(<MessageReactions reactions={{ '👍': ['ana'], '🎉': ['bia', 'sumiu'] }} myUserId="me" allUsers={allUsers} onToggle={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Ver quem reagiu' }));
+  const findTooltip = () => waitFor(() => {
+    const el = document.querySelector('[data-slot="tooltip-content"]');
+    if (!el) throw new Error('tooltip not open yet');
+    return el;
+  }, { timeout: 2000 });
+
+  it('hover no chip mostra quem reagiu, com fallback para participante sem dados', async () => {
+    const ue = userEvent.setup();
+    render(<MessageReactions reactions={{ '🎉': ['bia', 'sumiu'] }} myUserId="me" allUsers={allUsers} onToggle={() => {}} />);
+    await ue.hover(screen.getByRole('button', { name: /reação 🎉/ }));
+    const tooltip = await findTooltip();
+    expect(tooltip).toHaveTextContent('Bia e Participante indisponível reagiram');
+  });
+
+  it('foco no chip mostra o mesmo resumo, sem precisar de mouse', async () => {
+    render(<MessageReactions reactions={{ '👍': ['ana', 'me'] }} myUserId="me" allUsers={allUsers} onToggle={() => {}} />);
+    fireEvent.focus(screen.getByRole('button', { name: /reação 👍/ }));
+    const tooltip = await findTooltip();
+    expect(tooltip).toHaveTextContent('Ana e Você reagiram');
+  });
+
+  it('clicar no chip alterna aquele emoji e fecha o tooltip', async () => {
+    const ue = userEvent.setup();
+    const onToggle = vi.fn();
+    render(<MessageReactions reactions={{ '😂': ['ana'] }} myUserId="me" allUsers={allUsers} onToggle={onToggle} />);
+    const chip = screen.getByRole('button', { name: /reação 😂/ });
+    await ue.hover(chip);
+    await findTooltip();
+    await ue.click(chip);
+    expect(onToggle).toHaveBeenCalledWith('😂');
+    await waitFor(() => expect(document.querySelector('[data-slot="tooltip-content"]')).not.toBeInTheDocument());
+  });
+});
+
+describe('ReactionParticipantsDialog', () => {
+  const publicUser = (id: string, displayName: string): PublicUser => ({ id, username: id, displayName, avatar: '', avatarColor: 'blurple', banner: '', bio: '', profileLinks: [], role: 'user' });
+  const allUsers = new Map([['ana', publicUser('ana', 'Ana')], ['bia', publicUser('bia', 'Bia')]]);
+  const message = (over: Partial<ChatMessage> = {}): ChatMessage => ({
+    msgId: 1, conversationId: 'c1', id: 'ana', name: 'Ana', avatar: '', text: 'oi', ts: 1, ...over,
+  });
+  const state = { ...initialRoomState, me: { ...initialRoomState.me, userId: 'me' } };
+
+  it('lista quem reagiu por emoji, com fallback para conta sem dados', () => {
+    const msg = message({ reactions: { '👍': ['ana'], '🎉': ['bia', 'sumiu'] } });
+    renderWithRoom(<ReactionParticipantsDialog />, {
+      state, allUsers, messagesByConversation: new Map([['c1', [msg]]]),
+      reactionParticipantsTarget: { conversationId: 'c1', msgId: 1 },
+    });
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByRole('tabpanel')).toHaveTextContent('Ana');
     fireEvent.click(within(dialog).getByRole('tab', { name: /🎉/ }));
     expect(within(dialog).getByRole('tabpanel')).toHaveTextContent('Bia');
-    expect(within(dialog).getByRole('tabpanel')).toHaveTextContent('Usuário removido');
+    expect(within(dialog).getByRole('tabpanel')).toHaveTextContent('Participante indisponível');
   });
 
-  it('clicar no chip alterna aquele emoji', () => {
-    const onToggle = vi.fn();
-    render(<MessageReactions reactions={{ '😂': ['ana'] }} myUserId="me" allUsers={allUsers} onToggle={onToggle} />);
-    fireEvent.click(screen.getByRole('button', { name: /reação 😂/ }));
-    expect(onToggle).toHaveBeenCalledWith('😂');
+  it('abre direto no emoji do alvo, quando informado', () => {
+    const msg = message({ reactions: { '👍': ['ana'], '🎉': ['bia'] } });
+    renderWithRoom(<ReactionParticipantsDialog />, {
+      state, allUsers, messagesByConversation: new Map([['c1', [msg]]]),
+      reactionParticipantsTarget: { conversationId: 'c1', msgId: 1, emoji: '🎉' },
+    });
+    expect(within(screen.getByRole('dialog')).getByRole('tabpanel')).toHaveTextContent('Bia');
+  });
+
+  it('sem alvo, o dialogo fica fechado', () => {
+    renderWithRoom(<ReactionParticipantsDialog />, {
+      state, allUsers, messagesByConversation: new Map(), reactionParticipantsTarget: null,
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('mensagem apagada enquanto aberto: fecha e limpa o alvo', () => {
+    const closeReactionParticipants = vi.fn();
+    renderWithRoom(<ReactionParticipantsDialog />, {
+      state, allUsers, messagesByConversation: new Map([['c1', []]]),
+      reactionParticipantsTarget: { conversationId: 'c1', msgId: 1 },
+      closeReactionParticipants,
+    });
+    expect(closeReactionParticipants).toHaveBeenCalled();
   });
 });
