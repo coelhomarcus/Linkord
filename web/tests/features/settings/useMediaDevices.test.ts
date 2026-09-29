@@ -20,7 +20,7 @@ function fakeRoom(activeDeviceId: string | undefined = undefined) {
 }
 
 describe('useMediaDevices', () => {
-  it('sem navigator.mediaDevices o seletor fica vazio em vez de lancar do efeito', async () => {
+  it('without navigator.mediaDevices, the selector stays empty instead of throwing from the effect', async () => {
     vi.spyOn(Room, 'getLocalDevices').mockRejectedValue(new TypeError("Cannot read properties of undefined (reading 'enumerateDevices')"));
     const room = fakeRoom();
     const { result } = renderHook(() => useMediaDevices(room, 'audioinput'));
@@ -29,7 +29,7 @@ describe('useMediaDevices', () => {
     expect(result.current.devices).toEqual([]);
   });
 
-  it('nunca pediu: dispositivos sem label viram "permission-needed"', async () => {
+  it('never asked: devices with no label become "permission-needed"', async () => {
     vi.spyOn(Room, 'getLocalDevices').mockResolvedValue([
       { deviceId: 'd1', label: '', kind: 'audioinput' } as MediaDeviceInfo,
     ]);
@@ -39,7 +39,7 @@ describe('useMediaDevices', () => {
     await waitFor(() => expect(result.current.status).toBe('permission-needed'));
   });
 
-  it('pediu (requestPermission) e continua sem label: "permission-denied", nao "unsupported"', async () => {
+  it('asked (requestPermission) and still no label: "permission-denied", not "unsupported"', async () => {
     vi.spyOn(Room, 'getLocalDevices').mockResolvedValue([
       { deviceId: 'd1', label: '', kind: 'audioinput' } as MediaDeviceInfo,
     ]);
@@ -50,7 +50,7 @@ describe('useMediaDevices', () => {
     await waitFor(async () => { await result.current.requestPermission(); expect(result.current.status).toBe('permission-denied'); });
   });
 
-  it('getLocalDevices rejeita no pedido explicito (negado no prompt nativo): "permission-denied"', async () => {
+  it('getLocalDevices rejects on the explicit request (denied at the native prompt): "permission-denied"', async () => {
     vi.spyOn(Room, 'getLocalDevices')
       .mockResolvedValueOnce([{ deviceId: 'd1', label: '', kind: 'audioinput' } as MediaDeviceInfo])
       .mockRejectedValueOnce(Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' }));
@@ -62,7 +62,7 @@ describe('useMediaDevices', () => {
     await waitFor(() => expect(result.current.status).toBe('permission-denied'));
   });
 
-  it('lista vazia (suportado, com permissao): "no-devices"', async () => {
+  it('empty list (supported, with permission): "no-devices"', async () => {
     vi.spyOn(Room, 'getLocalDevices').mockResolvedValue([]);
     const room = fakeRoom();
     const { result } = renderHook(() => useMediaDevices(room, 'audioinput'));
@@ -70,7 +70,7 @@ describe('useMediaDevices', () => {
     await waitFor(() => expect(result.current.status).toBe('no-devices'));
   });
 
-  it('trocar de dispositivo com falha mostra erro recuperavel e nao muda o ativo', async () => {
+  it('switching devices with a failure shows a recoverable error and does not change the active one', async () => {
     vi.spyOn(Room, 'getLocalDevices').mockResolvedValue([
       { deviceId: 'd1', label: 'Mic 1', kind: 'audioinput' } as MediaDeviceInfo,
       { deviceId: 'd2', label: 'Mic 2', kind: 'audioinput' } as MediaDeviceInfo,
@@ -85,7 +85,7 @@ describe('useMediaDevices', () => {
     expect(result.current.activeDeviceId).toBe('d1');
   });
 
-  it('devicechange atualiza a lista sem esperar um novo mount', async () => {
+  it('devicechange refreshes the list without waiting for a new mount', async () => {
     const spy = vi.spyOn(Room, 'getLocalDevices').mockResolvedValue([
       { deviceId: 'd1', label: 'Mic 1', kind: 'audioinput' } as MediaDeviceInfo,
     ]);
@@ -96,7 +96,7 @@ describe('useMediaDevices', () => {
 
     spy.mockResolvedValue([
       { deviceId: 'd1', label: 'Mic 1', kind: 'audioinput' } as MediaDeviceInfo,
-      { deviceId: 'd2', label: 'Mic 2 (novo)', kind: 'audioinput' } as MediaDeviceInfo,
+      { deviceId: 'd2', label: 'Mic 2 (new)', kind: 'audioinput' } as MediaDeviceInfo,
     ]);
     navigator.mediaDevices.dispatchEvent(new Event('devicechange'));
     await waitFor(() => expect(result.current.devices).toHaveLength(2));

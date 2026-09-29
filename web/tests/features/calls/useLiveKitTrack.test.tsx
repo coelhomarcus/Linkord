@@ -42,24 +42,24 @@ function roomWrapper(room: Room) {
 }
 
 describe('getParticipant', () => {
-  it('devolve o localParticipant quando a identity bate com ele mesmo', () => {
+  it('returns the localParticipant when the identity matches itself', () => {
     const local = { identity: 'me' };
     const room = { localParticipant: local, getParticipantByIdentity: () => undefined } as unknown as Room;
     expect(getParticipant(room, 'me')).toBe(local);
   });
 
-  it('devolve o participante remoto encontrado por identity', () => {
-    const remote = { identity: 'outro' };
+  it('returns the remote participant found by identity', () => {
+    const remote = { identity: 'other' };
     const room = {
       localParticipant: { identity: 'me' },
-      getParticipantByIdentity: (id: string) => (id === 'outro' ? remote : undefined),
+      getParticipantByIdentity: (id: string) => (id === 'other' ? remote : undefined),
     } as unknown as Room;
-    expect(getParticipant(room, 'outro')).toBe(remote);
+    expect(getParticipant(room, 'other')).toBe(remote);
   });
 
-  it('identity desconhecida devolve undefined', () => {
+  it('unknown identity returns undefined', () => {
     const room = { localParticipant: { identity: 'me' }, getParticipantByIdentity: () => undefined } as unknown as Room;
-    expect(getParticipant(room, 'fantasma')).toBeUndefined();
+    expect(getParticipant(room, 'ghost')).toBeUndefined();
   });
 });
 
@@ -68,22 +68,22 @@ describe('activeTrack', () => {
     return { getTrackPublication: () => pub } as unknown as Participant;
   }
 
-  it('sem publication nenhuma, devolve null', () => {
+  it('with no publication at all, returns null', () => {
     expect(activeTrack(fakeParticipant(null), Track.Source.Camera)).toBeNull();
   });
 
-  it('publication MUTADA devolve null mesmo com a track ainda existindo — desligar camera/tela nao despublica, so muta', () => {
-    const p = fakeParticipant({ isMuted: true, track: { id: 'trackreal' } });
+  it('a MUTED publication returns null even with the track still existing — turning off camera/screen does not unpublish, only mutes', () => {
+    const p = fakeParticipant({ isMuted: true, track: { id: 'realtrack' } });
     expect(activeTrack(p, Track.Source.Camera)).toBeNull();
   });
 
-  it('publication ativa (nao mutada) devolve a track', () => {
-    const track = { id: 'trackreal' };
+  it('an active (not muted) publication returns the track', () => {
+    const track = { id: 'realtrack' };
     const p = fakeParticipant({ isMuted: false, track });
     expect(activeTrack(p, Track.Source.Camera)).toBe(track);
   });
 
-  it('publication ativa mas sem track anexada ainda devolve null (nunca undefined)', () => {
+  it('an active publication but without an attached track still returns null (never undefined)', () => {
     const p = fakeParticipant({ isMuted: false, track: undefined });
     expect(activeTrack(p, Track.Source.Camera)).toBeNull();
   });
@@ -94,19 +94,19 @@ describe('isScreenPaused', () => {
     return { getTrackPublication: () => pub } as unknown as Participant;
   }
 
-  it('sem publicacao nenhuma, false (nao esta pausada, nao existe)', () => {
+  it("with no publication at all, false (not paused, doesn't exist)", () => {
     expect(isScreenPaused(fakeParticipant(undefined))).toBe(false);
   });
 
-  it('publicacao ativa (nao mutada), false — esta compartilhando normalmente', () => {
+  it('an active (not muted) publication, false — sharing normally', () => {
     expect(isScreenPaused(fakeParticipant({ isMuted: false, track: {} }))).toBe(false);
   });
 
-  it('publicacao mutada mas AINDA sem track, false — ainda carregando, nao "pausada de proposito"', () => {
+  it('a muted publication but STILL without a track, false — still loading, not "intentionally paused"', () => {
     expect(isScreenPaused(fakeParticipant({ isMuted: true, track: undefined }))).toBe(false);
   });
 
-  it('publicacao mutada com track presente, true — pausada de proposito (pauseSharePreview)', () => {
+  it('a muted publication with a track present, true — intentionally paused (pauseSharePreview)', () => {
     expect(isScreenPaused(fakeParticipant({ isMuted: true, track: {} }))).toBe(true);
   });
 });
@@ -130,21 +130,21 @@ describe('useWatchScreenShare', () => {
     return { room: room as unknown as Room, setEnabledVideo, setEnabledAudio };
   }
 
-  it('assistindo (notWatching=false): habilita video E audio da tela remota', () => {
+  it('watching (notWatching=false): enables video AND audio of the remote screen', () => {
     const { room, setEnabledVideo, setEnabledAudio } = fakeRoomWithRemoteScreen();
     renderHook(() => useWatchScreenShare(room, 'bia', false));
     expect(setEnabledVideo).toHaveBeenCalledWith(true);
     expect(setEnabledAudio).toHaveBeenCalledWith(true);
   });
 
-  it('parou de assistir (notWatching=true): desabilita video E audio — preserva o microfone (fora do escopo desta chamada)', () => {
+  it('stopped watching (notWatching=true): disables video AND audio — preserves the microphone (out of scope for this call)', () => {
     const { room, setEnabledVideo, setEnabledAudio } = fakeRoomWithRemoteScreen();
     renderHook(() => useWatchScreenShare(room, 'bia', true));
     expect(setEnabledVideo).toHaveBeenCalledWith(false);
     expect(setEnabledAudio).toHaveBeenCalledWith(false);
   });
 
-  it('nunca chama setEnabled numa publicacao LOCAL — "assistir" so faz sentido pra tela de outra pessoa', () => {
+  it('never calls setEnabled on a LOCAL publication — "watching" only makes sense for someone else\'s screen', () => {
     const setEnabledLocal = vi.fn();
     const room = {
       on: vi.fn(),
@@ -157,8 +157,8 @@ describe('useWatchScreenShare', () => {
   });
 });
 
-describe('useParticipantMedia — assinatura compartilhada por identidade (plano §11.2)', () => {
-  it('duas instancias observando a MESMA identidade registram os listeners do LiveKit uma unica vez', () => {
+describe('useParticipantMedia — subscription shared by identity (plan §11.2)', () => {
+  it('two instances watching the SAME identity register the LiveKit listeners only once', () => {
     const { room, on, off } = fakeEventRoom();
     const wrapper = roomWrapper(room);
 
@@ -176,7 +176,7 @@ describe('useParticipantMedia — assinatura compartilhada por identidade (plano
     expect(off.mock.calls.length).toBe(onCallsAfterFirst);
   });
 
-  it('identidades DIFERENTES continuam com assinaturas totalmente independentes', () => {
+  it('DIFFERENT identities keep fully independent subscriptions', () => {
     const { room, on } = fakeEventRoom();
     const wrapper = roomWrapper(room);
 
@@ -186,7 +186,7 @@ describe('useParticipantMedia — assinatura compartilhada por identidade (plano
     expect(on.mock.calls.length).toBe(afterFirst * 2);
   });
 
-  it('um evento real de track reflete nos DOIS observadores da mesma identidade', () => {
+  it('a real track event reflects on BOTH observers of the same identity', () => {
     const { room } = fakeEventRoom();
     room.addParticipant('p-2', { getTrackPublication: (() => ({ isMuted: false, track: { id: 'cam' } })) as unknown as Participant['getTrackPublication'] });
     const wrapper = roomWrapper(room);
@@ -203,8 +203,8 @@ describe('useParticipantMedia — assinatura compartilhada por identidade (plano
   });
 });
 
-describe('useConnectionQuality — mesma assinatura compartilhada', () => {
-  it('duas instancias observando a MESMA identidade registram um unico listener de ConnectionQualityChanged', () => {
+describe('useConnectionQuality — same shared subscription', () => {
+  it('two instances watching the SAME identity register a single ConnectionQualityChanged listener', () => {
     const { room, on, off } = fakeEventRoom();
     const wrapper = roomWrapper(room);
 
@@ -221,7 +221,7 @@ describe('useConnectionQuality — mesma assinatura compartilhada', () => {
     expect(off).toHaveBeenCalledTimes(1);
   });
 
-  it('reflete a qualidade real do participante e reage a mudancas', () => {
+  it("reflects the participant's real quality and reacts to changes", () => {
     const { room } = fakeEventRoom();
     room.addParticipant('p-2', { connectionQuality: ConnectionQuality.Good });
     const wrapper = roomWrapper(room);

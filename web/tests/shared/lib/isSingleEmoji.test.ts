@@ -3,23 +3,23 @@ import { isSingleEmoji } from '@/shared/lib/isSingleEmoji';
 
 describe('isSingleEmoji', () => {
   it.each([
-    ['😀', 'emoji simples'],
+    ['😀', 'plain emoji'],
     ['🇧🇷', 'flag'],
-    ['👍🏽', 'tom de pele'],
-    ['👨‍👩‍👧‍👦', 'sequência ZWJ'],
+    ['👍🏽', 'skin tone'],
+    ['👨‍👩‍👧‍👦', 'ZWJ sequence'],
     ['1️⃣', 'keycap'],
-    ['  😀\n', 'espaços nas extremidades'],
-  ])('aceita %s (%s)', (text) => {
+    ['  😀\n', 'surrounding whitespace'],
+  ])('accepts %s (%s)', (text) => {
     expect(isSingleEmoji(text)).toBe(true);
   });
 
   it.each([
-    ['A', 'texto simples'],
-    ['😀 oi', 'emoji acompanhado de texto'],
-    ['😀😀', 'dois emojis'],
-    ['©', 'símbolo em apresentação de texto'],
-    ['🏽', 'modificador isolado'],
-  ])('rejeita %s (%s)', (text) => {
+    ['A', 'plain text'],
+    ['😀 oi', 'emoji followed by text'],
+    ['😀😀', 'two emoji'],
+    ['©', 'symbol in text presentation'],
+    ['🏽', 'isolated modifier'],
+  ])('rejects %s (%s)', (text) => {
     expect(isSingleEmoji(text)).toBe(false);
   });
 });

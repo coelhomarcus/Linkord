@@ -17,7 +17,7 @@ beforeEach(() => {
 });
 
 describe('UsersPage', () => {
-  it('lista contas com situacao e papel, cada uma levando ao detalhe', async () => {
+  it('lists accounts with status and role, each linking to its detail page', async () => {
     renderAdmin(<UsersPage />, { path: '/admin/users', pattern: '/admin/users' });
     const link = await screen.findByRole('link', { name: /Ana/ });
     expect(link).toHaveAttribute('href', '/admin/users/u1');
@@ -26,7 +26,7 @@ describe('UsersPage', () => {
     expect(mocked.fetchAdminUsers).toHaveBeenCalledWith({ q: '', status: undefined, role: undefined }, null);
   });
 
-  it('os filtros de situacao e papel chegam ao servidor', async () => {
+  it('the status and role filters reach the server', async () => {
     const u = userEvent.setup();
     renderAdmin(<UsersPage />, { path: '/admin/users', pattern: '/admin/users' });
     await screen.findByText('Ana');
@@ -36,7 +36,7 @@ describe('UsersPage', () => {
     await waitFor(() => expect(mocked.fetchAdminUsers).toHaveBeenLastCalledWith({ q: '', status: 'suspended', role: 'admin' }, null));
   });
 
-  it('busca por texto e paginacao por cursor', async () => {
+  it('text search and cursor-based pagination', async () => {
     const u = userEvent.setup();
     mocked.fetchAdminUsers.mockResolvedValueOnce({ items: [user()], nextCursor: 'c2' }).mockResolvedValue({ items: [user({ id: 'u3', username: 'caio', displayName: 'Caio' })], nextCursor: null });
     renderAdmin(<UsersPage />, { path: '/admin/users', pattern: '/admin/users' });
@@ -48,7 +48,7 @@ describe('UsersPage', () => {
     await waitFor(() => expect(mocked.fetchAdminUsers).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'ca' }), null));
   });
 
-  it('erro oferece nova tentativa', async () => {
+  it('error offers a retry', async () => {
     const u = userEvent.setup();
     mocked.fetchAdminUsers.mockRejectedValueOnce(new Error('x'));
     renderAdmin(<UsersPage />, { path: '/admin/users', pattern: '/admin/users' });

@@ -10,12 +10,12 @@ import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
 import type { ChatMessage, PublicUser } from '@/shared/types/protocol';
 
 describe('withPendingReactions', () => {
-  it('so a participacao do proprio usuario muda; a dos outros fica', () => {
+  it('only the current user\'s participation changes; everyone else\'s stays', () => {
     const pending = new Map([[reactionKey(1, '👍'), true], [reactionKey(1, '🎉'), false], [reactionKey(2, '😂'), true]]);
     expect(withPendingReactions({ '👍': ['ana'], '🎉': ['me', 'bia'] }, 1, pending, 'me')).toEqual({ '👍': ['ana', 'me'], '🎉': ['bia'] });
   });
 
-  it('remover a unica reacao some com o chip', () => {
+  it('removing the only reaction makes the chip disappear', () => {
     expect(withPendingReactions({ '👍': ['me'] }, 1, new Map([[reactionKey(1, '👍'), false]]), 'me')).toEqual({});
   });
 });
@@ -30,7 +30,7 @@ describe('useReactionIntents', () => {
   }
   const flush = () => act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
-  it('cliques rapidos convergem para a ultima intencao, sem corrida', async () => {
+  it('rapid clicks converge on the last intent, without a race', async () => {
     const { result, request, resolvers } = setup();
     act(() => result.current.react(1, '👍', false));
     act(() => result.current.react(1, '👍', false));
@@ -45,7 +45,7 @@ describe('useReactionIntents', () => {
     expect(result.current.pendingReactions.size).toBe(0);
   });
 
-  it('mudou de ideia durante o envio: manda a intencao mais nova depois', async () => {
+  it('changed their mind mid-send: sends the newer intent afterward', async () => {
     const { result, request, resolvers } = setup();
     act(() => result.current.react(1, '👍', false));
     act(() => result.current.react(1, '👍', false));
@@ -55,7 +55,7 @@ describe('useReactionIntents', () => {
     expect(resolvers[1]!.msg.present).toBe(false);
   });
 
-  it('falha: descarta a intencao e avisa o motivo', async () => {
+  it('failure: discards the intent and reports the reason', async () => {
     const { result, resolvers, onError } = setup();
     act(() => result.current.react(7, '🎉', false));
     resolvers[0]!.reject(new Error('Sem permissão.'));
@@ -69,7 +69,7 @@ describe('MessageReactions', () => {
   const user = (id: string, displayName: string): PublicUser => ({ id, username: id, displayName, avatar: '', avatarColor: 'blurple', banner: '', bio: '', profileLinks: [], role: 'user' });
   const allUsers = new Map([['ana', user('ana', 'Ana')], ['bia', user('bia', 'Bia')]]);
 
-  it('chip acessivel: pressionado quando e meu, rotulo com acao e nomes', () => {
+  it('accessible chip: pressed when it is mine, label with action and names', () => {
     render(<MessageReactions reactions={{ '👍': ['ana', 'me'] }} myUserId="me" allUsers={allUsers} onToggle={() => {}} />);
     const chip = screen.getByRole('button', { name: /reação 👍/ });
     expect(chip).toHaveAttribute('aria-pressed', 'true');
@@ -82,7 +82,7 @@ describe('MessageReactions', () => {
     return el;
   }, { timeout: 2000 });
 
-  it('hover no chip mostra quem reagiu, com fallback para participante sem dados', async () => {
+  it('hovering the chip shows who reacted, with a fallback for a participant with no data', async () => {
     const ue = userEvent.setup();
     render(<MessageReactions reactions={{ '🎉': ['bia', 'sumiu'] }} myUserId="me" allUsers={allUsers} onToggle={() => {}} />);
     await ue.hover(screen.getByRole('button', { name: /reação 🎉/ }));
@@ -90,14 +90,14 @@ describe('MessageReactions', () => {
     expect(tooltip).toHaveTextContent('Bia e Participante indisponível reagiram');
   });
 
-  it('foco no chip mostra o mesmo resumo, sem precisar de mouse', async () => {
+  it('focusing the chip shows the same summary, without needing the mouse', async () => {
     render(<MessageReactions reactions={{ '👍': ['ana', 'me'] }} myUserId="me" allUsers={allUsers} onToggle={() => {}} />);
     fireEvent.focus(screen.getByRole('button', { name: /reação 👍/ }));
     const tooltip = await findTooltip();
     expect(tooltip).toHaveTextContent('Ana e Você reagiram');
   });
 
-  it('clicar no chip alterna aquele emoji e fecha o tooltip', async () => {
+  it('clicking the chip toggles that emoji and closes the tooltip', async () => {
     const ue = userEvent.setup();
     const onToggle = vi.fn();
     render(<MessageReactions reactions={{ '😂': ['ana'] }} myUserId="me" allUsers={allUsers} onToggle={onToggle} />);
@@ -118,7 +118,7 @@ describe('ReactionParticipantsDialog', () => {
   });
   const state = { ...initialRoomState, me: { ...initialRoomState.me, userId: 'me' } };
 
-  it('lista quem reagiu por emoji, com fallback para conta sem dados', () => {
+  it('lists who reacted per emoji, with a fallback for an account with no data', () => {
     const msg = message({ reactions: { '👍': ['ana'], '🎉': ['bia', 'sumiu'] } });
     renderWithRoom(<ReactionParticipantsDialog />, {
       state, allUsers, messagesByConversation: new Map([['c1', [msg]]]),
@@ -131,7 +131,7 @@ describe('ReactionParticipantsDialog', () => {
     expect(within(dialog).getByRole('tabpanel')).toHaveTextContent('Participante indisponível');
   });
 
-  it('abre direto no emoji do alvo, quando informado', () => {
+  it('opens directly on the target emoji, when given', () => {
     const msg = message({ reactions: { '👍': ['ana'], '🎉': ['bia'] } });
     renderWithRoom(<ReactionParticipantsDialog />, {
       state, allUsers, messagesByConversation: new Map([['c1', [msg]]]),
@@ -140,14 +140,14 @@ describe('ReactionParticipantsDialog', () => {
     expect(within(screen.getByRole('dialog')).getByRole('tabpanel')).toHaveTextContent('Bia');
   });
 
-  it('sem alvo, o dialogo fica fechado', () => {
+  it('with no target, the dialog stays closed', () => {
     renderWithRoom(<ReactionParticipantsDialog />, {
       state, allUsers, messagesByConversation: new Map(), reactionParticipantsTarget: null,
     });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('mensagem apagada enquanto aberto: fecha e limpa o alvo', () => {
+  it('message deleted while open: closes and clears the target', () => {
     const closeReactionParticipants = vi.fn();
     renderWithRoom(<ReactionParticipantsDialog />, {
       state, allUsers, messagesByConversation: new Map([['c1', []]]),

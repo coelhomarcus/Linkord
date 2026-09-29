@@ -11,19 +11,19 @@ describe('useFullscreenElement', () => {
     setFullscreenElement(null);
   });
 
-  it('comeca refletindo o document.fullscreenElement atual (nao so null por padrao)', () => {
+  it('starts reflecting the current document.fullscreenElement (not just null by default)', () => {
     const el = document.createElement('div');
     setFullscreenElement(el);
     const { result } = renderHook(() => useFullscreenElement());
     expect(result.current).toBe(el);
   });
 
-  it('sem nada em tela cheia, comeca null', () => {
+  it('starts null when nothing is fullscreen', () => {
     const { result } = renderHook(() => useFullscreenElement());
     expect(result.current).toBeNull();
   });
 
-  it('atualiza quando "fullscreenchange" dispara — cobre Escape/F11 saindo sem passar pelo app', () => {
+  it('updates when "fullscreenchange" fires — covers Escape/F11 exiting without going through the app', () => {
     const { result } = renderHook(() => useFullscreenElement());
     expect(result.current).toBeNull();
 

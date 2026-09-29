@@ -13,8 +13,8 @@ import { cleanupParticipant, db, joinNew, makeGroupWithMembers, makeOwnedAvatarU
 
 after(() => pool.end());
 
-describe('handleGroupUpdate: avatar tambem passa pelo check de propriedade (Postgres real)', () => {
-  it('dono usa um upload proprio como avatar do grupo: aceito normalmente', async () => {
+describe('handleGroupUpdate: avatar also goes through the ownership check (real Postgres)', () => {
+  it('owner uses their own upload as the group avatar: accepted normally', async () => {
     const owner = await makeUser('gu');
     const groupId = await makeGroupWithMembers(owner.id, []);
     const { socket, participant } = joinNew(owner);
@@ -29,7 +29,7 @@ describe('handleGroupUpdate: avatar tambem passa pelo check de propriedade (Post
     }
   });
 
-  it('dono tenta usar o upload de outra conta como avatar do grupo: recusado (fica vazio)', async () => {
+  it('owner tries to use another account\'s upload as the group avatar: refused (stays empty)', async () => {
     // the same bug as handleProfile's, just reached from the group side: the
     // id is a public, observable string — nothing but this check stopped a
     // group owner from claiming another account's own avatar upload.
@@ -42,7 +42,7 @@ describe('handleGroupUpdate: avatar tambem passa pelo check de propriedade (Post
       await handlers['group-update'](socket, { conversationId: groupId, avatar: strangersAvatar });
 
       const [row] = await db.select().from(conversations).where(eq(conversations.id, groupId));
-      assert.equal(row!.avatar, '', 'uma referencia que o dono nao upou deveria virar vazio, nao ser aceita');
+      assert.equal(row!.avatar, '', 'a reference the owner did not upload should become empty, not be accepted');
     } finally {
       cleanupParticipant(participant);
     }

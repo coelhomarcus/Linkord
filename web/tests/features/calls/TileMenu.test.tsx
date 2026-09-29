@@ -58,20 +58,20 @@ function fakeParticipant(overrides: Partial<Participant> = {}): Participant {
 
 function fakeConversation(overrides: Partial<Conversation> = {}): Conversation {
   return {
-    id: 'conv-1', type: 'group', title: 'Grupo', avatar: '', createdBy: 'u-1', memberIds: ['u-1', 'u-2'],
+    id: 'conv-1', type: 'group', title: 'Group', avatar: '', createdBy: 'u-1', memberIds: ['u-1', 'u-2'],
     lastMessageAt: null, createdAt: Date.now(), updatedAt: Date.now(), pinnedAt: null, myRole: 'member', ownerId: null, memberCount: 0,
     ...overrides,
   };
 }
 
 const menuTarget = { key: 'p-2:avatar', participantId: 'p-2', kind: 'avatar' as const, rect: { left: 0, top: 0, right: 0, bottom: 0 } };
-// "remover da chamada" only exists for GROUP calls (mirrors the server-side
+// "Remover da chamada" only exists for GROUP calls (mirrors the server-side
 // restriction in modules/moderation.ts#handleCallKick) — every test that
 // expects it to be reachable needs the active call to resolve to a group.
 const groupCallContext = { activeCallConversationId: 'conv-1', conversations: [fakeConversation()] };
 
-describe('TileMenu — remover da chamada', () => {
-  it('aparece para admin olhando o tile de outra pessoa em chamada de grupo', () => {
+describe('TileMenu — remove from call', () => {
+  it('appears for an admin looking at another person\'s tile in a group call', () => {
     const participants = new Map([['p-2', fakeParticipant()]]);
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', role: 'admin' }, participants },
@@ -81,7 +81,7 @@ describe('TileMenu — remover da chamada', () => {
     expect(screen.getByText('Remover da chamada')).toBeInTheDocument();
   });
 
-  it('aparece para o DONO do grupo (nao admin) olhando um membro daquele grupo', () => {
+  it('appears for the group OWNER (non-admin) looking at a member of that group', () => {
     const participants = new Map([['p-2', fakeParticipant()]]);
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', role: 'user' }, participants },
@@ -92,7 +92,7 @@ describe('TileMenu — remover da chamada', () => {
     expect(screen.getByText('Remover da chamada')).toBeInTheDocument();
   });
 
-  it('dono nao remove quem nao e membro do grupo', () => {
+  it('owner cannot remove someone who is not a group member', () => {
     const participants = new Map([['p-2', fakeParticipant({ userId: 'u-9' })]]);
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', role: 'user' }, participants },
@@ -103,7 +103,7 @@ describe('TileMenu — remover da chamada', () => {
     expect(screen.queryByText('Remover da chamada')).not.toBeInTheDocument();
   });
 
-  it('nao aparece para quem nao e admin', () => {
+  it('does not appear for someone who is not an admin', () => {
     const participants = new Map([['p-2', fakeParticipant()]]);
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', role: 'user' }, participants },
@@ -113,7 +113,7 @@ describe('TileMenu — remover da chamada', () => {
     expect(screen.queryByText('Remover da chamada')).not.toBeInTheDocument();
   });
 
-  it('nao aparece no proprio tile, mesmo sendo admin', () => {
+  it('does not appear on your own tile, even as admin', () => {
     const participants = new Map([['p-1', fakeParticipant({ id: 'p-1', userId: 'u-1' })]]);
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', role: 'admin' }, participants },
@@ -123,7 +123,7 @@ describe('TileMenu — remover da chamada', () => {
     expect(screen.queryByText('Remover da chamada')).not.toBeInTheDocument();
   });
 
-  it('nao aparece em chamada 1:1 (direta), mesmo sendo admin', () => {
+  it('does not appear in a 1:1 (direct) call, even as admin', () => {
     const participants = new Map([['p-2', fakeParticipant()]]);
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', role: 'admin' }, participants },
@@ -134,7 +134,7 @@ describe('TileMenu — remover da chamada', () => {
     expect(screen.queryByText('Remover da chamada')).not.toBeInTheDocument();
   });
 
-  it('chama kickFromCall com o participantId do alvo e fecha o menu', () => {
+  it('calls kickFromCall with the target\'s participantId and closes the menu', () => {
     const kickFromCall = vi.fn();
     const closeTileMenu = vi.fn(() => true);
     const participants = new Map([['p-2', fakeParticipant()]]);
@@ -151,8 +151,8 @@ describe('TileMenu — remover da chamada', () => {
   });
 });
 
-describe('TileMenu — botao de mutar transmissao', () => {
-  it('muta (volume -> 0) e o clique seguinte restaura o volume anterior', () => {
+describe('TileMenu — mute stream button', () => {
+  it('mutes (volume -> 0) and the next click restores the previous volume', () => {
     const audio = new Audio();
     audio.volume = 0.8;
     const participants = new Map([['p-2', fakeParticipant()]]);
@@ -172,7 +172,7 @@ describe('TileMenu — botao de mutar transmissao', () => {
     expect(screen.getByLabelText('Silenciar áudio')).toBeInTheDocument();
   });
 
-  it('quando ja esta em 0%, o clique de reativar deixa em 40%', () => {
+  it('when already at 0%, the unmute click leaves it at 40%', () => {
     const audio = new Audio();
     audio.volume = 0;
     const participants = new Map([['p-2', fakeParticipant()]]);
@@ -187,8 +187,8 @@ describe('TileMenu — botao de mutar transmissao', () => {
   });
 });
 
-describe('TileMenu — ver perfil', () => {
-  it('abre o perfil do ALVO (nao o meu) e fecha o menu', () => {
+describe('TileMenu — view profile', () => {
+  it('opens the TARGET\'s profile (not mine) and closes the menu', () => {
     const onOpenProfile = vi.fn();
     const closeTileMenu = vi.fn();
     const participants = new Map([['p-2', fakeParticipant({ userId: 'u-2' })]]);
@@ -202,7 +202,7 @@ describe('TileMenu — ver perfil', () => {
     expect(closeTileMenu).toHaveBeenCalled();
   });
 
-  it('no proprio tile, abre o MEU perfil', () => {
+  it('on your own tile, opens MY profile', () => {
     const onOpenProfile = vi.fn();
     renderWithRoom(<TileMenu onOpenProfile={onOpenProfile} />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', userId: 'u-1' } },
@@ -213,8 +213,8 @@ describe('TileMenu — ver perfil', () => {
   });
 });
 
-describe('TileMenu — acoes de camera', () => {
-  it('na minha propria camera, oferece espelhar e desligar — nunca "ocultar video para mim"', () => {
+describe('TileMenu — camera actions', () => {
+  it('on my own camera, offers mirror and turn off — never "hide video for me"', () => {
     const setMirrorCameraPreview = vi.fn();
     const stopCamera = vi.fn();
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
@@ -232,7 +232,7 @@ describe('TileMenu — acoes de camera', () => {
     expect(stopCamera).toHaveBeenCalled();
   });
 
-  it('na camera de outra pessoa, oferece ocultar/restaurar video — nunca espelhar/desligar', () => {
+  it('on another person\'s camera, offers hide/restore video — never mirror/turn off', () => {
     const dispatch = vi.fn();
     const participants = new Map([['p-2', fakeParticipant()]]);
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
@@ -247,7 +247,7 @@ describe('TileMenu — acoes de camera', () => {
     expect(dispatch).toHaveBeenCalledWith({ type: 'TOGGLE_HIDDEN_VIDEO', key: 'p-2:participant' });
   });
 
-  it('quando ja esta oculto, oferece "Restaurar vídeo"', () => {
+  it('when already hidden, offers "Restaurar vídeo"', () => {
     const participants = new Map([['p-2', fakeParticipant()]]);
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants, hiddenVideoKeys: new Set(['p-2:participant']) },
@@ -257,7 +257,7 @@ describe('TileMenu — acoes de camera', () => {
     expect(screen.queryByText('Ocultar vídeo para mim')).not.toBeInTheDocument();
   });
 
-  it('numa tela (nao camera), nao oferece nenhuma dessas acoes', () => {
+  it('on a screen (not camera), offers none of these actions', () => {
     const participants = new Map([['p-2', fakeParticipant()]]);
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants },
@@ -268,8 +268,8 @@ describe('TileMenu — acoes de camera', () => {
   });
 });
 
-describe('TileMenu — invalidacao do alvo', () => {
-  it('fecha o menu quando o participante sai da chamada', async () => {
+describe('TileMenu — target invalidation', () => {
+  it('closes the menu when the participant leaves the call', async () => {
     const closeTileMenu = vi.fn();
     const value = createFakeRoomContextValue({
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants: new Map([['p-2', fakeParticipant()]]) },
@@ -291,7 +291,7 @@ describe('TileMenu — invalidacao do alvo', () => {
     await waitFor(() => expect(closeTileMenu).toHaveBeenCalled());
   });
 
-  it('fecha o menu quando a chamada/conversa ativa muda', async () => {
+  it('closes the menu when the active call/conversation changes', async () => {
     const closeTileMenu = vi.fn();
     const value = createFakeRoomContextValue({
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants: new Map([['p-2', fakeParticipant()]]) },
@@ -315,7 +315,7 @@ describe('TileMenu — invalidacao do alvo', () => {
     await waitFor(() => expect(closeTileMenu).toHaveBeenCalled());
   });
 
-  it('fecha o menu quando a fonte (camera) da pessoa acaba', async () => {
+  it('closes the menu when the person\'s source (camera) ends', async () => {
     const closeTileMenu = vi.fn();
     const livekitRoom = fakeLivekitRoomWithRemote();
     livekitRoom.setPublication(Track.Source.Camera, { isMuted: false, track: fakeTrack() });
@@ -333,7 +333,7 @@ describe('TileMenu — invalidacao do alvo', () => {
     await waitFor(() => expect(closeTileMenu).toHaveBeenCalled());
   });
 
-  it('NAO fecha o menu da propria tela so por estar pausada — regressao: pausar (mute) fazia "media.screenTrack" ficar null, e isso era lido como "a fonte acabou"', async () => {
+  it('does NOT close the menu for its own screen just because it is paused — regression: pausing (mute) made "media.screenTrack" become null, which was read as "the source ended"', async () => {
     const closeTileMenu = vi.fn();
     const livekitRoom = fakeLivekitRoomWithRemote();
     livekitRoom.setLocalPublication(Track.Source.ScreenShare, { isMuted: true, track: fakeTrack() });
@@ -360,8 +360,8 @@ describe('TileMenu — invalidacao do alvo', () => {
   });
 });
 
-describe('TileMenu — estatisticas com resolucao', () => {
-  it('mostra a resolucao da fonte de video quando disponivel via getSettings', async () => {
+describe('TileMenu — stats with resolution', () => {
+  it('shows the video source resolution when available via getSettings', async () => {
     const livekitRoom = fakeLivekitRoomWithRemote();
     livekitRoom.setPublication(Track.Source.Camera, { isMuted: false, track: fakeTrack(1920, 1080) });
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
@@ -373,7 +373,7 @@ describe('TileMenu — estatisticas com resolucao', () => {
     await waitFor(() => expect(screen.getByText('Resolução: 1920×1080')).toBeInTheDocument());
   });
 
-  it('sem estatistica de resolucao disponivel, nao mostra a linha (sem inventar zero)', () => {
+  it('with no resolution stat available, does not show the row (never makes up a zero)', () => {
     const participants = new Map([['p-2', fakeParticipant()]]);
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants },
@@ -384,8 +384,8 @@ describe('TileMenu — estatisticas com resolucao', () => {
   });
 });
 
-describe('TileMenu — minha propria tela compartilhada', () => {
-  it('oferece trocar fonte, qualidade, pausar previa e encerrar — nunca assistir/parar de assistir', () => {
+describe('TileMenu — my own shared screen', () => {
+  it('offers change source, quality, pause preview and stop — never watch/stop watching', () => {
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
       menuTarget: { ...menuTarget, key: 'p-1:screen', participantId: 'p-1', kind: 'screen' },
@@ -398,7 +398,7 @@ describe('TileMenu — minha propria tela compartilhada', () => {
     expect(screen.queryByText('Parar de assistir')).not.toBeInTheDocument();
   });
 
-  it('"Trocar fonte" chama changeSource', () => {
+  it('"Trocar fonte" calls changeSource', () => {
     const changeSource = vi.fn(async () => undefined);
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
@@ -409,7 +409,7 @@ describe('TileMenu — minha propria tela compartilhada', () => {
     expect(changeSource).toHaveBeenCalled();
   });
 
-  it('"Pausar prévia" chama pauseSharePreview quando nao esta pausada', () => {
+  it('"Pausar prévia" calls pauseSharePreview when not paused', () => {
     const pauseSharePreview = vi.fn(async () => undefined);
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
@@ -420,7 +420,7 @@ describe('TileMenu — minha propria tela compartilhada', () => {
     expect(pauseSharePreview).toHaveBeenCalled();
   });
 
-  it('quando ja esta pausada, mostra "Retomar prévia" e chama resumeSharePreview ao clicar', async () => {
+  it('when already paused, shows "Retomar prévia" and calls resumeSharePreview on click', async () => {
     const resumeSharePreview = vi.fn(async () => undefined);
     const livekitRoom = fakeLivekitRoomWithRemote();
     livekitRoom.setLocalPublication(Track.Source.ScreenShare, { isMuted: true, track: fakeTrack() });
@@ -436,7 +436,7 @@ describe('TileMenu — minha propria tela compartilhada', () => {
     expect(resumeSharePreview).toHaveBeenCalled();
   });
 
-  it('"Encerrar compartilhamento" chama stopSharing e fecha o menu', () => {
+  it('"Encerrar compartilhamento" calls stopSharing and closes the menu', () => {
     const stopSharing = vi.fn();
     const closeTileMenu = vi.fn();
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
@@ -451,8 +451,8 @@ describe('TileMenu — minha propria tela compartilhada', () => {
   });
 });
 
-describe('TileMenu — assistir/parar de assistir tela de outra pessoa', () => {
-  it('oferece "Parar de assistir" — nunca as acoes da propria tela', () => {
+describe('TileMenu — watch/stop watching another person\'s screen', () => {
+  it('offers "Parar de assistir" — never your own screen\'s actions', () => {
     const participants = new Map([['p-2', fakeParticipant()]]);
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants },
@@ -464,7 +464,7 @@ describe('TileMenu — assistir/parar de assistir tela de outra pessoa', () => {
     expect(screen.queryByText('Encerrar compartilhamento')).not.toBeInTheDocument();
   });
 
-  it('clicar despacha TOGGLE_SCREEN_WATCH com a chave certa', () => {
+  it('clicking dispatches TOGGLE_SCREEN_WATCH with the right key', () => {
     const dispatch = vi.fn();
     const participants = new Map([['p-2', fakeParticipant()]]);
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
@@ -476,7 +476,7 @@ describe('TileMenu — assistir/parar de assistir tela de outra pessoa', () => {
     expect(dispatch).toHaveBeenCalledWith({ type: 'TOGGLE_SCREEN_WATCH', key: 'p-2:screen' });
   });
 
-  it('quando ja nao esta assistindo, mostra "Assistir" no lugar', () => {
+  it('when no longer watching, shows "Assistir" instead', () => {
     const participants = new Map([['p-2', fakeParticipant()]]);
     renderWithRoom(<TileMenu onOpenProfile={vi.fn()} />, {
       state: {

@@ -20,7 +20,7 @@ vi.mock('@/features/friends/DirectComposerGate', () => ({ DirectComposerGate: ({
 
 const joinedState = { ...initialRoomState, joined: true };
 
-describe('ConversationPanel — botao de chamada', () => {
+describe('ConversationPanel — call button', () => {
   const direct: Conversation = {
     id: 'c1', type: 'direct', title: '', avatar: '', createdBy: null, memberIds: ['me', 'peer'],
     lastMessageAt: null, createdAt: 0, updatedAt: 0, pinnedAt: null, myRole: 'member', ownerId: null, memberCount: 0,
@@ -40,7 +40,7 @@ describe('ConversationPanel — botao de chamada', () => {
 
   afterEach(() => { vi.clearAllMocks(); });
 
-  it('amigos: o botao liga normalmente', async () => {
+  it('friends: the button connects normally', async () => {
     mockedApi.fetchRequestSummary.mockResolvedValue({ incoming: 0, invitations: 0 });
     mockedApi.fetchRelationship.mockResolvedValue({ relation: 'friends', retryAfter: null });
     const { onOpenCall } = renderPanel({});
@@ -49,7 +49,7 @@ describe('ConversationPanel — botao de chamada', () => {
     expect(onOpenCall).toHaveBeenCalledWith('c1');
   });
 
-  it('quem nao e amigo: o botao fica desabilitado', async () => {
+  it('non-friend: the button stays disabled', async () => {
     mockedApi.fetchRequestSummary.mockResolvedValue({ incoming: 0, invitations: 0 });
     mockedApi.fetchRelationship.mockResolvedValue({ relation: 'none', retryAfter: null });
     const { onOpenCall } = renderPanel({});
@@ -58,7 +58,7 @@ describe('ConversationPanel — botao de chamada', () => {
     expect(onOpenCall).not.toHaveBeenCalled();
   });
 
-  it('mostra o erro de uma chamada que nao conseguiu comecar, so na conversa dela', () => {
+  it('shows the error for a call that failed to start, only in its own conversation', () => {
     mockedApi.fetchRequestSummary.mockResolvedValue({ incoming: 0, invitations: 0 });
     mockedApi.fetchRelationship.mockResolvedValue({ relation: 'friends', retryAfter: null });
     const dispatch = vi.fn();
@@ -68,7 +68,7 @@ describe('ConversationPanel — botao de chamada', () => {
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_CALL_JOIN_ERROR', error: null });
   });
 
-  it('erro de chamada de outra conversa nao aparece aqui', () => {
+  it("a call error from another conversation doesn't show up here", () => {
     mockedApi.fetchRequestSummary.mockResolvedValue({ incoming: 0, invitations: 0 });
     mockedApi.fetchRelationship.mockResolvedValue({ relation: 'friends', retryAfter: null });
     renderPanel({ state: { ...me, callJoinError: { conversationId: 'outra', message: 'falhou' } } });

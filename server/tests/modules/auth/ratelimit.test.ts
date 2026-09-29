@@ -10,17 +10,17 @@ function uniqueKey(): string {
 }
 
 describe('checkBlocked / recordFailure', () => {
-  test('chave nova (sem falha nenhuma) comeca liberada', () => {
+  test('a brand new key (no failures yet) starts unblocked', () => {
     assert.equal(checkBlocked(uniqueKey()), null);
   });
 
-  test('menos que o teto de falhas continua liberado', () => {
+  test('fewer than the failure ceiling stays unblocked', () => {
     const key = uniqueKey();
     for (let i = 0; i < 9; i++) recordFailure(key);
     assert.equal(checkBlocked(key), null);
   });
 
-  test('atingir o teto de falhas bloqueia, devolvendo segundos ate poder tentar de novo', () => {
+  test('hitting the failure ceiling blocks, returning seconds until it can be tried again', () => {
     const key = uniqueKey();
     for (let i = 0; i < 10; i++) recordFailure(key);
     const blockedSec = checkBlocked(key);
@@ -28,7 +28,7 @@ describe('checkBlocked / recordFailure', () => {
     assert.ok(blockedSec! > 0 && blockedSec! <= 15 * 60);
   });
 
-  test('chaves diferentes nao se afetam', () => {
+  test('different keys do not affect each other', () => {
     const key1 = uniqueKey();
     const key2 = uniqueKey();
     for (let i = 0; i < 10; i++) recordFailure(key1);
@@ -38,7 +38,7 @@ describe('checkBlocked / recordFailure', () => {
 });
 
 describe('reset', () => {
-  test('libera uma chave bloqueada', () => {
+  test('unblocks a blocked key', () => {
     const key = uniqueKey();
     for (let i = 0; i < 10; i++) recordFailure(key);
     assert.notEqual(checkBlocked(key), null);
@@ -46,7 +46,7 @@ describe('reset', () => {
     assert.equal(checkBlocked(key), null);
   });
 
-  test('resetar uma chave que nunca falhou e no-op seguro', () => {
+  test('resetting a key that never failed is a safe no-op', () => {
     assert.doesNotThrow(() => reset(uniqueKey()));
   });
 });

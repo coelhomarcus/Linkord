@@ -22,7 +22,7 @@ const user: PublicUser = {
 };
 
 describe('ProfileModal', () => {
-  it('abre PFP e banner na mesma moldura padronizada, identificando a imagem clicada', async () => {
+  it('opens avatar and banner in the same standardized frame, identifying the clicked image', async () => {
     const interaction = userEvent.setup();
     renderWithRoom(<ProfileModal userId="u1" onClose={vi.fn()} />, {
       allUsers: new Map([[user.id, user]]),
@@ -42,7 +42,7 @@ describe('ProfileModal', () => {
     expect(bannerFrame?.style.aspectRatio).toBe(`${16 / 9} / 1`);
   });
 
-  it('mantém a identificação correta quando avatar e banner usam a mesma URL', async () => {
+  it('keeps the correct identification when avatar and banner use the same URL', async () => {
     const interaction = userEvent.setup();
     const sameUrlUser = { ...user, avatar: '/same-image.webp', banner: '/same-image.webp' };
     renderWithRoom(<ProfileModal userId="u1" onClose={vi.fn()} />, {
@@ -53,7 +53,7 @@ describe('ProfileModal', () => {
     expect(screen.getByRole('img', { name: 'Banner' })).toHaveAttribute('src', sameUrlUser.banner);
   });
 
-  it('o cartao dentro do modal nao tem borda propria (so a do modal) e o X fica legivel sobre o banner', () => {
+  it('the card inside the modal has no border of its own (only the modal\'s) and the X stays legible over the banner', () => {
     renderWithRoom(<ProfileModal userId="u1" onClose={vi.fn()} />, {
       allUsers: new Map([[user.id, user]]),
     });

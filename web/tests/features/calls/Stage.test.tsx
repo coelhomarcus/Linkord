@@ -44,27 +44,27 @@ function renderStage(props: { allIds: string[]; chatOpen: boolean; onToggleChat:
   );
 }
 
-describe('Stage — composicao e integracao com fullscreen/HUD', () => {
-  it('anexa callStageRef ao proprio elemento raiz (alvo da tela cheia)', () => {
+describe('Stage — composition and integration with fullscreen/HUD', () => {
+  it('attaches callStageRef to its own root element (fullscreen target)', () => {
     const callStageRef = { current: null as HTMLElement | null };
     const { container } = renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() }, { callStageRef });
     expect(callStageRef.current).toBe(container.querySelector('[data-stage]'));
   });
 
-  it('renderiza CallControlBar e CallChatToggleButton dentro de si, repassando chatOpen', () => {
+  it('renders CallControlBar and CallChatToggleButton inside itself, forwarding chatOpen', () => {
     renderStage({ allIds: [], chatOpen: true, onToggleChat: vi.fn() });
     const chatToggle = document.querySelector('[data-testid="chat-toggle"]');
     expect(document.querySelector('[data-testid="control-bar"]')).toBeInTheDocument();
     expect(chatToggle).toHaveAttribute('data-chat-open', '1');
   });
 
-  it('HUD comeca visivel (repassado pra ambos os filhos)', () => {
+  it('HUD starts visible (forwarded to both children)', () => {
     renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() });
     expect(document.querySelector('[data-testid="control-bar"]')).toHaveAttribute('data-hud-visible', '1');
     expect(document.querySelector('[data-testid="chat-toggle"]')).toHaveAttribute('data-hud-visible', '1');
   });
 
-  it('com um menu de tile aberto (menuTarget), o HUD fica sempre visivel independente do tempo ocioso', () => {
+  it('with a tile menu open (menuTarget), the HUD always stays visible regardless of idle time', () => {
     vi.useFakeTimers();
     try {
       renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() }, {
@@ -77,7 +77,7 @@ describe('Stage — composicao e integracao com fullscreen/HUD', () => {
     }
   });
 
-  it('reconectando tambem suspende a ocultacao do HUD', () => {
+  it('reconnecting also suspends the HUD auto-hide', () => {
     vi.useFakeTimers();
     try {
       renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() }, { reconnecting: true });
@@ -88,11 +88,11 @@ describe('Stage — composicao e integracao com fullscreen/HUD', () => {
     }
   });
 
-  it('erro de compartilhamento (shareError) suspende a ocultacao do HUD', () => {
+  it('a sharing error (shareError) suspends the HUD auto-hide', () => {
     vi.useFakeTimers();
     try {
       renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() }, {
-        state: { ...initialRoomState, shareError: 'falhou' },
+        state: { ...initialRoomState, shareError: 'failed' },
       });
       act(() => { vi.advanceTimersByTime(10000); });
       expect(document.querySelector('[data-testid="control-bar"]')).toHaveAttribute('data-hud-visible', '1');
@@ -101,7 +101,7 @@ describe('Stage — composicao e integracao com fullscreen/HUD', () => {
     }
   });
 
-  it('sem nada suspendendo, o HUD some sozinho depois do tempo ocioso', () => {
+  it('with nothing suspending it, the HUD hides itself after the idle time', () => {
     vi.useFakeTimers();
     try {
       renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() });
@@ -113,8 +113,8 @@ describe('Stage — composicao e integracao com fullscreen/HUD', () => {
   });
 });
 
-describe('Stage — reserva de espaco dinamica pra barra (nada de pb-32 fixo)', () => {
-  it('mede a altura real da barra (+ banners) e reserva exatamente altura + espacamento', () => {
+describe('Stage — dynamic space reservation for the bar (no fixed pb-32)', () => {
+  it('measures the real height of the bar (+ banners) and reserves exactly height + spacing', () => {
     const getRect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ height: 60 } as DOMRect);
     try {
       renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() });
@@ -126,15 +126,15 @@ describe('Stage — reserva de espaco dinamica pra barra (nada de pb-32 fixo)', 
   });
 });
 
-describe('Stage — fallback de capacidade (TileGrid nao cabe todo mundo -> foco automatico)', () => {
-  it('sem ninguem em foco, capacidade insuficiente aciona SET_FOCUSED com origin "capacity"', () => {
+describe("Stage — capacity fallback (TileGrid can't fit everyone -> automatic focus)", () => {
+  it('with no one focused, insufficient capacity triggers SET_FOCUSED with origin "capacity"', () => {
     const dispatch = vi.fn();
     renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() }, { dispatch, state: { ...initialRoomState, focusedId: null, focusOrigin: null } });
     lastOnCapacityChange()(false, 'p-2:avatar');
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_FOCUSED', id: 'p-2:avatar', origin: 'capacity' });
   });
 
-  it('quando a capacidade volta a caber, desfaz APENAS um foco que ela mesma causou', () => {
+  it('when capacity fits again, undoes ONLY a focus that it itself caused', () => {
     const dispatch = vi.fn();
     renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() }, {
       dispatch, state: { ...initialRoomState, focusedId: 'p-2:avatar', focusOrigin: 'capacity' },
@@ -143,7 +143,7 @@ describe('Stage — fallback de capacidade (TileGrid nao cabe todo mundo -> foco
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_FOCUSED', id: null, origin: 'capacity' });
   });
 
-  it('nunca sobrescreve um foco MANUAL, nem pra focar nem pra desfocar', () => {
+  it('never overwrites a MANUAL focus, neither to focus nor to unfocus', () => {
     const dispatch = vi.fn();
     renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() }, {
       dispatch, state: { ...initialRoomState, focusedId: 'p-2:avatar', focusOrigin: 'manual' },
@@ -153,7 +153,7 @@ describe('Stage — fallback de capacidade (TileGrid nao cabe todo mundo -> foco
     expect(dispatch).not.toHaveBeenCalled();
   });
 
-  it('nao mexe num foco automatico causado por tela compartilhada (origin "automatic"), so no que ela mesma causou', () => {
+  it('does not touch an automatic focus caused by screen share (origin "automatic"), only what it itself caused', () => {
     const dispatch = vi.fn();
     renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() }, {
       dispatch, state: { ...initialRoomState, focusedId: 'p-2:screen', focusOrigin: 'automatic' },
@@ -162,7 +162,7 @@ describe('Stage — fallback de capacidade (TileGrid nao cabe todo mundo -> foco
     expect(dispatch).not.toHaveBeenCalled();
   });
 
-  it('ja com algo em foco (qualquer origem), nao foca de novo so por falta de capacidade', () => {
+  it('already with something focused (any origin), does not focus again just due to lack of capacity', () => {
     const dispatch = vi.fn();
     renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() }, {
       dispatch, state: { ...initialRoomState, focusedId: 'p-2:screen', focusOrigin: 'automatic' },

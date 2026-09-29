@@ -26,13 +26,13 @@ function setup() {
 }
 
 describe('GroupCreateDialog', () => {
-  it('convida so amigos e avisa que a entrada depende do aceite', async () => {
+  it('invites only friends and warns that joining depends on acceptance', async () => {
     setup();
     expect(await screen.findByText('Ana')).toBeInTheDocument();
     expect(screen.getByText(/só entram no grupo ao aceitar/)).toBeInTheDocument();
   });
 
-  it('cria com os amigos selecionados via API e so fecha depois do resultado', async () => {
+  it('creates with the selected friends via the API and only closes after the result', async () => {
     const user = userEvent.setup();
     let resolve!: (v: Awaited<ReturnType<typeof api.createGroup>>) => void;
     mocked.createGroup.mockReturnValue(new Promise((r) => { resolve = r; }));
@@ -49,7 +49,7 @@ describe('GroupCreateDialog', () => {
     expect(onCreated).toHaveBeenCalled();
   });
 
-  it('permite criar sem convidados', async () => {
+  it('allows creating without invitees', async () => {
     const user = userEvent.setup();
     mocked.createGroup.mockResolvedValue({ conversationId: 'g', results: [] });
     setup();
@@ -58,7 +58,7 @@ describe('GroupCreateDialog', () => {
     expect(mocked.createGroup).toHaveBeenCalledWith('Sozinho', []);
   });
 
-  it('a selecao sobrevive a uma nova busca', async () => {
+  it('the selection survives a new search', async () => {
     const user = userEvent.setup();
     mocked.fetchFriends.mockImplementation(async (_cursor, q) => (q ? friends(bea) : friends(ana, bea)));
     setup();
@@ -69,7 +69,7 @@ describe('GroupCreateDialog', () => {
     expect(screen.getByRole('button', { name: 'Criar e convidar (1)' })).toBeInTheDocument();
   });
 
-  it('convites que falharam ficam visiveis e o dialogo continua aberto', async () => {
+  it('failed invites stay visible and the dialog remains open', async () => {
     const user = userEvent.setup();
     mocked.createGroup.mockResolvedValue({ conversationId: 'g', results: [{ userId: 'u-ana', outcome: 'not_friends' }] });
     const { onOpenChange } = setup();
@@ -83,7 +83,7 @@ describe('GroupCreateDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it('erro de rede mantem o formulario preenchido', async () => {
+  it('network error keeps the form filled in', async () => {
     const user = userEvent.setup();
     mocked.createGroup.mockRejectedValue(new Error('x'));
     setup();

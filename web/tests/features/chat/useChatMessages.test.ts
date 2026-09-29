@@ -24,7 +24,7 @@ function setup() {
 }
 
 describe('useChatMessages — invitation-updated', () => {
-  it('atualiza so o card com o mesmo id, em qualquer conversa', () => {
+  it('updates only the card with the same id, in any conversation', () => {
     const { result } = setup();
     act(() => result.current.onConversationHistory({
       t: 'conversation-history', conversationId: 'dm', hasMore: false,
@@ -38,7 +38,7 @@ describe('useChatMessages — invitation-updated', () => {
     expect(list[2].invitation).toMatchObject({ id: 'inv-2', status: 'pending' });
   });
 
-  it('nao recria o estado quando nenhum card corresponde', () => {
+  it('does not recreate state when no card matches', () => {
     const { result } = setup();
     act(() => result.current.onConversationHistory({ t: 'conversation-history', conversationId: 'dm', hasMore: false, messages: [message(1)] }));
     const before = result.current.messagesByConversation;
@@ -47,8 +47,8 @@ describe('useChatMessages — invitation-updated', () => {
   });
 });
 
-describe('useChatMessages — nao lidas', () => {
-  it('mensagem propria em outra conversa nao conta como nao lida; a de outra pessoa conta', () => {
+describe('useChatMessages — unread', () => {
+  it("own message in another conversation doesn't count as unread; someone else's does", () => {
     const { result } = setup();
     act(() => result.current.onChat({ t: 'chat', message: message(10, { conversationId: 'outra', id: 'b' }) }));
     expect(result.current.unreadByConversation.get('outra')).toBeUndefined();
@@ -58,7 +58,7 @@ describe('useChatMessages — nao lidas', () => {
   });
 });
 
-describe('useChatMessages — envio correlacionado', () => {
+describe('useChatMessages — correlated send', () => {
   function setupWith(sendWs = vi.fn(() => true)) {
     const ref = <T,>(current: T) => ({ current });
     const hook = renderHook(() => useChatMessages({
@@ -69,7 +69,7 @@ describe('useChatMessages — envio correlacionado', () => {
     return { ...hook, sendWs };
   }
 
-  it('envia pela outbox e a confirmacao entra no historico uma vez so', () => {
+  it('sends via the outbox and the confirmation enters the history only once', () => {
     const { result, sendWs } = setupWith();
     act(() => result.current.onWelcome());
     act(() => { result.current.sendChatMessage('dm', 'oi'); });
@@ -84,7 +84,7 @@ describe('useChatMessages — envio correlacionado', () => {
     expect(result.current.pendingByConversation.get('dm')).toBeUndefined();
   });
 
-  it('chat repetido nao duplica a mensagem nem a contagem de nao lidas', () => {
+  it("a repeated chat event doesn't duplicate the message or the unread count", () => {
     const { result } = setupWith();
     const other = message(7, { conversationId: 'outra', id: 'a' });
     act(() => result.current.onChat({ t: 'chat', message: other }));
@@ -94,7 +94,7 @@ describe('useChatMessages — envio correlacionado', () => {
   });
 });
 
-describe('useChatMessages — janela de historico', () => {
+describe('useChatMessages — history window', () => {
   function setupWindow() {
     const sendWs = vi.fn((_msg: unknown) => true);
     const ref = <T,>(current: T) => ({ current });
@@ -107,7 +107,7 @@ describe('useChatMessages — janela de historico', () => {
   }
   const sentOf = (sendWs: ReturnType<typeof vi.fn>, t: string) => sendWs.mock.calls.map(([m]) => m as { t: string; requestId?: string }).filter((m) => m.t === t);
 
-  it('pagina antiga que responde a um pedido substituido e ignorada', () => {
+  it('an old page answering a superseded request is ignored', () => {
     const { result, sendWs } = setupWindow();
     act(() => result.current.onConversationHistory({ t: 'conversation-history', conversationId: 'dm', hasMore: true, messages: [message(10)] }));
     act(() => result.current.loadOlderMessages('dm'));
@@ -118,7 +118,7 @@ describe('useChatMessages — janela de historico', () => {
     expect(result.current.messagesByConversation.get('dm')!.map((m) => m.msgId)).toEqual([20]);
   });
 
-  it('pagina que nunca responde libera o "carregando" depois do prazo', () => {
+  it('a page that never responds releases the "carregando" state after the deadline', () => {
     vi.useFakeTimers();
     try {
       const { result } = setupWindow();
@@ -132,7 +132,7 @@ describe('useChatMessages — janela de historico', () => {
     }
   });
 
-  it('janela antiga: mensagem ao vivo nao entra (evita buraco), so conta; alcancar o presente zera', () => {
+  it("old window: a live message doesn't get inserted (avoids a gap), just counted; reaching the present resets it", () => {
     const { result, sendWs } = setupWindow();
     act(() => result.current.onConversationHistoryAround({ t: 'conversation-history-around', conversationId: 'dm', msgId: 5, messages: [message(5)], hasMoreBefore: true, hasMoreAfter: true }));
     // around only applies when it answers a jump
@@ -150,7 +150,7 @@ describe('useChatMessages — janela de historico', () => {
     expect(result.current.newerCountByConversation.get('dm')).toBeUndefined();
   });
 
-  it('enviar a partir de uma janela antiga volta ao presente', () => {
+  it('sending from an old window jumps back to the present', () => {
     const { result, sendWs } = setupWindow();
     act(() => result.current.onWelcome());
     act(() => result.current.jumpToMessage('dm', 5));
@@ -160,8 +160,8 @@ describe('useChatMessages — janela de historico', () => {
   });
 });
 
-describe('useChatMessages — memoria', () => {
-  it('guarda o historico so das 5 conversas abertas mais recentemente', () => {
+describe('useChatMessages — memory', () => {
+  it('keeps history only for the 5 most recently opened conversations', () => {
     const ref = <T,>(current: T) => ({ current });
     const { result } = renderHook(() => useChatMessages({
       sendWs: vi.fn(() => true), activeConversationIdRef: ref<string | null>('c6'), setActiveConversation: vi.fn(),

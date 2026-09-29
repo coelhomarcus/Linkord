@@ -39,8 +39,8 @@ vi.mock('@/features/settings/ImageCropDialog', () => ({
     ) : null,
 }));
 
-describe('SettingsPage — perfil', () => {
-  it('salva a cor escolhida para o fundo do avatar', async () => {
+describe('SettingsPage — profile', () => {
+  it('saves the chosen color for the avatar background', async () => {
     const user = userEvent.setup();
     const updateProfile = vi.fn();
     const state = {
@@ -74,7 +74,7 @@ describe('SettingsPage — perfil', () => {
     });
   });
 
-  it('salva um nome de exibicao novo, diferente do username', async () => {
+  it('saves a new display name, different from the username', async () => {
     const user = userEvent.setup();
     const updateProfile = vi.fn();
     const state = {
@@ -109,7 +109,7 @@ describe('SettingsPage — perfil', () => {
     });
   });
 
-  it('salva uma cor personalizada (fora dos presets) escolhida no color picker', async () => {
+  it('saves a custom color (outside the presets) chosen in the color picker', async () => {
     const user = userEvent.setup();
     const updateProfile = vi.fn();
     const state = {
@@ -142,7 +142,7 @@ describe('SettingsPage — perfil', () => {
     });
   });
 
-  it('salva bio e links do perfil sem linhas vazias', async () => {
+  it('saves bio and profile links without empty lines', async () => {
     const user = userEvent.setup();
     const updateProfile = vi.fn();
     const state = {
@@ -177,20 +177,20 @@ describe('SettingsPage — perfil', () => {
     });
   });
 
-  it('mostra "Remover foto" so quando ja existe uma foto', async () => {
+  it('shows "Remover foto" only when a photo already exists', async () => {
     const user = userEvent.setup();
-    const stateSemFoto = {
+    const stateWithoutPhoto = {
       ...initialRoomState,
       me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana', avatar: '', avatarColor: 'green' },
     };
-    renderSettings({ state: stateSemFoto });
+    renderSettings({ state: stateWithoutPhoto });
 
     await user.click(screen.getByRole('button', { name: 'Alterar foto de perfil' }));
     expect(await screen.findByRole('menuitem', { name: 'Enviar do computador' })).toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Remover foto' })).not.toBeInTheDocument();
   });
 
-  it('recorta e envia uma nova foto de perfil, sem publicar o resto do rascunho (isolado)', async () => {
+  it('crops and uploads a new profile photo, without publishing the rest of the draft (isolated)', async () => {
     const user = userEvent.setup();
     const uploadProfileImage = vi.fn().mockResolvedValue('/uploads/novo-avatar');
     const state = {
@@ -209,7 +209,7 @@ describe('SettingsPage — perfil', () => {
     expect(uploadProfileImage).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.anything());
   });
 
-  it('remove a foto de perfil por um pedido isolado (nao pelo updateProfile do formulario)', async () => {
+  it('removes the profile photo via an isolated request (not through the form\'s updateProfile)', async () => {
     const user = userEvent.setup();
     const removeProfileImage = vi.fn().mockResolvedValue({});
     const updateProfile = vi.fn();
@@ -226,7 +226,7 @@ describe('SettingsPage — perfil', () => {
     expect(updateProfile).not.toHaveBeenCalled();
   });
 
-  it('erro ao salvar mostra o motivo e nao trava o formulario', async () => {
+  it('error on save shows the reason and does not lock the form', async () => {
     const user = userEvent.setup();
     const updateProfile = vi.fn().mockRejectedValue(new ProfileSaveRefused('rate_limited', 'Você está enviando rápido demais.'));
     const state = { ...initialRoomState, me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana' } };
@@ -239,14 +239,14 @@ describe('SettingsPage — perfil', () => {
     expect(screen.getByRole('button', { name: 'Salvar perfil' })).toBeEnabled();
   });
 
-  it('sem edicoes, a barra de salvar fica escondida', () => {
+  it('with no edits, the save bar stays hidden', () => {
     const state = { ...initialRoomState, me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana' } };
     renderSettings({ state });
     expect(screen.queryByRole('button', { name: 'Salvar perfil' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Descartar' })).not.toBeInTheDocument();
   });
 
-  it('com chamada ativa, a barra de salvar sobe para nao ficar atras do PiP flutuante', async () => {
+  it('with an active call, the save bar moves up to stay clear of the floating PiP', async () => {
     const user = userEvent.setup();
     const state = { ...initialRoomState, me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana' } };
     renderSettings({ state, activeCallConversationId: 'conv-1' });
@@ -260,7 +260,7 @@ describe('SettingsPage — perfil', () => {
     expect(bar?.className).not.toContain('bottom-0');
   });
 
-  it('sem chamada ativa, a barra de salvar fica no rodape normal', async () => {
+  it('with no active call, the save bar stays in the normal footer', async () => {
     const user = userEvent.setup();
     const state = { ...initialRoomState, me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana' } };
     renderSettings({ state, activeCallConversationId: null });
@@ -271,7 +271,7 @@ describe('SettingsPage — perfil', () => {
     expect(bar?.className).not.toContain('bottom-20');
   });
 
-  it('descartar volta os campos aos ultimos valores confirmados e esconde a barra', async () => {
+  it('discarding reverts fields to the last confirmed values and hides the bar', async () => {
     const user = userEvent.setup();
     const state = {
       ...initialRoomState,
@@ -307,44 +307,44 @@ function renderRouted(overrides: Partial<RoomContextValue> = {}, path = '/app/se
   return { ...renderWithRoom(<RouterProvider router={router} />, overrides), router };
 }
 
-describe('SettingsPage — navegacao por categorias', () => {
+describe('SettingsPage — category navigation', () => {
   const adminState = { ...initialRoomState, me: { ...initialRoomState.me, id: 'c', userId: 'u', name: 'Ana', displayName: 'Ana', role: 'admin' as const } };
   const userState = { ...initialRoomState, me: { ...initialRoomState.me, id: 'c', userId: 'u', name: 'Ana', displayName: 'Ana' } };
 
   beforeEach(() => { mockMode = 'wide'; });
 
-  it('abre a categoria nomeada na URL e a marca como pagina atual', () => {
+  it('opens the category named in the URL and marks it as the current page', () => {
     renderSettings({ state: userState }, '/app/settings/privacy');
     expect(screen.getByText('lista de bloqueados')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Privacidade' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Perfil' })).not.toHaveAttribute('aria-current');
   });
 
-  it('sem categoria na URL, o modo amplo mostra o Perfil na mesma URL (sem redirecionar)', () => {
+  it('with no category in the URL, wide mode shows Profile at the same URL (no redirect)', () => {
     renderRouted({ state: userState }, '/app/settings');
     expect(screen.getByLabelText('Nome de exibição')).toBeInTheDocument();
     expect(screen.getByTestId('where')).toHaveTextContent('/app/settings');
     expect(screen.getByRole('link', { name: 'Perfil' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('categoria desconhecida cai no perfil em vez de renderizar uma pagina vazia', () => {
+  it('unknown category falls back to profile instead of rendering an empty page', () => {
     renderRouted({ state: userState }, '/app/settings/naoexiste');
     expect(screen.getByLabelText('Nome de exibição')).toBeInTheDocument();
     expect(screen.getByTestId('where')).toHaveTextContent('/app/settings/profile');
   });
 
-  it('administracao nao aparece para quem nao e admin (nem por URL)', () => {
+  it('administration does not appear for a non-admin (not even by URL)', () => {
     renderRouted({ state: userState }, '/app/settings/moderation');
     expect(screen.getByTestId('where')).toHaveTextContent('/app/settings/profile');
     expect(screen.queryByRole('link', { name: 'Administração' })).not.toBeInTheDocument();
   });
 
-  it('admin ve a categoria de administracao', () => {
+  it('admin sees the administration category', () => {
     renderSettings({ state: adminState });
     expect(screen.getByRole('link', { name: 'Administração' })).toBeInTheDocument();
   });
 
-  it('clicar numa categoria navega para a rota dela', async () => {
+  it('clicking a category navigates to its route', async () => {
     const user = userEvent.setup();
     renderRouted({ state: userState });
     await user.click(screen.getByRole('link', { name: 'Privacidade' }));
@@ -352,7 +352,7 @@ describe('SettingsPage — navegacao por categorias', () => {
     expect(screen.getByText('lista de bloqueados')).toBeInTheDocument();
   });
 
-  it('buscar e escolher um resultado navega pro destino e move o foco pra la (nao so rola)', async () => {
+  it('searching and picking a result navigates to the destination and moves focus there (not just scroll)', async () => {
     const user = userEvent.setup();
     renderRouted({ state: userState });
     await user.type(screen.getByLabelText('Buscar nas configurações'), 'camera');
@@ -362,7 +362,7 @@ describe('SettingsPage — navegacao por categorias', () => {
     expect(document.activeElement?.id).toBe('camera');
   });
 
-  it('busca sem resultado mostra o estado vazio, com botao de limpar', async () => {
+  it('search with no results shows the empty state, with a clear button', async () => {
     const user = userEvent.setup();
     renderRouted({ state: userState });
     await user.type(screen.getByLabelText('Buscar nas configurações'), 'xyzxyzxyz');
@@ -373,7 +373,7 @@ describe('SettingsPage — navegacao por categorias', () => {
     expect(screen.getByRole('link', { name: 'Privacidade' })).toBeInTheDocument();
   });
 
-  it('o botao de salvar fica junto do cartao, no mesmo formulario, sem painel lateral', async () => {
+  it('the save button sits with the card, in the same form, without a side panel', async () => {
     const user = userEvent.setup();
     renderSettings({ state: userState });
     await user.type(screen.getByLabelText('Bio'), 'edição pendente');
@@ -385,12 +385,12 @@ describe('SettingsPage — navegacao por categorias', () => {
 
   it.each([
     ['account', 'Minha conta'], ['av', 'Áudio e vídeo'], ['notifications', 'Notificações'], ['prefs', 'Preferências'], ['privacy', 'Privacidade'],
-  ])('a categoria %s abre com o proprio titulo', (tab, title) => {
+  ])('category %s opens with its own title', (tab, title) => {
     renderSettings({ state: userState }, `/app/settings/${tab}`);
     expect(screen.getByRole('heading', { level: 2, name: title })).toBeInTheDocument();
   });
 
-  it('Minha conta lista as secoes em sequencia (sem grade de cards)', () => {
+  it('"Minha conta" lists sections in sequence (no card grid)', () => {
     renderSettings({ state: userState }, '/app/settings/account');
     for (const name of ['Identificação', 'E-mail', 'Armazenamento de anexos', 'Sessão']) {
       expect(screen.getByRole('heading', { level: 3, name })).toBeInTheDocument();
@@ -398,20 +398,20 @@ describe('SettingsPage — navegacao por categorias', () => {
   });
 });
 
-describe('SettingsPage — modo compacto (indice e detalhe)', () => {
+describe('SettingsPage — compact mode (index and detail)', () => {
   const userState = { ...initialRoomState, me: { ...initialRoomState.me, id: 'c', userId: 'u', name: 'Ana', displayName: 'Ana' } };
 
   beforeEach(() => { mockMode = 'compact'; });
   afterEach(() => { mockMode = 'wide'; });
 
-  it('/app/settings mostra o indice de categorias, sem formulario', () => {
+  it('/app/settings shows the category index, without a form', () => {
     renderRouted({ state: userState }, '/app/settings');
     expect(screen.getByRole('navigation', { name: 'Categorias de ajustes' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Áudio e vídeo' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Nome de exibição')).not.toBeInTheDocument();
   });
 
-  it('uma categoria abre direto por link, com retorno acessivel ao indice', async () => {
+  it('a category opens directly by link, with an accessible way back to the index', async () => {
     const user = userEvent.setup();
     renderRouted({ state: userState }, '/app/settings/privacy');
     expect(screen.getByText('lista de bloqueados')).toBeInTheDocument();
@@ -422,7 +422,7 @@ describe('SettingsPage — modo compacto (indice e detalhe)', () => {
     expect(screen.getByRole('link', { name: 'Privacidade' })).toBeInTheDocument();
   });
 
-  it('do indice, abrir uma categoria e voltar percorre o historico (nao empilha o indice de novo)', async () => {
+  it('from the index, opening a category and going back walks the history (does not push the index again)', async () => {
     const user = userEvent.setup();
     renderRouted({ state: userState }, '/app/settings');
     await user.click(screen.getByRole('link', { name: 'Privacidade' }));
@@ -432,19 +432,19 @@ describe('SettingsPage — modo compacto (indice e detalhe)', () => {
     expect(screen.getByRole('navigation', { name: 'Categorias de ajustes' })).toBeInTheDocument();
   });
 
-  it('o indice nao lista administracao para quem nao e admin', () => {
+  it('the index does not list administration for a non-admin', () => {
     renderRouted({ state: userState }, '/app/settings');
     expect(screen.queryByRole('link', { name: 'Administração' })).not.toBeInTheDocument();
   });
 });
 
-describe('SettingsPage — bloqueio de navegacao com rascunho de perfil pendente', () => {
+describe('SettingsPage — navigation block with a pending profile draft', () => {
   const userState = { ...initialRoomState, me: { ...initialRoomState.me, id: 'conn-1', userId: 'user-1', name: 'Fulana', displayName: 'Fulana', bio: 'bio original' } };
 
   beforeEach(() => { mockMode = 'wide'; });
   afterEach(() => { mockMode = 'wide'; });
 
-  it('trocar de categoria com rascunho sujo abre o dialogo; continuar editando mantem o rascunho', async () => {
+  it('switching category with a dirty draft opens the dialog; continuing to edit keeps the draft', async () => {
     const user = userEvent.setup();
     renderSettings({ state: userState });
     await user.type(screen.getByLabelText('Bio'), ' e mais');
@@ -456,7 +456,7 @@ describe('SettingsPage — bloqueio de navegacao com rascunho de perfil pendente
     expect(screen.getByLabelText('Bio')).toHaveValue('bio original e mais');
   });
 
-  it('descartar e sair joga fora o rascunho e completa a navegacao', async () => {
+  it('discard and leave throws away the draft and completes the navigation', async () => {
     const user = userEvent.setup();
     renderSettings({ state: userState });
     await user.type(screen.getByLabelText('Bio'), ' e mais');
@@ -467,7 +467,7 @@ describe('SettingsPage — bloqueio de navegacao com rascunho de perfil pendente
     expect(await screen.findByRole('heading', { level: 2, name: 'Minha conta' })).toBeInTheDocument();
   });
 
-  it('salvar e sair so navega apos confirmar; um erro mantem o dialogo aberto na mesma pagina', async () => {
+  it('save and leave only navigates after confirming; an error keeps the dialog open on the same page', async () => {
     const user = userEvent.setup();
     const updateProfile = vi.fn().mockRejectedValue(new ProfileSaveRefused('rate_limited', 'Você está enviando rápido demais.'));
     renderSettings({ state: userState, updateProfile });
@@ -482,7 +482,7 @@ describe('SettingsPage — bloqueio de navegacao com rascunho de perfil pendente
     expect(screen.queryByRole('heading', { level: 2, name: 'Minha conta' })).not.toBeInTheDocument();
   });
 
-  it('sem rascunho sujo, trocar de categoria e instantaneo, sem dialogo', async () => {
+  it('with no dirty draft, switching category is instant, with no dialog', async () => {
     const user = userEvent.setup();
     renderSettings({ state: userState });
     await user.click(screen.getByRole('link', { name: 'Minha conta' }));

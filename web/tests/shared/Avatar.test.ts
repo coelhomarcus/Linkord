@@ -2,35 +2,35 @@ import { describe, expect, it } from 'vitest';
 import { colorFor, normalizeAvatarColor } from '@/shared/Avatar';
 
 describe('colorFor', () => {
-  it('e deterministico — o mesmo id sempre devolve a mesma cor', () => {
-    assertSame('participante-123');
-    assertSame('outro-id-qualquer');
+  it('is deterministic — the same id always returns the same color', () => {
+    assertSame('participant-123');
+    assertSame('some-other-id');
     function assertSame(id: string) {
       expect(colorFor(id)).toBe(colorFor(id));
     }
   });
 
-  it('ids diferentes tendem a cores diferentes (nao trava tudo na mesma)', () => {
+  it('different ids tend to different colors (does not collapse everything to one)', () => {
     const colors = new Set(['a', 'b', 'c', 'd', 'e', 'f'].map((id) => colorFor(id)));
     expect(colors.size).toBeGreaterThan(1);
   });
 
-  it('id vazio/falsy nao lanca — cai na primeira cor da paleta', () => {
+  it('empty/falsy id does not throw — falls back to the first palette color', () => {
     expect(() => colorFor('')).not.toThrow();
     expect(colorFor('')).toBe(colorFor(''));
   });
 
-  it('devolve sempre um dos tokens de cor esperados (nunca undefined)', () => {
-    const color = colorFor('qualquer-id');
+  it('always returns one of the expected color tokens (never undefined)', () => {
+    const color = colorFor('any-id');
     expect(color).toMatch(/^var\(--color-/);
   });
 
-  it('prioriza a cor escolhida pelo usuario quando ela e valida', () => {
-    expect(colorFor('qualquer-id', 'green')).toBe('var(--color-green)');
-    expect(colorFor('qualquer-id', 'fuchsia')).toBe('var(--color-fuchsia)');
+  it('prioritizes the color chosen by the user when it is valid', () => {
+    expect(colorFor('any-id', 'green')).toBe('var(--color-green)');
+    expect(colorFor('any-id', 'fuchsia')).toBe('var(--color-fuchsia)');
   });
 
-  it('normaliza somente chaves permitidas de cor de avatar, ou um hex valido', () => {
+  it('normalizes only the allowed avatar color keys, or a valid hex', () => {
     expect(normalizeAvatarColor('red')).toBe('red');
     expect(normalizeAvatarColor('  blurple  ')).toBe('blurple');
     expect(normalizeAvatarColor('hotpink')).toBe('');
@@ -40,7 +40,7 @@ describe('colorFor', () => {
     expect(normalizeAvatarColor('#fff')).toBe('');
   });
 
-  it('cor personalizada (hex fora dos presets) vira o proprio valor CSS, sem token', () => {
-    expect(colorFor('qualquer-id', '#a1b2c3')).toBe('#a1b2c3');
+  it('custom color (hex outside the presets) becomes the raw CSS value, no token', () => {
+    expect(colorFor('any-id', '#a1b2c3')).toBe('#a1b2c3');
   });
 });

@@ -11,7 +11,7 @@ const img = (id: string, width?: number, height?: number): ChatAttachment => ({ 
 describe('MessageMedia', () => {
   afterEach(() => { vi.unstubAllGlobals(); __resetCachedImageSrcForTests(); });
 
-  it('imagem unica com dimensoes reserva a caixa final antes de carregar', () => {
+  it('a single image with dimensions reserves its final box before loading', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
     render(<MessageMedia attachments={[img('a', 1600, 900)]} />);
     const button = screen.getByRole('button', { name: 'Abrir a.png' });
@@ -19,7 +19,7 @@ describe('MessageMedia', () => {
     expect(button.style.aspectRatio).toBe('1600 / 900');
   });
 
-  it('lote misto: imagens juntas no mosaico e o documento depois', () => {
+  it('mixed batch: images grouped in the mosaic and the document after', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
     const { container } = render(<MessageMedia attachments={[img('a', 10, 10), { id: 'd', name: 'rel.pdf', mime: 'application/pdf', size: 5 }, img('b', 10, 10), img('c', 10, 10)]} />);
     const grid = container.querySelector('.grid')!;
@@ -29,7 +29,7 @@ describe('MessageMedia', () => {
     expect(screen.getByTitle('rel.pdf').compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   });
 
-  it('abre o visualizador na imagem clicada e navega pela colecao', () => {
+  it('opens the viewer on the clicked image and navigates through the collection', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
     render(<MessageMedia attachments={[img('a', 10, 10), img('b', 10, 10), img('c', 10, 10)]} />);
     fireEvent.click(screen.getByRole('button', { name: 'Abrir b.png (2 de 3)' }));

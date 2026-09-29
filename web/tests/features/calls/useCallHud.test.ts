@@ -11,12 +11,12 @@ describe('useCallHud', () => {
     vi.useRealTimers();
   });
 
-  it('comeca visivel', () => {
+  it('starts visible', () => {
     const { result } = renderHook(() => useCallHud(false));
     expect(result.current.hudVisible).toBe(true);
   });
 
-  it('some sozinho depois do tempo ocioso (2500ms), sem nenhuma atividade', () => {
+  it('hides itself after idle time (2500ms), with no activity', () => {
     const { result } = renderHook(() => useCallHud(false));
     expect(result.current.hudVisible).toBe(true);
 
@@ -24,17 +24,17 @@ describe('useCallHud', () => {
     expect(result.current.hudVisible).toBe(false);
   });
 
-  it('mover o mouse antes do tempo acabar reinicia a contagem — nao some', () => {
+  it('moving the mouse before time runs out resets the countdown — does not hide', () => {
     const { result } = renderHook(() => useCallHud(false));
 
     act(() => { vi.advanceTimersByTime(2000); });
     act(() => { window.dispatchEvent(new Event('mousemove')); });
     act(() => { vi.advanceTimersByTime(2000); });
-    // 4000ms se passaram no total, mas a ultima atividade foi ha so 2000ms
+    // 4000ms passed in total, but the last activity was only 2000ms ago
     expect(result.current.hudVisible).toBe(true);
   });
 
-  it('tecla ou toque tambem contam como atividade, nao so o mouse', () => {
+  it('key press or touch also count as activity, not just the mouse', () => {
     const { result } = renderHook(() => useCallHud(false));
     act(() => { vi.advanceTimersByTime(2000); });
     act(() => { window.dispatchEvent(new Event('keydown')); });
@@ -46,13 +46,13 @@ describe('useCallHud', () => {
     expect(result.current.hudVisible).toBe(true);
   });
 
-  it('suspend=true mantem sempre visivel, mesmo depois de muito tempo parado', () => {
+  it('suspend=true always keeps it visible, even after a long idle time', () => {
     const { result } = renderHook(() => useCallHud(true));
     act(() => { vi.advanceTimersByTime(10000); });
     expect(result.current.hudVisible).toBe(true);
   });
 
-  it('suspend passando de false pra true forca revelar de novo (ex: um menu abriu)', () => {
+  it('suspend switching from false to true forces it to reveal again (e.g. a menu opened)', () => {
     const { result, rerender } = renderHook(({ suspend }) => useCallHud(suspend), { initialProps: { suspend: false } });
     act(() => { vi.advanceTimersByTime(3000); });
     expect(result.current.hudVisible).toBe(false);
@@ -64,7 +64,7 @@ describe('useCallHud', () => {
     expect(result.current.hudVisible).toBe(true);
   });
 
-  it('revealHud() forca visivel e reinicia a contagem imediatamente', () => {
+  it('revealHud() forces it visible and immediately resets the countdown', () => {
     const { result } = renderHook(() => useCallHud(false));
     act(() => { vi.advanceTimersByTime(2400); });
     act(() => { result.current.revealHud(); });

@@ -23,7 +23,7 @@ function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
 const noop = () => {};
 
 describe('MessageRow', () => {
-  it('mostra avatar e nome quando showHeader, sem alinhar a mensagem a direita', () => {
+  it('shows avatar and name when showHeader, without right-aligning the message', () => {
     const message = makeMessage();
     renderWithRoom(
       <MessageRow
@@ -45,7 +45,7 @@ describe('MessageRow', () => {
     expect(row?.className).not.toMatch(/justify-end/);
   });
 
-  it('agrupa mensagens seguidas do mesmo autor sem repetir nome/avatar', () => {
+  it('groups consecutive messages from the same author without repeating name/avatar', () => {
     const message = makeMessage({ msgId: 2 });
     renderWithRoom(
       <MessageRow
@@ -64,7 +64,7 @@ describe('MessageRow', () => {
     expect(screen.getByText('Oi, tudo bem?')).toBeInTheDocument();
   });
 
-  it('toolbar de hover mostra editar/apagar so quando a mensagem e minha', async () => {
+  it('the hover toolbar shows edit/delete only when the message is mine', async () => {
     const user = userEvent.setup();
     const deleteChatMessage = vi.fn();
     const message = makeMessage({ id: 'user-1' });
@@ -89,7 +89,7 @@ describe('MessageRow', () => {
     expect(deleteChatMessage).toHaveBeenCalledWith(1);
   });
 
-  it('clicar em responder chama onReply', async () => {
+  it('clicking reply calls onReply', async () => {
     const user = userEvent.setup();
     const onReply = vi.fn();
     renderWithRoom(
@@ -110,10 +110,10 @@ describe('MessageRow', () => {
   });
 });
 
-describe('MessageRow — referência de resposta', () => {
+describe('MessageRow — reply reference', () => {
   const marcus: PublicUser = { id: 'user-marcus', username: 'marcus', displayName: 'Marcus', avatar: '', avatarColor: 'blurple', banner: '', bio: '', profileLinks: [], role: 'user' };
 
-  it('mostra "@Nome" e o avatar de quem foi respondido', () => {
+  it('shows "@Name" and the avatar of who was replied to', () => {
     const message = makeMessage({ replyTo: { msgId: 1, authorId: 'user-marcus', text: 'tacada.mp4' } });
     renderWithRoom(
       <MessageRow message={message} showHeader highlighted={false} allUsers={new Map([['user-marcus', marcus]])} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />
@@ -124,7 +124,7 @@ describe('MessageRow — referência de resposta', () => {
     expect(replyButton.querySelector('[data-slot="avatar"]')).not.toBeNull();
   });
 
-  it('autor apagado: sem "@" (só o rótulo padrão), mas ainda mostra um avatar-placeholder', () => {
+  it('deleted author: no "@" (just the default label), but still shows a placeholder avatar', () => {
     const message = makeMessage({ replyTo: { msgId: 1, authorId: 'user-sumiu', text: 'oi' } });
     renderWithRoom(
       <MessageRow message={message} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />
@@ -135,7 +135,7 @@ describe('MessageRow — referência de resposta', () => {
     expect(replyButton.querySelector('[data-slot="avatar"]')).not.toBeNull();
   });
 
-  it('clicar na referência chama onJumpTo com o msgId original', async () => {
+  it('clicking the reference calls onJumpTo with the original msgId', async () => {
     const user = userEvent.setup();
     const onJumpTo = vi.fn();
     const message = makeMessage({ replyTo: { msgId: 42, authorId: 'user-marcus', text: 'oi' } });
@@ -149,8 +149,8 @@ describe('MessageRow — referência de resposta', () => {
   });
 });
 
-describe('MessageRow — reações rápidas', () => {
-  it('abrir "Reagir" mostra o conjunto rápido, sem montar o picker completo', async () => {
+describe('MessageRow — quick reactions', () => {
+  it('opening "Reagir" shows the quick set, without mounting the full picker', async () => {
     const user = userEvent.setup();
     renderWithRoom(
       <MessageRow message={makeMessage()} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />
@@ -163,7 +163,7 @@ describe('MessageRow — reações rápidas', () => {
     expect(screen.queryByPlaceholderText('Buscar emoji…')).not.toBeInTheDocument();
   });
 
-  it('clicar num emoji rápido reage direto e fecha o popover', async () => {
+  it('clicking a quick emoji reacts right away and closes the popover', async () => {
     const user = userEvent.setup();
     const reactToChatMessage = vi.fn();
     renderWithRoom(
@@ -178,7 +178,7 @@ describe('MessageRow — reações rápidas', () => {
     expect(screen.queryByRole('button', { name: 'Mais emojis' })).not.toBeInTheDocument();
   });
 
-  it('clicar em "+" troca pro picker completo (busca de emoji)', async () => {
+  it('clicking "+" switches to the full picker (emoji search)', async () => {
     const user = userEvent.setup();
     renderWithRoom(
       <MessageRow message={makeMessage()} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />
@@ -191,7 +191,7 @@ describe('MessageRow — reações rápidas', () => {
     expect(screen.queryByRole('button', { name: 'Reagir com 👍' })).not.toBeInTheDocument();
   });
 
-  it('menu "Ações" só oferece "Ver todas as reações" quando a mensagem tem alguma', async () => {
+  it('the "Ações" menu only offers "Ver todas as reações" when the message has any', async () => {
     const user = userEvent.setup();
     renderWithRoom(
       <MessageRow message={makeMessage()} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />
@@ -200,7 +200,7 @@ describe('MessageRow — reações rápidas', () => {
     expect(screen.queryByText('Ver todas as reações')).not.toBeInTheDocument();
   });
 
-  it('"Ver todas as reações" abre o dialogo com a conversa e a mensagem certas', async () => {
+  it('"Ver todas as reações" opens the dialog with the right conversation and message', async () => {
     const user = userEvent.setup();
     const openReactionParticipants = vi.fn();
     renderWithRoom(
@@ -213,7 +213,7 @@ describe('MessageRow — reações rápidas', () => {
   });
 });
 
-describe('MessageRow — cartão de convite', () => {
+describe('MessageRow — invitation card', () => {
   const inviteMessage = () => makeMessage({
     kind: 'group_invite', text: '',
     invitation: {
@@ -222,7 +222,7 @@ describe('MessageRow — cartão de convite', () => {
     },
   });
 
-  it('renderiza o card e nao oferece responder, editar nem reagir (só apagar)', () => {
+  it('renders the card and offers no reply, edit or react (only delete)', () => {
     const state = { ...initialRoomState, me: { ...initialRoomState.me, userId: 'user-2' } };
     renderWithRoom(
       <MessageRow message={inviteMessage()} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />,
@@ -237,21 +237,21 @@ describe('MessageRow — cartão de convite', () => {
   });
 });
 
-describe('MessageRow — denunciar', () => {
+describe('MessageRow — reporting', () => {
   const state = { ...initialRoomState, me: { ...initialRoomState.me, userId: 'user-1' } };
   const row = (message: ChatMessage) => renderWithRoom(
     <MessageRow message={message} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />,
     { state },
   );
 
-  it('oferece Denunciar na mensagem de outra pessoa', async () => {
+  it('offers Denunciar on another person\'s message', async () => {
     const user = userEvent.setup();
     row(makeMessage({ id: 'user-2' }));
     await user.click(screen.getAllByRole('button', { name: 'Denunciar' })[0]);
     expect(await screen.findByRole('dialog')).toHaveTextContent('Denunciar mensagem');
   });
 
-  it('nao oferece Denunciar na propria mensagem nem em cartao de convite', () => {
+  it('does not offer Denunciar on your own message or on an invitation card', () => {
     const { unmount } = row(makeMessage({ id: 'user-1' }));
     expect(screen.queryByRole('button', { name: 'Denunciar' })).not.toBeInTheDocument();
     unmount();
@@ -260,7 +260,7 @@ describe('MessageRow — denunciar', () => {
   });
 });
 
-describe('MessageRow — envio pendente', () => {
+describe('MessageRow — pending send', () => {
   const pendingMessage = { msgId: -1, conversationId: 'c', id: 'me', name: 'Eu', avatar: '', text: 'na fila', ts: Date.now(), clientMessageId: 'k1' };
   const entry = (over: Partial<OutboxEntry> = {}): OutboxEntry => ({ clientMessageId: 'k1', conversationId: 'c', text: 'na fila', createdAt: Date.now(), state: 'sending', ...over });
   const renderPending = (pending: OutboxEntry, room: Parameters<typeof renderWithRoom>[1] = {}) => renderWithRoom(
@@ -268,19 +268,19 @@ describe('MessageRow — envio pendente', () => {
     room,
   );
 
-  it('sem id do servidor: nao expoe data-msg-id nem acoes de mensagem', () => {
+  it('without a server id: exposes neither data-msg-id nor message actions', () => {
     const { container } = renderPending(entry());
     expect(container.querySelector('[data-msg-id]')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Responder' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reagir' })).not.toBeInTheDocument();
   });
 
-  it('offline: diz que aguarda conexao', () => {
+  it('offline: says it is waiting for a connection', () => {
     renderPending(entry(), { state: { ...initialRoomState, reconnecting: true } });
     expect(screen.getByText('Aguardando conexão…')).toBeInTheDocument();
   });
 
-  it('falha: mostra o motivo e as acoes de tentar de novo e descartar', async () => {
+  it('failure: shows the reason and the retry/discard actions', async () => {
     const retryPendingMessage = vi.fn();
     const discardPendingMessage = vi.fn();
     renderPending(entry({ state: 'failed', error: 'Sem permissão.' }), { retryPendingMessage, discardPendingMessage });
@@ -292,7 +292,7 @@ describe('MessageRow — envio pendente', () => {
   });
 });
 
-describe('MessageRow — editar e apagar com confirmacao', () => {
+describe('MessageRow — edit and delete with confirmation', () => {
   const mine = makeMessage({ id: 'me', text: 'texto antigo' });
   const me = { ...initialRoomState, me: { ...initialRoomState.me, userId: 'me' } };
   const renderMine = (room: Parameters<typeof renderWithRoom>[1] = {}) => renderWithRoom(
@@ -300,7 +300,7 @@ describe('MessageRow — editar e apagar com confirmacao', () => {
     { state: me, editingMsgId: mine.msgId, ...room },
   );
 
-  it('edicao recusada: o editor continua aberto com o texto e o motivo', async () => {
+  it('edit refused: the editor stays open with the text and the reason', async () => {
     const user = userEvent.setup();
     const setEditingMsgId = vi.fn();
     const editChatMessage = vi.fn(async () => { throw new Error('Vocês precisam ser amigos pra conversar por aqui.'); });
@@ -314,7 +314,7 @@ describe('MessageRow — editar e apagar com confirmacao', () => {
     expect(setEditingMsgId).not.toHaveBeenCalledWith(null);
   });
 
-  it('edicao confirmada fecha o editor', async () => {
+  it('confirmed edit closes the editor', async () => {
     const user = userEvent.setup();
     const setEditingMsgId = vi.fn();
     const editChatMessage = vi.fn(async () => {});
@@ -324,7 +324,7 @@ describe('MessageRow — editar e apagar com confirmacao', () => {
     expect(setEditingMsgId).toHaveBeenCalledWith(null);
   });
 
-  it('apagando: a linha avisa; falha aparece na linha e pode ser dispensada', () => {
+  it('deleting: the row warns about it; a failure shows on the row and can be dismissed', () => {
     const dismissMessageActionError = vi.fn();
     const { rerender } = renderMine({ editingMsgId: null, deletingMsgIds: new Set([mine.msgId]) });
     expect(screen.getByText('Apagando…')).toBeInTheDocument();

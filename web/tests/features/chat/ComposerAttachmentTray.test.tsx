@@ -27,22 +27,22 @@ function TrayHarness({ initial, fallback }: { initial: PendingAttachment[]; fall
 }
 
 describe('ComposerAttachmentTray', () => {
-  it('rotulo de remover inclui o nome do arquivo', () => {
+  it('remove label includes the file name', () => {
     render(<ComposerAttachmentTray files={[doc('a', 'contrato.pdf')]} onRemove={vi.fn()} fallbackFocusRef={createRef()} />);
     expect(screen.getByRole('button', { name: 'Remover contrato.pdf' })).toBeInTheDocument();
   });
 
-  it('tile de documento nao sobrepoe o botao de remover ao nome/tamanho (sem posicionamento absoluto)', () => {
+  it('document tile does not overlap the remove button with name/size (no absolute positioning)', () => {
     render(<ComposerAttachmentTray files={[doc('a', 'contrato.pdf')]} onRemove={vi.fn()} fallbackFocusRef={createRef()} />);
     expect(screen.getByRole('button', { name: 'Remover contrato.pdf' }).className).not.toMatch(/absolute/);
   });
 
-  it('tile de imagem mantem o botao sobreposto (overlay), ja que a miniatura preenche o espaco', () => {
+  it('image tile keeps the button overlaid, since the thumbnail fills the space', () => {
     render(<ComposerAttachmentTray files={[image('a', 'foto.png')]} onRemove={vi.fn()} fallbackFocusRef={createRef()} />);
     expect(screen.getByRole('button', { name: 'Remover foto.png' }).className).toMatch(/absolute/);
   });
 
-  it('remover um item do meio move o foco pro proximo', async () => {
+  it('removing a middle item moves focus to the next one', async () => {
     const user = userEvent.setup();
     const fallback = createRef<HTMLTextAreaElement>();
     render(<TrayHarness initial={[doc('a', 'um.pdf'), doc('b', 'dois.pdf'), doc('c', 'tres.pdf')]} fallback={fallback} />);
@@ -53,7 +53,7 @@ describe('ComposerAttachmentTray', () => {
     expect(screen.queryByRole('button', { name: 'Remover dois.pdf' })).not.toBeInTheDocument();
   });
 
-  it('remover o ultimo item da lista move o foco pro anterior', async () => {
+  it('removing the last item in the list moves focus to the previous one', async () => {
     const user = userEvent.setup();
     const fallback = createRef<HTMLTextAreaElement>();
     render(<TrayHarness initial={[doc('a', 'um.pdf'), doc('b', 'dois.pdf')]} fallback={fallback} />);
@@ -63,7 +63,7 @@ describe('ComposerAttachmentTray', () => {
     expect(await screen.findByRole('button', { name: 'Remover um.pdf' })).toHaveFocus();
   });
 
-  it('remover o unico item devolve o foco ao campo de mensagem', async () => {
+  it('removing the only item returns focus to the message field', async () => {
     const user = userEvent.setup();
     const fallback = createRef<HTMLTextAreaElement>();
     render(<TrayHarness initial={[doc('a', 'unico.pdf')]} fallback={fallback} />);

@@ -45,14 +45,14 @@ function setup(myRole: 'owner' | 'member') {
   );
 }
 
-describe('GroupDetailsPanel — convites', () => {
-  it('dono convida amigos (que ainda nao sao membros) e nao adiciona direto', async () => {
+describe('GroupDetailsPanel — invitations', () => {
+  it('owner invites friends (who are not yet members) and does not add them directly', async () => {
     const user = userEvent.setup();
     mocked.inviteToGroup.mockResolvedValue({ results: [{ userId: 'u-bea', outcome: 'sent', invitationId: 'i' }] });
     setup('owner');
 
     await user.click(await screen.findByRole('button', { name: /Convidar amigos/ }));
-    // Ana já é membro, então só Bea aparece como candidata
+    // Ana is already a member, so only Bea shows up as a candidate
     expect(await screen.findByRole('button', { name: /Bea/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Ana/, pressed: false })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Bea/ }));
@@ -61,7 +61,7 @@ describe('GroupDetailsPanel — convites', () => {
     expect(await screen.findByText('Convites enviados.')).toBeInTheDocument();
   });
 
-  it('lista convites pendentes, esconde quem ja foi convidado e revoga', async () => {
+  it('lists pending invitations, hides those already invited, and revokes', async () => {
     const user = userEvent.setup();
     mocked.fetchGroupInvitations.mockResolvedValue({ items: [{ id: 'inv-9', at: '2026-01-01T00:00:00.000Z', invitee: bea }], nextCursor: null });
     mocked.revokeInvitation.mockResolvedValue({ invitation: {} as never });
@@ -74,7 +74,7 @@ describe('GroupDetailsPanel — convites', () => {
     expect(mocked.revokeInvitation).toHaveBeenCalledWith('inv-9');
   });
 
-  it('falha individual aparece com o motivo', async () => {
+  it('an individual failure shows up with its reason', async () => {
     const user = userEvent.setup();
     mocked.inviteToGroup.mockResolvedValue({ results: [{ userId: 'u-bea', outcome: 'not_friends' }] });
     setup('owner');
@@ -84,7 +84,7 @@ describe('GroupDetailsPanel — convites', () => {
     expect(await screen.findByText(/Bea: não é mais seu amigo/)).toBeInTheDocument();
   });
 
-  it('membro comum nao ve convidar nem convites enviados (e nada e buscado)', async () => {
+  it('a regular member does not see invite or sent invitations (and nothing is fetched)', async () => {
     setup('member');
     await screen.findByText('Squad');
     expect(screen.queryByRole('button', { name: /Convidar amigos/ })).not.toBeInTheDocument();
@@ -92,7 +92,7 @@ describe('GroupDetailsPanel — convites', () => {
     expect(mocked.fetchGroupInvitations).not.toHaveBeenCalled();
   });
 
-  it('a lista de membros vem paginada do servidor, com o dono marcado', async () => {
+  it('the member list is paginated from the server, with the owner marked', async () => {
     const user = userEvent.setup();
     mocked.fetchGroupMembers.mockResolvedValueOnce(memberPage('cursor-2')).mockResolvedValueOnce({
       items: [{ user: bea, role: 'member', at: '2026-01-03T00:00:00.000Z' }], nextCursor: null,
@@ -107,7 +107,7 @@ describe('GroupDetailsPanel — convites', () => {
     expect(screen.queryByRole('button', { name: 'Carregar mais' })).not.toBeInTheDocument();
   });
 
-  it('dono ve transferir/remover nos outros; membro comum nao ve nenhum controle de gestao', async () => {
+  it('owner sees transfer/remove on others; a regular member sees no management controls', async () => {
     const { unmount } = setup('owner');
     expect(await screen.findByRole('button', { name: 'Remover Ana' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Transferir propriedade para Ana' })).toBeInTheDocument();
@@ -121,7 +121,7 @@ describe('GroupDetailsPanel — convites', () => {
     expect(screen.getByRole('button', { name: /Sair do grupo/ })).toBeInTheDocument();
   });
 
-  it('erro ao carregar membros oferece nova tentativa', async () => {
+  it('an error loading members offers a retry', async () => {
     const user = userEvent.setup();
     mocked.fetchGroupMembers.mockRejectedValueOnce(new Error('x'));
     setup('member');
@@ -129,7 +129,7 @@ describe('GroupDetailsPanel — convites', () => {
     expect(await screen.findByText('Ana')).toBeInTheDocument();
   });
 
-  it('qualquer membro pode denunciar o grupo', async () => {
+  it('any member can report the group', async () => {
     const user = userEvent.setup();
     setup('member');
     await user.click(await screen.findByRole('button', { name: /Denunciar grupo/ }));

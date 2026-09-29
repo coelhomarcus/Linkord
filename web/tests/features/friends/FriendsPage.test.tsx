@@ -24,7 +24,7 @@ beforeEach(() => {
 });
 
 describe('FriendsPage', () => {
-  it('lista os amigos vindos do servidor, com contagem', async () => {
+  it('lists friends coming from the server, with a count', async () => {
     mocked.fetchFriends.mockResolvedValue(page(ana, bea));
     renderSocial(<FriendsPage onOpenProfile={vi.fn()} />, { room: { state: me } });
 
@@ -33,7 +33,7 @@ describe('FriendsPage', () => {
     expect(screen.getByText('2 amigos')).toBeInTheDocument();
   });
 
-  it('conta nova: estado vazio convida a adicionar e oferece copiar o proprio @username', async () => {
+  it('new account: empty state invites you to add friends and offers copying your own @username', async () => {
     mocked.fetchFriends.mockResolvedValue(page());
     renderSocial(<FriendsPage onOpenProfile={vi.fn()} />, { room: { state: me } });
 
@@ -43,7 +43,7 @@ describe('FriendsPage', () => {
     expect(screen.queryByText(/Não foi possível carregar/)).not.toBeInTheDocument();
   });
 
-  it('falha ao carregar mostra erro com "Tentar de novo" (e recarrega)', async () => {
+  it('a load failure shows an error with "Tentar de novo" (and reloads)', async () => {
     const user = userEvent.setup();
     mocked.fetchFriends.mockRejectedValueOnce(new Error('rede')).mockResolvedValueOnce(page(ana));
     renderSocial(<FriendsPage onOpenProfile={vi.fn()} />, { room: { state: me } });
@@ -52,7 +52,7 @@ describe('FriendsPage', () => {
     expect(await screen.findByText('Ana')).toBeInTheDocument();
   });
 
-  it('Online e decidido pelo servidor (status=online), nao filtrando so a primeira pagina', async () => {
+  it('Online is decided by the server (status=online), not just filtering the first page', async () => {
     const user = userEvent.setup();
     mocked.fetchFriends.mockImplementation(async (_cursor, _q, status) => (status === 'online' ? page(ana) : page(ana, bea)));
     renderSocial(<FriendsPage onOpenProfile={vi.fn()} />, { room: { state: me, onlineUserIds: new Set(['u-ana']) } });
@@ -64,13 +64,13 @@ describe('FriendsPage', () => {
     expect(mocked.fetchFriends).toHaveBeenCalledWith(null, '', 'online');
   });
 
-  it('Online vazio diz que nao ha ninguem online agora (so depois da consulta)', async () => {
+  it('an empty Online tab says no one is online right now (only after the query)', async () => {
     mocked.fetchFriends.mockImplementation(async (_cursor, _q, status) => (status === 'online' ? page() : page(ana)));
     renderSocial(<FriendsPage onOpenProfile={vi.fn()} />, { room: { state: me }, path: '/app/friends?tab=online' });
     expect(await screen.findByText('Nenhum amigo online agora.')).toBeInTheDocument();
   });
 
-  it('adicionar por @username normaliza o texto e mostra o resultado', async () => {
+  it('adding by @username normalizes the text and shows the result', async () => {
     const user = userEvent.setup();
     mocked.fetchFriends.mockResolvedValue(page(ana));
     mocked.sendFriendRequest.mockResolvedValue('created');
@@ -85,7 +85,7 @@ describe('FriendsPage', () => {
     expect(await screen.findByText('Solicitação enviada para @Lune.')).toBeInTheDocument();
   });
 
-  it('erro generico do servidor nao revela se a conta existe ou bloqueou', async () => {
+  it('a generic server error does not reveal whether the account exists or blocked you', async () => {
     const user = userEvent.setup();
     mocked.fetchFriends.mockResolvedValue(page(ana));
     mocked.sendFriendRequest.mockRejectedValue(new api.ApiError(404, 'user_unavailable', 'x'));
@@ -98,7 +98,7 @@ describe('FriendsPage', () => {
     expect(await screen.findByText(/Confira o nome de usuário/)).toBeInTheDocument();
   });
 
-  it('remover amizade pede confirmacao e depois refaz a lista', async () => {
+  it('removing a friend asks for confirmation and then redoes the list', async () => {
     const user = userEvent.setup();
     mocked.fetchFriends.mockResolvedValueOnce(page(ana)).mockResolvedValueOnce(page());
     mocked.removeFriend.mockResolvedValue({});
@@ -115,7 +115,7 @@ describe('FriendsPage', () => {
     expect(await screen.findByText('Adicione amigos para começar uma conversa')).toBeInTheDocument();
   });
 
-  it('bloquear explica o efeito antes de confirmar', async () => {
+  it('blocking explains its effect before confirming', async () => {
     const user = userEvent.setup();
     mocked.fetchFriends.mockResolvedValue(page(ana));
     renderSocial(<FriendsPage onOpenProfile={vi.fn()} />, { room: { state: me } });

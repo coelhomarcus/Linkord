@@ -26,7 +26,7 @@ describe('useMessageOutbox', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('envia com chave e requestId; a confirmacao tira a pendencia e entrega a mensagem', () => {
+  it('sends with a key and requestId; confirmation clears the pending entry and delivers the message', () => {
     const { result, sent, onConfirmed } = setup();
     act(() => { result.current.enqueue('c', 'oi'); });
     expect(sent).toHaveLength(1);
@@ -40,7 +40,7 @@ describe('useMessageOutbox', () => {
     expect(result.current.pendingByConversation.get('c')).toBeUndefined();
   });
 
-  it('uma por vez por conversa: a segunda so sai depois da confirmacao da primeira', () => {
+  it('one at a time per conversation: the second only goes out after the first is confirmed', () => {
     const { result, sent } = setup();
     act(() => { result.current.enqueue('c', 'um'); result.current.enqueue('c', 'dois'); result.current.enqueue('outra', 'paralela'); });
     expect(sent.map((m) => m.text)).toEqual(['um', 'paralela']);
@@ -49,7 +49,7 @@ describe('useMessageOutbox', () => {
     expect(sent.map((m) => m.text)).toEqual(['um', 'paralela', 'dois']);
   });
 
-  it('sem resposta: fica "confirmando" e reenvia com a MESMA chave; depois de 3 tentativas, falha', () => {
+  it('no response: stays "confirming" and resends with the SAME key; fails after 3 attempts', () => {
     const { result, sent } = setup();
     act(() => { result.current.enqueue('c', 'oi'); });
     act(() => { vi.advanceTimersByTime(10_000); });
@@ -63,7 +63,7 @@ describe('useMessageOutbox', () => {
     expect(result.current.pendingByConversation.get('c')?.[0]).toMatchObject({ state: 'failed', error: 'Não foi possível confirmar o envio.' });
   });
 
-  it('resposta atrasada de uma tentativa anterior ainda confirma a intencao', () => {
+  it('a delayed response from an earlier attempt still confirms the intent', () => {
     const { result, sent, onConfirmed } = setup();
     act(() => { result.current.enqueue('c', 'oi'); });
     act(() => { vi.advanceTimersByTime(10_000); });
@@ -72,7 +72,7 @@ describe('useMessageOutbox', () => {
     expect(result.current.pendingByConversation.get('c')).toBeUndefined();
   });
 
-  it('recusa do servidor vira falha com o motivo; "tentar de novo" reenvia a mesma chave', () => {
+  it('server refusal becomes a failure with the reason; "retry" resends with the same key', () => {
     const { result, sent } = setup();
     act(() => { result.current.enqueue('c', 'oi'); });
     act(() => result.current.onChatSendResult({ t: 'chat-send-result', requestId: sent[0]!.requestId!, clientMessageId: sent[0]!.clientMessageId!, error: { code: 'rate_limited', message: 'Devagar.' } }));
@@ -84,14 +84,14 @@ describe('useMessageOutbox', () => {
     expect(sent[1]!.clientMessageId).toBe(entry.clientMessageId);
   });
 
-  it('uma falha nao trava as mensagens seguintes da conversa', () => {
+  it('one failure does not block the conversation\'s following messages', () => {
     const { result, sent } = setup();
     act(() => { result.current.enqueue('c', 'um'); result.current.enqueue('c', 'dois'); });
     act(() => result.current.onChatSendResult({ t: 'chat-send-result', requestId: sent[0]!.requestId!, clientMessageId: sent[0]!.clientMessageId!, error: { code: 'x', message: 'x' } }));
     expect(sent.map((m) => m.text)).toEqual(['um', 'dois']);
   });
 
-  it('offline: a mensagem espera e sai sozinha na reconexao', () => {
+  it('offline: the message waits and goes out on its own upon reconnection', () => {
     const connected = { value: false };
     const { result, sent } = setup(connected);
     act(() => { result.current.enqueue('c', 'sem rede'); });
@@ -104,7 +104,7 @@ describe('useMessageOutbox', () => {
     expect(sent.map((m) => m.text)).toEqual(['sem rede']);
   });
 
-  it('reconexao reenvia o que estava em voo com a mesma chave', () => {
+  it('reconnection resends whatever was in flight with the same key', () => {
     const { result, sent } = setup();
     act(() => { result.current.enqueue('c', 'oi'); });
     act(() => result.current.onReconnected());
@@ -112,7 +112,7 @@ describe('useMessageOutbox', () => {
     expect(sent[1]!.clientMessageId).toBe(sent[0]!.clientMessageId);
   });
 
-  it('o broadcast da propria mensagem pode chegar antes do resultado e ja confirma', () => {
+  it('the broadcast of your own message can arrive before the result and already confirms it', () => {
     const { result, sent, onConfirmed } = setup();
     act(() => { result.current.enqueue('c', 'oi'); });
     act(() => result.current.onEcho(stored(sent[0]!.clientMessageId!)));
@@ -122,7 +122,7 @@ describe('useMessageOutbox', () => {
     expect(onConfirmed).toHaveBeenCalledTimes(1);
   });
 
-  it('descartar remove a pendencia', () => {
+  it('discarding removes the pending entry', () => {
     const { result, sent } = setup();
     act(() => { result.current.enqueue('c', 'oi'); });
     act(() => result.current.onChatSendResult({ t: 'chat-send-result', requestId: sent[0]!.requestId!, clientMessageId: sent[0]!.clientMessageId!, error: { code: 'x', message: 'x' } }));
@@ -131,7 +131,7 @@ describe('useMessageOutbox', () => {
   });
 });
 
-describe('useMessageOutbox — lotes com anexos', () => {
+describe('useMessageOutbox — batches with attachments', () => {
   type Stage = NonNullable<Parameters<typeof useMessageOutbox>[0]['stageFile']>;
   function setupBatch() {
     const sent: ChatSend[] = [];
@@ -153,7 +153,7 @@ describe('useMessageOutbox — lotes com anexos', () => {
   });
   afterEach(() => { vi.unstubAllGlobals(); });
 
-  it('a mensagem so sai quando todos os arquivos estao preparados, com os ids na ordem escolhida', async () => {
+  it('the message only goes out once all files are ready, with ids in the chosen order', async () => {
     const { result, sent, calls } = setupBatch();
     act(() => { result.current.enqueue('c', 'legenda', undefined, [file('a.pdf'), file('b.pdf')]); });
     await flush();
@@ -171,7 +171,7 @@ describe('useMessageOutbox — lotes com anexos', () => {
     expect(sent[0]).toMatchObject({ text: 'legenda', attachmentIds: ['a'.repeat(32), 'b'.repeat(32)] });
   });
 
-  it('no maximo dois arquivos sobem ao mesmo tempo', async () => {
+  it('at most two files upload at the same time', async () => {
     const { result, calls } = setupBatch();
     act(() => { result.current.enqueue('c', '', undefined, [file('1.pdf'), file('2.pdf'), file('3.pdf')]); });
     await flush();
@@ -181,7 +181,7 @@ describe('useMessageOutbox — lotes com anexos', () => {
     expect(calls.map((c) => c.name)).toEqual(['1.pdf', '2.pdf', '3.pdf']);
   });
 
-  it('falha de um arquivo: "tentar de novo" reenvia so ele e depois publica o lote inteiro', async () => {
+  it('one file fails: "retry" resends only it and then posts the whole batch', async () => {
     const { result, sent, calls } = setupBatch();
     act(() => { result.current.enqueue('c', '', undefined, [file('a.pdf'), file('b.pdf')]); });
     await flush();
@@ -200,7 +200,7 @@ describe('useMessageOutbox — lotes com anexos', () => {
     expect(sent[0]!.attachmentIds).toEqual(['a'.repeat(32), 'c'.repeat(32)]);
   });
 
-  it('texto escrito depois de um lote em upload espera o lote, para manter a ordem', async () => {
+  it('text typed after a batch mid-upload waits for the batch, to keep the order', async () => {
     const { result, sent, calls } = setupBatch();
     act(() => { result.current.enqueue('c', 'lote', undefined, [file('a.pdf')]); result.current.enqueue('c', 'depois'); });
     await flush();
@@ -210,7 +210,7 @@ describe('useMessageOutbox — lotes com anexos', () => {
     expect(sent.map((m) => m.text)).toEqual(['lote']);
   });
 
-  it('anexos expirados no servidor: a nova tentativa sobe os arquivos de novo a partir da memoria', async () => {
+  it('attachments expired on the server: the retry re-uploads the files again from memory', async () => {
     const { result, sent, calls } = setupBatch();
     act(() => { result.current.enqueue('c', '', undefined, [file('a.pdf')]); });
     await flush();
@@ -222,7 +222,7 @@ describe('useMessageOutbox — lotes com anexos', () => {
     expect(calls).toHaveLength(2);
   });
 
-  it('descartar durante o upload cancela os envios e apaga o que ja foi preparado', async () => {
+  it('discarding mid-upload cancels the sends and erases what was already prepared', async () => {
     const { result, calls, discardStaged } = setupBatch();
     let id = '';
     act(() => { id = result.current.enqueue('c', '', undefined, [file('a.pdf'), file('b.pdf')]); });
@@ -235,7 +235,7 @@ describe('useMessageOutbox — lotes com anexos', () => {
     expect(result.current.pendingByConversation.get('c')).toBeUndefined();
   });
 
-  it('com compactacao ligada, so imagens passam pelo compressor', async () => {
+  it('with compression on, only images go through the compressor', async () => {
     const { result, compress } = setupBatch();
     act(() => { result.current.enqueue('c', '', undefined, [{ file: new File(['x'], 'f.png', { type: 'image/png' }), compress: true }, { file: new File(['x'], 'd.pdf', { type: 'application/pdf' }), compress: true }]); });
     await flush();

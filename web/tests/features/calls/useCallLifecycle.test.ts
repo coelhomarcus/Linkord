@@ -31,8 +31,8 @@ function setup(connect: () => Promise<void> = async () => undefined) {
 
 const token = { conversationId: 'c1', livekitUrl: 'wss://lk', livekitToken: 't' };
 
-describe('useCallLifecycle — chamada que nao conseguiu comecar', () => {
-  it('recusa do server para um join pendente vira erro daquela conversa', async () => {
+describe('useCallLifecycle — call that failed to start', () => {
+  it('a server rejection for a pending join becomes an error for that conversation', async () => {
     const { result, dispatch } = setup();
     await act(async () => { await result.current.joinCall('c1'); });
 
@@ -43,15 +43,15 @@ describe('useCallLifecycle — chamada que nao conseguiu comecar', () => {
     expect(dispatch).toHaveBeenLastCalledWith({ type: 'SET_CALL_JOIN_ERROR', error: { conversationId: 'c1', message: 'Vocês precisam ser amigos pra iniciar essa chamada.' } });
   });
 
-  it('sem join pendente, a recusa nao e dela (o mesmo codigo responde outras acoes)', () => {
+  it('with no pending join, the rejection is not for it (the same message answers other actions)', () => {
     const { result, dispatch } = setup();
     let handled = true;
-    act(() => { handled = result.current.onCallJoinRejected('qualquer'); });
+    act(() => { handled = result.current.onCallJoinRejected('whatever'); });
     expect(handled).toBe(false);
     expect(dispatch).not.toHaveBeenCalled();
   });
 
-  it('falha ao conectar no LiveKit: sai da chamada, avisa e deixa tentar de novo', async () => {
+  it('failing to connect to LiveKit: leaves the call, warns, and allows retrying', async () => {
     let livekitRoom: ReturnType<typeof fakeRoom> | null = null;
     // the real Room emits Disconnected before the connect() promise rejects
     const { result, dispatch, sendWs, livekitRoom: room } = setup(async () => {
@@ -72,7 +72,7 @@ describe('useCallLifecycle — chamada que nao conseguiu comecar', () => {
     expect(sendWs).toHaveBeenCalledWith({ t: 'call-join', conversationId: 'c1' });
   });
 
-  it('conexao cancelada porque a pessoa saiu antes: nenhum erro', async () => {
+  it('connection canceled because the person left first: no error', async () => {
     let rejectConnect: (err: Error) => void = () => {};
     const { result, dispatch } = setup(() => new Promise<void>((_resolve, reject) => { rejectConnect = reject; }));
     await act(async () => { await result.current.joinCall('c1'); });

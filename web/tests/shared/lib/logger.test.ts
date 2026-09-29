@@ -10,48 +10,48 @@ function setup(over: { level?: 'debug' | 'warn' } = {}) {
   return { log, send, print, advance: (ms: number) => { t += ms; } };
 }
 
-describe('logger — saida e buffer', () => {
-  it('imprime a partir do nivel configurado', () => {
+describe('logger — output and buffer', () => {
+  it('prints from the configured level up', () => {
     const { log, print } = setup({ level: 'warn' });
     log.debug('d'); log.info('i'); log.warn('w');
     expect(print.mock.calls.map((c) => c[0])).toEqual(['warn']);
   });
 
-  it('guarda tudo no buffer circular (200), mesmo o que nao imprime', () => {
+  it('keeps everything in the circular buffer (200), even what it does not print', () => {
     const { log } = setup({ level: 'warn' });
     for (let i = 0; i < 250; i++) log.info(`m${i}`);
     expect(log.recent()).toHaveLength(200);
     expect(log.recent()[0]!.message).toBe('m50');
   });
 
-  it('child herda o contexto', () => {
+  it('a child inherits the context', () => {
     const { log, print } = setup();
-    log.child({ component: 'socket' }).info('oi', { a: 1 });
-    expect(print).toHaveBeenCalledWith('info', 'oi', { component: 'socket', a: 1 });
+    log.child({ component: 'socket' }).info('hi', { a: 1 });
+    expect(print).toHaveBeenCalledWith('info', 'hi', { component: 'socket', a: 1 });
   });
 
-  it('nunca imprime nem envia campos sensiveis', () => {
+  it('never prints or sends sensitive fields', () => {
     const { log, print, send } = setup();
-    log.error('falhou', new Error('x'), { password: 'p', token: 't', email: 'a@b.c', ok: 1 });
+    log.error('failed', new Error('x'), { password: 'p', token: 't', email: 'a@b.c', ok: 1 });
     const printed = JSON.stringify(print.mock.calls);
     expect(printed).not.toMatch(/"p"|a@b\.c/);
     expect(send.mock.calls[0]![0].context).toEqual({ password: '[redacted]', token: '[redacted]', email: '[redacted]', ok: 1 });
   });
 });
 
-describe('logger — envio ao servidor', () => {
-  it('error e enviado com rota, mensagem do erro, stack e os ultimos breadcrumbs', () => {
+describe('logger — sending to the server', () => {
+  it('error is sent with the route, error message, stack and the latest breadcrumbs', () => {
     const { log, send } = setup();
-    for (let i = 0; i < 8; i++) log.info(`passo ${i}`);
+    for (let i = 0; i < 8; i++) log.info(`step ${i}`);
     log.error('render error', new Error('boom'));
     const payload = send.mock.calls[0]![0];
     expect(payload).toMatchObject({ level: 'error', message: 'render error: boom', route: '/app/x' });
     expect(payload.stack).toMatch(/boom/);
     expect(payload.breadcrumbs).toHaveLength(5);
-    expect(payload.breadcrumbs.at(-1)).toMatch(/passo 7/);
+    expect(payload.breadcrumbs.at(-1)).toMatch(/step 7/);
   });
 
-  it('warn/info comuns nao sao enviados; warn com report:true e', () => {
+  it('plain warn/info are not sent; warn with report:true is', () => {
     const { log, send } = setup();
     log.info('a'); log.warn('b');
     expect(send).not.toHaveBeenCalled();
@@ -61,28 +61,28 @@ describe('logger — envio ao servidor', () => {
     expect(send.mock.calls[0]![0].context).not.toHaveProperty('report');
   });
 
-  it('o mesmo erro repetido em 30 s conta uma vez e volta depois', () => {
+  it('the same error repeated within 30s counts once, then comes back after', () => {
     const { log, send, advance } = setup();
-    for (let i = 0; i < 20; i++) log.error('igual', new Error('mesmo'));
+    for (let i = 0; i < 20; i++) log.error('same', new Error('identical'));
     expect(send).toHaveBeenCalledTimes(1);
     advance(31_000);
-    log.error('igual', new Error('mesmo'));
+    log.error('same', new Error('identical'));
     expect(send).toHaveBeenCalledTimes(2);
   });
 
-  it('no maximo 10 envios por minuto, mesmo com erros diferentes', () => {
+  it('at most 10 sends per minute, even with different errors', () => {
     const { log, send, advance } = setup();
-    for (let i = 0; i < 30; i++) log.error(`erro ${i}`);
+    for (let i = 0; i < 30; i++) log.error(`error ${i}`);
     expect(send).toHaveBeenCalledTimes(10);
     advance(61_000);
-    log.error('novo');
+    log.error('new');
     expect(send).toHaveBeenCalledTimes(11);
   });
 
-  it('se o envio lanca, nada quebra e nada e registrado sobre isso', () => {
+  it('if sending throws, nothing breaks and nothing is logged about it', () => {
     let t = 0;
     const print = vi.fn();
-    const log = createLogger({ level: 'debug', send: () => { throw new Error('rede'); }, print, now: () => t++ });
+    const log = createLogger({ level: 'debug', send: () => { throw new Error('network'); }, print, now: () => t++ });
     expect(() => log.error('x', new Error('y'))).not.toThrow();
     expect(print).toHaveBeenCalledTimes(1);
   });
@@ -94,16 +94,16 @@ describe('installGlobalErrorHandlers', () => {
     return { handlers, target: { addEventListener: (type: string, fn: (e: unknown) => void) => { handlers.set(type, fn); } } as Pick<Window, 'addEventListener'> };
   }
 
-  it('erros nao tratados e promessas rejeitadas viram registros de erro', () => {
+  it('uncaught errors and rejected promises become error records', () => {
     const { log, send } = setup();
     const { handlers, target } = fakeWindow();
     installGlobalErrorHandlers(target, log);
     handlers.get('error')!({ message: 'x', error: new Error('kaboom'), filename: 'http://a/b/app.js', lineno: 7 });
-    handlers.get('unhandledrejection')!({ reason: new Error('promessa') });
-    expect(send.mock.calls.map((c) => c[0].message)).toEqual(['uncaught error: kaboom', 'unhandled promise rejection: promessa']);
+    handlers.get('unhandledrejection')!({ reason: new Error('rejected promise') });
+    expect(send.mock.calls.map((c) => c[0].message)).toEqual(['uncaught error: kaboom', 'unhandled promise rejection: rejected promise']);
   });
 
-  it('ignora o aviso inofensivo "ResizeObserver loop"', () => {
+  it('ignores the harmless "ResizeObserver loop" warning', () => {
     const { log, send } = setup();
     const { handlers, target } = fakeWindow();
     installGlobalErrorHandlers(target, log);

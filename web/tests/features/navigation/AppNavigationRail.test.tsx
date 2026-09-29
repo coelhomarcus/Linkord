@@ -53,7 +53,7 @@ beforeEach(() => {
 });
 
 describe('AppNavigationRail', () => {
-  it('tem os destinos globais e nenhum atalho de Solicitacoes', () => {
+  it('has the global destinations and no Solicitacoes shortcut', () => {
     renderRail();
     const nav = screen.getByRole('navigation', { name: 'Navegação principal' });
     expect(nav).toBeInTheDocument();
@@ -69,35 +69,35 @@ describe('AppNavigationRail', () => {
     ['/app/conversations/abc', 'Conversas'],
     ['/app/friends?tab=pending', 'Amigos'],
     ['/app/settings/av', 'Ajustes'],
-  ])('em %s so "%s" fica marcado como pagina atual', (path, current) => {
+  ])('at %s only "%s" is marked as the current page', (path, current) => {
     renderRail(path);
     const marked = screen.getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page').map((link) => link.getAttribute('aria-label'));
     expect(marked).toEqual([current]);
   });
 
-  it('/admin/users nao marca Ajustes como pagina atual (categorias separadas)', () => {
+  it('/admin/users does not mark Ajustes as the current page (separate categories)', () => {
     renderRail('/admin/users');
     expect(screen.getByRole('link', { name: 'Ajustes' })).not.toHaveAttribute('aria-current');
   });
 
-  it('o badge de Amigos soma pedidos e convites recebidos e o nome acessivel diz o que conta', async () => {
+  it('the Amigos badge sums requests and received invitations, and the accessible name says what counts', async () => {
     mocked.fetchRequestSummary.mockResolvedValue({ incoming: 2, invitations: 1 });
     renderRail();
     expect(await screen.findByRole('link', { name: 'Amigos, 3 aguardando resposta' })).toBeInTheDocument();
   });
 
-  it('Meu perfil abre o perfil da propria conta', async () => {
+  it("Meu perfil opens the account's own profile", async () => {
     const { onOpenProfile } = renderRail();
     await userEvent.setup().click(screen.getByRole('button', { name: 'Meu perfil' }));
     expect(onOpenProfile).toHaveBeenCalledWith('me');
   });
 
-  it('com a lista aberta o rail nao repete o botao de ocultar (fica no cabecalho da lista)', () => {
+  it('with the list open, the rail does not repeat the hide button (it stays in the list header)', () => {
     renderRail('/app/conversations', true);
     expect(screen.queryByRole('button', { name: /lista de conversas/ })).not.toBeInTheDocument();
   });
 
-  it('com a lista recolhida o rail oferece o caminho de volta', async () => {
+  it('with the list collapsed, the rail offers a way back', async () => {
     const { onOpenChange } = renderRail('/app/conversations', false);
     const toggle = screen.getByRole('button', { name: 'Mostrar lista de conversas' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
@@ -105,12 +105,12 @@ describe('AppNavigationRail', () => {
     expect(onOpenChange).toHaveBeenCalledWith(true);
   });
 
-  it('sem chamada ativa, sem icone de voltar pra chamada', () => {
+  it('no active call, no icon to return to a call', () => {
     renderRail();
     expect(screen.queryByRole('button', { name: /Voltar para/ })).not.toBeInTheDocument();
   });
 
-  it('com chamada ativa, o icone verde aparece com o titulo da conversa e chama onReturnToCall', async () => {
+  it('with an active call, the green icon shows the conversation title and calls onReturnToCall', async () => {
     const group = {
       id: 'conv-1', type: 'group' as const, title: 'os xerecas', avatar: '', createdBy: 'me', memberIds: ['me'],
       lastMessageAt: null, createdAt: 0, updatedAt: 0, pinnedAt: null, myRole: 'owner' as const, ownerId: 'me', memberCount: 1,
@@ -122,7 +122,7 @@ describe('AppNavigationRail', () => {
     expect(onReturnToCall).toHaveBeenCalledTimes(1);
   });
 
-  it('sem ser admin, sem atalho de area administrativa', () => {
+  it('when not an admin, no admin area shortcut', () => {
     renderRail();
     expect(screen.queryByRole('link', { name: 'Área administrativa' })).not.toBeInTheDocument();
   });
@@ -131,26 +131,26 @@ describe('AppNavigationRail', () => {
 describe('AppNavigationRail — admin', () => {
   const admin = { ...me, me: { ...me.me, role: 'admin' as const } };
 
-  it('admin ve o atalho de area administrativa, indo direto pra /admin/users', () => {
+  it('an admin sees the admin area shortcut, going straight to /admin/users', () => {
     renderRail('/app/conversations', true, false, { state: admin });
     expect(screen.getByRole('link', { name: 'Área administrativa' })).toHaveAttribute('href', '/admin/users');
   });
 
-  it('em /admin/users, so a Area administrativa fica marcada (nao Ajustes)', () => {
+  it('at /admin/users, only Area administrativa is marked (not Ajustes)', () => {
     renderRail('/admin/users', true, false, { state: admin });
     const marked = screen.getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page').map((link) => link.getAttribute('aria-label'));
     expect(marked).toEqual(['Área administrativa']);
   });
 });
 
-describe('AppNavigationRail — largura da janela', () => {
-  it('desktop (>= 1024): a lista e uma coluna; o rail so oferece "mostrar" se ela estiver recolhida', () => {
+describe('AppNavigationRail — window width', () => {
+  it('desktop (>= 1024): the list is a column; the rail only offers "show" if it is collapsed', () => {
     setViewport(1440);
     renderRail('/app/conversations', true);
     expect(screen.queryByRole('button', { name: 'Mostrar lista de conversas' })).not.toBeInTheDocument();
   });
 
-  it('tablet (768-1023): a lista e um drawer aberto pelo rail, que nao muda a preferencia de recolher', async () => {
+  it('tablet (768-1023): the list is a drawer opened by the rail, which does not change the collapse preference', async () => {
     setViewport(900);
     const { onOpenChange, onOpenMobileChange } = renderRail('/app/conversations', true, false);
     const toggle = screen.getByRole('button', { name: 'Mostrar lista de conversas' });
@@ -160,20 +160,20 @@ describe('AppNavigationRail — largura da janela', () => {
     expect(onOpenChange).not.toHaveBeenCalled(); // the saved collapsed/expanded preference is untouched
   });
 
-  it('tablet: com o drawer aberto o botao diz expandido', () => {
+  it('tablet: with the drawer open, the button says expanded', () => {
     setViewport(900);
     renderRail('/app/conversations', true, true);
     expect(screen.getByRole('button', { name: 'Mostrar lista de conversas' })).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('navegar pelo rail com o drawer aberto fecha o drawer', async () => {
+  it('navigating via the rail with the drawer open closes the drawer', async () => {
     setViewport(900);
     const { onOpenMobileChange } = renderRail('/app/conversations', true, true);
     await userEvent.setup().click(screen.getByRole('link', { name: 'Amigos' }));
     expect(onOpenMobileChange).toHaveBeenCalledWith(false);
   });
 
-  it('desktop: navegar pelo rail nao mexe em drawer nenhum', async () => {
+  it('desktop: navigating via the rail does not touch any drawer', async () => {
     setViewport(1440);
     const { onOpenMobileChange } = renderRail('/app/conversations', true, false);
     await userEvent.setup().click(screen.getByRole('link', { name: 'Amigos' }));

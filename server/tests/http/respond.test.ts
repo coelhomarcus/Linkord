@@ -16,7 +16,7 @@ function fakeReply() {
 }
 
 describe('sendJson', () => {
-  test('seta status, Cache-Control: no-store, e o corpo mandado', () => {
+  test('sets status, Cache-Control: no-store, and the sent body', () => {
     const { reply, calls } = fakeReply();
     sendJson(reply, 201, { ok: true });
     assert.equal(calls.status, 201);
@@ -26,16 +26,16 @@ describe('sendJson', () => {
 });
 
 describe('sendError', () => {
-  test('embrulha code/message no formato { error: { code, message } }', () => {
+  test('wraps code/message in the { error: { code, message } } format', () => {
     const { reply, calls } = fakeReply();
-    sendError(reply, 404, 'not_found', 'Rota nao encontrada.');
+    sendError(reply, 404, 'not_found', 'Route not found.');
     assert.equal(calls.status, 404);
-    assert.deepEqual(calls.body, { error: { code: 'not_found', message: 'Rota nao encontrada.' } });
+    assert.deepEqual(calls.body, { error: { code: 'not_found', message: 'Route not found.' } });
   });
 });
 
 describe('jsonBody', () => {
-  test('objeto valido passa direto', () => {
+  test('a valid object passes through', () => {
     assert.deepEqual(jsonBody({ a: 1 }), { a: 1 });
   });
 
@@ -43,16 +43,16 @@ describe('jsonBody', () => {
   // number/string) — no route here expects to receive that, so it needs to
   // keep rejecting it to preserve the old readJsonBody's behavior (which
   // only accepted an object).
-  for (const bad of [null, undefined, [], [1, 2], 'texto', 42, true]) {
-    test(`rejeita corpo que nao e objeto: ${JSON.stringify(bad)}`, () => {
+  for (const bad of [null, undefined, [], [1, 2], 'text', 42, true]) {
+    test(`rejects a body that is not an object: ${JSON.stringify(bad)}`, () => {
       assert.throws(() => jsonBody(bad), /Corpo deve ser um objeto JSON/);
     });
   }
 
-  test('erro lancado tem statusCode 400 e code invalid_json (pro setErrorHandler global formatar certo)', () => {
+  test('thrown error has statusCode 400 and code invalid_json (so the global setErrorHandler formats it correctly)', () => {
     try {
       jsonBody(null);
-      assert.fail('deveria ter lancado');
+      assert.fail('should have thrown');
     } catch (err) {
       assert.equal((err as { statusCode?: number }).statusCode, 400);
       assert.equal((err as { code?: string }).code, 'invalid_json');

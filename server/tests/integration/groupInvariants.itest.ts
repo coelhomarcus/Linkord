@@ -11,8 +11,8 @@ import { and, eq, sql } from 'drizzle-orm';
 
 after(() => pool.end());
 
-describe('invariantes de grupo sob concorrencia (Postgres real)', () => {
-  it('transferir × remover × sair: nunca um grupo com membros e sem dono, nunca dois donos (15 rodadas)', async () => {
+describe('group invariants under concurrency (real Postgres)', () => {
+  it('transfer × remove × leave: never a group with members and no owner, never two owners (15 rounds)', async () => {
     for (let round = 0; round < 15; round++) {
       const a = await makeUser('o'); const b = await makeUser('m'); const c = await makeUser('m');
       const g = await makeGroupWithMembers(a.id, [b.id, c.id]);
@@ -25,12 +25,12 @@ describe('invariantes de grupo sob concorrencia (Postgres real)', () => {
       await Promise.allSettled((round % 2 ? ops : [...ops].reverse()).map((op) => op()));
       const owners = await ownersOf(g);
       const members = await memberCount(g);
-      assert.ok(owners.length <= 1, `rodada ${round}: ${owners.length} donos`);
-      if (members > 0) assert.equal(owners.length, 1, `rodada ${round}: ${members} membros e ${owners.length} donos`);
+      assert.ok(owners.length <= 1, `round ${round}: ${owners.length} owners`);
+      if (members > 0) assert.equal(owners.length, 1, `round ${round}: ${members} members and ${owners.length} owners`);
     }
   });
 
-  it('DM e idempotente: 12 criacoes simultaneas do mesmo par dao UMA conversa', async () => {
+  it('DM is idempotent: 12 simultaneous creations of the same pair yield ONE conversation', async () => {
     const a = await makeUser('dm'); const b = await makeUser('dm');
     const results = await Promise.all(Array.from({ length: 12 }, (_, i) => getOrCreateDirect(i % 2 ? a.id : b.id, i % 2 ? b.id : a.id, a.id)));
     assert.equal(new Set(results.map((r) => r.conversation.id)).size, 1);
@@ -38,7 +38,7 @@ describe('invariantes de grupo sob concorrencia (Postgres real)', () => {
     assert.equal(await memberCount(results[0]!.conversation.id), 2);
   });
 
-  it('aceite duplo (duas abas) cria UM membro', async () => {
+  it('a double accept (two tabs) creates ONE member', async () => {
     const owner = await makeUser('ow'); const guest = await makeUser('gu');
     await befriend(owner.id, guest.id);
     const g = await makeGroupWithMembers(owner.id, []);
@@ -51,7 +51,7 @@ describe('invariantes de grupo sob concorrencia (Postgres real)', () => {
     assert.equal(row!.n, 1);
   });
 
-  it('a ultima vaga vai para UM so dos que aceitam ao mesmo tempo', async () => {
+  it('the last slot goes to only ONE of those accepting at the same time', async () => {
     const original = config.MAX_GROUP_MEMBERS;
     config.MAX_GROUP_MEMBERS = 3;
     try {
@@ -70,7 +70,7 @@ describe('invariantes de grupo sob concorrencia (Postgres real)', () => {
     }
   });
 
-  it('excluir o dono passa o grupo ao membro mais antigo, no mesmo lock, e audita', async () => {
+  it('deleting the owner passes the group to the oldest member, in the same lock, and audits it', async () => {
     const admin = await makeUser('adm', 'admin');
     const owner = await makeUser('dead'); const oldest = await makeUser('old'); const newer = await makeUser('new');
     const g = await makeGroupWithMembers(owner.id, [oldest.id, newer.id]);
@@ -78,12 +78,12 @@ describe('invariantes de grupo sob concorrencia (Postgres real)', () => {
     const result = await deleteUserAccount({ actor: { id: admin.id, username: admin.username }, reason: 'itest', requestId: '' }, owner.id, owner.username);
     assert.equal(result.code, 'ok');
     assert.deepEqual(await ownersOf(g), [oldest.id]);
-    assert.equal((await db.select().from(conversations).where(eq(conversations.id, solo))).length, 0, 'grupo so com o dono some');
+    assert.equal((await db.select().from(conversations).where(eq(conversations.id, solo))).length, 0, 'a group with only the owner disappears');
     const trail = await db.select().from(adminAuditLogs).where(and(eq(adminAuditLogs.action, 'group.owner_succession'), eq(adminAuditLogs.targetId, g)));
     assert.equal(trail.length, 1);
   });
 
-  it('excluir o dono × transferir × sair (10 rodadas): o grupo nunca fica sem dono', async () => {
+  it('deleting the owner × transferring × leaving (10 rounds): the group never ends up without an owner', async () => {
     const admin = await makeUser('adm', 'admin');
     for (let round = 0; round < 10; round++) {
       const owner = await makeUser('dx'); const b = await makeUser('m'); const c = await makeUser('m');
@@ -95,14 +95,14 @@ describe('invariantes de grupo sob concorrencia (Postgres real)', () => {
       ]);
       const members = await memberCount(g);
       const owners = await ownersOf(g);
-      if (members > 0) assert.equal(owners.length, 1, `rodada ${round}: ${members} membros e ${owners.length} donos`);
+      if (members > 0) assert.equal(owners.length, 1, `round ${round}: ${members} members and ${owners.length} owners`);
       else assert.equal(owners.length, 0);
     }
   });
 });
 
-describe('convite nominal sem validade e sem cooldown (Postgres real)', () => {
-  it('convite pendente nao expira e recusar nao bloqueia o reenvio', async () => {
+describe('a named invitation has no expiry and no cooldown (real Postgres)', () => {
+  it('a pending invitation never expires and declining it does not block resending', async () => {
     const owner = await makeUser('iv'); const guest = await makeUser('ig');
     await befriend(owner.id, guest.id);
     const g = await makeGroupWithMembers(owner.id, []);
@@ -119,7 +119,7 @@ describe('convite nominal sem validade e sem cooldown (Postgres real)', () => {
     assert.equal(again.results[0]!.outcome, 'sent');
   });
 
-  it('apagar o card revoga o convite pendente; quem ja entrou continua membro', async () => {
+  it('deleting the card revokes the pending invitation; whoever already joined stays a member', async () => {
     const owner = await makeUser('dc'); const pending = await makeUser('dp'); const joined = await makeUser('dj');
     await befriend(owner.id, pending.id); await befriend(owner.id, joined.id);
     const g = await makeGroupWithMembers(owner.id, []);

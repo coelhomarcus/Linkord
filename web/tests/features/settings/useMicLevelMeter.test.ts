@@ -41,19 +41,19 @@ afterEach(() => {
 });
 
 describe('useMicLevelMeter', () => {
-  it('nao inicia sozinho — so apos start() explicito', () => {
+  it('does not start on its own — only after an explicit start()', () => {
     renderHook(() => useMicLevelMeter());
     expect(getUserMedia).not.toHaveBeenCalled();
   });
 
-  it('start() abre o mic com o deviceId pedido, sem tocar em room.localParticipant', async () => {
+  it('start() opens the mic with the requested deviceId, without touching room.localParticipant', async () => {
     const { result } = renderHook(() => useMicLevelMeter());
     await act(async () => { await result.current.start('mic-1'); });
     expect(getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: 'mic-1' } } });
     expect(result.current.active).toBe(true);
   });
 
-  it('stop() para todas as tracks e fecha o AudioContext', async () => {
+  it('stop() stops every track and closes the AudioContext', async () => {
     const track = fakeTrack();
     getUserMedia.mockResolvedValue(fakeStream([track]));
     const { result } = renderHook(() => useMicLevelMeter());
@@ -66,7 +66,7 @@ describe('useMicLevelMeter', () => {
     expect(result.current.level).toBe(0);
   });
 
-  it('desmontar sem chamar stop() ainda assim libera o mic (nao vaza)', async () => {
+  it('unmounting without calling stop() still releases the mic (no leak)', async () => {
     const track = fakeTrack();
     getUserMedia.mockResolvedValue(fakeStream([track]));
     const { result, unmount } = renderHook(() => useMicLevelMeter());
@@ -77,7 +77,7 @@ describe('useMicLevelMeter', () => {
     expect(closeMock).toHaveBeenCalledTimes(1);
   });
 
-  it('um segundo start() para o primeiro antes de abrir outro (sem duas streams simultaneas)', async () => {
+  it('a second start() stops the first before opening another (no two simultaneous streams)', async () => {
     const trackA = fakeTrack();
     const trackB = fakeTrack();
     getUserMedia.mockResolvedValueOnce(fakeStream([trackA])).mockResolvedValueOnce(fakeStream([trackB]));
@@ -90,15 +90,15 @@ describe('useMicLevelMeter', () => {
     expect(getUserMedia).toHaveBeenLastCalledWith({ audio: { deviceId: { exact: 'mic-2' } } });
   });
 
-  it('deviceId "default" (sentinela do LiveKit pra "nenhuma escolha ainda") nao vira uma constraint exata', async () => {
-    // um deviceId real nunca é a string "default" — usar exact aqui derruba
-    // com OverconstrainedError em qualquer device real (achado só ao vivo).
+  it('deviceId "default" (LiveKit\'s sentinel for "no choice made yet") does not become an exact constraint', async () => {
+    // a real deviceId is never the string "default" — using exact here fails
+    // with OverconstrainedError on any real device (only found live).
     const { result } = renderHook(() => useMicLevelMeter());
     await act(async () => { await result.current.start('default'); });
     expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
   });
 
-  it('permissao negada mostra um erro proprio, sem travar active em true', async () => {
+  it('permission denied shows its own error, without locking active at true', async () => {
     getUserMedia.mockRejectedValue(Object.assign(new Error('nope'), { name: 'NotAllowedError' }));
     const { result } = renderHook(() => useMicLevelMeter());
     await act(async () => { await result.current.start(); });

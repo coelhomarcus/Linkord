@@ -10,7 +10,7 @@ function deferred<T>() {
 }
 
 describe('runSerialized', () => {
-  it('duas tarefas da MESMA chave rodam em ordem, a segunda so comeca apos a primeira terminar', async () => {
+  it('two tasks for the SAME key run in order, the second only starts after the first finishes', async () => {
     const order: string[] = [];
     const first = deferred<void>();
     const p1 = runSerialized('u1', async () => { order.push('1 start'); await first.promise; order.push('1 end'); });
@@ -23,7 +23,7 @@ describe('runSerialized', () => {
     assert.deepEqual(order, ['1 start', '1 end', '2 start']);
   });
 
-  it('tarefas de chaves diferentes rodam em paralelo, uma nao espera a outra', async () => {
+  it('tasks for different keys run in parallel, one does not wait for the other', async () => {
     const order: string[] = [];
     const blockA = deferred<void>();
     const pA = runSerialized('a', async () => { order.push('a start'); await blockA.promise; order.push('a end'); });
@@ -34,19 +34,19 @@ describe('runSerialized', () => {
     await pA;
   });
 
-  it('uma tarefa que rejeita nao trava a fila: a proxima da mesma chave ainda roda', async () => {
+  it('a rejecting task does not lock the queue: the next task for the same key still runs', async () => {
     const order: string[] = [];
     await assert.rejects(runSerialized('u2', async () => { order.push('fails'); throw new Error('boom'); }));
     await runSerialized('u2', async () => { order.push('runs anyway'); });
     assert.deepEqual(order, ['fails', 'runs anyway']);
   });
 
-  it('devolve o valor (ou o erro) da propria tarefa, nao da fila', async () => {
+  it('returns the value (or error) of the task itself, not the queue', async () => {
     assert.equal(await runSerialized('u3', async () => 42), 42);
     await assert.rejects(runSerialized('u3', async () => { throw new Error('x'); }), /x/);
   });
 
-  it('muitas tarefas da mesma chave preservam a ordem de chegada', async () => {
+  it('many tasks for the same key preserve arrival order', async () => {
     const order: number[] = [];
     await Promise.all([1, 2, 3, 4, 5].map((n) => runSerialized('u4', async () => { order.push(n); })));
     assert.deepEqual(order, [1, 2, 3, 4, 5]);

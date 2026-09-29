@@ -10,10 +10,10 @@ const userState = {
 };
 
 describe('GlobalContextMenu', () => {
-  it('nao abre popup vazio quando o alvo nao tem nenhuma acao', () => {
+  it('does not open an empty popup when the target has no actions', () => {
     renderWithRoom(
       <GlobalContextMenu onOpenProfile={vi.fn()}>
-        <div data-testid="empty-area">sem acoes</div>
+        <div data-testid="empty-area">no actions</div>
       </GlobalContextMenu>,
       { state: userState }
     );
@@ -23,7 +23,7 @@ describe('GlobalContextMenu', () => {
     expect(document.querySelector('[data-slot="context-menu-content"]')).not.toBeInTheDocument();
   });
 
-  it('continua abrindo quando o alvo tem acoes visiveis', async () => {
+  it('still opens when the target has visible actions', async () => {
     renderWithRoom(
       <GlobalContextMenu onOpenProfile={vi.fn()}>
         <main data-stage data-testid="stage" />
@@ -36,12 +36,12 @@ describe('GlobalContextMenu', () => {
     expect(await screen.findByText('Ocultar sem vídeo')).toBeInTheDocument();
   });
 
-  it('fecha o menu aberto quando o proximo alvo nao tem acoes', async () => {
+  it('closes the open menu when the next target has no actions', async () => {
     renderWithRoom(
       <GlobalContextMenu onOpenProfile={vi.fn()}>
         <div>
           <main data-stage data-testid="stage" />
-          <div data-testid="empty-area">sem acoes</div>
+          <div data-testid="empty-area">no actions</div>
         </div>
       </GlobalContextMenu>,
       { state: userState, setHideAudioOnlyTiles: vi.fn() }
@@ -57,7 +57,7 @@ describe('GlobalContextMenu', () => {
     });
   });
 
-  it('mostra "Ver perfil" para um alvo data-user-id e aciona onOpenProfile com o id certo', async () => {
+  it('shows "Ver perfil" for a data-user-id target and triggers onOpenProfile with the right id', async () => {
     const onOpenProfile = vi.fn();
     renderWithRoom(
       <GlobalContextMenu onOpenProfile={onOpenProfile}>
@@ -73,7 +73,7 @@ describe('GlobalContextMenu', () => {
     expect(onOpenProfile).toHaveBeenCalledWith('u-42');
   });
 
-  describe('menu de uma mensagem', () => {
+  describe('a message\'s menu', () => {
     const message = { msgId: 7, conversationId: 'c1', id: 'other', name: 'Ana', avatar: '', text: 'oi', ts: 1 } as never;
     const room = (overrides: Record<string, unknown> = {}) => ({
       state: userState,
@@ -89,7 +89,7 @@ describe('GlobalContextMenu', () => {
       room(overrides),
     );
 
-    it('abre com reacoes rapidas e um "+", sem o seletor de emoji', async () => {
+    it('opens with quick reactions and a "+", without the emoji picker', async () => {
       renderMessage();
       fireEvent.contextMenu(screen.getByTestId('msg'));
 
@@ -99,7 +99,7 @@ describe('GlobalContextMenu', () => {
       expect(screen.getByText('Responder')).toBeInTheDocument();
     });
 
-    it('clicar numa reacao rapida reage e fecha o menu', async () => {
+    it('clicking a quick reaction reacts and closes the menu', async () => {
       const react = vi.fn();
       renderMessage({ reactToChatMessage: react });
       fireEvent.contextMenu(screen.getByTestId('msg'));
@@ -109,7 +109,7 @@ describe('GlobalContextMenu', () => {
       await waitFor(() => expect(screen.queryByRole('button', { name: 'Mais emojis' })).not.toBeInTheDocument());
     });
 
-    it('o "+" troca as reacoes rapidas pelo seletor completo', async () => {
+    it('the "+" swaps the quick reactions for the full picker', async () => {
       renderMessage();
       fireEvent.contextMenu(screen.getByTestId('msg'));
       fireEvent.click(await screen.findByRole('button', { name: 'Mais emojis' }));
@@ -118,14 +118,14 @@ describe('GlobalContextMenu', () => {
       expect(document.querySelector('[data-slot="emoji-picker"]')).toBeInTheDocument();
     });
 
-    it('nao oferece "Ver todas as reações" quando a mensagem nao tem nenhuma', async () => {
+    it('does not offer "Ver todas as reações" when the message has none', async () => {
       renderMessage();
       fireEvent.contextMenu(screen.getByTestId('msg'));
       await screen.findByText('Responder');
       expect(screen.queryByText('Ver todas as reações')).not.toBeInTheDocument();
     });
 
-    it('"Ver todas as reações" abre o dialogo com a conversa e a mensagem certas', async () => {
+    it('"Ver todas as reações" opens the dialog with the right conversation and message', async () => {
       const openReactionParticipants = vi.fn();
       const reacted = { msgId: 7, conversationId: 'c1', id: 'other', name: 'Ana', avatar: '', text: 'oi', ts: 1, reactions: { '👍': ['other'] } } as never;
       renderMessage({ openReactionParticipants, messagesByConversation: new Map([['c1', [reacted]]]) });

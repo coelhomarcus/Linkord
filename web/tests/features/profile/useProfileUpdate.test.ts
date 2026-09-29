@@ -22,7 +22,7 @@ function setup(isConnected = () => true) {
 }
 
 describe('useProfileUpdate', () => {
-  it('updateProfile manda o patch completo com requestId e resolve na resposta correlacionada', async () => {
+  it('updateProfile sends the full patch with requestId and resolves on the correlated response', async () => {
     const { result, sent, dispatch, setAllUsers } = setup();
     setAllUsers.mockImplementation((updater) => updater(new Map([['u1', { id: 'u1' } as PublicUser]])));
 
@@ -36,7 +36,7 @@ describe('useProfileUpdate', () => {
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_LOCAL_PROFILE', displayName: 'Confirmado' }));
   });
 
-  it('uploadProfileImage nunca inclui displayName/bio/cor/links — so os campos da imagem', async () => {
+  it('uploadProfileImage never includes displayName/bio/color/links — only the image fields', async () => {
     // uploadWithProgress.ts drives a raw XMLHttpRequest (property assignment,
     // not addEventListener) — this fake matches exactly that shape.
     class FakeXHR {
@@ -67,13 +67,13 @@ describe('useProfileUpdate', () => {
     await uploadPromise;
   });
 
-  it('sem conexao: rejeita na hora, sem chegar a enviar nada', async () => {
+  it('offline: rejects right away, without ever sending anything', async () => {
     const { result, sendWs } = setup(() => false);
     await expect(result.current.updateProfile(fullProfile)).rejects.toBeInstanceOf(ProfileSaveOffline);
     expect(sendWs).not.toHaveBeenCalled();
   });
 
-  it('recusa do servidor rejeita com o codigo e a mensagem, sem tocar no estado local', async () => {
+  it('server refusal rejects with the code and message, without touching local state', async () => {
     const { result, sent, dispatch } = setup();
     const promise = result.current.updateProfile(fullProfile);
     act(() => result.current.handleProfileResult({ t: 'profile-result', requestId: (sent[0] as any).requestId, ok: false, code: 'rate_limited', message: 'Devagar.' } as never));
@@ -82,7 +82,7 @@ describe('useProfileUpdate', () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
-  it('sem resposta nenhuma: rejeita por timeout (nao fica pendurado para sempre)', async () => {
+  it('no response at all: rejects on timeout (never hangs forever)', async () => {
     vi.useFakeTimers();
     try {
       const { result } = setup();
@@ -95,12 +95,12 @@ describe('useProfileUpdate', () => {
     }
   });
 
-  it('uma resposta que chega depois do timeout (ou de outra sessao) e ignorada em silencio', () => {
+  it('a response that arrives after the timeout (or from another session) is silently ignored', () => {
     const { result } = setup();
     expect(() => result.current.handleProfileResult({ t: 'profile-result', requestId: 'nunca-pedido', ok: true, ...fullProfile } as never)).not.toThrow();
   });
 
-  it('desmontar rejeita qualquer pedido ainda pendente, sem deixar timer solto', async () => {
+  it('unmounting rejects any still-pending request, without leaving a loose timer', async () => {
     const { result, sent, unmount } = (() => {
       const dispatch = vi.fn(); const sent: ClientMessage[] = [];
       const sendWs = vi.fn((m: ClientMessage) => sent.push(m));
@@ -116,7 +116,7 @@ describe('useProfileUpdate', () => {
 });
 
 describe('describeProfileSaveError', () => {
-  it('usa a mensagem de cada tipo conhecido e o fallback para o resto', () => {
+  it('uses each known error type\'s message, and the fallback for the rest', () => {
     expect(describeProfileSaveError(new ProfileSaveOffline())).toMatch(/conexão/);
     expect(describeProfileSaveError(new ProfileSaveTimeout())).toMatch(/confirmado a tempo/);
     expect(describeProfileSaveError(new ProfileSaveRefused('x', 'Motivo do servidor.'))).toBe('Motivo do servidor.');

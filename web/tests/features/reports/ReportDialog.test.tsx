@@ -10,12 +10,12 @@ vi.mock('@/shared/api/api', async (importOriginal) => ({
   submitReport: vi.fn(),
 }));
 const mocked = vi.mocked(api);
-const target = { type: 'message' as const, id: '42', label: 'mensagem de Ana' };
+const target = { type: 'message' as const, id: '42', label: 'message from Ana' };
 
 beforeEach(() => vi.clearAllMocks());
 
 describe('ReportDialog', () => {
-  it('so envia depois de escolher um motivo', async () => {
+  it('only submits after picking a reason', async () => {
     const user = userEvent.setup();
     mocked.submitReport.mockResolvedValue({ ok: true });
     renderWithRoom(<ReportDialog target={target} open onOpenChange={vi.fn()} />);
@@ -29,7 +29,7 @@ describe('ReportDialog', () => {
     expect(await screen.findByText('Denúncia enviada.')).toBeInTheDocument();
   });
 
-  it('a confirmacao e neutra e o dialogo fecha limpo', async () => {
+  it('the confirmation is neutral and the dialog closes cleanly', async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
     mocked.submitReport.mockResolvedValue({ ok: true });
@@ -42,7 +42,7 @@ describe('ReportDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it('erro mostra alerta e mantem o formulario para nova tentativa', async () => {
+  it('error shows an alert and keeps the form for another attempt', async () => {
     const user = userEvent.setup();
     mocked.submitReport.mockRejectedValueOnce(new api.ApiError(429, 'rate_limited', 'x')).mockResolvedValueOnce({ ok: true });
     renderWithRoom(<ReportDialog target={target} open onOpenChange={vi.fn()} />);
@@ -54,7 +54,7 @@ describe('ReportDialog', () => {
     await waitFor(() => expect(screen.getByText('Denúncia enviada.')).toBeInTheDocument());
   });
 
-  it('o titulo acompanha o tipo do alvo', () => {
+  it('the title matches the target type', () => {
     renderWithRoom(<ReportDialog target={{ type: 'group', id: 'g', label: 'Squad' }} open onOpenChange={vi.fn()} />);
     expect(screen.getByText('Denunciar grupo')).toBeInTheDocument();
   });

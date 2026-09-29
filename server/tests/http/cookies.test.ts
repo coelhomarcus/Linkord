@@ -4,52 +4,52 @@ import type { IncomingMessage } from 'node:http';
 import { parseCookies, serializeCookie, clearCookie, isSecureRequest } from '../../src/http/cookies.js';
 
 describe('parseCookies', () => {
-  test('sem header, devolve objeto vazio', () => {
+  test('no header, returns an empty object', () => {
     assert.deepEqual(parseCookies(''), {});
   });
 
-  test('varios cookies separados por ; viram chaves separadas', () => {
+  test('several cookies separated by ; become separate keys', () => {
     assert.deepEqual(parseCookies('a=1; b=2'), { a: '1', b: '2' });
   });
 
-  test('valor com = sobrando fica tudo depois do primeiro = (ex: JWT/base64)', () => {
+  test('extra = in the value stays in everything after the first = (e.g. JWT/base64)', () => {
     assert.deepEqual(parseCookies('token=abc=def'), { token: 'abc=def' });
   });
 
-  test('nome vazio (cookie so com "=valor") e ignorado', () => {
-    assert.deepEqual(parseCookies('=semNome; a=1'), { a: '1' });
+  test('empty name (cookie that is just "=value") is ignored', () => {
+    assert.deepEqual(parseCookies('=noName; a=1'), { a: '1' });
   });
 
-  test('parte sem = nenhum e ignorada', () => {
-    assert.deepEqual(parseCookies('lixo; a=1'), { a: '1' });
+  test('a part with no = at all is ignored', () => {
+    assert.deepEqual(parseCookies('garbage; a=1'), { a: '1' });
   });
 
-  test('URL-decode do valor — cai pro valor cru se nao for URI-encoding valido', () => {
+  test('URL-decodes the value — falls back to the raw value if not valid URI-encoding', () => {
     assert.deepEqual(parseCookies('a=ol%C3%A1'), { a: 'olá' });
     assert.deepEqual(parseCookies('a=%'), { a: '%' });
   });
 });
 
 describe('serializeCookie / clearCookie', () => {
-  test('atributos padrao: Path=/, HttpOnly, SameSite=Lax', () => {
+  test('default attributes: Path=/, HttpOnly, SameSite=Lax', () => {
     const cookie = serializeCookie('ss_session', 'tok123', { secure: false });
     assert.match(cookie, /^ss_session=tok123; Path=\/; HttpOnly; SameSite=Lax$/);
   });
 
-  test('maxAgeSec vira Max-Age inteiro, nunca negativo', () => {
+  test('maxAgeSec becomes an integer Max-Age, never negative', () => {
     assert.match(serializeCookie('a', 'v', { maxAgeSec: 60.9, secure: false }), /Max-Age=60(?!\d)/);
     assert.match(serializeCookie('a', 'v', { maxAgeSec: -10, secure: false }), /Max-Age=0(?!\d)/);
   });
 
-  test('secure:true acrescenta o atributo Secure', () => {
+  test('secure:true appends the Secure attribute', () => {
     assert.match(serializeCookie('a', 'v', { secure: true }), /; Secure$/);
   });
 
-  test('valor e URL-encoded', () => {
+  test('the value is URL-encoded', () => {
     assert.match(serializeCookie('a', 'valor com espaço', { secure: false }), /a=valor%20com%20espa%C3%A7o/);
   });
 
-  test('clearCookie zera o valor e Max-Age=0, preservando o atributo secure pedido', () => {
+  test('clearCookie zeroes the value and Max-Age=0, preserving the requested secure attribute', () => {
     const cookie = clearCookie('ss_session', { secure: true });
     assert.match(cookie, /^ss_session=; Path=\/; HttpOnly; SameSite=Lax; Max-Age=0; Secure$/);
   });
@@ -63,11 +63,11 @@ describe('isSecureRequest', () => {
     } as unknown as IncomingMessage;
   }
 
-  test('conexao TLS direta (req.socket.encrypted) e sempre segura', () => {
+  test('a direct TLS connection (req.socket.encrypted) is always secure', () => {
     assert.equal(isSecureRequest(fakeReq({ encrypted: true })), true);
   });
 
-  test('sem TLS direto nem proxy confiavel, nao e segura', () => {
+  test('with no direct TLS and no trusted proxy, it is not secure', () => {
     assert.equal(isSecureRequest(fakeReq()), false);
   });
 
@@ -76,7 +76,7 @@ describe('isSecureRequest', () => {
   // TRUST_PROXY=1, should NOT be enough (otherwise any client could forge
   // that header and earn a Secure cookie behind a proxy that doesn't
   // actually exist).
-  test('X-Forwarded-Proto sozinho nao basta sem TRUST_PROXY ligado', () => {
+  test('X-Forwarded-Proto alone is not enough without TRUST_PROXY on', () => {
     assert.equal(isSecureRequest(fakeReq({ forwardedProto: 'https' })), false);
   });
 });

@@ -12,7 +12,7 @@ function fakeRoom(setCameraEnabled = vi.fn(async () => undefined)) {
   } as unknown as Room;
 }
 
-describe('useCamera — startCamera aplica a camera salva', () => {
+describe('useCamera — startCamera applies the saved camera', () => {
   beforeEach(() => {
     Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia: vi.fn() }, configurable: true });
   });
@@ -21,8 +21,8 @@ describe('useCamera — startCamera aplica a camera salva', () => {
     localStorage.clear();
   });
 
-  it('passa o deviceId salvo em Configuracoes pro setCameraEnabled, mantendo a resolucao', async () => {
-    saveDevicePreference('videoinput', 'cam-preferida');
+  it('passes the deviceId saved in Settings to setCameraEnabled, keeping the resolution', async () => {
+    saveDevicePreference('videoinput', 'preferred-camera');
     const setCameraEnabled = vi.fn(async () => undefined);
     const room = fakeRoom(setCameraEnabled);
     const { result } = renderHook(() => useCamera(room, vi.fn()));
@@ -31,12 +31,12 @@ describe('useCamera — startCamera aplica a camera salva', () => {
 
     expect(setCameraEnabled).toHaveBeenCalledWith(
       true,
-      { resolution: { width: 1280, height: 720, frameRate: 30 }, deviceId: 'cam-preferida' },
+      { resolution: { width: 1280, height: 720, frameRate: 30 }, deviceId: 'preferred-camera' },
       { videoEncoding: VideoPresets.h720.encoding },
     );
   });
 
-  it('sem preferencia salva, nao inclui deviceId nas opcoes de captura', async () => {
+  it('without a saved preference, does not include deviceId in the capture options', async () => {
     const setCameraEnabled = vi.fn(async () => undefined);
     const room = fakeRoom(setCameraEnabled);
     const { result } = renderHook(() => useCamera(room, vi.fn()));

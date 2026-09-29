@@ -71,7 +71,7 @@ afterEach(() => {
 });
 
 describe('join', () => {
-  test('cria um participante novo e marca socket.participantId', () => {
+  test('creates a new participant and sets socket.participantId', () => {
     const userId = `u-${Math.random()}`;
     const socket = fakeSocket(userId);
     const p = joinP(socket, {});
@@ -85,7 +85,7 @@ describe('join', () => {
     assert.equal(participants.get(p!.id), p);
   });
 
-  test('usa a cor de avatar persistida no perfil da conta', () => {
+  test('uses the avatar color persisted on the account profile', () => {
     const p = joinP(fakeSocket(`u-${Math.random()}`, { avatarColor: 'fuchsia' }), {})!;
     createdIds.push(p.id);
 
@@ -93,49 +93,49 @@ describe('join', () => {
     assert.equal(publicParticipant(p).avatarColor, 'fuchsia');
   });
 
-  test('cor de avatar invalida cai para o default seguro', () => {
+  test('an invalid avatar color falls back to the safe default', () => {
     const p = joinP(fakeSocket(`u-${Math.random()}`, { avatarColor: 'url(javascript:alert(1))' }), {})!;
     createdIds.push(p.id);
 
     assert.equal(p.avatarColor, 'blurple');
   });
 
-  test('aceita uma cor de avatar personalizada em hex (fora dos presets)', () => {
+  test('accepts a custom hex avatar color (outside the presets)', () => {
     const p = joinP(fakeSocket(`u-${Math.random()}`, { avatarColor: '#A1B2C3' }), {})!;
     createdIds.push(p.id);
 
     assert.equal(p.avatarColor, '#a1b2c3');
   });
 
-  test('hex mal formado cai para o default seguro (nao vaza pro CSS)', () => {
+  test('a malformed hex falls back to the safe default (does not leak into CSS)', () => {
     const p = joinP(fakeSocket(`u-${Math.random()}`, { avatarColor: '#zzzzzz' }), {})!;
     createdIds.push(p.id);
 
     assert.equal(p.avatarColor, 'blurple');
   });
 
-  test('usa o nome de exibicao persistido na conta', () => {
-    const p = joinP(fakeSocket(`u-${Math.random()}`, { displayName: 'Apelido' }), {})!;
+  test('uses the display name persisted on the account', () => {
+    const p = joinP(fakeSocket(`u-${Math.random()}`, { displayName: 'Nickname' }), {})!;
     createdIds.push(p.id);
 
-    assert.equal(p.displayName, 'Apelido');
-    assert.equal(publicParticipant(p).displayName, 'Apelido');
+    assert.equal(p.displayName, 'Nickname');
+    assert.equal(publicParticipant(p).displayName, 'Nickname');
   });
 
-  test('usa banner, bio e links persistidos na conta', () => {
+  test('uses the banner, bio and links persisted on the account', () => {
     const p = joinP(fakeSocket(`u-${Math.random()}`, {
       banner: 'https://example.com/banner.png',
-      bio: 'Bio persistida',
+      bio: 'Persisted bio',
       profileLinks: ['https://youtube.com/@fulana'],
     }), {})!;
     createdIds.push(p.id);
 
     assert.equal(publicParticipant(p).banner, 'https://example.com/banner.png');
-    assert.equal(publicParticipant(p).bio, 'Bio persistida');
+    assert.equal(publicParticipant(p).bio, 'Persisted bio');
     assert.deepEqual(publicParticipant(p).profileLinks, ['https://youtube.com/@fulana']);
   });
 
-  test('nome de exibicao vazio (conta que nunca escolheu um) cai pro username', () => {
+  test('an empty display name (an account that never picked one) falls back to the username', () => {
     const userId = `u-${Math.random()}`;
     const p = joinP(fakeSocket(userId, { username: 'Fulana', displayName: '' }), {})!;
     createdIds.push(p.id);
@@ -143,7 +143,7 @@ describe('join', () => {
     assert.equal(p.displayName, 'Fulana');
   });
 
-  test('primeira conexao de uma conta vira "online"; segunda aba da MESMA conta nao duplica o status', () => {
+  test('an account\'s first connection becomes "online"; a second tab of the SAME account does not duplicate the status', () => {
     const userId = `u-${Math.random()}`;
     assert.equal(isUserOnline(userId), false);
 
@@ -159,7 +159,7 @@ describe('join', () => {
     assert.equal(isUserOnline(userId), true);
   });
 
-  test('sala cheia (MAX_PARTICIPANTS) rejeita join novo', () => {
+  test('a full room (MAX_PARTICIPANTS) rejects a new join', () => {
     const original = config.MAX_PARTICIPANTS;
     config.MAX_PARTICIPANTS = participants.size + 1;
     try {
@@ -173,8 +173,8 @@ describe('join', () => {
   });
 });
 
-describe('reconexao (handleClose + resume por id/token)', () => {
-  test('resume a MESMA identidade com id/token validos, limpando o graceTimer', () => {
+describe('reconnection (handleClose + resume by id/token)', () => {
+  test('resumes the SAME identity with a valid id/token, clearing the graceTimer', () => {
     const userId = `u-${Math.random()}`;
     const socket1 = fakeSocket(userId);
     const original = joinP(socket1, {});
@@ -192,7 +192,7 @@ describe('reconexao (handleClose + resume por id/token)', () => {
     assert.equal(resumed!.graceTimer, null);
   });
 
-  test('token errado nao resume a identidade antiga (mas evict do fantasma libera um join novo)', () => {
+  test('a wrong token does not resume the old identity (but evicting the ghost frees up a new join)', () => {
     const userId = `u-${Math.random()}`;
     const socket1 = fakeSocket(userId);
     const original = joinP(socket1, {});
@@ -201,7 +201,7 @@ describe('reconexao (handleClose + resume por id/token)', () => {
     handleClose(socket1);
 
     const socket2 = fakeSocket(userId);
-    const fresh = joinP(socket2, { id: original!.id, token: 'token-errado' });
+    const fresh = joinP(socket2, { id: original!.id, token: 'wrong-token' });
     createdIds.push(fresh!.id);
 
     assert.notEqual(fresh!.id, original!.id); // did NOT reuse the old identity
@@ -212,7 +212,7 @@ describe('reconexao (handleClose + resume por id/token)', () => {
 });
 
 describe('removeParticipant', () => {
-  test('remove do Map e marca offline se era a unica conexao dessa conta', () => {
+  test('removes it from the Map and marks the account offline if it was its only connection', () => {
     const userId = `u-${Math.random()}`;
     const p = joinP(fakeSocket(userId), {})!;
     assert.equal(isUserOnline(userId), true);
@@ -222,7 +222,7 @@ describe('removeParticipant', () => {
     assert.equal(isUserOnline(userId), false);
   });
 
-  test('chamar de novo (ja removido) e no-op seguro', () => {
+  test('calling it again (already removed) is a safe no-op', () => {
     const p = joinP(fakeSocket(`u-${Math.random()}`), {})!;
     removeParticipant(p);
     assert.doesNotThrow(() => removeParticipant(p));
@@ -230,7 +230,7 @@ describe('removeParticipant', () => {
 });
 
 describe('setCallConversationId', () => {
-  test('muda o campo e reflete em publicParticipant (sem vazar token)', () => {
+  test('changes the field and reflects it in publicParticipant (without leaking the token)', () => {
     const p = joinP(fakeSocket(`u-${Math.random()}`), {})!;
     createdIds.push(p.id);
 
@@ -243,7 +243,7 @@ describe('setCallConversationId', () => {
     assert.equal(p.callConversationId, null);
   });
 
-  test('reseta os flags de midia auto-reportados a cada join/leave — nao deixa fantasma de uma call anterior', () => {
+  test('resets the self-reported media flags on every join/leave — no ghost left from a previous call', () => {
     const p = joinP(fakeSocket(`u-${Math.random()}`), {})!;
     createdIds.push(p.id);
 
@@ -263,8 +263,8 @@ describe('setCallConversationId', () => {
   });
 });
 
-describe('estado de midia auto-reportado (mic-state / camera / screen-share / speaking)', () => {
-  test('mic-state muda micActivated/micMuted e reflete em publicParticipant', () => {
+describe('self-reported media state (mic-state / camera / screen-share / speaking)', () => {
+  test('mic-state changes micActivated/micMuted and reflects it in publicParticipant', () => {
     const socket = fakeSocket(`u-${Math.random()}`);
     const p = joinP(socket, {})!;
     createdIds.push(p.id);
@@ -276,7 +276,7 @@ describe('estado de midia auto-reportado (mic-state / camera / screen-share / sp
     assert.equal(publicParticipant(p).micMuted, false);
   });
 
-  test('camera e screen-share mudam cameraOn/sharing', () => {
+  test('camera and screen-share change cameraOn/sharing', () => {
     const socket = fakeSocket(`u-${Math.random()}`);
     const p = joinP(socket, {})!;
     createdIds.push(p.id);
@@ -288,7 +288,7 @@ describe('estado de midia auto-reportado (mic-state / camera / screen-share / sp
     assert.equal(p.sharing, true);
   });
 
-  test('speaking muda o campo speaking', () => {
+  test('speaking changes the speaking field', () => {
     const socket = fakeSocket(`u-${Math.random()}`);
     const p = joinP(socket, {})!;
     createdIds.push(p.id);
@@ -297,13 +297,13 @@ describe('estado de midia auto-reportado (mic-state / camera / screen-share / sp
     assert.equal(p.speaking, true);
   });
 
-  test('mensagem de um socket que nao e o dono da participante e ignorada', () => {
+  test('a message from a socket that does not own the participant is ignored', () => {
     const socket = fakeSocket(`u-${Math.random()}`);
     const p = joinP(socket, {})!;
     createdIds.push(p.id);
 
-    const outroSocket = fakeSocket(`u-${Math.random()}`);
-    handlers.camera(outroSocket, { on: true });
+    const otherSocket = fakeSocket(`u-${Math.random()}`);
+    handlers.camera(otherSocket, { on: true });
     assert.equal(p.cameraOn, false);
   });
 });
@@ -316,7 +316,7 @@ describe('broadcastToKnownPeers (Etapa 7 — presence scoping)', () => {
     return { socket, emitted };
   }
 
-  test('entrega só a quem tem o assunto no proprio knownPeerIds', () => {
+  test('delivers only to those who have the subject in their own knownPeerIds', () => {
     const subjectId = `u-${Math.random()}`;
     const strangerId = `u-${Math.random()}`;
 
@@ -332,7 +332,7 @@ describe('broadcastToKnownPeers (Etapa 7 — presence scoping)', () => {
     const strangerConn = fakeSocketWithSpy(strangerId);
     const stranger = joinP(strangerConn.socket, {})!;
     createdIds.push(stranger.id);
-    // stranger's knownPeerIds stays empty — não conhece o assunto.
+    // the stranger's knownPeerIds stays empty — does not know the subject.
 
     knowerConn.emitted.length = 0;
     strangerConn.emitted.length = 0;
@@ -342,7 +342,7 @@ describe('broadcastToKnownPeers (Etapa 7 — presence scoping)', () => {
     assert.equal(strangerConn.emitted.includes('participant-updated'), false);
   });
 
-  test('par bloqueado (em qualquer direcao) nao recebe presenca, mesmo dividindo uma conversa', () => {
+  test('a blocked pair (in either direction) does not receive presence, even while sharing a conversation', () => {
     const subjectId = `u-${Math.random()}`;
     const subjectConn = fakeSocketWithSpy(subjectId);
     createdIds.push(joinP(subjectConn.socket, {})!.id);
@@ -366,16 +366,16 @@ describe('broadcastToKnownPeers (Etapa 7 — presence scoping)', () => {
     assert.equal(blockedConn.emitted.includes('participant-updated'), false);
   });
 
-  test('sempre entrega as outras abas da PROPRIA conta, mesmo sem knownPeerIds', () => {
+  test('always delivers to other tabs of the SAME account, even without knownPeerIds', () => {
     const userId = `u-${Math.random()}`;
 
     const tab1 = fakeSocketWithSpy(userId);
     const p1 = joinP(tab1.socket, {})!;
     createdIds.push(p1.id);
 
-    // segunda aba de verdade (sem resume — id/token novos, participante
-    // distinto): ninguém tem o próprio userId no knownPeerIds (não sou meu
-    // próprio amigo/membro-de-conversa), mas a entrega multi-aba ignora isso.
+    // a genuine second tab (no resume — fresh id/token, a distinct
+    // participant): nobody has their own userId in knownPeerIds (you're not
+    // your own friend/conversation-member), but multi-tab delivery ignores that.
     const tab2 = fakeSocketWithSpy(userId);
     const p2 = joinP(tab2.socket, {})!;
     createdIds.push(p2.id);

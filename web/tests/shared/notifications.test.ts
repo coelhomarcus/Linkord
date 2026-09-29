@@ -50,14 +50,14 @@ afterEach(() => {
 });
 
 describe('notifyIncomingChatMessage', () => {
-  it('nao cria notificacao quando o modulo esta desabilitado', () => {
+  it('does not create a notification when the module is disabled', () => {
     setNotificationsModuleEnabled(false);
     notifyIncomingChatMessage(baseEvent());
     vi.runAllTimers();
     expect(created).toHaveLength(0);
   });
 
-  it('nao cria notificacao sem permissao concedida', () => {
+  it('does not create a notification without permission granted', () => {
     FakeNotification.permission = 'default';
     notifyIncomingChatMessage(baseEvent());
     vi.runAllTimers();
@@ -65,7 +65,7 @@ describe('notifyIncomingChatMessage', () => {
     FakeNotification.permission = 'granted';
   });
 
-  it('uma unica mensagem gera "Remetente: texto"', () => {
+  it('a single message generates "Sender: text"', () => {
     notifyIncomingChatMessage(baseEvent({ senderName: 'Fulano', text: 'oi pessoal' }));
     vi.runAllTimers();
     expect(created).toHaveLength(1);
@@ -73,7 +73,7 @@ describe('notifyIncomingChatMessage', () => {
     expect(created[0]!.options?.tag).toBe('chat-ch-1');
   });
 
-  it('rajada rapida do mesmo remetente no mesmo canal colapsa em UMA notificacao', () => {
+  it('a quick burst from the same sender in the same channel collapses into ONE notification', () => {
     for (let i = 0; i < 6; i++) {
       notifyIncomingChatMessage(baseEvent({ text: `mensagem ${i}` }));
       vi.advanceTimersByTime(200);
@@ -83,7 +83,7 @@ describe('notifyIncomingChatMessage', () => {
     expect(created[0]!.options?.body).toBe('Fulano enviou 6 mensagens');
   });
 
-  it('rajada com remetentes diferentes no mesmo canal colapsa citando quantidade de pessoas', () => {
+  it('a burst with different senders in the same channel collapses by citing the number of people', () => {
     notifyIncomingChatMessage(baseEvent({ senderId: 'user-1', senderName: 'Fulano' }));
     vi.advanceTimersByTime(200);
     notifyIncomingChatMessage(baseEvent({ senderId: 'user-2', senderName: 'Ciclano' }));
@@ -92,7 +92,7 @@ describe('notifyIncomingChatMessage', () => {
     expect(created[0]!.options?.body).toBe('2 pessoas enviaram mensagens');
   });
 
-  it('conversas diferentes nao se misturam (buffer por conversa)', () => {
+  it('different conversations do not mix (buffer per conversation)', () => {
     notifyIncomingChatMessage(baseEvent({ conversationId: 'ch-1' }));
     notifyIncomingChatMessage(baseEvent({ conversationId: 'ch-2' }));
     vi.runAllTimers();
@@ -100,7 +100,7 @@ describe('notifyIncomingChatMessage', () => {
     expect(created.map((n) => n.options?.tag).sort()).toEqual(['chat-ch-1', 'chat-ch-2']);
   });
 
-  it('uma rajada continua (sem pausa) ainda assim dispara periodicamente (MAX_WAIT)', () => {
+  it('a continuous burst (no pause) still fires periodically (MAX_WAIT)', () => {
     for (let i = 0; i < 40; i++) {
       notifyIncomingChatMessage(baseEvent({ text: `m${i}` }));
       vi.advanceTimersByTime(300);
@@ -108,7 +108,7 @@ describe('notifyIncomingChatMessage', () => {
     expect(created.length).toBeGreaterThan(0);
   });
 
-  it('mensagem com mencao usa titulo diferenciado', () => {
+  it('a message with a mention uses a distinct title', () => {
     notifyIncomingChatMessage(baseEvent({ mentioned: true }));
     vi.runAllTimers();
     expect(created[0]!.title).toBe('Você foi mencionado em geral');

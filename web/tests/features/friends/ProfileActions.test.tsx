@@ -22,8 +22,8 @@ beforeEach(() => {
   mocked.fetchRequestSummary.mockResolvedValue({ incoming: 0, invitations: 0 });
 });
 
-describe('ProfileActions — o que aparece depende so da relacao', () => {
-  it('sem relacao: Adicionar amigo envia a solicitacao pelo username', async () => {
+describe('ProfileActions — what shows up only depends on the relationship', () => {
+  it('no relationship: Adicionar amigo sends the request by username', async () => {
     const user = userEvent.setup();
     mocked.sendFriendRequest.mockResolvedValue('created');
     renderActions('none');
@@ -32,13 +32,13 @@ describe('ProfileActions — o que aparece depende so da relacao', () => {
     expect(mocked.sendFriendRequest).toHaveBeenCalledWith('ana');
   });
 
-  it('sem relacao mas em cooldown: nao oferece o botao, diz quando volta', async () => {
+  it('no relationship but in cooldown: does not offer the button, says when it comes back', async () => {
     renderActions('none', '2099-01-01T12:00:00.000Z');
     expect(await screen.findByText(/poderá enviar uma nova solicitação a partir de/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Adicionar amigo' })).not.toBeInTheDocument();
   });
 
-  it('solicitacao enviada: mostra o estado e permite cancelar', async () => {
+  it('request sent: shows the state and allows canceling', async () => {
     const user = userEvent.setup();
     mocked.cancelFriendRequest.mockResolvedValue({});
     renderActions('outgoing');
@@ -48,7 +48,7 @@ describe('ProfileActions — o que aparece depende so da relacao', () => {
     expect(mocked.cancelFriendRequest).toHaveBeenCalledWith('u-ana');
   });
 
-  it('solicitacao recebida: Aceitar e Recusar', async () => {
+  it('request received: Aceitar and Recusar', async () => {
     const user = userEvent.setup();
     mocked.acceptFriendRequest.mockResolvedValue({});
     mocked.declineFriendRequest.mockResolvedValue({});
@@ -60,7 +60,7 @@ describe('ProfileActions — o que aparece depende so da relacao', () => {
     expect(mocked.declineFriendRequest).toHaveBeenCalledWith('u-ana');
   });
 
-  it('amigos: Mensagem (fecha o modal) e menu com Remover/Bloquear', async () => {
+  it('friends: Mensagem (closes the modal) and a menu with Remover/Bloquear', async () => {
     const user = userEvent.setup();
     const onNavigate = vi.fn();
     renderActions('friends', null, onNavigate);
@@ -72,7 +72,7 @@ describe('ProfileActions — o que aparece depende so da relacao', () => {
     expect(screen.getByRole('menuitem', { name: 'Bloquear' })).toBeInTheDocument();
   });
 
-  it('bloqueada por mim: so Desbloquear', async () => {
+  it('blocked by me: only Desbloquear', async () => {
     const user = userEvent.setup();
     mocked.unblockUser.mockResolvedValue({});
     renderActions('blocked');
@@ -82,13 +82,13 @@ describe('ProfileActions — o que aparece depende so da relacao', () => {
     expect(mocked.unblockUser).toHaveBeenCalledWith('u-ana');
   });
 
-  it('proprio perfil: Editar perfil, nenhuma acao social', async () => {
+  it('own profile: Editar perfil, no social action', async () => {
     renderActions('self');
     expect(await screen.findByRole('button', { name: 'Editar perfil' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Adicionar amigo' })).not.toBeInTheDocument();
   });
 
-  it('falha ao carregar a relacao: erro com tentar de novo, nunca fecha em silencio', async () => {
+  it('failure loading the relationship: error with retry, never silently closes', async () => {
     const user = userEvent.setup();
     mocked.fetchRelationship.mockRejectedValueOnce(new Error('x')).mockResolvedValueOnce({ relation: 'none', retryAfter: null });
     renderSocial(<ProfileActions userId="u-ana" username="ana" displayName="Ana" />);
@@ -97,7 +97,7 @@ describe('ProfileActions — o que aparece depende so da relacao', () => {
     expect(await screen.findByRole('button', { name: 'Adicionar amigo' })).toBeInTheDocument();
   });
 
-  it('erro do envio usa a mensagem generica', async () => {
+  it('a send error uses the generic message', async () => {
     const user = userEvent.setup();
     mocked.sendFriendRequest.mockRejectedValue(new api.ApiError(404, 'user_unavailable', 'x'));
     renderActions('none');

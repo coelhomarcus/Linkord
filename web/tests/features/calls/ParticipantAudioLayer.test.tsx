@@ -9,7 +9,7 @@ import type { Participant } from '@/shared/types/protocol';
 
 function fakeParticipant(overrides: Partial<Participant> = {}): Participant {
   return {
-    id: 'p-2', userId: 'u-2', name: 'Fulana', displayName: 'Fulana', avatar: '', avatarPoster: '', avatarColor: 'green',
+    id: 'p-2', userId: 'u-2', name: 'Jane', displayName: 'Jane', avatar: '', avatarPoster: '', avatarColor: 'green',
     banner: '', bannerPoster: '', bio: '', profileLinks: [], role: 'user', deafened: false, callConversationId: 'conv-1',
     micActivated: true, micMuted: false, cameraOn: false, sharing: false, speaking: false,
     ...overrides,
@@ -29,8 +29,8 @@ function fakeRoomWithScreenAudio(screenAudioPub?: { isMuted: boolean; track: obj
   return room as unknown as LKRoom;
 }
 
-describe('ParticipantAudioLayer — audio de tela compartilhada so registra quando realmente existe', () => {
-  it('sem track de audio da tela (nao foi compartilhado), nao registra a chave ":screen" — nada de "audio disponivel" so por ter sido pedido', () => {
+describe('ParticipantAudioLayer — screen-share audio only registers when it actually exists', () => {
+  it('without a screen audio track (nothing was shared), does not register the ":screen" key — no "audio available" just because it was requested', () => {
     const audioRegistry = { current: new Map() };
     const participants = new Map([['p-2', fakeParticipant()]]);
     renderWithRoom(<ParticipantAudioLayer participantIds={['p-2']} />, {
@@ -42,7 +42,7 @@ describe('ParticipantAudioLayer — audio de tela compartilhada so registra quan
     expect(audioRegistry.current.has('p-2:screen')).toBe(false);
   });
 
-  it('com um track de audio de tela real, registra a chave ":screen"', () => {
+  it('with a real screen audio track, registers the ":screen" key', () => {
     const audioRegistry = { current: new Map() };
     const participants = new Map([['p-2', fakeParticipant()]]);
     renderWithRoom(<ParticipantAudioLayer participantIds={['p-2']} />, {
@@ -55,7 +55,7 @@ describe('ParticipantAudioLayer — audio de tela compartilhada so registra quan
   });
 });
 
-describe('ParticipantAudioLayer — aplica a saida de audio (alto-falante) salva', () => {
+describe('ParticipantAudioLayer — applies the saved audio output (speaker)', () => {
   afterEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
@@ -63,8 +63,8 @@ describe('ParticipantAudioLayer — aplica a saida de audio (alto-falante) salva
     delete HTMLMediaElement.prototype.setSinkId;
   });
 
-  it('chama setSinkId com o deviceId salvo pros elementos de audio criados', () => {
-    saveDevicePreference('audiooutput', 'fone-preferido');
+  it('calls setSinkId with the saved deviceId for created audio elements', () => {
+    saveDevicePreference('audiooutput', 'preferred-device');
     const setSinkId = vi.fn(async () => undefined);
     HTMLMediaElement.prototype.setSinkId = setSinkId;
 
@@ -74,10 +74,10 @@ describe('ParticipantAudioLayer — aplica a saida de audio (alto-falante) salva
       livekitRoom: new Room(),
     });
 
-    expect(setSinkId).toHaveBeenCalledWith('fone-preferido');
+    expect(setSinkId).toHaveBeenCalledWith('preferred-device');
   });
 
-  it('sem preferencia salva, nao chama setSinkId', () => {
+  it('without a saved preference, does not call setSinkId', () => {
     const setSinkId = vi.fn(async () => undefined);
     HTMLMediaElement.prototype.setSinkId = setSinkId;
 

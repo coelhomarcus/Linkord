@@ -7,12 +7,12 @@ import { AccessNotice } from '@/app/layout/AccessNotice';
 afterEach(() => vi.useRealTimers());
 
 describe('AccessNotice', () => {
-  it('nao renderiza nada sem aviso', () => {
+  it('renders nothing without a notice', () => {
     renderWithRoom(<AccessNotice />);
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
-  it('mostra o aviso e deixa dispensar', async () => {
+  it('shows the notice and allows dismissing it', async () => {
     const user = userEvent.setup();
     const clear = vi.fn();
     renderWithRoom(<AccessNotice />, { accessNotice: 'Você foi removido do grupo "Squad".', clearAccessNotice: clear });
@@ -21,7 +21,7 @@ describe('AccessNotice', () => {
     expect(clear).toHaveBeenCalled();
   });
 
-  it('some sozinho depois de um tempo', () => {
+  it('disappears on its own after a while', () => {
     vi.useFakeTimers();
     const clear = vi.fn();
     renderWithRoom(<AccessNotice />, { accessNotice: 'aviso', clearAccessNotice: clear });

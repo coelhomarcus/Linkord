@@ -4,18 +4,18 @@ import { config } from '../../../src/config/env.js';
 import { normalizeInviteeIds } from '../../../src/modules/conversations/invitationsRepository.js';
 
 describe('normalizeInviteeIds', () => {
-  it('deduplica, ignora lixo e nunca convida a si mesmo', () => {
+  it('dedupes, ignores garbage and never invites yourself', () => {
     const { ids, tooMany } = normalizeInviteeIds(['a', 'a', 'b', '', 7, null, 'me', { x: 1 }], 'me');
     assert.deepEqual(ids, ['a', 'b']);
     assert.equal(tooMany, false);
   });
 
-  it('entrada que nao e lista vira lista vazia', () => {
+  it('an input that is not a list becomes an empty list', () => {
     assert.deepEqual(normalizeInviteeIds('a,b', 'me'), { ids: [], tooMany: false });
     assert.deepEqual(normalizeInviteeIds(undefined, 'me'), { ids: [], tooMany: false });
   });
 
-  it('lote acima do limite do servidor e sinalizado, nao truncado em silencio', () => {
+  it('a batch above the server limit is flagged, not silently truncated', () => {
     const many = Array.from({ length: config.MAX_INVITEES_PER_REQUEST + 1 }, (_, i) => `u${i}`);
     const result = normalizeInviteeIds(many, 'me');
     assert.equal(result.tooMany, true);

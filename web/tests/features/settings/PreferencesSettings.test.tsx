@@ -14,7 +14,7 @@ function renderPreferences(overrides: Parameters<typeof createFakeRoomContextVal
 }
 
 describe('PreferencesSettings', () => {
-  it('mostra os 4 controles da tabela do plano, com o estado real de cada um', () => {
+  it('shows all 4 controls from the plan table, with each one\'s real state', () => {
     renderPreferences({ showTileBanners: true, hideAudioOnlyTiles: true, showStats: false, compressImagesDefault: false });
 
     expect(screen.getByRole('switch', { name: 'Mostrar banners nos tiles' })).toBeChecked();
@@ -23,7 +23,7 @@ describe('PreferencesSettings', () => {
     expect(screen.getByRole('switch', { name: 'Compactar imagens por padrão' })).not.toBeChecked();
   });
 
-  it('ocultar participantes sem video usa a mesma fonte de estado do atalho de contexto', async () => {
+  it('hiding audio-only participants uses the same state source as the context-menu shortcut', async () => {
     const setHideAudioOnlyTiles = vi.fn();
     const user = userEvent.setup();
     renderPreferences({ hideAudioOnlyTiles: false, setHideAudioOnlyTiles });
@@ -33,7 +33,7 @@ describe('PreferencesSettings', () => {
     expect(setHideAudioOnlyTiles.mock.calls[0]?.[0]).toBe(true);
   });
 
-  it('compactar imagens por padrao chama o setter compartilhado com o compositor', async () => {
+  it('compressing images by default calls the setter shared with the composer', async () => {
     const setCompressImagesDefault = vi.fn();
     const user = userEvent.setup();
     renderPreferences({ compressImagesDefault: true, setCompressImagesDefault });

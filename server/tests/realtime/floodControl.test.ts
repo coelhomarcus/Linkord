@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { allow, retryAfterMs } from '../../src/realtime/floodControl.js';
 
 describe('retryAfterMs', () => {
-  test('dentro do limite: pode agir ja', () => {
+  test('within the limit: can act right away', () => {
     const rule = { windowMs: 60_000, max: 2 };
     allow('rt-a', rule);
     assert.equal(retryAfterMs('rt-a', rule), 0);
   });
 
-  test('no limite: espera ate a acao mais antiga da janela sair', () => {
+  test('at the limit: waits until the oldest action in the window drops off', () => {
     const rule = { windowMs: 60_000, max: 2 };
     allow('rt-b', rule);
     allow('rt-b', rule);

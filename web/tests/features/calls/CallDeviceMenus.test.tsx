@@ -27,7 +27,7 @@ function fakeLivekitRoom(activeDeviceId: string | undefined = undefined) {
 }
 
 describe('MicQuickMenu', () => {
-  it('lista os microfones e troca o ativo ao escolher outro', async () => {
+  it('lists the microphones and switches the active one when picking another', async () => {
     const user = userEvent.setup();
     vi.spyOn(Room, 'getLocalDevices').mockResolvedValue([
       { deviceId: 'd1', label: 'Microfone interno', kind: 'audioinput' } as MediaDeviceInfo,
@@ -43,7 +43,7 @@ describe('MicQuickMenu', () => {
     await waitFor(() => expect(livekitRoom.switchActiveDevice).toHaveBeenCalledWith('audioinput', 'd2'));
   });
 
-  it('abrir o menu nao chama getUserMedia (so enumera em silencio)', async () => {
+  it('opening the menu does not call getUserMedia (only enumerates silently)', async () => {
     const user = userEvent.setup();
     vi.spyOn(Room, 'getLocalDevices').mockResolvedValue([{ deviceId: 'd1', label: 'Mic', kind: 'audioinput' } as MediaDeviceInfo]);
     const livekitRoom = fakeLivekitRoom('d1');
@@ -55,7 +55,7 @@ describe('MicQuickMenu', () => {
     expect(Room.getLocalDevices).toHaveBeenCalledWith('audioinput', false);
   });
 
-  it('supressao de ruido: mostra o estado atual e aciona o setter da sala', async () => {
+  it('noise suppression: shows the current state and triggers the room setter', async () => {
     const user = userEvent.setup();
     vi.spyOn(Room, 'getLocalDevices').mockResolvedValue([{ deviceId: 'd1', label: 'Mic', kind: 'audioinput' } as MediaDeviceInfo]);
     const setNoiseSuppressionEnabled = vi.fn(async () => {});
@@ -68,7 +68,7 @@ describe('MicQuickMenu', () => {
     expect(setNoiseSuppressionEnabled).toHaveBeenCalledWith(true);
   });
 
-  it('atalho de configuracoes completas navega pra aba de audio e video', async () => {
+  it('full settings shortcut navigates to the audio and video tab', async () => {
     const user = userEvent.setup();
     vi.spyOn(Room, 'getLocalDevices').mockResolvedValue([{ deviceId: 'd1', label: 'Mic', kind: 'audioinput' } as MediaDeviceInfo]);
     renderWithRoom(<MicQuickMenu />, { livekitRoom: fakeLivekitRoom('d1') });
@@ -81,7 +81,7 @@ describe('MicQuickMenu', () => {
 });
 
 describe('CameraQuickMenu', () => {
-  it('espelhar a previa: mostra o estado atual e aciona o setter, sem tocar no dispositivo', async () => {
+  it('mirror the preview: shows the current state and triggers the setter, without touching the device', async () => {
     const user = userEvent.setup();
     vi.spyOn(Room, 'getLocalDevices').mockResolvedValue([{ deviceId: 'c1', label: 'Webcam', kind: 'videoinput' } as MediaDeviceInfo]);
     const setMirrorCameraPreview = vi.fn();
@@ -94,7 +94,7 @@ describe('CameraQuickMenu', () => {
     expect(setMirrorCameraPreview).toHaveBeenCalledWith(false, expect.anything());
   });
 
-  it('sem permissao ainda concedida, oferece pedir acesso em vez de uma lista vazia', async () => {
+  it('with permission not yet granted, offers to request access instead of an empty list', async () => {
     const user = userEvent.setup();
     vi.spyOn(Room, 'getLocalDevices').mockResolvedValue([{ deviceId: 'c1', label: '', kind: 'videoinput' } as MediaDeviceInfo]);
     renderWithRoom(<CameraQuickMenu />, { livekitRoom: fakeLivekitRoom(undefined) });
@@ -105,7 +105,7 @@ describe('CameraQuickMenu', () => {
 });
 
 describe('SpeakerQuickMenu', () => {
-  it('lista as saidas de audio disponiveis', async () => {
+  it('lists the available audio outputs', async () => {
     const user = userEvent.setup();
     vi.spyOn(Room, 'getLocalDevices').mockResolvedValue([
       { deviceId: 's1', label: 'Alto-falantes', kind: 'audiooutput' } as MediaDeviceInfo,
@@ -128,7 +128,7 @@ function fakeLivekitRoomForShare(screenPub?: { isMuted: boolean; track: object }
 }
 
 describe('ScreenShareQuickMenu', () => {
-  it('lista as 3 opcoes de qualidade e troca a preferencia ao escolher outra', async () => {
+  it('lists the 3 quality options and switches the preference when picking another', async () => {
     const user = userEvent.setup();
     const setShareQuality = vi.fn();
     renderWithRoom(<ScreenShareQuickMenu />, {
@@ -144,7 +144,7 @@ describe('ScreenShareQuickMenu', () => {
     expect(setShareQuality).toHaveBeenCalledWith('smooth');
   });
 
-  it('sem compartilhamento ativo, nao mostra trocar fonte nem pausar previa', async () => {
+  it('with no active share, does not show change source or pause preview', async () => {
     const user = userEvent.setup();
     renderWithRoom(<ScreenShareQuickMenu />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1', sharing: false } },
@@ -156,7 +156,7 @@ describe('ScreenShareQuickMenu', () => {
     expect(screen.queryByText('Pausar prévia')).not.toBeInTheDocument();
   });
 
-  it('compartilhando, oferece trocar fonte e pausar previa; clicar aciona cada acao', async () => {
+  it('while sharing, offers change source and pause preview; clicking triggers each action', async () => {
     const user = userEvent.setup();
     const changeSource = vi.fn(async () => undefined);
     const pauseSharePreview = vi.fn(async () => undefined);
@@ -176,7 +176,7 @@ describe('ScreenShareQuickMenu', () => {
     expect(pauseSharePreview).toHaveBeenCalled();
   });
 
-  it('compartilhamento pausado: mostra "Retomar prévia" e chama resumeSharePreview', async () => {
+  it('paused share: shows "Retomar prévia" and calls resumeSharePreview', async () => {
     const user = userEvent.setup();
     const resumeSharePreview = vi.fn(async () => undefined);
     renderWithRoom(<ScreenShareQuickMenu />, {

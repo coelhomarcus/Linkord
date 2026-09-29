@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { ImageLightbox } from '@/features/media/ImageLightbox';
 
 describe('ImageLightbox', () => {
-  it('usa a moldura padronizada de perfil e amplia a imagem sem distorcer', () => {
+  it('uses the standardized profile frame and enlarges the image without distorting it', () => {
     render(<ImageLightbox src="/small-avatar.webp" alt="Foto de perfil" variant="profile" aspectRatio={1} open onOpenChange={vi.fn()} />);
 
     const image = screen.getByRole('img', { name: 'Foto de perfil' });
@@ -16,14 +16,14 @@ describe('ImageLightbox', () => {
     expect(image).toHaveAttribute('src', '/small-avatar.webp');
   });
 
-  it('mantém o preview padrão sem a moldura de perfil', () => {
+  it('keeps the default preview without the profile frame', () => {
     render(<ImageLightbox src="/attachment.png" alt="Anexo" open onOpenChange={vi.fn()} />);
 
     expect(document.querySelector('[data-slot="image-lightbox-frame"]')).toBeNull();
     expect(screen.getByRole('img', { name: 'Anexo' })).toHaveClass('max-h-full', 'max-w-full', 'object-contain');
   });
 
-  it('fecha pelo botão, pelo backdrop e pelo popup fora da imagem', () => {
+  it('closes via the button, the backdrop, and the popup outside the image', () => {
     const onOpenChange = vi.fn();
     render(<ImageLightbox src="/banner.webp" alt="Banner" variant="profile" open onOpenChange={onOpenChange} />);
 
@@ -37,7 +37,7 @@ describe('ImageLightbox', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it('dimensiona um banner pela proporção 16:9 usando o viewport', () => {
+  it('sizes a banner by the 16:9 ratio using the viewport', () => {
     render(<ImageLightbox src="/small-banner.webp" alt="Banner" variant="profile" aspectRatio={16 / 9} open onOpenChange={vi.fn()} />);
 
     const frame = document.querySelector<HTMLElement>('[data-slot="image-lightbox-frame"]');

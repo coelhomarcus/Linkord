@@ -34,13 +34,13 @@ async function requestCode(user: ReturnType<typeof userEvent.setup>, email: stri
 }
 
 describe('EmailSettings', () => {
-  it('comeca so mostrando o e-mail atual, sem formulario aberto', () => {
+  it('starts by showing only the current email, with no form open', () => {
     render(<EmailSettings currentEmail="fulana@example.com" />);
     expect(screen.getByText('fulana@example.com')).toBeInTheDocument();
     expect(screen.queryByLabelText('Novo e-mail')).not.toBeInTheDocument();
   });
 
-  it('alterar e-mail abre o formulario; cancelar fecha sem chamar a API', async () => {
+  it('changing email opens the form; canceling closes it without calling the API', async () => {
     const user = userEvent.setup();
     render(<EmailSettings currentEmail="fulana@example.com" />);
     await user.click(screen.getByRole('button', { name: 'Alterar e-mail' }));
@@ -51,7 +51,7 @@ describe('EmailSettings', () => {
     expect(requestEmailChange).not.toHaveBeenCalled();
   });
 
-  it('valida vazio, invalido e igual ao atual antes de chamar a API', async () => {
+  it('validates empty, invalid, and same-as-current before calling the API', async () => {
     const user = userEvent.setup();
     render(<EmailSettings currentEmail="fulana@example.com" />);
     await user.click(screen.getByRole('button', { name: 'Alterar e-mail' }));
@@ -74,7 +74,7 @@ describe('EmailSettings', () => {
     expect(requestEmailChange).not.toHaveBeenCalled();
   });
 
-  it('envia o codigo e mostra o campo de confirmacao para o endereco pedido', async () => {
+  it('sends the code and shows the confirmation field for the requested address', async () => {
     requestEmailChange.mockResolvedValue({ ok: true });
     const user = userEvent.setup();
     render(<EmailSettings currentEmail="fulana@example.com" />);
@@ -86,7 +86,7 @@ describe('EmailSettings', () => {
     expect(screen.getByLabelText(codeLabel)).toBeInTheDocument();
   });
 
-  it('erro ao enviar o codigo mostra o motivo e mantem o formulario', async () => {
+  it('error sending the code shows the reason and keeps the form', async () => {
     requestEmailChange.mockRejectedValue(new ApiError(409, 'email_taken', 'Esse e-mail já está em uso.'));
     const user = userEvent.setup();
     render(<EmailSettings currentEmail="fulana@example.com" />);
@@ -96,7 +96,7 @@ describe('EmailSettings', () => {
     expect(screen.getByLabelText('Novo e-mail')).toBeInTheDocument();
   });
 
-  it('confirma o codigo, mostra sucesso e so depois volta a mostrar o e-mail atualizado', async () => {
+  it('confirms the code, shows success, and only then goes back to showing the updated email', async () => {
     requestEmailChange.mockResolvedValue({ ok: true });
     confirmEmailChange.mockResolvedValue({ user: { id: 'u1', email: 'nova@example.com' } });
     const user = userEvent.setup();
@@ -113,7 +113,7 @@ describe('EmailSettings', () => {
     expect(screen.queryByLabelText('Novo e-mail')).not.toBeInTheDocument();
   });
 
-  it('onComplete e um clique simultaneo no confirmar nao mandam dois pedidos', async () => {
+  it('onComplete and a simultaneous click on confirm do not send two requests', async () => {
     requestEmailChange.mockResolvedValue({ ok: true });
     let resolveConfirm: (v: { user: { id: string; email: string } }) => void = () => {};
     confirmEmailChange.mockImplementation(() => new Promise((resolve) => { resolveConfirm = resolve; }));
@@ -131,7 +131,7 @@ describe('EmailSettings', () => {
     await screen.findByText('E-mail alterado para nova@example.com.');
   });
 
-  it('codigo invalido mostra o motivo e deixa tentar de novo', async () => {
+  it('invalid code shows the reason and allows retrying', async () => {
     requestEmailChange.mockResolvedValue({ ok: true });
     confirmEmailChange.mockRejectedValue(new ApiError(400, 'invalid_code', 'Código inválido.'));
     const user = userEvent.setup();
@@ -143,7 +143,7 @@ describe('EmailSettings', () => {
     expect(screen.getByLabelText(codeLabel)).toBeInTheDocument();
   });
 
-  it('reenviar codigo chama a API de novo para o mesmo endereco', async () => {
+  it('resending the code calls the API again for the same address', async () => {
     requestEmailChange.mockResolvedValue({ ok: true });
     const user = userEvent.setup();
     render(<EmailSettings currentEmail="fulana@example.com" />);
@@ -155,7 +155,7 @@ describe('EmailSettings', () => {
     expect(await screen.findByRole('button', { name: 'Código reenviado' })).toBeInTheDocument();
   });
 
-  it('usar outro e-mail volta para o formulario de edicao', async () => {
+  it('using another email goes back to the edit form', async () => {
     requestEmailChange.mockResolvedValue({ ok: true });
     const user = userEvent.setup();
     render(<EmailSettings currentEmail="fulana@example.com" />);

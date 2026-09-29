@@ -81,19 +81,19 @@ function settingsStage(items: ReturnType<typeof buildCommandItems>) {
 }
 
 describe('buildCommandItems', () => {
-  it('lista uma entrada de "Conversas" por conversa existente', () => {
+  it('lists one "Conversas" entry per existing conversation', () => {
     const items = build();
     const conversationItems = items.filter((it) => it.group === 'Conversas');
     expect(conversationItems.map((it) => it.label)).toEqual(['Ana', 'Squad']);
   });
 
-  it('a raiz só tem "Ações", "Chamadas em andamento" e "Conversas" — nada de pessoa solta', () => {
+  it('the root only has "Ações", "Chamadas em andamento" and "Conversas" — no loose person', () => {
     const items = build();
     const groups = new Set(items.map((it) => it.group));
     expect(groups).toEqual(new Set(['Ações', 'Conversas']));
   });
 
-  it('os itens de ação levam ícone (não avatar); os demais levam avatar (não ícone genérico)', () => {
+  it('action items carry an icon (not an avatar); the rest carry an avatar (not a generic icon)', () => {
     const items = build();
     expect(items.length).toBeGreaterThan(0);
     for (const item of items) {
@@ -107,7 +107,7 @@ describe('buildCommandItems', () => {
     }
   });
 
-  it('a etapa "Conversar com…" só lista amigos — nao um co-membro de grupo que nao e amigo', () => {
+  it('the "Conversar com…" stage only lists friends — not a group co-member who is not a friend', () => {
     const items = build();
     const peopleItems = messageStage(items);
     // Carla is a group co-member but NOT a friend — must not appear, even
@@ -115,17 +115,17 @@ describe('buildCommandItems', () => {
     expect(peopleItems.map((it) => it.label).sort()).toEqual(['Ana', 'Bruno', 'Dara']);
   });
 
-  it('lista um amigo mesmo se ja tenho uma DM com ele — escolher so reabre a conversa', () => {
+  it('lists a friend even if I already have a DM with them — picking it just reopens the conversation', () => {
     const items = build();
     expect(messageStage(items).map((it) => it.label)).toContain('Ana');
   });
 
-  it('nao lista quem nao e amigo, mesmo sendo co-membro de um grupo comum', () => {
+  it('does not list a non-friend, even when they are a co-member of a shared group', () => {
     const items = build();
     expect(messageStage(items).some((it) => it.label === 'Carla')).toBe(false);
   });
 
-  it('não lista eu mesmo na etapa "Conversar com…"', () => {
+  it('does not list myself in the "Conversar com…" stage', () => {
     const meAsUser = fakeUser(me, 'eu', 'Eu Mesmo');
     const withMe = new Map([...allUsers, [me, meAsUser]]);
     const friendUserIds = new Set([...defaultFriendUserIds, me]);
@@ -133,21 +133,21 @@ describe('buildCommandItems', () => {
     expect(messageStage(items).some((it) => it.label.includes('Eu Mesmo'))).toBe(false);
   });
 
-  it('selecionar um item de conversa chama onOpenConversation com o id certo', () => {
+  it('selecting a conversation item calls onOpenConversation with the right id', () => {
     const actions = { ...noopActions, onOpenConversation: vi.fn() };
     const items = build({ actions });
     items.find((it) => it.group === 'Conversas' && it.label === 'Squad')?.onSelect?.();
     expect(actions.onOpenConversation).toHaveBeenCalledWith('conv-group');
   });
 
-  it('selecionar uma pessoa na etapa "Conversar com…" chama onMessageUser com o id certo', () => {
+  it('selecting a person in the "Conversar com…" stage calls onMessageUser with the right id', () => {
     const actions = { ...noopActions, onMessageUser: vi.fn() };
     const items = build({ actions });
     messageStage(items).find((it) => it.label === 'Dara')?.onSelect?.();
     expect(actions.onMessageUser).toHaveBeenCalledWith(dara.id);
   });
 
-  it('conversa com participante em chamada vira "Entrar na chamada" na raiz, e some da etapa "Ligar para…"', () => {
+  it('a conversation with a participant on a call becomes "Entrar na chamada" at the root, and drops out of the "Ligar para…" stage', () => {
     const participants = new Map([
       ['p-bruno', fakeParticipant({ id: 'p-bruno', userId: bruno.id, callConversationId: 'conv-group' })],
     ]);
@@ -159,7 +159,7 @@ describe('buildCommandItems', () => {
     expect(callStage(items).map((it) => it.label)).toEqual(['Ana']);
   });
 
-  it('a chamada em que eu já estou não aparece nem em "entrar" nem na etapa "Ligar para…"', () => {
+  it('a call I am already in does not show up in "join" nor in the "Ligar para…" stage', () => {
     const participants = new Map([
       ['p-bruno', fakeParticipant({ id: 'p-bruno', userId: bruno.id, callConversationId: 'conv-group' })],
     ]);
@@ -169,14 +169,14 @@ describe('buildCommandItems', () => {
     expect(callStage(items).map((it) => it.label)).toEqual(['Ana']);
   });
 
-  it('selecionar "entrar em chamada" (raiz) ou uma conversa na etapa "Ligar para…" chama onCall com o id certo', () => {
+  it('selecting "join call" (root) or a conversation in the "Ligar para…" stage calls onCall with the right id', () => {
     const actions = { ...noopActions, onCall: vi.fn() };
     const items = build({ actions });
     callStage(items).find((it) => it.label === 'Ana')?.onSelect?.();
     expect(actions.onCall).toHaveBeenCalledWith('conv-dm-ana');
   });
 
-  it('os itens de ação ("Ligar para…"/"Conversar com…") não têm onSelect — só navegam pra etapa', () => {
+  it('action items ("Ligar para…"/"Conversar com…") have no onSelect — they only navigate to the stage', () => {
     const items = build();
     const callAction = items.find((it) => it.id === 'action:call');
     const messageAction = items.find((it) => it.id === 'action:message');
@@ -186,37 +186,37 @@ describe('buildCommandItems', () => {
     expect(messageAction?.stage).toBeTruthy();
   });
 
-  describe('etapa "Amigos"', () => {
-    it('lista os 5 destinos da página de Amigos', () => {
+  describe('the "Amigos" stage', () => {
+    it('lists the 5 destinations of the Amigos page', () => {
       const items = build();
       expect(friendsStage(items).map((it) => it.label)).toEqual([
         'Todos os amigos', 'Amigos online', 'Solicitações de amizade', 'Convites de grupo', 'Adicionar amigo',
       ]);
     });
 
-    it('selecionar um destino chama onNavigate com a URL certa da página de Amigos', () => {
+    it('selecting a destination calls onNavigate with the right URL of the Amigos page', () => {
       const actions = { ...noopActions, onNavigate: vi.fn() };
       const items = build({ actions });
       friendsStage(items).find((it) => it.label === 'Amigos online')?.onSelect?.();
       expect(actions.onNavigate).toHaveBeenCalledWith(friendsView('online'));
     });
 
-    it('mostra badge com a contagem pendente, e soma amizade+convite no item raiz "Amigos"', () => {
+    it('shows a badge with the pending count, and sums friend requests+invitations on the root "Amigos" item', () => {
       const items = build({ friends: { pendingFriendRequestCount: 2, pendingInvitationCount: 3 } });
       expect(items.find((it) => it.id === 'action:friends')?.badge).toBeTruthy();
       expect(friendsStage(items).find((it) => it.label === 'Solicitações de amizade')?.badge).toBeTruthy();
       expect(friendsStage(items).find((it) => it.label === 'Convites de grupo')?.badge).toBeTruthy();
     });
 
-    it('sem nada pendente, nenhum badge aparece', () => {
+    it('with nothing pending, no badge appears', () => {
       const items = build();
       expect(items.find((it) => it.id === 'action:friends')?.badge).toBeUndefined();
       expect(friendsStage(items).find((it) => it.label === 'Solicitações de amizade')?.badge).toBeUndefined();
     });
   });
 
-  describe('etapa "Ajustes"', () => {
-    it('lista as categorias de ajustes, sem a de administração (conta comum)', () => {
+  describe('the "Ajustes" stage', () => {
+    it('lists the settings categories, without the admin one (regular account)', () => {
       const items = build({ isAdmin: false });
       const labels = settingsStage(items).map((it) => it.label);
       expect(labels).toContain('Perfil');
@@ -224,12 +224,12 @@ describe('buildCommandItems', () => {
       expect(labels).not.toContain('Administração');
     });
 
-    it('conta admin também vê a categoria de administração', () => {
+    it('an admin account also sees the admin category', () => {
       const items = build({ isAdmin: true });
       expect(settingsStage(items).map((it) => it.label)).toContain('Administração');
     });
 
-    it('selecionar uma categoria chama onNavigate com a rota de ajustes certa', () => {
+    it('selecting a category calls onNavigate with the right settings route', () => {
       const actions = { ...noopActions, onNavigate: vi.fn() };
       const items = build({ actions });
       settingsStage(items).find((it) => it.label === 'Perfil')?.onSelect?.();
@@ -237,14 +237,14 @@ describe('buildCommandItems', () => {
     });
   });
 
-  it('"Meu perfil" chama onOpenProfile com o meu próprio id', () => {
+  it('"Meu perfil" calls onOpenProfile with my own id', () => {
     const actions = { ...noopActions, onOpenProfile: vi.fn() };
     const items = build({ actions });
     items.find((it) => it.id === 'action:profile')?.onSelect?.();
     expect(actions.onOpenProfile).toHaveBeenCalledWith(me);
   });
 
-  it('"Área administrativa" só aparece pra conta admin, e navega pra /admin/users', () => {
+  it('"Área administrativa" only appears for an admin account, and navigates to /admin/users', () => {
     const actions = { ...noopActions, onNavigate: vi.fn() };
     expect(build({ isAdmin: false }).find((it) => it.id === 'action:admin')).toBeUndefined();
     const items = build({ isAdmin: true, actions });

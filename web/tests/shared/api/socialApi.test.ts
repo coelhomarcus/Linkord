@@ -9,30 +9,30 @@ function stubFetch(status: number, body: unknown) {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('sendFriendRequest — o desfecho vem do corpo, nao do status', () => {
-  it('pendente em qualquer direcao vira pending_received / already_pending', async () => {
+describe('sendFriendRequest — the outcome comes from the body, not the status', () => {
+  it('pending in either direction becomes pending_received / already_pending', async () => {
     stubFetch(200, { friendship: { status: 'pending' }, direction: 'incoming' });
     expect(await sendFriendRequest('ana')).toBe('pending_received');
     stubFetch(200, { friendship: { status: 'pending' }, direction: 'outgoing' });
     expect(await sendFriendRequest('ana')).toBe('already_pending');
   });
 
-  it('amizade ja aceita vira already_friends; pendente sem direcao e uma solicitacao nova', async () => {
+  it('already accepted becomes already_friends; pending with no direction is a new request', async () => {
     stubFetch(200, { friendship: { status: 'accepted' } });
     expect(await sendFriendRequest('ana')).toBe('already_friends');
     stubFetch(201, { friendship: { status: 'pending' } });
     expect(await sendFriendRequest('ana')).toBe('created');
   });
 
-  it('cooldown chega com retryAfter no ApiError', async () => {
-    stubFetch(409, { error: { code: 'cooldown', message: 'Espere', retryAfter: '2026-09-19T00:00:00.000Z' } });
+  it('cooldown arrives with retryAfter on the ApiError', async () => {
+    stubFetch(409, { error: { code: 'cooldown', message: 'Wait', retryAfter: '2026-09-19T00:00:00.000Z' } });
     await expect(sendFriendRequest('ana')).rejects.toMatchObject({ status: 409, code: 'cooldown', retryAfter: '2026-09-19T00:00:00.000Z' });
     await expect(sendFriendRequest('ana')).rejects.toBeInstanceOf(ApiError);
   });
 });
 
-describe('montagem das URLs de lista', () => {
-  it('omite parametros vazios e codifica os demais', async () => {
+describe('building list URLs', () => {
+  it('omits empty params and encodes the rest', async () => {
     const f = stubFetch(200, { items: [], nextCursor: null });
     await fetchFriends(null, '');
     expect(f).toHaveBeenLastCalledWith('/api/friends', expect.anything());

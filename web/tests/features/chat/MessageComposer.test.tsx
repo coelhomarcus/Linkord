@@ -15,7 +15,7 @@ const joinedState = { ...initialRoomState, joined: true };
 afterEach(() => clearAllDrafts());
 
 function fakeFile(name: string, type: string): File {
-  return new File(['conteudo'], name, { type });
+  return new File(['content'], name, { type });
 }
 
 describe('MessageComposer', () => {
@@ -23,7 +23,7 @@ describe('MessageComposer', () => {
     vi.clearAllMocks();
   });
 
-  it('envia a mensagem com Enter e limpa o campo', async () => {
+  it('sends the message with Enter and clears the field', async () => {
     const user = userEvent.setup();
     const sendChatMessage = vi.fn(() => true);
     renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendChatMessage });
@@ -35,7 +35,7 @@ describe('MessageComposer', () => {
     expect(textarea).toHaveValue('');
   });
 
-  it('shift+enter nao envia, so quebra linha', async () => {
+  it('shift+enter does not send, only breaks the line', async () => {
     const user = userEvent.setup();
     const sendChatMessage = vi.fn(() => true);
     renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendChatMessage });
@@ -47,7 +47,7 @@ describe('MessageComposer', () => {
     expect(textarea).toHaveValue('linha 1\nlinha 2');
   });
 
-  it('botao de enviar comeca desabilitado e habilita com texto', async () => {
+  it('the send button starts disabled and enables with text', async () => {
     const user = userEvent.setup();
     const sendChatMessage = vi.fn(() => true);
     renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendChatMessage });
@@ -62,7 +62,7 @@ describe('MessageComposer', () => {
     expect(sendChatMessage).toHaveBeenCalledWith('conv-1', 'oi', undefined);
   });
 
-  it('"+" abre o menu Adicionar; "Anexar arquivos" abre o seletor geral', async () => {
+  it('"+" opens the Adicionar menu; "Anexar arquivos" opens the general file picker', async () => {
     const user = userEvent.setup();
     const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState });
     const clicked: HTMLInputElement[] = [];
@@ -77,7 +77,7 @@ describe('MessageComposer', () => {
     clickSpy.mockRestore();
   });
 
-  it('o atalho de imagem abre um seletor so de imagens', async () => {
+  it('the image shortcut opens an images-only picker', async () => {
     const user = userEvent.setup();
     renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState });
     const clicked: HTMLInputElement[] = [];
@@ -89,7 +89,7 @@ describe('MessageComposer', () => {
     clickSpy.mockRestore();
   });
 
-  it.each([true, false])('a opcao de compactar no menu reflete a preferencia (%s)', async (preference) => {
+  it.each([true, false])('the compress option in the menu reflects the preference (%s)', async (preference) => {
     const user = userEvent.setup();
     renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, compressImagesDefault: preference });
 
@@ -98,7 +98,7 @@ describe('MessageComposer', () => {
     expect(await screen.findByRole('menuitemcheckbox', { name: 'Compactar imagens (WebP)' })).toHaveAttribute('aria-checked', String(preference));
   });
 
-  it('marcar a opcao de compactar atualiza a preferencia persistida', async () => {
+  it('checking the compress option updates the persisted preference', async () => {
     const user = userEvent.setup();
     const setCompressImagesDefault = vi.fn();
     renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, compressImagesDefault: true, setCompressImagesDefault });
@@ -109,7 +109,7 @@ describe('MessageComposer', () => {
     expect(setCompressImagesDefault).toHaveBeenCalledWith(false);
   });
 
-  it('perto do limite mostra o contador; acima dele bloqueia o envio sem cortar o texto', async () => {
+  it('near the limit shows the counter; above it blocks sending without cutting the text', async () => {
     const user = userEvent.setup();
     const sendChatMessage = vi.fn(() => true);
     renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendChatMessage });
@@ -130,7 +130,7 @@ describe('MessageComposer', () => {
     expect(sendChatMessage).not.toHaveBeenCalled();
   });
 
-  it('com o toggle ligado, o lote vai para a outbox marcado para comprimir', async () => {
+  it('with the toggle on, the batch goes to the outbox marked to compress', async () => {
     const user = userEvent.setup();
     const queueMessageWithFiles = vi.fn();
     const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, {
@@ -145,7 +145,7 @@ describe('MessageComposer', () => {
     expect(queueMessageWithFiles).toHaveBeenCalledWith('conv-1', '', undefined, [{ file: original, compress: true }]);
   });
 
-  it('com o toggle desligado, o lote vai para a outbox sem marcar compressao', async () => {
+  it('with the toggle off, the batch goes to the outbox without marking compression', async () => {
     const user = userEvent.setup();
     const queueMessageWithFiles = vi.fn();
     const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, {
@@ -160,7 +160,7 @@ describe('MessageComposer', () => {
     expect(queueMessageWithFiles).toHaveBeenCalledWith('conv-1', '', undefined, [{ file: original, compress: false }]);
   });
 
-  it('o envio vai para a outbox e o campo fica livre na hora', async () => {
+  it('sending goes to the outbox and the field frees up right away', async () => {
     const user = userEvent.setup();
     const queueMessageWithFiles = vi.fn();
     const { container } = renderWithRoom(<MessageComposer conversationId="conv-1" />, {
@@ -178,7 +178,7 @@ describe('MessageComposer', () => {
     await waitFor(() => expect(screen.queryByTitle('doc.pdf')).not.toBeInTheDocument());
   });
 
-  it('respondendo a uma mensagem, o envio de anexos leva a referencia da resposta', async () => {
+  it('when replying to a message, sending attachments carries the reply reference', async () => {
     const user = userEvent.setup();
     const queueMessageWithFiles = vi.fn();
     const replyingTo = { msgId: 42, conversationId: 'conv-1', id: 'u2', name: 'Ana', avatar: '', text: 'oi', ts: 0 };
@@ -204,7 +204,7 @@ describe('MessageComposer — typing indicator', () => {
     vi.useRealTimers();
   });
 
-  it('emite typing:true na primeira tecla, e nao de novo dentro da janela de throttle (3s)', () => {
+  it('emits typing:true on the first keystroke, and not again inside the throttle window (3s)', () => {
     const sendTyping = vi.fn();
     renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendTyping });
 
@@ -215,10 +215,10 @@ describe('MessageComposer — typing indicator', () => {
 
     vi.advanceTimersByTime(1000);
     fireEvent.change(textarea, { target: { value: 'ab' } });
-    expect(sendTyping).toHaveBeenCalledTimes(1); // ainda dentro dos 3s, nao reemite
+    expect(sendTyping).toHaveBeenCalledTimes(1); // still within the 3s window, does not re-emit
   });
 
-  it('emite typing:false sozinho depois de 5s sem digitar', () => {
+  it('emits typing:false on its own after 5s of no typing', () => {
     const sendTyping = vi.fn();
     renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendTyping });
 
@@ -229,7 +229,7 @@ describe('MessageComposer — typing indicator', () => {
     expect(sendTyping).toHaveBeenLastCalledWith('conv-1', false);
   });
 
-  it('limpar o campo (apagar tudo) emite typing:false na hora, sem esperar o idle', () => {
+  it('clearing the field (deleting everything) emits typing:false right away, without waiting for idle', () => {
     const sendTyping = vi.fn();
     renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendTyping });
 
@@ -240,7 +240,7 @@ describe('MessageComposer — typing indicator', () => {
     expect(sendTyping).toHaveBeenLastCalledWith('conv-1', false);
   });
 
-  it('enviar a mensagem emite typing:false na hora, antes do idle de 5s', async () => {
+  it('sending the message emits typing:false right away, before the 5s idle', async () => {
     const sendTyping = vi.fn();
     const sendChatMessage = vi.fn(() => true);
     renderWithRoom(<MessageComposer conversationId="conv-1" />, { state: joinedState, sendTyping, sendChatMessage });
@@ -258,7 +258,7 @@ function fakeUser(id: string, username: string, displayName: string): PublicUser
   return { id, username, displayName, avatar: '', avatarColor: 'blurple', banner: '', bio: '', profileLinks: [], role: 'user' };
 }
 
-describe('MessageComposer — menções (@)', () => {
+describe('MessageComposer — mentions (@)', () => {
   const ana = fakeUser('u-ana', 'ana', 'Ana Silva');
   const andre = fakeUser('u-andre', 'andre', 'André Costa');
   const outsider = fakeUser('u-fora', 'foradaconversa', 'Fora Da Conversa');
@@ -275,7 +275,7 @@ describe('MessageComposer — menções (@)', () => {
     });
   }
 
-  it('digitar "@" mostra só candidatos que são membros desta conversa', async () => {
+  it('typing "@" shows only candidates who are members of this conversation', async () => {
     const user = userEvent.setup();
     renderComposer();
 
@@ -286,7 +286,7 @@ describe('MessageComposer — menções (@)', () => {
     expect(screen.queryByText('Fora Da Conversa')).not.toBeInTheDocument();
   });
 
-  it('Enter com o dropdown aberto insere a menção em vez de enviar a mensagem', async () => {
+  it('Enter with the dropdown open inserts the mention instead of sending the message', async () => {
     const user = userEvent.setup();
     const sendChatMessage = vi.fn(() => true);
     renderComposer({ sendChatMessage });
@@ -301,7 +301,7 @@ describe('MessageComposer — menções (@)', () => {
     expect(screen.queryByText('Ana Silva')).not.toBeInTheDocument();
   });
 
-  it('clicar num candidato insere a menção', async () => {
+  it('clicking a candidate inserts the mention', async () => {
     const user = userEvent.setup();
     renderComposer();
 
@@ -312,7 +312,7 @@ describe('MessageComposer — menções (@)', () => {
     expect(textarea).toHaveValue('@andre ');
   });
 
-  it('Escape fecha o dropdown sem alterar o texto nem enviar', async () => {
+  it('Escape closes the dropdown without changing the text or sending', async () => {
     const user = userEvent.setup();
     renderComposer();
 
@@ -325,7 +325,7 @@ describe('MessageComposer — menções (@)', () => {
     expect(textarea).toHaveValue('@an');
   });
 
-  it('um "@" no meio de uma palavra (ex.: e-mail) não abre o dropdown', async () => {
+  it('an "@" in the middle of a word (e.g. an email) does not open the dropdown', async () => {
     const user = userEvent.setup();
     renderComposer();
 
@@ -335,7 +335,7 @@ describe('MessageComposer — menções (@)', () => {
   });
 });
 
-describe('MessageComposer — rascunho por conversa', () => {
+describe('MessageComposer — per-conversation draft', () => {
   function renderComposer(conversationId: string, overrides: Parameters<typeof createFakeRoomContextValue>[0] = {}) {
     const value = createFakeRoomContextValue({ state: joinedState, compressImagesDefault: false, ...overrides });
     const view = render(<RoomContext.Provider value={value}><MessageComposer conversationId={conversationId} /></RoomContext.Provider>);
@@ -345,7 +345,7 @@ describe('MessageComposer — rascunho por conversa', () => {
     };
   }
 
-  it('cada conversa tem o proprio texto; voltar restaura o que estava escrito', async () => {
+  it('each conversation has its own text; going back restores what was written', async () => {
     const user = userEvent.setup();
     const { switchTo } = renderComposer('conv-1');
     await user.type(screen.getByRole('textbox'), 'rascunho um');
@@ -358,7 +358,7 @@ describe('MessageComposer — rascunho por conversa', () => {
     expect(screen.getByRole('textbox')).toHaveValue('rascunho um');
   });
 
-  it('anexos escolhidos numa conversa nao aparecem na outra', async () => {
+  it('attachments picked in one conversation do not show up in another', async () => {
     const user = userEvent.setup();
     const { container, switchTo } = renderComposer('conv-1');
     await user.upload(container.querySelector<HTMLInputElement>('input[type="file"]')!, fakeFile('um.pdf', 'application/pdf'));
@@ -370,7 +370,7 @@ describe('MessageComposer — rascunho por conversa', () => {
     expect(screen.getByTitle('um.pdf')).toBeInTheDocument();
   });
 
-  it('enviar um lote libera a conversa na hora: trocar em seguida nao apaga nem reenvia nada', async () => {
+  it('sending a batch frees up the conversation right away: switching afterward neither erases nor resends anything', async () => {
     const user = userEvent.setup();
     const setReplyingTo = vi.fn();
     const queueMessageWithFiles = vi.fn();
@@ -394,13 +394,13 @@ describe('MessageComposer — rascunho por conversa', () => {
     expect(screen.getByRole('textbox')).toHaveValue('texto novo');
   });
 
-  it('texto salvo no sessionStorage volta depois de recarregar a pagina', () => {
+  it('text saved in sessionStorage comes back after a page reload', () => {
     sessionStorage.setItem('linkord:draft:v1::conv-9', 'sobreviveu ao reload');
     renderComposer('conv-9');
     expect(screen.getByRole('textbox')).toHaveValue('sobreviveu ao reload');
   });
 
-  it('clearAllDrafts (logout) apaga os rascunhos da memoria e do sessionStorage', async () => {
+  it('clearAllDrafts (logout) erases drafts from memory and from sessionStorage', async () => {
     vi.useFakeTimers();
     try {
       const { unmount } = renderComposer('conv-1');

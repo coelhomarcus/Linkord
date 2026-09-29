@@ -5,14 +5,14 @@ import { exceedsLimit, limitMax } from '../../../src/modules/limits/limits.js';
 import { isRegistrationPaused } from '../../../src/modules/auth/registrationLimits.js';
 
 describe('exceedsLimit', () => {
-  it('chegar exatamente no teto ainda cabe; passar dele nao', () => {
+  it('landing exactly on the ceiling still fits; going past it does not', () => {
     assert.equal(exceedsLimit(19, 20), false);
     assert.equal(exceedsLimit(20, 20), true);
     assert.equal(exceedsLimit(0, 20, 20), false);
     assert.equal(exceedsLimit(0, 20, 21), true);
   });
 
-  it('serve para bytes: usado + em voo + o arquivo novo', () => {
+  it('works for bytes: used + in flight + the new file', () => {
     const max = 5 * 1024 ** 3;
     assert.equal(exceedsLimit(4 * 1024 ** 3, max, 1024 ** 3), false);
     assert.equal(exceedsLimit(4 * 1024 ** 3, max, 1024 ** 3 + 1), true);
@@ -20,7 +20,7 @@ describe('exceedsLimit', () => {
 });
 
 describe('limitMax', () => {
-  it('le cada teto da configuracao', () => {
+  it('reads each ceiling from the config', () => {
     assert.equal(limitMax('ownedGroups'), config.MAX_OWNED_GROUPS_PER_USER);
     assert.equal(limitMax('groupMemberships'), config.MAX_GROUP_MEMBERSHIPS_PER_USER);
     assert.equal(limitMax('friends'), config.MAX_FRIENDS);
@@ -28,7 +28,7 @@ describe('limitMax', () => {
     assert.equal(limitMax('storage'), config.MAX_USER_STORAGE_BYTES);
   });
 
-  it('os padroes sao finitos e positivos (nenhum limite "esquecido" em zero ou NaN)', () => {
+  it('the defaults are finite and positive (no limit "forgotten" at zero or NaN)', () => {
     for (const kind of ['storage', 'ownedGroups', 'groupMemberships', 'friends', 'pendingRequests'] as const) {
       const max = limitMax(kind);
       assert.ok(Number.isFinite(max) && max > 0, `${kind}=${max}`);
@@ -36,8 +36,8 @@ describe('limitMax', () => {
   });
 });
 
-describe('isRegistrationPaused (disjuntor de cadastros)', () => {
-  it('abaixo do teto segue; no teto pausa', () => {
+describe('isRegistrationPaused (registration circuit breaker)', () => {
+  it('below the ceiling it proceeds; at the ceiling it pauses', () => {
     assert.equal(isRegistrationPaused(29, 30), false);
     assert.equal(isRegistrationPaused(30, 30), true);
     assert.equal(isRegistrationPaused(500, 30), true);

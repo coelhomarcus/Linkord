@@ -47,7 +47,7 @@ function fakeRoom() {
 }
 
 describe('useCallTiles', () => {
-  it('sozinho e sem microfone, o proprio tile aparece assim que a conexao completa', () => {
+  it("alone and without a microphone, one's own tile appears as soon as the connection completes", () => {
     const livekitRoom = fakeRoom();
     const wrapper = ({ children }: { children: ReactNode }) => (
       <RoomContext.Provider value={createFakeRoomContextValue({ livekitRoom })}>{children}</RoomContext.Provider>
@@ -61,7 +61,7 @@ describe('useCallTiles', () => {
     expect(result.current).toEqual([{ key: expect.any(String), participantId: 'me', kind: 'avatar', loading: false, paused: false }]);
   });
 
-  it('ligar a camera preserva a mesma chave do tile (nao remonta)', () => {
+  it('turning on the camera preserves the same tile key (does not remount)', () => {
     const livekitRoom = fakeRoom();
     const remote = livekitRoom.addRemote('bia');
     const wrapper = ({ children }: { children: ReactNode }) => (
@@ -78,7 +78,7 @@ describe('useCallTiles', () => {
     expect(result.current[0]).toMatchObject({ kind: 'camera', key: keyBefore });
   });
 
-  it('publicacao de camera sem track ainda vira "loading", nao "sem camera"', () => {
+  it('a camera publication without a track becomes "loading", not "no camera"', () => {
     const livekitRoom = fakeRoom();
     const remote = livekitRoom.addRemote('bia');
     const wrapper = ({ children }: { children: ReactNode }) => (
@@ -98,7 +98,7 @@ describe('useCallTiles', () => {
     expect(result.current[0]).toMatchObject({ kind: 'camera', loading: false });
   });
 
-  it('camera mutada nao conta como "loading" (e so mesmo desligada)', () => {
+  it('a muted camera does not count as "loading" (it is simply off)', () => {
     const livekitRoom = fakeRoom();
     const remote = livekitRoom.addRemote('bia');
     const wrapper = ({ children }: { children: ReactNode }) => (
@@ -112,7 +112,7 @@ describe('useCallTiles', () => {
     expect(result.current[0]).toMatchObject({ kind: 'avatar', loading: false });
   });
 
-  it('tela compartilhada aparece como "loading" antes do track chegar', () => {
+  it('a shared screen appears as "loading" before the track arrives', () => {
     const livekitRoom = fakeRoom();
     const remote = livekitRoom.addRemote('bia');
     const wrapper = ({ children }: { children: ReactNode }) => (
@@ -127,7 +127,7 @@ describe('useCallTiles', () => {
     expect(screenTile).toMatchObject({ loading: true });
   });
 
-  it('tela pausada (publicacao muted mas com track) continua aparecendo, marcada como "paused" — nao some', () => {
+  it('a paused screen (publication muted but with a track) keeps appearing, marked as "paused" — it does not disappear', () => {
     const livekitRoom = fakeRoom();
     const remote = livekitRoom.addRemote('bia');
     const wrapper = ({ children }: { children: ReactNode }) => (
@@ -146,7 +146,7 @@ describe('useCallTiles', () => {
     expect(screenTile).toMatchObject({ loading: false, paused: true });
   });
 
-  it('tela encerrada (sem publicacao) some do grid, nao fica "paused" para sempre', () => {
+  it('a screen that ends (no publication) disappears from the grid, it does not stay "paused" forever', () => {
     const livekitRoom = fakeRoom();
     const remote = livekitRoom.addRemote('bia');
     const wrapper = ({ children }: { children: ReactNode }) => (

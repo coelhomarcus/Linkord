@@ -6,45 +6,45 @@ import { buildMentionLookup } from '@/shared/lib/mentions';
 import type { PublicUser } from '@/shared/types/protocol';
 
 describe('ChatMessageText', () => {
-  it('renderiza texto puro (sem link) como paragrafo, sem nenhum embed', () => {
+  it('renders plain text (no link) as a paragraph, with no embed', () => {
     render(<ChatMessageText text="oi, tudo bem?" />);
     expect(screen.getByText('oi, tudo bem?')).toBeInTheDocument();
   });
 
-  it('preserva quebras de linha (whitespace-pre-wrap) — nao colapsa em uma linha so', () => {
+  it('preserves line breaks (whitespace-pre-wrap) — does not collapse into one line', () => {
     const { container } = render(<ChatMessageText text={'linha 1\nlinha 2'} />);
     expect(container.querySelector('p')?.textContent).toBe('linha 1\nlinha 2');
   });
 
-  it('mensagem vazia nao renderiza nenhum paragrafo', () => {
+  it('empty message renders no paragraph at all', () => {
     const { container } = render(<ChatMessageText text="" />);
     expect(container.querySelector('p')).toBeNull();
   });
 
-  it('renderiza um emoji único em tamanho ampliado', () => {
+  it('renders a single emoji at an enlarged size', () => {
     render(<ChatMessageText text={'  😀\n'} />);
     expect(screen.getByRole('paragraph')).toHaveClass('text-[48px]', 'leading-none');
   });
 
-  it('mantém mensagens com mais de um emoji no tamanho normal', () => {
+  it('keeps messages with more than one emoji at normal size', () => {
     render(<ChatMessageText text="😀😀" />);
     expect(screen.getByRole('paragraph')).not.toHaveClass('text-[48px]');
   });
 });
 
-describe('ChatMessageText — @mencoes', () => {
+describe('ChatMessageText — mentions', () => {
   const allUsers = new Map<string, PublicUser>([
     ['u1', { id: 'u1', username: 'Lune', displayName: 'Lune', avatar: '', avatarColor: 'fuchsia', banner: '', bio: '', profileLinks: [], role: 'admin' }],
   ]);
   const mentionLookup = buildMentionLookup(allUsers);
 
-  it('sem mentionLookup, "@word" fica como texto puro (compat com quem nao passa a prop)', () => {
+  it('without mentionLookup, "@word" stays as plain text (compat with callers that skip the prop)', () => {
     const { container } = render(<ChatMessageText text="oi @Lune" />);
     expect(container.querySelector('button')).toBeNull();
     expect(container.querySelector('p')?.textContent).toBe('oi @Lune');
   });
 
-  it('"@Lune" (conta real) vira um botão destacado com avatar; "@ninguem" (nao cadastrado) fica texto puro', () => {
+  it('"@Lune" (real account) becomes a highlighted button with avatar; "@ninguem" (not registered) stays plain text', () => {
     render(<ChatMessageText text="oi @Lune e @ninguem" mentionLookup={mentionLookup} />);
     const buttons = screen.getAllByRole('button');
     expect(buttons).toHaveLength(1);
@@ -55,12 +55,12 @@ describe('ChatMessageText — @mencoes', () => {
     expect(screen.getByRole('paragraph').textContent).toBe('oi @LuneL e @ninguem');
   });
 
-  it('menção case-insensitive: "@lune" (minusculo) ainda resolve pra "Lune"', () => {
+  it('case-insensitive mention: "@lune" (lowercase) still resolves to "Lune"', () => {
     render(<ChatMessageText text="oi @lune" mentionLookup={mentionLookup} />);
     expect(screen.getByRole('button')).toHaveTextContent('@Lune');
   });
 
-  it('menção a mim mesmo (myUserId) ganha um estilo diferente da menção a outra pessoa', () => {
+  it('mentioning myself (myUserId) gets a different style than mentioning someone else', () => {
     const { unmount } = render(<ChatMessageText text="oi @Lune" mentionLookup={mentionLookup} myUserId="someone-else" />);
     const otherClassName = screen.getByRole('button').className;
     unmount();
@@ -68,7 +68,7 @@ describe('ChatMessageText — @mencoes', () => {
     expect(screen.getByRole('button').className).not.toBe(otherClassName);
   });
 
-  it('clicar na menção chama onOpenProfile com o id do usuário mencionado', async () => {
+  it('clicking the mention calls onOpenProfile with the mentioned user id', async () => {
     const user = userEvent.setup();
     const onOpenProfile = vi.fn();
     render(<ChatMessageText text="oi @Lune" mentionLookup={mentionLookup} onOpenProfile={onOpenProfile} />);
@@ -78,14 +78,14 @@ describe('ChatMessageText — @mencoes', () => {
     expect(onOpenProfile).toHaveBeenCalledWith('u1');
   });
 
-  it('sem onOpenProfile, a menção fica desabilitada (não quebra, só não é clicável)', () => {
+  it('without onOpenProfile, the mention stays disabled (does not break, just not clickable)', () => {
     render(<ChatMessageText text="oi @Lune" mentionLookup={mentionLookup} />);
     expect(screen.getByRole('button')).toBeDisabled();
   });
 });
 
-describe('ChatMessageText — formatacao', () => {
-  it('negrito, italico, riscado e codigo viram os elementos certos', () => {
+describe('ChatMessageText — formatting', () => {
+  it('bold, italic, strikethrough and code become the right elements', () => {
     const { container } = render(<ChatMessageText text="**a** *b* ~~c~~ `d`" />);
     expect(container.querySelector('strong')).toHaveTextContent('a');
     expect(container.querySelector('em')).toHaveTextContent('b');
@@ -93,26 +93,26 @@ describe('ChatMessageText — formatacao', () => {
     expect(container.querySelector('code')).toHaveTextContent('d');
   });
 
-  it('bloco de codigo rola na horizontal dentro da mensagem, sem alargar a pagina', () => {
+  it('a code block scrolls horizontally inside the message, without widening the page', () => {
     const { container } = render(<ChatMessageText text={'```\nconst muito_longo = 1;\n```'} />);
     const pre = container.querySelector('pre')!;
     expect(pre).toHaveTextContent('const muito_longo = 1;');
     expect(pre).toHaveClass('overflow-x-auto', 'max-w-full');
   });
 
-  it('citacao e lista', () => {
+  it('blockquote and list', () => {
     const { container } = render(<ChatMessageText text={'> citado\n- um\n- dois'} />);
     expect(container.querySelector('blockquote')).toHaveTextContent('citado');
     expect(container.querySelectorAll('ul > li')).toHaveLength(2);
   });
 
-  it('HTML no texto aparece como texto, nunca como elemento', () => {
+  it('HTML in the text shows up as text, never as an element', () => {
     const { container } = render(<ChatMessageText text={'<img src=x onerror=alert(1)>'} />);
     expect(container.querySelector('img')).toBeNull();
     expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeInTheDocument();
   });
 
-  it('mensagem so com o link mantem o endereco visivel', () => {
+  it('a message with only a link keeps the address visible', () => {
     vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} });
     render(<ChatMessageText text="https://exemplo.com/pagina" />);
     expect(screen.getByRole('link', { name: 'https://exemplo.com/pagina' })).toHaveAttribute('href', 'https://exemplo.com/pagina');
