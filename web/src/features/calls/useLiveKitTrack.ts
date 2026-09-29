@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import type { RefObject } from 'react';
 import { ConnectionQuality, RoomEvent, Track } from 'livekit-client';
 import type { Participant, Room, Track as LKTrack } from 'livekit-client';
@@ -78,18 +78,71 @@ const MEDIA_EVENTS = [
   RoomEvent.ParticipantDisconnected,
 ];
 
+interface StoreEntry<T> {
+  value: T;
+  listeners: Set<() => void>;
+  teardown: () => void;
+}
+
+/** One shared LiveKit subscription per (room, identity), reused by every
+ * caller watching that identity — instead of each `useParticipantMedia`/
+ * `useConnectionQuality` instance registering its own room listeners. A
+ * participant commonly has 2+ simultaneous watchers today (a camera tile
+ * AND a screen tile for the same person, `useIsSpeaking` calling
+ * `useParticipantMedia` again internally, TileMenu re-reading it while
+ * open) — this is the "reduzir duplicação por participante" from the
+ * calls redesign plan §11.2, not a hypothetical future need. */
+function createPerIdentityStore<T>(compute: (room: Room, identity: string) => T, events: RoomEvent[]) {
+  const byRoom = new WeakMap<Room, Map<string, StoreEntry<T>>>();
+
+  function subscribe(room: Room, identity: string, callback: () => void): () => void {
+    let byIdentity = byRoom.get(room);
+    if (!byIdentity) { byIdentity = new Map(); byRoom.set(room, byIdentity); }
+    let entry = byIdentity.get(identity);
+    if (!entry) {
+      const listeners = new Set<() => void>();
+      const refresh = () => {
+        const next = compute(room, identity);
+        if (Object.is(next, entry!.value)) return;
+        entry!.value = next;
+        for (const l of listeners) l();
+      };
+      for (const ev of events) room.on(ev, refresh);
+      entry = { value: compute(room, identity), listeners, teardown: () => { for (const ev of events) room.off(ev, refresh); } };
+      byIdentity.set(identity, entry);
+    }
+    entry.listeners.add(callback);
+    return () => {
+      entry!.listeners.delete(callback);
+      if (entry!.listeners.size === 0) {
+        entry!.teardown();
+        byIdentity!.delete(identity);
+      }
+    };
+  }
+
+  // Never creates the room-level subscription itself (that's `subscribe`'s
+  // job alone) — a pure read, falling back to a one-off compute when no
+  // subscriber has registered yet.
+  function getSnapshot(room: Room, identity: string): T {
+    return byRoom.get(room)?.get(identity)?.value ?? compute(room, identity);
+  }
+
+  return { subscribe, getSnapshot };
+}
+
+const mediaStore = createPerIdentityStore(readMedia, MEDIA_EVENTS);
+
 export function useParticipantMedia(identity: string): ParticipantMedia {
   const { livekitRoom } = useRoom();
-  const [media, setMedia] = useState<ParticipantMedia>(EMPTY_MEDIA);
-
-  useEffect(() => {
-    const refresh = () => setMedia(readMedia(livekitRoom, identity));
-    refresh();
-    for (const ev of MEDIA_EVENTS) livekitRoom.on(ev, refresh);
-    return () => { for (const ev of MEDIA_EVENTS) livekitRoom.off(ev, refresh); };
-  }, [livekitRoom, identity]);
-
-  return media;
+  // Both callbacks MUST stay referentially stable across renders (not fresh
+  // closures every time) — otherwise React treats "subscribe changed" as a
+  // reason to unsubscribe/resubscribe on every render, and since `readMedia`
+  // allocates a new object each call, that churn looks like "the snapshot
+  // changed" forever: an infinite re-render loop, not just wasted work.
+  const subscribe = useCallback((callback: () => void) => mediaStore.subscribe(livekitRoom, identity, callback), [livekitRoom, identity]);
+  const getSnapshot = useCallback(() => mediaStore.getSnapshot(livekitRoom, identity), [livekitRoom, identity]);
+  return useSyncExternalStore(subscribe, getSnapshot);
 }
 
 const SPEAKING_THRESHOLD = 0.02;
@@ -149,26 +202,25 @@ export function useIsSpeaking(identity: string): boolean {
   return useTrackSpeaking(media.micTrack, media.micMuted);
 }
 
+function readConnectionQuality(room: Room, identity: string): ConnectionQuality {
+  return getParticipant(room, identity)?.connectionQuality ?? ConnectionQuality.Unknown;
+}
+
+const qualityStore = createPerIdentityStore(readConnectionQuality, [RoomEvent.ConnectionQualityChanged]);
+
 /** Tracks a participant's connection quality straight from the LiveKit room
  * — everyone in a call is already in the same LiveKit room, so this needs no
  * relay through the app's own WebSocket (unlike mic/camera/speaking state,
- * which the server mirrors for participants who haven't joined LiveKit yet). */
+ * which the server mirrors for participants who haven't joined LiveKit yet).
+ * `ConnectionQualityChanged` fires for ANY participant, not scoped to one —
+ * shared per identity like `useParticipantMedia`, so a person's camera AND
+ * screen tile (2 watchers, same identity) don't each register their own
+ * room-wide listener for it. */
 export function useConnectionQuality(identity: string): ConnectionQuality {
   const { livekitRoom } = useRoom();
-  const [quality, setQuality] = useState<ConnectionQuality>(ConnectionQuality.Unknown);
-
-  useEffect(() => {
-    const participant = getParticipant(livekitRoom, identity);
-    setQuality(participant?.connectionQuality ?? ConnectionQuality.Unknown);
-
-    const onChanged = (q: ConnectionQuality, participant: Participant) => {
-      if (participant.identity === identity) setQuality(q);
-    };
-    livekitRoom.on(RoomEvent.ConnectionQualityChanged, onChanged);
-    return () => { livekitRoom.off(RoomEvent.ConnectionQualityChanged, onChanged); };
-  }, [livekitRoom, identity]);
-
-  return quality;
+  const subscribe = useCallback((callback: () => void) => qualityStore.subscribe(livekitRoom, identity, callback), [livekitRoom, identity]);
+  const getSnapshot = useCallback(() => qualityStore.getSnapshot(livekitRoom, identity), [livekitRoom, identity]);
+  return useSyncExternalStore(subscribe, getSnapshot);
 }
 
 export function useAttachTrack(track: LKTrack | null, elRef: RefObject<HTMLMediaElement | null>): void {
