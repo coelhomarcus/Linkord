@@ -149,3 +149,23 @@ describe('TileGrid', () => {
     expect(onScreen.container.querySelector('[data-thumb-strip] [data-testid="tile-u1"]')).toBeInTheDocument();
   });
 });
+
+describe('TileGrid — onCapacityChange', () => {
+  it('reporta meetsMinimum=true quando os tiles cabem no minTileWidth padrao', () => {
+    const onCapacityChange = vi.fn();
+    renderWithRoom(<TileGrid descriptors={descriptors(2)} focusedId={null} onCapacityChange={onCapacityChange} />);
+    expect(onCapacityChange).toHaveBeenCalledWith(true, 'p-0:avatar');
+  });
+
+  it('reporta meetsMinimum=false quando o minTileWidth exigido nao cabe (container fake e 600x600)', () => {
+    const onCapacityChange = vi.fn();
+    renderWithRoom(<TileGrid descriptors={descriptors(9)} focusedId={null} minTileWidth={1000} onCapacityChange={onCapacityChange} />);
+    expect(onCapacityChange).toHaveBeenCalledWith(false, 'p-0:avatar');
+  });
+
+  it('sem descritores, nao chama onCapacityChange (nada pra caber)', () => {
+    const onCapacityChange = vi.fn();
+    renderWithRoom(<TileGrid descriptors={[]} focusedId={null} onCapacityChange={onCapacityChange} />);
+    expect(onCapacityChange).not.toHaveBeenCalled();
+  });
+});

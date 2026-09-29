@@ -238,6 +238,11 @@ describe('roomReducer', () => {
       const next = roomReducer(initialRoomState, { type: 'SET_FOCUSED', id: 'p2:screen', origin: 'automatic' });
       expect(next.focusOrigin).toBe('automatic');
     });
+
+    it('guarda a origem "capacity" (fallback de grid cheio) como distinta de manual/automatic', () => {
+      const next = roomReducer(initialRoomState, { type: 'SET_FOCUSED', id: 'p2:avatar', origin: 'capacity' });
+      expect(next.focusOrigin).toBe('capacity');
+    });
   });
 
   it('SET_SHARE_ERROR seta e limpa (null) o erro de compartilhamento/mic', () => {

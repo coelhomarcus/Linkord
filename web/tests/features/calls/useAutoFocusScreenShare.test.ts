@@ -56,6 +56,15 @@ describe('useAutoFocusScreenShare', () => {
     expect(onAutoFocus).not.toHaveBeenCalled();
   });
 
+  it('uma tela nova AINDA sobrescreve um foco com origem "capacity" (so "manual" bloqueia)', () => {
+    const onAutoFocus = vi.fn();
+    const { rerender } = renderHook(({ descriptors, origin }) => useAutoFocusScreenShare(descriptors, origin, onAutoFocus), {
+      initialProps: { descriptors: [] as TileDescriptor[], origin: null as 'manual' | 'automatic' | 'capacity' | null },
+    });
+    rerender({ descriptors: [tile('p1:screen', 'screen')], origin: 'capacity' });
+    expect(onAutoFocus).toHaveBeenCalledWith('p1:screen');
+  });
+
   it('uma tela que some e reaparece com a mesma chave nao dispara de novo (ainda "vista")', () => {
     const onAutoFocus = vi.fn();
     const { rerender } = renderHook(({ descriptors, origin }) => useAutoFocusScreenShare(descriptors, origin, onAutoFocus), {

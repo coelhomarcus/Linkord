@@ -10,7 +10,7 @@ import type { TileDescriptor } from './tileTypes';
  * it. */
 export function useAutoFocusScreenShare(
   descriptors: TileDescriptor[],
-  focusOrigin: 'manual' | 'automatic' | null,
+  focusOrigin: 'manual' | 'automatic' | 'capacity' | null,
   onAutoFocus: (key: string) => void,
 ): void {
   const seenScreenKeysRef = useRef<Set<string> | null>(null);

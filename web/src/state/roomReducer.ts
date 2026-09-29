@@ -22,8 +22,11 @@ export interface RoomState {
   me: Me;
   participants: Map<string, Participant>;
   focusedId: string | null;
-  /** Null whenever focusedId is null — see the SET_FOCUSED action. */
-  focusOrigin: 'manual' | 'automatic' | null;
+  /** Null whenever focusedId is null — see the SET_FOCUSED action. 'capacity'
+   * is a distinct reason from 'automatic' (a new screen share) so the
+   * capacity fallback (TileGrid can't fit everyone legibly) can retract
+   * ONLY its own focus when space recovers, never one it didn't cause. */
+  focusOrigin: 'manual' | 'automatic' | 'capacity' | null;
   /** Tile keys whose video a viewer chose to stop seeing ("Ocultar vídeo
    * para mim") — local-only, session-only, never synced to the server or
    * to other participants. Cleared per-participant on PARTICIPANT_LEFT. */
@@ -94,7 +97,7 @@ export type RoomAction =
   // automatic suggestion (a new screen share appearing) must never override
   // a manual choice; the reducer nulls it out itself whenever id is null,
   // so callers never have to remember to pair them.
-  | { type: 'SET_FOCUSED'; id: string | null; origin: 'manual' | 'automatic' }
+  | { type: 'SET_FOCUSED'; id: string | null; origin: 'manual' | 'automatic' | 'capacity' }
   | { type: 'TOGGLE_HIDDEN_VIDEO'; key: string }
   | { type: 'TOGGLE_SCREEN_WATCH'; key: string }
   | { type: 'SET_SHARE_ERROR'; message: string | null }

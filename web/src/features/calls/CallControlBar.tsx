@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { forwardRef, useState } from 'react';
 import { Headphones, HeadphoneOff, Maximize2, Mic, MicOff, Minimize2, Monitor, MonitorX, PhoneOff, Smile, Video, VideoOff } from 'lucide-react';
 import { CloseButton } from '@/shared/ui/primitives/close-button';
 import { useRoom } from '../../state/RoomContext';
@@ -44,7 +44,10 @@ interface CallControlBarProps {
   hudVisible?: boolean;
 }
 
-export function CallControlBar({ hudVisible = true }: CallControlBarProps) {
+// forwardRef so Stage.tsx can measure this wrapper's real rendered height
+// (banners + bar + gaps) and reserve exactly that much space for it instead
+// of a fixed `pb-32` guess (see the calls redesign plan §5.1).
+export const CallControlBar = forwardRef<HTMLDivElement, CallControlBarProps>(function CallControlBar({ hudVisible = true }, ref) {
   const {
     state, dispatch, startCamera, stopCamera, startSharing, stopSharing, activateMic, toggleMicMuted, deafened, toggleDeafened,
     leaveCall, sendReaction, reconnecting, isCallFullscreen, toggleCallFullscreen, fullscreenElement,
@@ -66,10 +69,13 @@ export function CallControlBar({ hudVisible = true }: CallControlBarProps) {
   }
 
   return (
-    <div className={cn(
-      'absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2 transition-opacity duration-200 motion-reduce:transition-none',
-      hudVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
-    )}>
+    <div
+      ref={ref}
+      className={cn(
+        'absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2 transition-opacity duration-200 motion-reduce:transition-none',
+        hudVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
+      )}
+    >
       {reconnecting && (
         <div className="rounded-md border border-strong bg-bg-floating px-3 py-2 text-label text-text-secondary shadow-popover">
           Reconectando à chamada…
@@ -195,4 +201,4 @@ export function CallControlBar({ hudVisible = true }: CallControlBarProps) {
       </div>
     </div>
   );
-}
+});

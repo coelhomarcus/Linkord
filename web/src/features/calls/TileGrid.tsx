@@ -11,9 +11,14 @@ interface TileGridProps {
   focusedId: string | null;
   /** 220 in the normal grid, 148 in a compact stage (a call sidebar) — see
    * the calls redesign plan §5.2. Below this, fitGrid still returns its
-   * best candidate (never hides anyone), just flagged `meetsMinimum: false`
-   * for a future caller to act on (switching to focus mode is E6's job). */
+   * best candidate (never hides anyone), just flagged `meetsMinimum: false`. */
   minTileWidth?: number;
+  /** Fires whenever "does everyone fit at a legible size" changes — the
+   * caller (Stage.tsx) decides whether that means switching into focus mode
+   * (plan §5.2 point 8), never this component itself: TileGrid only reports
+   * the geometry it already measures for its own layout. `suggestedKey` is
+   * just the first available descriptor, a reasonable default main tile. */
+  onCapacityChange?: (meetsMinimum: boolean, suggestedKey: string | null) => void;
 }
 
 const THUMB_W = 160;
@@ -25,7 +30,7 @@ const DEFAULT_MIN_TILE_WIDTH = 220;
 // não acumular linhas que eliminem o principal").
 const MAX_VISIBLE_THUMB_ROWS = 2;
 
-export function TileGrid({ descriptors, focusedId, minTileWidth = DEFAULT_MIN_TILE_WIDTH }: TileGridProps) {
+export function TileGrid({ descriptors, focusedId, minTileWidth = DEFAULT_MIN_TILE_WIDTH, onCapacityChange }: TileGridProps) {
   const { state } = useRoom();
   const keys = useMemo(() => descriptors.map((d) => d.key), [descriptors]);
   const focus = focusedId && keys.includes(focusedId) ? focusedId : null;
@@ -49,6 +54,14 @@ export function TileGrid({ descriptors, focusedId, minTileWidth = DEFAULT_MIN_TI
   const n = descriptors.length;
   const gridFit = fitGrid(n, containerSize.w, containerSize.h, minTileWidth);
   const thumbs = focus ? descriptors.filter((d) => d.key !== focus) : [];
+
+  // Reports geometry upward, never decides on its own — before the first
+  // real measurement `gridFit` is null (container still 0x0), which must
+  // read as "assume it fits" rather than flashing into focus mode at mount.
+  useEffect(() => {
+    if (n === 0) return;
+    onCapacityChange?.(gridFit?.meetsMinimum ?? true, descriptors[0]?.key ?? null);
+  }, [gridFit?.meetsMinimum, n, descriptors, onCapacityChange]);
 
   // Contain-fit tiles shrink their own root to the media's aspect ratio (see
   // Tile.tsx), so their wrapper has to actively center them — a cover-fit

@@ -1,5 +1,6 @@
 import { act, render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { forwardRef } from 'react';
 import { initialRoomState } from '@/state/roomReducer';
 import { RoomContext } from '@/state/RoomContext';
 import type { RoomContextValue } from '@/state/RoomContext';
@@ -8,13 +9,30 @@ import { AnimatedSidebarProvider } from '@/shared/ui/motion/animated-sidebar';
 import { Stage } from '@/features/calls/Stage';
 
 vi.mock('@/features/calls/CallControlBar', () => ({
-  CallControlBar: ({ hudVisible }: { hudVisible?: boolean }) => <div data-testid="control-bar" data-hud-visible={hudVisible ? '1' : '0'} />,
+  // A real forwardRef — Stage measures this element's height, so the mock
+  // has to actually accept the ref, not just ignore it like a plain div would.
+  CallControlBar: forwardRef<HTMLDivElement, { hudVisible?: boolean }>(function CallControlBar({ hudVisible }, ref) {
+    return <div ref={ref} data-testid="control-bar" data-hud-visible={hudVisible ? '1' : '0'} />;
+  }),
 }));
 vi.mock('@/features/calls/CallChatToggleButton', () => ({
   CallChatToggleButton: ({ chatOpen, hudVisible }: { chatOpen: boolean; hudVisible?: boolean }) => (
     <div data-testid="chat-toggle" data-chat-open={chatOpen ? '1' : '0'} data-hud-visible={hudVisible ? '1' : '0'} />
   ),
 }));
+
+const tileGridSpy = vi.fn();
+vi.mock('@/features/calls/TileGrid', () => ({
+  TileGrid: (props: { onCapacityChange?: (meetsMinimum: boolean, key: string | null) => void }) => {
+    tileGridSpy(props);
+    return <div data-testid="tile-grid" />;
+  },
+}));
+
+function lastOnCapacityChange(): (meetsMinimum: boolean, key: string | null) => void {
+  const call = tileGridSpy.mock.calls.at(-1);
+  return call![0].onCapacityChange!;
+}
 
 function renderStage(props: { allIds: string[]; chatOpen: boolean; onToggleChat: () => void }, overrides: Partial<RoomContextValue> = {}) {
   return render(
@@ -92,5 +110,64 @@ describe('Stage — composicao e integracao com fullscreen/HUD', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('Stage — reserva de espaco dinamica pra barra (nada de pb-32 fixo)', () => {
+  it('mede a altura real da barra (+ banners) e reserva exatamente altura + espacamento', () => {
+    const getRect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ height: 60 } as DOMRect);
+    try {
+      renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() });
+      const stage = document.querySelector('[data-stage]') as HTMLElement;
+      expect(stage.style.paddingBottom).toBe('84px');
+    } finally {
+      getRect.mockRestore();
+    }
+  });
+});
+
+describe('Stage — fallback de capacidade (TileGrid nao cabe todo mundo -> foco automatico)', () => {
+  it('sem ninguem em foco, capacidade insuficiente aciona SET_FOCUSED com origin "capacity"', () => {
+    const dispatch = vi.fn();
+    renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() }, { dispatch, state: { ...initialRoomState, focusedId: null, focusOrigin: null } });
+    lastOnCapacityChange()(false, 'p-2:avatar');
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_FOCUSED', id: 'p-2:avatar', origin: 'capacity' });
+  });
+
+  it('quando a capacidade volta a caber, desfaz APENAS um foco que ela mesma causou', () => {
+    const dispatch = vi.fn();
+    renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() }, {
+      dispatch, state: { ...initialRoomState, focusedId: 'p-2:avatar', focusOrigin: 'capacity' },
+    });
+    lastOnCapacityChange()(true, null);
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_FOCUSED', id: null, origin: 'capacity' });
+  });
+
+  it('nunca sobrescreve um foco MANUAL, nem pra focar nem pra desfocar', () => {
+    const dispatch = vi.fn();
+    renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() }, {
+      dispatch, state: { ...initialRoomState, focusedId: 'p-2:avatar', focusOrigin: 'manual' },
+    });
+    lastOnCapacityChange()(false, 'p-3:avatar');
+    lastOnCapacityChange()(true, null);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('nao mexe num foco automatico causado por tela compartilhada (origin "automatic"), so no que ela mesma causou', () => {
+    const dispatch = vi.fn();
+    renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() }, {
+      dispatch, state: { ...initialRoomState, focusedId: 'p-2:screen', focusOrigin: 'automatic' },
+    });
+    lastOnCapacityChange()(true, null);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('ja com algo em foco (qualquer origem), nao foca de novo so por falta de capacidade', () => {
+    const dispatch = vi.fn();
+    renderStage({ allIds: [], chatOpen: false, onToggleChat: vi.fn() }, {
+      dispatch, state: { ...initialRoomState, focusedId: 'p-2:screen', focusOrigin: 'automatic' },
+    });
+    lastOnCapacityChange()(false, 'p-3:avatar');
+    expect(dispatch).not.toHaveBeenCalled();
   });
 });
