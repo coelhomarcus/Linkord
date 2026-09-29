@@ -5,7 +5,7 @@ import type { Room } from 'livekit-client';
 import type { RoomAction } from '../../state/roomReducer';
 import { loadDevicePreference } from '../settings/useDevicePreference';
 
-export interface CameraApi {
+interface CameraApi {
   startCamera: () => Promise<void>;
   stopCamera: () => void;
 }

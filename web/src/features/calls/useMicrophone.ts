@@ -18,7 +18,7 @@ const log = logger.child({ component: 'mic' });
  * switch as on when it isn't. */
 export type NoiseSuppressionResult = 'applied' | 'no-active-track' | 'failed';
 
-export interface MicrophoneApi {
+interface MicrophoneApi {
   activateMic: () => Promise<void>;
   toggleMicMuted: () => Promise<void>;
   setMicMuted: (muted: boolean) => Promise<void>;

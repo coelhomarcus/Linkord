@@ -6,7 +6,7 @@ import type { RoomAction } from '../../state/roomReducer';
 import { loadShareQuality } from '../settings/useShareQualityPreference';
 import { SHARE_QUALITY_PRESETS } from './shareQualityPresets';
 
-export interface ScreenShareApi {
+interface ScreenShareApi {
   startSharing: () => Promise<void>;
   stopSharing: () => void;
   /** Stops the current capture and immediately opens a fresh native picker

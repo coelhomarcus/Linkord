@@ -65,7 +65,7 @@ function formatElapsed(totalSeconds: number): string {
   return `${m}:${s}`;
 }
 
-export interface TileMenuProps {
+interface TileMenuProps {
   onOpenProfile: (userId: string) => void;
 }
 

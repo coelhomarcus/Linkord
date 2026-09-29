@@ -1,6 +1,6 @@
 const ASPECT_RATIO = 16 / 9;
 
-export interface GridFit {
+interface GridFit {
   cols: number;
   rows: number;
   tileW: number;

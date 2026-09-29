@@ -3,7 +3,7 @@ import { logger } from '@/shared/lib/logger';
 
 const log = logger.child({ component: 'mic-level-meter' });
 
-export interface MicLevelMeterApi {
+interface MicLevelMeterApi {
   /** 0..1, only meaningful while `active`. */
   level: number;
   active: boolean;

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { RefObject } from 'react';
 import { useFullscreenElement } from '@/shared/hooks/useFullscreenElement';
 
-export interface CallFullscreenApi {
+interface CallFullscreenApi {
   /** True specifically when THIS container (the call stage) is the
    * fullscreen element — a single tile going fullscreen (TileMenu's own
    * "Tela cheia") does not count as the call being expanded. */

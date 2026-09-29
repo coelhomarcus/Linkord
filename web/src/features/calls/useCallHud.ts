@@ -8,7 +8,7 @@ const IDLE_TIMEOUT_MS = 2500;
 const CHECK_INTERVAL_MS = 400;
 const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'pointerdown', 'touchstart'] as const;
 
-export interface CallHudApi {
+interface CallHudApi {
   hudVisible: boolean;
   /** Also whatever "activity" itself resolves to — exposed so a caller can
    * force a reveal from a non-DOM-event source (e.g. opening a menu

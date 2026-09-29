@@ -3,7 +3,7 @@ import { logger } from '@/shared/lib/logger';
 
 const log = logger.child({ component: 'speaker-test' });
 
-export interface SpeakerTestApi {
+interface SpeakerTestApi {
   testing: boolean;
   error: string | null;
   test: (deviceId?: string) => Promise<void>;

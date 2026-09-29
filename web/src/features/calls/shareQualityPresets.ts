@@ -3,7 +3,7 @@ import type { VideoEncoding } from 'livekit-client';
 
 export type ShareQualityId = 'standard' | 'sharp' | 'smooth';
 
-export interface ShareQualityPreset {
+interface ShareQualityPreset {
   label: string;
   resolution: { width: number; height: number; frameRate: number };
   encoding: VideoEncoding;

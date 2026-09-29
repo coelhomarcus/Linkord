@@ -1,6 +1,6 @@
 import type { Participant } from '@/shared/types/protocol';
 
-export interface Me {
+interface Me {
   id: string | null;
   userId: string | null;
   name: string;
