@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { RoomEvent, Track } from 'livekit-client';
 import type { Room } from 'livekit-client';
 import { useRoom } from '../../state/RoomContext';
-import { activeTrack, getParticipant } from './useLiveKitTrack';
+import { activeTrack, getParticipant, isScreenPaused, isTrackPending } from './useLiveKitTrack';
 import { tileKey } from './tileTypes';
 import type { TileDescriptor } from './tileTypes';
 
@@ -13,9 +13,14 @@ function buildDescriptors(room: Room, participantIds: string[]): TileDescriptor[
     if (!participant) continue;
     const hasScreen = !!activeTrack(participant, Track.Source.ScreenShare);
     const hasCamera = !!activeTrack(participant, Track.Source.Camera);
-    if (hasScreen) out.push({ key: tileKey(id, 'screen'), participantId: id, kind: 'screen' });
+    const screenPending = !hasScreen && isTrackPending(participant, Track.Source.ScreenShare);
+    const cameraPending = !hasCamera && isTrackPending(participant, Track.Source.Camera);
+    const screenPaused = !hasScreen && !screenPending && isScreenPaused(participant);
+    if (hasScreen || screenPending || screenPaused) {
+      out.push({ key: tileKey(id, 'screen'), participantId: id, kind: 'screen', loading: screenPending, paused: screenPaused });
+    }
     const selfKind = hasCamera ? 'camera' : 'avatar';
-    out.push({ key: tileKey(id, selfKind), participantId: id, kind: selfKind });
+    out.push({ key: tileKey(id, selfKind), participantId: id, kind: selfKind, loading: cameraPending, paused: false });
   }
   return out;
 }

@@ -9,6 +9,7 @@ import { useMessageActionRequests } from './useMessageActionRequests';
 import { useReactionIntents } from './useReactionIntents';
 import { MAX_WINDOW, withNewerMessages, withOlderPage } from './historyWindow';
 import { markArrival } from './arrivals';
+import type { ReactionParticipantsTarget } from './reactionParticipants';
 import type { ChatMessage, ClientMessage, Conversation, PublicUser, ReactionEmoji, ServerMessage } from '@/shared/types/protocol';
 
 /** Adds `message` once, in msgId order — a send's result and its broadcast
@@ -116,6 +117,11 @@ export function useChatMessages(deps: ChatMessagesDeps) {
   const [unreadByConversation, setUnreadByConversation] = useState<Map<string, number>>(new Map());
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<number | null>(null);
+  // which message's full reaction list is open — shared by the row menu and
+  // the right-click menu, since both need to open the same single dialog
+  const [reactionParticipantsTarget, setReactionParticipantsTarget] = useState<ReactionParticipantsTarget | null>(null);
+  const openReactionParticipants = useCallback((target: ReactionParticipantsTarget) => setReactionParticipantsTarget(target), []);
+  const closeReactionParticipants = useCallback(() => setReactionParticipantsTarget(null), []);
   const actionRequests = useMessageActionRequests(sendWs);
   const { request: requestAction } = actionRequests;
   // shared by the row and the right-click menu, which both delete
@@ -467,6 +473,7 @@ export function useChatMessages(deps: ChatMessagesDeps) {
     pendingByConversation: outbox.pendingByConversation,
     retryPendingMessage: outbox.retry, discardPendingMessage: outbox.discard,
     replyingTo, setReplyingTo, editingMsgId, setEditingMsgId,
+    reactionParticipantsTarget, openReactionParticipants, closeReactionParticipants,
     onConversationHistory, onConversationHistoryAround, onConversationHistoryMore, onConversationHistoryNewer,
     loadNewerMessages, loadingNewerByConversation, newerCountByConversation, windowGenerationByConversation,
     onChat, onChatDeleted, onChatEdited, onInvitationUpdated, onChatAttachmentAdded, onChatReactionUpdated, onConversationDeleted, onConversationRead,

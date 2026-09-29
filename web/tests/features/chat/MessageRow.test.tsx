@@ -190,6 +190,27 @@ describe('MessageRow — reações rápidas', () => {
     expect(await screen.findByPlaceholderText('Buscar emoji…')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reagir com 👍' })).not.toBeInTheDocument();
   });
+
+  it('menu "Ações" só oferece "Ver todas as reações" quando a mensagem tem alguma', async () => {
+    const user = userEvent.setup();
+    renderWithRoom(
+      <MessageRow message={makeMessage()} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />
+    );
+    await user.click(screen.getByRole('button', { name: 'Acoes' }));
+    expect(screen.queryByText('Ver todas as reações')).not.toBeInTheDocument();
+  });
+
+  it('"Ver todas as reações" abre o dialogo com a conversa e a mensagem certas', async () => {
+    const user = userEvent.setup();
+    const openReactionParticipants = vi.fn();
+    renderWithRoom(
+      <MessageRow message={makeMessage({ reactions: { '👍': ['user-2'] } })} showHeader highlighted={false} allUsers={new Map()} mentionLookup={new Map()} onOpenProfile={noop} onReply={noop} onJumpTo={noop} />,
+      { openReactionParticipants }
+    );
+    await user.click(screen.getByRole('button', { name: 'Acoes' }));
+    await user.click(await screen.findByText('Ver todas as reações'));
+    expect(openReactionParticipants).toHaveBeenCalledWith({ conversationId: 'conv-1', msgId: 1 });
+  });
 });
 
 describe('MessageRow — cartão de convite', () => {

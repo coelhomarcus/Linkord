@@ -6,7 +6,7 @@ import { logger } from '@/shared/lib/logger';
 
 const log = logger.child({ component: 'devices' });
 
-export interface DeviceOption {
+interface DeviceOption {
   deviceId: string;
   label: string;
 }
@@ -17,9 +17,9 @@ export interface DeviceOption {
  * yet. `permission-denied`: explicitly asked (requestPermission) and still
  * got nothing — also wouldn't help to ask again, the browser won't re-prompt.
  * `no-devices`: supported and permitted, but the list is genuinely empty. */
-export type MediaDevicesStatus = 'ready' | 'unsupported' | 'permission-needed' | 'permission-denied' | 'no-devices';
+type MediaDevicesStatus = 'ready' | 'unsupported' | 'permission-needed' | 'permission-denied' | 'no-devices';
 
-export interface MediaDevicesApi {
+interface MediaDevicesApi {
   devices: DeviceOption[];
   activeDeviceId: string | undefined;
   status: MediaDevicesStatus;

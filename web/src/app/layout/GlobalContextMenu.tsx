@@ -6,6 +6,7 @@ import { ReportDialog } from '@/features/reports/ReportDialog';
 import type { ReportTarget } from '@/features/reports/reportCategories';
 import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/shared/ui/primitives/context-menu';
 import { ReactionEmojiPicker } from '@/features/chat/ReactionEmojiPicker';
+import { ReactionParticipantsDialog } from '@/features/chat/ReactionParticipantsDialog';
 import { useKeepPopoverWarm } from '@/shared/hooks/useKeepPopoverWarm';
 import { messagePermissions } from '@/features/chat/messageActions';
 import { useRoom } from '@/state/RoomContext';
@@ -28,7 +29,7 @@ export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenu
   const {
     state, hideAudioOnlyTiles, setHideAudioOnlyTiles,
     activeConversationId, messagesByConversation, reactToChatMessage, deleteChatMessage, setReplyingTo, setEditingMsgId,
-    conversations, closeConversation, pinConversation,
+    conversations, closeConversation, pinConversation, openReactionParticipants,
   } = useRoom();
   const [hasSelection, setHasSelection] = useState(false);
   const [stageTarget, setStageTarget] = useState(false);
@@ -50,6 +51,7 @@ export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenu
     : undefined;
   // one source of truth with the row's toolbar and phone menu
   const can = targetMessage ? messagePermissions(targetMessage, { userId: state.me.userId, role: state.me.role }) : null;
+  const hasReactions = !!targetMessage && Object.values(targetMessage.reactions ?? {}).some((ids) => ids && ids.length > 0);
   const targetConversation = conversationTarget ? conversations.find((c) => c.id === conversationTarget) : undefined;
 
   const showMessageBlock = !!targetMessage;
@@ -162,6 +164,12 @@ export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenu
                   </ContextMenuItem>
                 </>
               )}
+              {hasReactions && (
+                <ContextMenuItem onClick={() => openReactionParticipants({ conversationId: targetMessage.conversationId, msgId: targetMessage.msgId })}>
+                  <UsersRound size={14} />
+                  <span>Ver todas as reações</span>
+                </ContextMenuItem>
+              )}
               {can?.copy && (
                 <ContextMenuItem onClick={handleCopyMessageText}>
                   <Copy size={14} />
@@ -241,6 +249,7 @@ export function GlobalContextMenu({ children, onOpenProfile }: GlobalContextMenu
         </ContextMenuContent>
       </ContextMenu>
       <ReportDialog target={reportTarget} open={!!reportTarget} onOpenChange={(open) => { if (!open) setReportTarget(null); }} />
+      <ReactionParticipantsDialog />
     </>
   );
 }

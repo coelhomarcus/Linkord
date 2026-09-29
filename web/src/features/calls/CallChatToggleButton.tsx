@@ -6,14 +6,20 @@ import { cn } from '@/shared/lib/utils';
 interface CallChatToggleButtonProps {
   chatOpen: boolean;
   onToggleChat: () => void;
+  /** Fades out (but stays mounted, never affecting layout) when the HUD
+   * auto-hides after inactivity — see useCallHud.ts. */
+  hudVisible?: boolean;
 }
 
 // Top-right, not with the rest of the call controls at the bottom — its
 // position doubles as a hint that it opens a side panel, same corner a
 // sidebar toggle would live in.
-export function CallChatToggleButton({ chatOpen, onToggleChat }: CallChatToggleButtonProps) {
+export function CallChatToggleButton({ chatOpen, onToggleChat, hudVisible = true }: CallChatToggleButtonProps) {
   return (
-    <div className="absolute right-[calc(1rem+env(safe-area-inset-right))] top-[calc(1rem+env(safe-area-inset-top))] z-20">
+    <div className={cn(
+      'absolute right-[calc(1rem+env(safe-area-inset-right))] top-[calc(1rem+env(safe-area-inset-top))] z-20 transition-opacity duration-200 motion-reduce:transition-none',
+      hudVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
+    )}>
       <Tooltip>
         <TooltipTrigger
           onClick={onToggleChat}

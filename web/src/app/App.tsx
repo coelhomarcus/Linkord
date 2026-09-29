@@ -17,8 +17,6 @@ import { GroupDetailsPanel } from '@/features/conversations/GroupDetailsPanel';
 import { ConversationMediaPanel } from '@/features/conversations/ConversationMediaPanel';
 import { ChatSearchDialog } from '@/features/chat/ChatSearchDialog';
 import { Stage } from '@/features/calls/Stage';
-import { CallControlBar } from '@/features/calls/CallControlBar';
-import { CallChatToggleButton } from '@/features/calls/CallChatToggleButton';
 import { CallChatPanel } from '@/features/calls/CallChatPanel';
 import { ParticipantAudioLayer } from '@/features/calls/ParticipantAudioLayer';
 import { FloatingPip } from '@/features/calls/FloatingPip';
@@ -149,7 +147,7 @@ function Shell() {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key !== 'Escape') return;
       if (closeTileMenu()) return;
-      if (state.focusedId) dispatch({ type: 'SET_FOCUSED', id: null });
+      if (state.focusedId) dispatch({ type: 'SET_FOCUSED', id: null, origin: 'manual' });
     }
     window.addEventListener('beforeunload', onBeforeUnload);
     window.addEventListener('pagehide', onPageHide);
@@ -187,7 +185,7 @@ function Shell() {
             <Route
               path="/app/conversations/:conversationId?"
               element={showStage ? (
-                <Stage allIds={callIds} />
+                <Stage allIds={callIds} chatOpen={callChatOpen} onToggleChat={() => setCallChatOpen((v) => !v)} />
               ) : (
                 <ConversationPanel
                   onOpenProfile={setProfileUserId}
@@ -204,12 +202,6 @@ function Shell() {
             <Route path="/app/settings/:tab?" element={<SettingsPage onOpenProfile={setProfileUserId} />} />
             <Route path="*" element={<Navigate to={ROUTES.conversations} replace />} />
           </Routes>
-          {showStage && (
-            <>
-              <CallControlBar />
-              <CallChatToggleButton chatOpen={callChatOpen} onToggleChat={() => setCallChatOpen((v) => !v)} />
-            </>
-          )}
           {inCall && <ParticipantAudioLayer participantIds={callIds} />}
           {inCall && !showStage && (
             <FloatingPip
@@ -236,7 +228,7 @@ function Shell() {
           onOpenChange={setCallChatOpen}
           onOpenProfile={setProfileUserId}
         />
-        <TileMenu />
+        <TileMenu onOpenProfile={setProfileUserId} />
         <ProfileModal userId={profileUserId} onClose={() => setProfileUserId(null)} />
         <CommandPaletteMount
           open={paletteOpen}

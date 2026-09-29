@@ -3,7 +3,7 @@ import { logger } from '@/shared/lib/logger';
 
 const log = logger.child({ component: 'camera-preview' });
 
-export interface CameraPreviewApi {
+interface CameraPreviewApi {
   stream: MediaStream | null;
   active: boolean;
   error: string | null;

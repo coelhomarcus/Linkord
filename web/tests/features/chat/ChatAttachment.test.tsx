@@ -43,9 +43,10 @@ describe('ChatAttachment', () => {
     expect(fetchMock).not.toHaveBeenCalledWith('/uploads/file-id', expect.anything());
   });
 
-  it('arquivo generico (nao previsualizavel) vira link de download simples', () => {
+  it('arquivo generico (nao previsualizavel) mostra a identidade e um link de download proprio', () => {
     render(<ChatAttachment attachment={{ id: 'zip-id', name: 'projeto.zip', mime: 'application/zip', size: 999 }} />);
-    const link = screen.getByText('projeto.zip').closest('a');
+    expect(screen.getByTitle('projeto.zip')).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'Baixar projeto.zip' });
     expect(link).toHaveAttribute('href', '/uploads/zip-id');
     expect(link).toHaveAttribute('download', 'projeto.zip');
   });

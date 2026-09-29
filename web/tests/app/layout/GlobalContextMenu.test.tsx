@@ -74,18 +74,19 @@ describe('GlobalContextMenu', () => {
   });
 
   describe('menu de uma mensagem', () => {
-    const message = { msgId: 7, id: 'other', name: 'Ana', avatar: '', text: 'oi', ts: 1 } as never;
-    const room = (reactToChatMessage = vi.fn()) => ({
+    const message = { msgId: 7, conversationId: 'c1', id: 'other', name: 'Ana', avatar: '', text: 'oi', ts: 1 } as never;
+    const room = (overrides: Record<string, unknown> = {}) => ({
       state: userState,
       activeConversationId: 'c1',
       messagesByConversation: new Map([['c1', [message]]]),
-      reactToChatMessage,
+      reactToChatMessage: vi.fn(),
+      ...overrides,
     });
-    const renderMessage = (reactToChatMessage = vi.fn()) => renderWithRoom(
+    const renderMessage = (overrides: Record<string, unknown> = {}) => renderWithRoom(
       <GlobalContextMenu onOpenProfile={vi.fn()}>
         <p data-message-id="7" data-testid="msg">oi</p>
       </GlobalContextMenu>,
-      room(reactToChatMessage),
+      room(overrides),
     );
 
     it('abre com reacoes rapidas e um "+", sem o seletor de emoji', async () => {
@@ -100,7 +101,7 @@ describe('GlobalContextMenu', () => {
 
     it('clicar numa reacao rapida reage e fecha o menu', async () => {
       const react = vi.fn();
-      renderMessage(react);
+      renderMessage({ reactToChatMessage: react });
       fireEvent.contextMenu(screen.getByTestId('msg'));
       fireEvent.click(await screen.findByRole('button', { name: 'Reagir com ❤️' }));
 
@@ -115,6 +116,23 @@ describe('GlobalContextMenu', () => {
 
       await waitFor(() => expect(screen.queryByRole('button', { name: 'Reagir com 👍' })).not.toBeInTheDocument());
       expect(document.querySelector('[data-slot="emoji-picker"]')).toBeInTheDocument();
+    });
+
+    it('nao oferece "Ver todas as reações" quando a mensagem nao tem nenhuma', async () => {
+      renderMessage();
+      fireEvent.contextMenu(screen.getByTestId('msg'));
+      await screen.findByText('Responder');
+      expect(screen.queryByText('Ver todas as reações')).not.toBeInTheDocument();
+    });
+
+    it('"Ver todas as reações" abre o dialogo com a conversa e a mensagem certas', async () => {
+      const openReactionParticipants = vi.fn();
+      const reacted = { msgId: 7, conversationId: 'c1', id: 'other', name: 'Ana', avatar: '', text: 'oi', ts: 1, reactions: { '👍': ['other'] } } as never;
+      renderMessage({ openReactionParticipants, messagesByConversation: new Map([['c1', [reacted]]]) });
+      fireEvent.contextMenu(screen.getByTestId('msg'));
+      fireEvent.click(await screen.findByText('Ver todas as reações'));
+
+      expect(openReactionParticipants).toHaveBeenCalledWith({ conversationId: 'c1', msgId: 7 });
     });
   });
 });

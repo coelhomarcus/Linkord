@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Download } from 'lucide-react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { ChatAttachment as ChatAttachmentData } from '@/shared/types/protocol';
-import { DocumentAttachmentCard } from './DocumentAttachmentCard';
+import { FileAttachmentCard } from './FileAttachmentCard';
 import { downloadFile } from '@/shared/lib/download';
 import { highlightCode } from '@/shared/lib/highlightCode';
 
@@ -92,17 +92,8 @@ export function TextPreviewCard({ attachment, maxWidth }: { attachment: ChatAtta
   }, [preview, markdown]);
 
   return (
-    <div ref={rootRef} style={{ maxWidth }} className="mt-1.5 w-full max-w-sm overflow-hidden rounded-xl border border-white/10 bg-bg-tertiary">
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        download={attachment.name}
-        className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-bg-hover"
-      >
-        <DocumentAttachmentCard name={attachment.name} size={attachment.size} mime={attachment.mime} className="flex-1" />
-        <Download size={16} className="flex-none text-text-muted" />
-      </a>
+    <div ref={rootRef} style={{ maxWidth }} className="w-full overflow-hidden rounded-xl border border-white/10 bg-bg-tertiary">
+      <FileAttachmentCard name={attachment.name} size={attachment.size} mime={attachment.mime} url={url} bordered={false} />
 
       {preview?.previewable && preview.content && (
         <div className="border-t border-white/10">

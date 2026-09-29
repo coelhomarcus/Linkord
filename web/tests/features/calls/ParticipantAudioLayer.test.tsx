@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Room } from 'livekit-client';
+import { Room, Track } from 'livekit-client';
+import type { Room as LKRoom } from 'livekit-client';
 import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
 import { initialRoomState } from '@/state/roomReducer';
 import { ParticipantAudioLayer } from '@/features/calls/ParticipantAudioLayer';
@@ -14,6 +15,45 @@ function fakeParticipant(overrides: Partial<Participant> = {}): Participant {
     ...overrides,
   };
 }
+
+function fakeRoomWithScreenAudio(screenAudioPub?: { isMuted: boolean; track: object }) {
+  const listeners = new Map<string, Set<() => void>>();
+  const room = {
+    on: vi.fn((event: string, fn: () => void) => { if (!listeners.has(event)) listeners.set(event, new Set()); listeners.get(event)!.add(fn); }),
+    off: vi.fn((event: string, fn: () => void) => { listeners.get(event)?.delete(fn); }),
+    localParticipant: { identity: 'p-1', getTrackPublication: () => undefined },
+    getParticipantByIdentity: vi.fn(() => ({
+      getTrackPublication: (source: Track.Source) => (source === Track.Source.ScreenShareAudio ? screenAudioPub : undefined),
+    })),
+  };
+  return room as unknown as LKRoom;
+}
+
+describe('ParticipantAudioLayer — audio de tela compartilhada so registra quando realmente existe', () => {
+  it('sem track de audio da tela (nao foi compartilhado), nao registra a chave ":screen" — nada de "audio disponivel" so por ter sido pedido', () => {
+    const audioRegistry = { current: new Map() };
+    const participants = new Map([['p-2', fakeParticipant()]]);
+    renderWithRoom(<ParticipantAudioLayer participantIds={['p-2']} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants },
+      livekitRoom: fakeRoomWithScreenAudio(undefined),
+      audioRegistry,
+    });
+
+    expect(audioRegistry.current.has('p-2:screen')).toBe(false);
+  });
+
+  it('com um track de audio de tela real, registra a chave ":screen"', () => {
+    const audioRegistry = { current: new Map() };
+    const participants = new Map([['p-2', fakeParticipant()]]);
+    renderWithRoom(<ParticipantAudioLayer participantIds={['p-2']} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants },
+      livekitRoom: fakeRoomWithScreenAudio({ isMuted: false, track: { attach: vi.fn(), detach: vi.fn() } }),
+      audioRegistry,
+    });
+
+    expect(audioRegistry.current.has('p-2:screen')).toBe(true);
+  });
+});
 
 describe('ParticipantAudioLayer — aplica a saida de audio (alto-falante) salva', () => {
   afterEach(() => {

@@ -1,6 +1,6 @@
 import type { Participant } from '@/shared/types/protocol';
 
-export interface Me {
+interface Me {
   id: string | null;
   userId: string | null;
   name: string;
@@ -22,6 +22,20 @@ export interface RoomState {
   me: Me;
   participants: Map<string, Participant>;
   focusedId: string | null;
+  /** Null whenever focusedId is null — see the SET_FOCUSED action. 'capacity'
+   * is a distinct reason from 'automatic' (a new screen share) so the
+   * capacity fallback (TileGrid can't fit everyone legibly) can retract
+   * ONLY its own focus when space recovers, never one it didn't cause. */
+  focusOrigin: 'manual' | 'automatic' | 'capacity' | null;
+  /** Tile keys whose video a viewer chose to stop seeing ("Ocultar vídeo
+   * para mim") — local-only, session-only, never synced to the server or
+   * to other participants. Cleared per-participant on PARTICIPANT_LEFT. */
+  hiddenVideoKeys: Set<string>;
+  /** Screen-share tile keys a viewer chose to stop watching ("Parar de
+   * assistir") — unlike hiddenVideoKeys this actually drives an unsubscribe
+   * (see useWatchScreenShare), but is still local-only/session-only and
+   * never touches the presenter's publication. Cleared on PARTICIPANT_LEFT. */
+  unwatchedScreenKeys: Set<string>;
   reconnecting: boolean;
   joined: boolean;
   roomError: string | null;
@@ -48,6 +62,9 @@ export const initialRoomState: RoomState = {
   },
   participants: new Map(),
   focusedId: null,
+  focusOrigin: null,
+  hiddenVideoKeys: new Set(),
+  unwatchedScreenKeys: new Set(),
   reconnecting: false,
   joined: false,
   roomError: null,
@@ -76,7 +93,13 @@ export type RoomAction =
   | { type: 'SET_ROLE'; role: 'user' | 'admin' }
   | { type: 'SET_CLIENT_OUTDATED' }
   | { type: 'SET_LOCAL_CAMERA'; on: boolean }
-  | { type: 'SET_FOCUSED'; id: string | null }
+  // `origin` records whether a person chose this focus themselves — an
+  // automatic suggestion (a new screen share appearing) must never override
+  // a manual choice; the reducer nulls it out itself whenever id is null,
+  // so callers never have to remember to pair them.
+  | { type: 'SET_FOCUSED'; id: string | null; origin: 'manual' | 'automatic' | 'capacity' }
+  | { type: 'TOGGLE_HIDDEN_VIDEO'; key: string }
+  | { type: 'TOGGLE_SCREEN_WATCH'; key: string }
   | { type: 'SET_SHARE_ERROR'; message: string | null }
   | { type: 'SET_MIC_PROBLEM'; problem: MicProblem }
   | { type: 'SET_CALL_JOIN_ERROR'; error: RoomState['callJoinError'] };
@@ -114,7 +137,12 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       for (const p of action.participants) participants.set(p.id, p);
       const focusedOwner = state.focusedId?.split(':')[0];
       const stillThere = focusedOwner ? participants.has(focusedOwner) || focusedOwner === state.me.id : true;
-      return { ...state, participants, focusedId: stillThere ? state.focusedId : null };
+      return {
+        ...state,
+        participants,
+        focusedId: stillThere ? state.focusedId : null,
+        focusOrigin: stillThere ? state.focusOrigin : null,
+      };
     }
     case 'PARTICIPANT_JOINED': {
       const participants = new Map(state.participants);
@@ -131,10 +159,28 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       if (!state.participants.has(action.id)) return state;
       const participants = new Map(state.participants);
       participants.delete(action.id);
+      const stillThere = !state.focusedId?.startsWith(`${action.id}:`);
+      let hiddenVideoKeys = state.hiddenVideoKeys;
+      for (const key of hiddenVideoKeys) {
+        if (key.startsWith(`${action.id}:`)) {
+          if (hiddenVideoKeys === state.hiddenVideoKeys) hiddenVideoKeys = new Set(state.hiddenVideoKeys);
+          hiddenVideoKeys.delete(key);
+        }
+      }
+      let unwatchedScreenKeys = state.unwatchedScreenKeys;
+      for (const key of unwatchedScreenKeys) {
+        if (key.startsWith(`${action.id}:`)) {
+          if (unwatchedScreenKeys === state.unwatchedScreenKeys) unwatchedScreenKeys = new Set(state.unwatchedScreenKeys);
+          unwatchedScreenKeys.delete(key);
+        }
+      }
       return {
         ...state,
         participants,
-        focusedId: state.focusedId?.startsWith(`${action.id}:`) ? null : state.focusedId,
+        focusedId: stillThere ? state.focusedId : null,
+        focusOrigin: stillThere ? state.focusOrigin : null,
+        hiddenVideoKeys,
+        unwatchedScreenKeys,
       };
     }
     case 'SET_RECONNECTING':
@@ -174,7 +220,17 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
     case 'SET_LOCAL_CAMERA':
       return { ...state, me: { ...state.me, cameraOn: action.on } };
     case 'SET_FOCUSED':
-      return { ...state, focusedId: action.id };
+      return { ...state, focusedId: action.id, focusOrigin: action.id ? action.origin : null };
+    case 'TOGGLE_HIDDEN_VIDEO': {
+      const hiddenVideoKeys = new Set(state.hiddenVideoKeys);
+      if (hiddenVideoKeys.has(action.key)) hiddenVideoKeys.delete(action.key); else hiddenVideoKeys.add(action.key);
+      return { ...state, hiddenVideoKeys };
+    }
+    case 'TOGGLE_SCREEN_WATCH': {
+      const unwatchedScreenKeys = new Set(state.unwatchedScreenKeys);
+      if (unwatchedScreenKeys.has(action.key)) unwatchedScreenKeys.delete(action.key); else unwatchedScreenKeys.add(action.key);
+      return { ...state, unwatchedScreenKeys };
+    }
     case 'SET_SHARE_ERROR':
       return { ...state, shareError: action.message };
     case 'SET_MIC_PROBLEM':

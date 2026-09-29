@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { MouseEvent } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent } from 'react';
 import { ConnectionQuality } from 'livekit-client';
-import { HeadphoneOff, MicOff, Settings, SignalLow, SignalZero, VolumeX } from 'lucide-react';
+import { EyeOff, HeadphoneOff, Loader2, MicOff, MonitorOff, MonitorPause, Settings, SignalLow, SignalZero, VolumeX } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
-import { useParticipantMedia, useAttachTrack, useIsSpeaking, useConnectionQuality } from './useLiveKitTrack';
+import { useParticipantMedia, useAttachTrack, useIsSpeaking, useConnectionQuality, useWatchScreenShare } from './useLiveKitTrack';
 import { useMuteForMe } from './useMuteForMe';
 import { tileKey } from './tileTypes';
 import type { TileKind } from './tileTypes';
@@ -15,13 +15,19 @@ interface TileProps {
   participantId: string;
   kind: TileKind;
   isMine: boolean;
+  /** Publication exists and isn't muted, but its track hasn't attached yet —
+   * see TileDescriptor. Only meaningful while `kind === 'avatar'`. */
+  loading?: boolean;
+  /** Only meaningful while `kind === 'screen'` — the presenter paused their
+   * own preview (see useScreenShare's pauseSharePreview). */
+  paused?: boolean;
   fit?: 'cover' | 'contain';
   avatarSize?: number;
   nameSize?: 'body' | 'label';
 }
 
-export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 96, nameSize = 'body' }: TileProps) {
-  const { state, dispatch, openTileMenu, tileDomRegistry, deafened, showTileBanners } = useRoom();
+export function Tile({ participantId, kind, isMine, loading = false, paused = false, fit = 'contain', avatarSize = 96, nameSize = 'body' }: TileProps) {
+  const { state, dispatch, openTileMenu, tileDomRegistry, deafened, showTileBanners, mirrorCameraPreview, livekitRoom } = useRoom();
   const key = tileKey(participantId, kind);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -41,7 +47,16 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
   const connectionQuality = useConnectionQuality(participantId);
   const { hasAudio: hasMutableAudio, muted: mutedForMe, toggleMute: toggleMuteForMe } = useMuteForMe(participantId, kind, isMine);
 
-  const showsVideo = kind !== 'avatar';
+  // "Ocultar vídeo para mim" — presentation only: never unsubscribes or
+  // touches anyone else's view (see TileMenu.tsx). Not offered for your own
+  // camera (that's what turning it off is for) or for screens.
+  const hiddenForMe = kind === 'camera' && !isMine && state.hiddenVideoKeys.has(key);
+  // "Parar de assistir" a remote screen share — unlike hiddenForMe, this
+  // really unsubscribes (see useWatchScreenShare), a deliberate bandwidth
+  // saving rather than a purely local presentation choice.
+  const notWatching = kind === 'screen' && !isMine && state.unwatchedScreenKeys.has(key);
+  useWatchScreenShare(livekitRoom, participantId, notWatching);
+  const showsVideo = kind !== 'avatar' && !hiddenForMe && !notWatching && !paused;
   const videoTrack = kind === 'screen' ? media.screenTrack : kind === 'camera' ? media.cameraTrack : null;
   useAttachTrack(videoTrack, videoRef);
 
@@ -83,9 +98,21 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
     };
   }, [fit, showsVideo, videoTrack]);
 
+  const isFocused = state.focusedId === key;
+
   const handleClick = useCallback(() => {
-    dispatch({ type: 'SET_FOCUSED', id: state.focusedId === key ? null : key });
+    dispatch({ type: 'SET_FOCUSED', id: state.focusedId === key ? null : key, origin: 'manual' });
   }, [dispatch, key, state.focusedId]);
+
+  // Enter/Space on the tile itself toggle focus, same as a click — but not
+  // when they land on a nested real <button> (gear, unmute), which already
+  // handles its own activation and would otherwise double-fire.
+  const handleKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    handleClick();
+  }, [handleClick]);
 
   const handleContextMenu = useCallback((e: MouseEvent) => {
     e.preventDefault();
@@ -129,7 +156,12 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
   return (
     <div
       ref={rootRef}
-      className={`tile-fullscreen-target relative h-full w-full cursor-pointer overflow-hidden rounded-xl border bg-bg-tertiary transition-colors ${
+      data-tile-kind={kind}
+      role="button"
+      tabIndex={0}
+      aria-pressed={isFocused}
+      aria-label={`${isFocused ? 'Desfazer destaque de' : 'Destacar'} ${name || 'participante'}`}
+      className={`tile-fullscreen-target relative h-full w-full cursor-pointer overflow-hidden rounded-xl border-[3.5px] bg-bg-tertiary transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${
         showSpeakingBorder ? '' : 'border-transparent'
       }`}
       style={{
@@ -138,23 +170,61 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
         ...(showSpeakingBorder ? { borderColor: tint } : {}),
       }}
       onClick={handleClick}
+      onKeyDown={handleKeyDown}
       onContextMenu={handleContextMenu}
     >
       {kind !== 'screen' && banner && <div className="absolute inset-0" style={bannerLayerStyle} />}
       {showsVideo ? (
-        <video ref={videoRef} autoPlay playsInline muted={isMine} className={`relative h-full w-full object-cover ${kind === 'screen' ? 'bg-black' : ''}`} />
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted={isMine}
+          className={`relative h-full w-full object-cover ${kind === 'screen' ? 'bg-bg-call' : ''}`}
+          // presentation only — the track actually published/sent is never touched
+          style={isMine && kind === 'camera' && mirrorCameraPreview ? { transform: 'scaleX(-1)' } : undefined}
+        />
+      ) : kind === 'screen' ? (
+        <div className="relative flex h-full w-full flex-col items-center justify-center gap-2 bg-bg-call">
+          {notWatching ? (
+            <span className="flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-caption text-text-muted">
+              <MonitorOff size={14} />
+              Você parou de assistir
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-caption text-text-muted">
+              <MonitorPause size={14} />
+              Prévia pausada
+            </span>
+          )}
+        </div>
       ) : (
         <div className="relative flex h-full w-full flex-col items-center justify-center gap-2.5">
-          <Avatar id={participantId} name={name} avatar={avatar} poster={avatarPoster} frozen={!isSpeaking} avatarColor={avatarColor} size={avatarSize} />
+          <Avatar id={participantId} name={name} avatar={avatar} poster={avatarPoster} frozen={!isSpeaking} avatarColor={avatarColor} size={avatarSize} className={loading ? 'opacity-50' : undefined} />
+          {/* the camera is on and about to show video — just not here yet
+              (still subscribing); a plain avatar would read as "camera off" */}
+          {loading && (
+            <span aria-hidden className="absolute" style={{ width: avatarSize, height: avatarSize }}>
+              <Loader2 size={Math.max(20, avatarSize / 3)} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 animate-spin text-text-muted" />
+            </span>
+          )}
+          {/* distinct from "camera off": their camera is on, this viewer just
+              chose not to see it — TileMenu's "Ocultar vídeo para mim" */}
+          {hiddenForMe && (
+            <span className="flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-caption text-text-muted">
+              <EyeOff size={12} />
+              Vídeo oculto
+            </span>
+          )}
         </div>
       )}
 
       <div className={cn(
-        'absolute bottom-2 left-2 flex max-w-[calc(100%-16px)] items-center gap-1.5 rounded-full bg-bg-tertiary/85 py-1 pr-2.5',
+        'absolute bottom-1.5 left-1.5 flex max-w-[calc(100%-12px)] items-center gap-1.5 rounded-[9px] border border-white/10 bg-black/85 py-1 pr-2.5',
         showsVideo ? 'pl-1' : 'pl-2.5'
       )}>
         {showsVideo && <Avatar id={participantId} name={name} avatar={avatar} poster={avatarPoster} frozen={!isSpeaking} avatarColor={avatarColor} size={20} />}
-        <span className={cn('select-none truncate font-medium text-text-primary', nameSize === 'label' ? 'text-label' : 'text-body')}>{name}</span>
+        <span className={cn('select-none truncate font-medium text-text-primary', nameSize === 'label' ? 'text-label' : 'text-caption')}>{name}</span>
         {isDeafened ? (
           <HeadphoneOff size={14} className="flex-none text-red" />
         ) : (
@@ -170,29 +240,32 @@ export function Tile({ participantId, kind, isMine, fit = 'cover', avatarSize = 
         )}
       </div>
 
-      {hasMutableAudio && mutedForMe && (
+      {/* one grouped pill for tile-level actions, not separate floating
+          buttons — a thin divider only appears when there's more than one */}
+      <div className="absolute left-1.5 top-1.5 flex h-6 items-stretch divide-x divide-white/10 overflow-hidden rounded-lg border border-white/10 bg-black/85">
+        {hasMutableAudio && mutedForMe && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Reativar áudio"
+            onClick={handleUnmuteClick}
+            className="h-full w-7 rounded-none text-red hover:bg-white/10 hover:text-red"
+          >
+            <VolumeX size={14} />
+          </Button>
+        )}
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="Reativar áudio"
-          onClick={handleUnmuteClick}
-          className="absolute right-11 top-2 bg-bg-tertiary/75 text-red hover:bg-primary hover:text-text-primary"
+          aria-label="Configurações da transmissão"
+          onClick={handleGearClick}
+          className="h-full w-7 rounded-none text-white/90 hover:bg-white/10 hover:text-white"
         >
-          <VolumeX size={14} />
+          <Settings size={14} />
         </Button>
-      )}
-
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Configurações da transmissão"
-        onClick={handleGearClick}
-        className="absolute right-2 top-2 bg-bg-tertiary/75 text-text-primary hover:bg-primary"
-      >
-        <Settings size={14} />
-      </Button>
+      </div>
     </div>
   );
 }

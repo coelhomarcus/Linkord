@@ -1,36 +1,36 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useRoom } from '../../state/RoomContext';
 import { Tile } from './Tile';
+import { fitGrid, gridGap } from './callLayoutMetrics';
+import { cn } from '@/shared/lib/utils';
 import type { TileDescriptor } from './tileTypes';
 
 interface TileGridProps {
   descriptors: TileDescriptor[];
   focusedId: string | null;
+  /** 220 in the normal grid, 148 in a compact stage (a call sidebar) — see
+   * the calls redesign plan §5.2. Below this, fitGrid still returns its
+   * best candidate (never hides anyone), just flagged `meetsMinimum: false`. */
+  minTileWidth?: number;
+  /** Fires whenever "does everyone fit at a legible size" changes — the
+   * caller (Stage.tsx) decides whether that means switching into focus mode
+   * (plan §5.2 point 8), never this component itself: TileGrid only reports
+   * the geometry it already measures for its own layout. `suggestedKey` is
+   * just the first available descriptor, a reasonable default main tile. */
+  onCapacityChange?: (meetsMinimum: boolean, suggestedKey: string | null) => void;
 }
 
 const THUMB_W = 160;
 const THUMB_H = 90;
+const DEFAULT_MIN_TILE_WIDTH = 220;
+// How many thumbnail rows show before the strip scrolls instead of growing
+// — otherwise a big call's secondary strip keeps eating rows until the
+// main tile is crushed to nothing (see the plan's "faixa recolhível...
+// não acumular linhas que eliminem o principal").
+const MAX_VISIBLE_THUMB_ROWS = 2;
 
-const TILE_ASPECT_RATIO = 16 / 9;
-const GRID_GAP = 12;
-
-function referenceCount(n: number): number {
-  if (n <= 1) return n;
-  return Math.max(n, 4);
-}
-
-function fitTileSize(cols: number, rows: number, containerW: number, containerH: number): { tileW: number; tileH: number } {
-  if (containerW <= 0 || containerH <= 0) return { tileW: 0, tileH: 0 };
-  let tileW = (containerW - GRID_GAP * (cols - 1)) / cols;
-  let tileH = tileW / TILE_ASPECT_RATIO;
-  if (tileH * rows + GRID_GAP * (rows - 1) > containerH) {
-    tileH = (containerH - GRID_GAP * (rows - 1)) / rows;
-    tileW = tileH * TILE_ASPECT_RATIO;
-  }
-  return { tileW: Math.max(0, tileW), tileH: Math.max(0, tileH) };
-}
-
-export function TileGrid({ descriptors, focusedId }: TileGridProps) {
+export function TileGrid({ descriptors, focusedId, minTileWidth = DEFAULT_MIN_TILE_WIDTH, onCapacityChange }: TileGridProps) {
   const { state } = useRoom();
   const keys = useMemo(() => descriptors.map((d) => d.key), [descriptors]);
   const focus = focusedId && keys.includes(focusedId) ? focusedId : null;
@@ -49,38 +49,37 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
   }, []);
 
   const isMine = (participantId: string) => participantId === state.me.id;
+  const [thumbsCollapsed, setThumbsCollapsed] = useState(false);
 
   const n = descriptors.length;
-  const refN = referenceCount(n);
-  const cols = Math.max(1, Math.ceil(Math.sqrt(refN || 1)));
-  const refRows = Math.max(1, Math.ceil(refN / cols));
-  const actualRows = Math.max(1, Math.ceil(n / cols));
-  const { tileW, tileH } = fitTileSize(cols, refRows, containerSize.w, containerSize.h);
+  const gridFit = fitGrid(n, containerSize.w, containerSize.h, minTileWidth);
   const thumbs = focus ? descriptors.filter((d) => d.key !== focus) : [];
-  const thumbCols = focus ? Math.max(1, Math.floor((containerSize.w + GRID_GAP) / (THUMB_W + GRID_GAP))) : 1;
-  const thumbRows = focus ? Math.max(1, Math.ceil(thumbs.length / thumbCols)) : 1;
-  const gridTemplateColumns = focus
-    ? `repeat(${thumbCols}, minmax(0, 1fr))`
-    : `repeat(${cols}, ${tileW}px)`;
-  const gridTemplateRows = focus
-    ? (thumbs.length ? `minmax(0, 1fr) repeat(${thumbRows}, ${THUMB_H}px)` : 'minmax(0, 1fr)')
-    : `repeat(${actualRows}, ${tileH}px)`;
 
-  const renderTile = (d: TileDescriptor, isFocused: boolean, width: number | string, height: number | string) => (
+  // Reports geometry upward, never decides on its own — before the first
+  // real measurement `gridFit` is null (container still 0x0), which must
+  // read as "assume it fits" rather than flashing into focus mode at mount.
+  useEffect(() => {
+    if (n === 0) return;
+    onCapacityChange?.(gridFit?.meetsMinimum ?? true, descriptors[0]?.key ?? null);
+  }, [gridFit?.meetsMinimum, n, descriptors, onCapacityChange]);
+
+  // Contain-fit tiles shrink their own root to the media's aspect ratio (see
+  // Tile.tsx), so their wrapper has to actively center them — a cover-fit
+  // tile (only the thumbnail strip, small previews read fine cropped) fills
+  // its wrapper exactly and needs no centering.
+  const renderTile = (d: TileDescriptor, isFocused: boolean, width: number | string, height: number | string, fit: 'cover' | 'contain' = 'contain') => (
     <div
       key={d.key}
       style={{ width, height }}
-      className={
-        isFocused
-          ? 'flex min-h-0 min-w-0 items-center justify-center'
-          : 'min-h-0 min-w-0'
-      }
+      className={cn('flex-none', fit === 'contain' ? 'flex min-h-0 min-w-0 items-center justify-center' : 'min-h-0 min-w-0')}
     >
       <Tile
         participantId={d.participantId}
         kind={d.kind}
+        loading={d.loading}
+        paused={d.paused}
         isMine={isMine(d.participantId)}
-        fit={isFocused ? 'contain' : 'cover'}
+        fit={fit}
         avatarSize={isFocused ? 104 : focus ? 32 : 96}
         nameSize={isFocused ? 'label' : 'body'}
       />
@@ -88,60 +87,57 @@ export function TileGrid({ descriptors, focusedId }: TileGridProps) {
   );
 
   if (!focus) {
-    const rows: TileDescriptor[][] = [];
-    for (let index = 0; index < descriptors.length; index += cols) {
-      rows.push(descriptors.slice(index, index + cols));
-    }
-
+    // A flat list in a single flex-wrap container — no per-row wrapper divs.
+    // Each tile keeps the same DOM parent no matter how the tile count (and
+    // so the column count) changes, so React never has to unmount/remount
+    // one just because it moved from one computed row to another; wrapping
+    // a fixed-width flex item also centers an incomplete last row natively.
     return (
       <div
         ref={containerRef}
         data-tile-grid
-        className="grid h-full w-full place-content-center gap-3"
-        style={{ gridTemplateColumns, gridTemplateRows }}
+        className="flex h-full w-full flex-wrap content-center justify-center"
+        style={{ gap: gridFit ? gridGap(n) : 0 }}
       >
-        {rows.map((row, rowIndex) => (
-          <div
-            key={`row-${rowIndex}`}
-            data-tile-row
-            style={{ gridColumn: '1 / -1', gridRow: String(rowIndex + 1) }}
-            className="flex min-h-0 min-w-0 justify-center gap-3"
-          >
-            {row.map((d) => renderTile(d, false, tileW, tileH))}
-          </div>
-        ))}
+        {descriptors.map((d) => renderTile(d, false, gridFit?.tileW ?? 0, gridFit?.tileH ?? 0))}
       </div>
     );
   }
 
   const focusedDescriptor = descriptors.find((d) => d.key === focus);
-  const thumbnailRows: TileDescriptor[][] = [];
-  for (let index = 0; index < thumbs.length; index += thumbCols) {
-    thumbnailRows.push(thumbs.slice(index, index + thumbCols));
-  }
+  // Capped, not measured: the strip scrolls internally past
+  // MAX_VISIBLE_THUMB_ROWS instead of growing — a busy call's secondary
+  // strip must never keep eating rows until the main tile is crushed.
+  const thumbStripMaxHeight = MAX_VISIBLE_THUMB_ROWS * THUMB_H + (MAX_VISIBLE_THUMB_ROWS - 1) * 12;
 
   return (
-    <div
-      ref={containerRef}
-      data-tile-grid
-      className="grid h-full w-full items-center justify-items-center gap-3"
-      style={{ gridTemplateColumns, gridTemplateRows }}
-    >
+    <div ref={containerRef} data-tile-grid className="flex h-full w-full flex-col items-center gap-2">
       {focusedDescriptor && (
-        <div style={{ gridColumn: '1 / -1', gridRow: '1', width: '100%', height: '100%' }} className="flex min-h-0 min-w-0 items-center justify-center">
+        <div className="flex min-h-0 w-full flex-1 items-center justify-center">
           {renderTile(focusedDescriptor, true, '100%', '100%')}
         </div>
       )}
-      {thumbnailRows.map((row, rowIndex) => (
-        <div
-          key={`thumbnail-row-${rowIndex}`}
-          data-tile-row
-          style={{ gridColumn: '1 / -1', gridRow: String(rowIndex + 2) }}
-          className="flex min-h-0 min-w-0 justify-center gap-3"
-        >
-          {row.map((d) => renderTile(d, false, THUMB_W, THUMB_H))}
+      {thumbs.length > 0 && (
+        <div className="flex w-full flex-none flex-col items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setThumbsCollapsed((v) => !v)}
+            aria-expanded={!thumbsCollapsed}
+            aria-label={thumbsCollapsed ? 'Mostrar participantes' : 'Ocultar participantes'}
+            className="flex items-center gap-1 rounded-full px-2 py-0.5 text-caption text-text-muted transition-colors hover:bg-white/5 hover:text-text-secondary"
+          >
+            {thumbsCollapsed ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            {thumbs.length} participante{thumbs.length === 1 ? '' : 's'}
+          </button>
+          {!thumbsCollapsed && (
+            <div data-thumb-strip className="w-full overflow-y-auto" style={{ maxHeight: thumbStripMaxHeight }}>
+              <div className="flex flex-wrap justify-center gap-3">
+                {thumbs.map((d) => renderTile(d, false, THUMB_W, THUMB_H, 'cover'))}
+              </div>
+            </div>
+          )}
         </div>
-      ))}
+      )}
     </div>
   );
 }

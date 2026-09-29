@@ -4,11 +4,14 @@ import { loadHideAudioOnlyTiles, saveHideAudioOnlyTiles } from './useStageViewPr
 import { loadShowTileBanners, saveShowTileBanners } from './useTileBannerPreference';
 import { loadCompressImages, saveCompressImages } from './useCompressImagesPreference';
 import { loadNoiseSuppression, saveNoiseSuppression } from './useNoiseSuppressionPreference';
+import { loadMirrorCameraPreview, saveMirrorCameraPreview } from './useCameraMirrorPreference';
+import { loadShareQuality, saveShareQuality } from './useShareQualityPreference';
+import type { ShareQualityId } from '@/features/calls/shareQualityPresets';
 import { setVolume } from '@/shared/sounds';
 import { setNotificationsModuleEnabled, loadNotificationsEnabled, saveNotificationsEnabled } from '@/shared/notifications';
 import type { NoiseSuppressionResult } from '@/features/calls/useMicrophone';
 
-/** The 7 user-facing toggles/sliders under Ajustes — each backed by its own
+/** The 8 user-facing toggles/sliders under Ajustes — each backed by its own
  * `features/settings/useXPreference.ts` localStorage pair, wired up here
  * into React state with a setter that persists on change. `notifyVolume`
  * and `notificationsEnabled` also keep the `shared/sounds`/`shared/notifications`
@@ -55,6 +58,18 @@ export function useRoomSettings(applyNoiseSuppression: (enabled: boolean) => Pro
     saveCompressImages(value);
   }, []);
 
+  const [mirrorCameraPreview, setMirrorCameraPreviewState] = useState(loadMirrorCameraPreview);
+  const setMirrorCameraPreview = useCallback((value: boolean) => {
+    setMirrorCameraPreviewState(value);
+    saveMirrorCameraPreview(value);
+  }, []);
+
+  const [shareQuality, setShareQualityState] = useState(loadShareQuality);
+  const setShareQuality = useCallback((value: ShareQualityId) => {
+    setShareQualityState(value);
+    saveShareQuality(value);
+  }, []);
+
   const [noiseSuppressionEnabled, setNoiseSuppressionEnabledState] = useState(loadNoiseSuppression);
   const [noiseSuppressionPending, setNoiseSuppressionPending] = useState(false);
   const [noiseSuppressionError, setNoiseSuppressionError] = useState<string | null>(null);
@@ -94,6 +109,8 @@ export function useRoomSettings(applyNoiseSuppression: (enabled: boolean) => Pro
     hideAudioOnlyTiles, setHideAudioOnlyTiles,
     showTileBanners, setShowTileBanners,
     compressImagesDefault, setCompressImagesDefault,
+    mirrorCameraPreview, setMirrorCameraPreview,
+    shareQuality, setShareQuality,
     noiseSuppressionEnabled, setNoiseSuppressionEnabled, noiseSuppressionPending, noiseSuppressionError,
   };
 }

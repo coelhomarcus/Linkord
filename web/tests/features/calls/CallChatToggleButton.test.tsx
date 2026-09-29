@@ -14,4 +14,18 @@ describe('CallChatToggleButton', () => {
     render(<CallChatToggleButton chatOpen onToggleChat={vi.fn()} />);
     expect(screen.getByLabelText('Fechar chat')).toBeInTheDocument();
   });
+
+  it('por padrao (sem hudVisible), fica visivel', () => {
+    render(<CallChatToggleButton chatOpen={false} onToggleChat={vi.fn()} />);
+    const wrapper = screen.getByLabelText('Abrir chat').closest('div');
+    expect(wrapper).toHaveClass('opacity-100');
+  });
+
+  it('com hudVisible=false, fica com opacidade zero e sem interceptar cliques — mas continua no DOM (nao afeta layout)', () => {
+    render(<CallChatToggleButton chatOpen={false} onToggleChat={vi.fn()} hudVisible={false} />);
+    const button = screen.getByLabelText('Abrir chat');
+    expect(button).toBeInTheDocument();
+    const wrapper = button.closest('div');
+    expect(wrapper).toHaveClass('opacity-0', 'pointer-events-none');
+  });
 });

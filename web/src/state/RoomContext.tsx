@@ -5,6 +5,8 @@ import type { ChatMessage, ClientMessage, Conversation, PublicUser, ReactionEmoj
 import type { RoomAction, RoomState } from './roomReducer';
 import type { TileKind } from '../features/calls/tileTypes';
 import type { OutboxEntry } from '@/features/chat/useMessageOutbox';
+import type { ReactionParticipantsTarget } from '@/features/chat/reactionParticipants';
+import type { ShareQualityId } from '@/features/calls/shareQualityPresets';
 
 export interface ReactionEvent {
   key: number;
@@ -45,6 +47,17 @@ export interface RoomContextValue {
   sendWs: (msg: ClientMessage) => boolean;
   tileDomRegistry: MutableRefObject<Map<string, TileDomHandle>>;
   audioRegistry: MutableRefObject<Map<string, AudioHandle>>;
+  /** Attached by Stage.tsx to its own root — the fullscreen target for
+   * `toggleCallFullscreen`. Null whenever Stage isn't mounted. */
+  callStageRef: MutableRefObject<HTMLElement | null>;
+  /** True specifically when the STAGE (not a single tile) is fullscreen. */
+  isCallFullscreen: boolean;
+  toggleCallFullscreen: () => Promise<void>;
+  /** Whatever element is actually fullscreen right now (the stage, or a
+   * single tile via TileMenu's own "Tela cheia") — menus/popovers portal
+   * into this instead of `document.body`, which the Fullscreen API renders
+   * underneath and so would otherwise hide them. */
+  fullscreenElement: HTMLElement | null;
   audioUnlocked: boolean;
   deafened: boolean;
   toggleDeafened: () => void;
@@ -58,6 +71,16 @@ export interface RoomContextValue {
   leaveCall: () => Promise<void>;
   startSharing: () => Promise<void>;
   stopSharing: () => void;
+  /** Stops and immediately restarts the capture with a fresh native picker —
+   * the only way to switch source, or to have a quality change mid-share
+   * take effect. */
+  changeSource: () => Promise<void>;
+  pauseSharePreview: () => Promise<void>;
+  resumeSharePreview: () => Promise<void>;
+  /** Applies to the next capture that starts (fresh share or changeSource),
+   * never live mid-share — see useShareQualityPreference.ts. */
+  shareQuality: ShareQualityId;
+  setShareQuality: (value: ShareQualityId) => void;
   startCamera: () => Promise<void>;
   stopCamera: () => void;
   activateMic: () => Promise<void>;
@@ -93,6 +116,9 @@ export interface RoomContextValue {
   setNoiseSuppressionEnabled: (value: boolean) => Promise<void>;
   noiseSuppressionPending: boolean;
   noiseSuppressionError: string | null;
+  /** Local self-view only — never flips the track actually sent. */
+  mirrorCameraPreview: boolean;
+  setMirrorCameraPreview: (value: boolean) => void;
   conversations: Conversation[];
   activeConversationId: string | null;
   openConversation: (conversationId: string) => void;
@@ -154,6 +180,10 @@ export interface RoomContextValue {
   setReplyingTo: (message: ChatMessage | null) => void;
   editingMsgId: number | null;
   setEditingMsgId: (msgId: number | null) => void;
+  /** Which message's full reaction list is open in ReactionParticipantsDialog. */
+  reactionParticipantsTarget: ReactionParticipantsTarget | null;
+  openReactionParticipants: (target: ReactionParticipantsTarget) => void;
+  closeReactionParticipants: () => void;
   hasMoreAfterByConversation: Map<string, boolean>;
   pendingJumpTarget: { conversationId: string; msgId: number } | null;
   clearPendingJumpTarget: () => void;

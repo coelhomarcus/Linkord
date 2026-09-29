@@ -1,5 +1,5 @@
 import { fireEvent, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { initialRoomState } from '@/state/roomReducer';
 import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
 import { Tile } from '@/features/calls/Tile';
@@ -53,5 +53,255 @@ describe('Tile — indicador de mutado (para mim)', () => {
     });
 
     expect(screen.queryByLabelText('Reativar áudio')).not.toBeInTheDocument();
+  });
+});
+
+describe('Tile — carregando (publicacao sem track ainda)', () => {
+  it('mostra um indicador de carregamento sobre o avatar, nao so um avatar comum', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} loading />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+    });
+    expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+  });
+
+  it('sem loading, o avatar aparece normal e sem spinner', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+    });
+    expect(container.querySelector('.animate-spin')).not.toBeInTheDocument();
+  });
+});
+
+describe('Tile — espelhamento da propria camera', () => {
+  it('minha camera com a preferencia ligada aparece espelhada', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-1" kind="camera" isMine />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
+      mirrorCameraPreview: true,
+    });
+    expect(container.querySelector('video')).toHaveStyle({ transform: 'scaleX(-1)' });
+  });
+
+  it('com a preferencia desligada, nao espelha', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-1" kind="camera" isMine />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
+      mirrorCameraPreview: false,
+    });
+    expect(container.querySelector('video')).not.toHaveStyle({ transform: 'scaleX(-1)' });
+  });
+
+  it('a camera de outro participante nunca espelha, mesmo com a preferencia ligada', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="camera" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+      mirrorCameraPreview: true,
+    });
+    expect(container.querySelector('video')).not.toHaveStyle({ transform: 'scaleX(-1)' });
+  });
+
+  it('compartilhamento de tela nunca espelha, mesmo sendo meu', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-1" kind="screen" isMine />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
+      mirrorCameraPreview: true,
+    });
+    expect(container.querySelector('video')).not.toHaveStyle({ transform: 'scaleX(-1)' });
+  });
+});
+
+describe('Tile — pilula de acoes agrupada', () => {
+  it('so com "Configuracoes da transmissao": nenhum divisor, e o botao de reativar audio nao aparece', () => {
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+    });
+    expect(screen.getByLabelText('Configurações da transmissão')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Reativar áudio')).not.toBeInTheDocument();
+  });
+
+  it('com audio mutado pra mim, os dois botoes ficam na mesma pilula (mesmo pai)', () => {
+    const audio = new Audio();
+    audio.volume = 0;
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants: new Map([['p-2', fakeParticipant()]]) },
+      audioRegistry: { current: new Map([['p-2', { element: audio }]]) },
+    });
+    const unmute = screen.getByLabelText('Reativar áudio');
+    const gear = screen.getByLabelText('Configurações da transmissão');
+    expect(unmute.parentElement).toBe(gear.parentElement);
+  });
+
+  it('a pilula de acoes fica no canto superior esquerdo, nao mais a direita', () => {
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+    });
+    const pill = screen.getByLabelText('Configurações da transmissão').parentElement;
+    expect(pill).toHaveClass('left-1.5');
+    expect(pill?.className).not.toMatch(/\bright-/);
+  });
+});
+
+describe('Tile — moldura estavel ao falar', () => {
+  it('a largura da borda nao muda entre falando e nao falando (sem pulo de layout)', () => {
+    const { container: notSpeaking } = renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant({ speaking: false })]]) },
+    });
+    const root = notSpeaking.querySelector('.tile-fullscreen-target');
+    expect(root).toHaveClass('border-[3.5px]');
+  });
+});
+
+describe('Tile — nome no padrao de grid', () => {
+  it('densidade padrao (grid) usa o texto pequeno de 12px', () => {
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+    });
+    expect(screen.getByText('Fulana')).toHaveClass('text-caption');
+  });
+
+  it('densidade "label" (tile em foco) usa o texto um pouco maior', () => {
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} nameSize="label" />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+    });
+    expect(screen.getByText('Fulana')).toHaveClass('text-label');
+  });
+});
+
+describe('Tile — vídeo oculto para mim', () => {
+  it('camera de outra pessoa com a chave em hiddenVideoKeys: nao renderiza <video>, mostra o selo "Vídeo oculto"', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="camera" isMine={false} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants: new Map([['p-2', fakeParticipant()]]), hiddenVideoKeys: new Set(['p-2:participant']) },
+    });
+    expect(container.querySelector('video')).not.toBeInTheDocument();
+    expect(screen.getByText('Vídeo oculto')).toBeInTheDocument();
+  });
+
+  it('camera de outra pessoa sem a chave oculta: renderiza <video> normalmente, sem o selo', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="camera" isMine={false} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants: new Map([['p-2', fakeParticipant()]]), hiddenVideoKeys: new Set<string>() },
+    });
+    expect(container.querySelector('video')).toBeInTheDocument();
+    expect(screen.queryByText('Vídeo oculto')).not.toBeInTheDocument();
+  });
+
+  it('minha propria camera nunca oculta, mesmo se a chave estiver em hiddenVideoKeys', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-1" kind="camera" isMine />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, hiddenVideoKeys: new Set(['p-1:participant']) },
+    });
+    expect(container.querySelector('video')).toBeInTheDocument();
+    expect(screen.queryByText('Vídeo oculto')).not.toBeInTheDocument();
+  });
+
+  it('tela compartilhada nunca oculta, mesmo se a chave estiver em hiddenVideoKeys', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="screen" isMine={false} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants: new Map([['p-2', fakeParticipant()]]), hiddenVideoKeys: new Set(['p-2:screen']) },
+    });
+    expect(container.querySelector('video')).toBeInTheDocument();
+    expect(screen.queryByText('Vídeo oculto')).not.toBeInTheDocument();
+  });
+});
+
+describe('Tile — tela compartilhada: pausada ou "parei de assistir"', () => {
+  it('tela normal (nao pausada, sendo assistida): mostra <video>, sem nenhum selo', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="screen" isMine={false} />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants: new Map([['p-2', fakeParticipant()]]) },
+    });
+    expect(container.querySelector('video')).toBeInTheDocument();
+    expect(screen.queryByText('Prévia pausada')).not.toBeInTheDocument();
+    expect(screen.queryByText('Você parou de assistir')).not.toBeInTheDocument();
+  });
+
+  it('tela pausada pelo apresentador: nao renderiza <video>, mostra "Prévia pausada"', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="screen" isMine={false} paused />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants: new Map([['p-2', fakeParticipant()]]) },
+    });
+    expect(container.querySelector('video')).not.toBeInTheDocument();
+    expect(screen.getByText('Prévia pausada')).toBeInTheDocument();
+  });
+
+  it('a propria tela tambem mostra "Prévia pausada" quando pausada (nao e so pra quem assiste)', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-1" kind="screen" isMine paused />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' } },
+    });
+    expect(container.querySelector('video')).not.toBeInTheDocument();
+    expect(screen.getByText('Prévia pausada')).toBeInTheDocument();
+  });
+
+  it('"parei de assistir" (chave em unwatchedScreenKeys): nao renderiza <video>, mostra o aviso — tem prioridade sobre "pausada"', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-2" kind="screen" isMine={false} paused />, {
+      state: {
+        ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, participants: new Map([['p-2', fakeParticipant()]]),
+        unwatchedScreenKeys: new Set(['p-2:screen']),
+      },
+    });
+    expect(container.querySelector('video')).not.toBeInTheDocument();
+    expect(screen.getByText('Você parou de assistir')).toBeInTheDocument();
+    expect(screen.queryByText('Prévia pausada')).not.toBeInTheDocument();
+  });
+
+  it('"parei de assistir" nunca se aplica a propria tela, mesmo se a chave estiver presente', () => {
+    const { container } = renderWithRoom(<Tile participantId="p-1" kind="screen" isMine />, {
+      state: { ...initialRoomState, me: { ...initialRoomState.me, id: 'p-1' }, unwatchedScreenKeys: new Set(['p-1:screen']) },
+    });
+    expect(container.querySelector('video')).toBeInTheDocument();
+    expect(screen.queryByText('Você parou de assistir')).not.toBeInTheDocument();
+  });
+});
+
+describe('Tile — acessibilidade por teclado', () => {
+  it('e focavel e tem papel de botao, com aria-pressed refletindo o foco atual', () => {
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]), focusedId: null },
+    });
+    const tile = screen.getByRole('button', { name: /Destacar Fulana/ });
+    expect(tile).toHaveAttribute('tabindex', '0');
+    expect(tile).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('quando ja e o tile em foco, o rotulo e a acao oferecem desfazer', () => {
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]), focusedId: 'p-2:participant' },
+    });
+    const tile = screen.getByRole('button', { name: /Desfazer destaque de Fulana/ });
+    expect(tile).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('Enter no tile alterna o foco, igual um clique — com a origem "manual"', () => {
+    const dispatch = vi.fn();
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]), focusedId: null },
+      dispatch,
+    });
+    const tile = screen.getByRole('button', { name: /Destacar Fulana/ });
+    fireEvent.keyDown(tile, { key: 'Enter' });
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_FOCUSED', id: 'p-2:participant', origin: 'manual' });
+  });
+
+  it('Espaco no tile tambem alterna o foco', () => {
+    const dispatch = vi.fn();
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]), focusedId: null },
+      dispatch,
+    });
+    fireEvent.keyDown(screen.getByRole('button', { name: /Destacar Fulana/ }), { key: ' ' });
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_FOCUSED', id: 'p-2:participant', origin: 'manual' });
+  });
+
+  it('outras teclas nao acionam nada', () => {
+    const dispatch = vi.fn();
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+      dispatch,
+    });
+    fireEvent.keyDown(screen.getByRole('button', { name: /Destacar Fulana/ }), { key: 'a' });
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('Enter num botao aninhado (engrenagem) nao aciona TAMBEM o foco do tile', () => {
+    const dispatch = vi.fn();
+    renderWithRoom(<Tile participantId="p-2" kind="avatar" isMine={false} />, {
+      state: { ...initialRoomState, participants: new Map([['p-2', fakeParticipant()]]) },
+      dispatch,
+      openTileMenu: vi.fn(),
+    });
+    const gear = screen.getByLabelText('Configurações da transmissão');
+    fireEvent.keyDown(gear, { key: 'Enter' });
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_FOCUSED' }));
   });
 });

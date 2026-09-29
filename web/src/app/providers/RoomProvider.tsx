@@ -9,6 +9,7 @@ import { useAuth } from '@/state/AuthContext';
 import { saveIdentity } from '@/shared/lib/identitySession';
 import { useSocketConnection } from '@/state/hooks/useSocketConnection';
 import { useScreenShare } from '@/features/calls/useScreenShare';
+import { useCallFullscreen } from '@/features/calls/useCallFullscreen';
 import { useCamera } from '@/features/calls/useCamera';
 import { useMicrophone } from '@/features/calls/useMicrophone';
 import { useTileMenu } from '@/features/calls/useTileMenu';
@@ -40,6 +41,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const tokenRef = useRef<string | null>(null);
   const tileDomRegistry = useRef<Map<string, TileDomHandle>>(new Map());
   const audioRegistry = useRef<Map<string, AudioHandle>>(new Map());
+  const callStageRef = useRef<HTMLElement | null>(null);
+  const { isCallFullscreen, toggleCallFullscreen, fullscreenElement } = useCallFullscreen(callStageRef);
   // owned here (not inside useSocketConnection) because sendWs needs to
   // read it and is constructed before that hook runs — nearly every domain
   // hook below needs sendWs too.
@@ -101,7 +104,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const messageSearch = useMessageSearch(sendWs);
   const attachmentsUpload = useStorageUsage();
 
-  const { startSharing, stopSharing } = useScreenShare(livekitRoom, dispatch);
+  const { startSharing, stopSharing, changeSource, pauseSharePreview, resumeSharePreview } = useScreenShare(livekitRoom, dispatch);
   const { startCamera, stopCamera } = useCamera(livekitRoom, dispatch);
   const { activateMic, toggleMicMuted, setMicMuted, leaveMic, setNoiseSuppressionEnabled: applyNoiseSuppression } = useMicrophone(livekitRoom, dispatch);
 
@@ -351,12 +354,15 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     <RoomContext.Provider
       value={{
         state, dispatch, sendWs, tileDomRegistry, audioRegistry,
+        callStageRef, isCallFullscreen, toggleCallFullscreen, fullscreenElement,
         audioUnlocked: callLifecycle.audioUnlocked, deafened: callLifecycle.deafened, toggleDeafened: callLifecycle.toggleDeafened,
         reconnecting: callLifecycle.reconnecting,
         livekitRoom, notifyActiveView,
         registerRequestChatView, requestChatView,
         activeCallConversationId: callLifecycle.activeCallConversationId, joinCall: callLifecycle.joinCall, leaveCall: callLifecycle.leaveCall,
-        startSharing, stopSharing, startCamera, stopCamera, activateMic, toggleMicMuted,
+        startSharing, stopSharing, changeSource, pauseSharePreview, resumeSharePreview,
+        shareQuality: roomSettings.shareQuality, setShareQuality: roomSettings.setShareQuality,
+        startCamera, stopCamera, activateMic, toggleMicMuted,
         updateProfile: profileUpdate.updateProfile, uploadProfileImage: profileUpdate.uploadProfileImage, removeProfileImage: profileUpdate.removeProfileImage,
         menuTarget: tileMenu.menuTarget, openTileMenu: tileMenu.openTileMenu, closeTileMenu: tileMenu.closeTileMenu,
         reactions: messageReactions.reactions, sendReaction: messageReactions.sendReaction,
@@ -368,6 +374,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         compressImagesDefault: roomSettings.compressImagesDefault, setCompressImagesDefault: roomSettings.setCompressImagesDefault,
         noiseSuppressionEnabled: roomSettings.noiseSuppressionEnabled, setNoiseSuppressionEnabled: roomSettings.setNoiseSuppressionEnabled,
         noiseSuppressionPending: roomSettings.noiseSuppressionPending, noiseSuppressionError: roomSettings.noiseSuppressionError,
+        mirrorCameraPreview: roomSettings.mirrorCameraPreview, setMirrorCameraPreview: roomSettings.setMirrorCameraPreview,
         conversations: conversationsList.conversations, activeConversationId: conversationsList.activeConversationId,
         openConversation, openDirect: conversationsList.openDirect, closeConversation, pinConversation: conversationsList.pinConversation,
         deleteGroup: conversationsList.deleteGroup,
@@ -396,6 +403,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         editChatMessage: chatMessages.editChatMessage, reactToChatMessage: chatMessages.reactToChatMessage,
         replyingTo: chatMessages.replyingTo, setReplyingTo: chatMessages.setReplyingTo,
         editingMsgId: chatMessages.editingMsgId, setEditingMsgId: chatMessages.setEditingMsgId,
+        reactionParticipantsTarget: chatMessages.reactionParticipantsTarget,
+        openReactionParticipants: chatMessages.openReactionParticipants, closeReactionParticipants: chatMessages.closeReactionParticipants,
         hasMoreAfterByConversation: chatMessages.hasMoreAfterByConversation, pendingJumpTarget: chatMessages.pendingJumpTarget,
         clearPendingJumpTarget: chatMessages.clearPendingJumpTarget, jumpToMessage: chatMessages.jumpToMessage,
         searchResults: messageSearch.searchResults, searchLoading: messageSearch.searchLoading, searchError: messageSearch.searchError,
