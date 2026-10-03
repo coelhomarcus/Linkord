@@ -148,7 +148,7 @@ describe('ScreenShareQuickMenu', () => {
     });
 
     await user.click(screen.getByRole('button', { name: 'Configurações de compartilhamento de tela' }));
-    await user.click(await screen.findByText('Fluida, para vídeo ou jogos (720p, 30 fps)'));
+    await user.click(await screen.findByText('Fluida (720p, 30 fps)'));
 
     expect(setShareQuality).toHaveBeenCalledWith('smooth');
   });
