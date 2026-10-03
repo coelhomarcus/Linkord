@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
-import { PanelLeftOpen, PhoneCall, Settings, ShieldCheck, UsersRound } from 'lucide-react';
+import { MessageCircle, PanelLeftOpen, PhoneCall, Settings, ShieldCheck, UsersRound } from 'lucide-react';
 import { Avatar } from '@/shared/Avatar';
 import { useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/primitives/tooltip';
@@ -86,7 +86,7 @@ export function AppNavigationRail({ onOpenProfile, onReturnToCall, className }: 
   return (
     <nav aria-label="Navegação principal" className={cn('flex w-16 flex-none flex-col items-center gap-1.5 bg-bg-primary py-3', className)}>
       <RailLink to={ROUTES.conversations} label="Conversas" active={isConversationsPath(pathname)} onNavigate={afterNavigate}>
-        <img src="/logo.svg" alt="" className="size-7" />
+        <MessageCircle size={20} aria-hidden />
       </RailLink>
       <RailLink to={ROUTES.friends} label={friendsLabel} active={pathname === ROUTES.friends} badge={pendingIncomingCount} onNavigate={afterNavigate}>
         <UsersRound size={20} aria-hidden />
