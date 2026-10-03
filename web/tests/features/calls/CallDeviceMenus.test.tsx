@@ -68,6 +68,15 @@ describe('MicQuickMenu', () => {
     expect(setNoiseSuppressionEnabled).toHaveBeenCalledWith(true);
   });
 
+  it('noise suppression row exposes its on/off state to assistive tech', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(Room, 'getLocalDevices').mockResolvedValue([{ deviceId: 'd1', label: 'Mic', kind: 'audioinput' } as MediaDeviceInfo]);
+    renderWithRoom(<MicQuickMenu />, { livekitRoom: fakeLivekitRoom('d1'), noiseSuppressionEnabled: true });
+
+    await user.click(screen.getByRole('button', { name: 'Configurações do microfone' }));
+    expect(await screen.findByRole('menuitemcheckbox', { name: 'Supressão de ruído' })).toHaveAttribute('aria-checked', 'true');
+  });
+
   it('full settings shortcut navigates to the audio and video tab', async () => {
     const user = userEvent.setup();
     vi.spyOn(Room, 'getLocalDevices').mockResolvedValue([{ deviceId: 'd1', label: 'Mic', kind: 'audioinput' } as MediaDeviceInfo]);

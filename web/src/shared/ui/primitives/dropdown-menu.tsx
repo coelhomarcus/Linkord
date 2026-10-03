@@ -222,6 +222,63 @@ function DropdownMenuRadioItem({
   )
 }
 
+/** A checkbox item drawn as a switch on the right. The track is decorative
+ * (aria-hidden) on purpose: the item itself is the `menuitemcheckbox`, and
+ * nesting a second interactive switch inside it would be announced twice. */
+function DropdownMenuSwitchItem({
+  className,
+  children,
+  checked,
+  ...props
+}: MenuPrimitive.CheckboxItem.Props) {
+  return (
+    <MenuPrimitive.CheckboxItem
+      data-slot="dropdown-menu-switch-item"
+      className={cn(
+        "group/switch-item flex cursor-default items-center gap-3 rounded-md px-2 py-2 text-body outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className
+      )}
+      checked={checked}
+      {...props}
+    >
+      <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>
+      <span
+        aria-hidden
+        className="inline-flex h-[18.4px] w-8 shrink-0 items-center rounded-full border border-transparent bg-input transition-colors group-data-checked/switch-item:bg-primary"
+      >
+        <span className="block size-4 rounded-full bg-foreground transition-transform group-data-checked/switch-item:translate-x-[calc(100%-2px)] group-data-checked/switch-item:bg-primary-foreground" />
+      </span>
+    </MenuPrimitive.CheckboxItem>
+  )
+}
+
+/** A radio item that always shows its radio mark (empty ring when not chosen),
+ * so a list of options reads as clickable even before anything is picked. */
+function DropdownMenuOptionItem({
+  className,
+  children,
+  ...props
+}: MenuPrimitive.RadioItem.Props) {
+  return (
+    <MenuPrimitive.RadioItem
+      data-slot="dropdown-menu-option-item"
+      className={cn(
+        "group/option-item flex cursor-default items-center gap-3 rounded-md px-2 py-2 text-body outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50",
+        className
+      )}
+      {...props}
+    >
+      <span
+        aria-hidden
+        className="grid size-4 shrink-0 place-items-center rounded-full border-2 border-muted-foreground/70 transition-colors group-data-checked/option-item:border-primary"
+      >
+        <MenuPrimitive.RadioItemIndicator className="size-2 rounded-full bg-primary" />
+      </span>
+      <span className="min-w-0 flex-1">{children}</span>
+    </MenuPrimitive.RadioItem>
+  )
+}
+
 function DropdownMenuSeparator({
   className,
   ...props
@@ -262,6 +319,8 @@ export {
   DropdownMenuCheckboxItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSwitchItem,
+  DropdownMenuOptionItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuSub,
