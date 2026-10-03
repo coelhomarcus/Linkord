@@ -8,7 +8,7 @@ const tile = (key: string, kind: TileDescriptor['kind']): TileDescriptor => ({
 });
 
 describe('useAutoFocusScreenShare', () => {
-  it('nao foca nada na primeira renderizacao, mesmo se ja existir uma tela compartilhada', () => {
+  it('does not focus anything on the first render, even if a screen share already exists', () => {
     const onAutoFocus = vi.fn();
     renderHook(({ descriptors, origin }) => useAutoFocusScreenShare(descriptors, origin, onAutoFocus), {
       initialProps: { descriptors: [tile('p1:screen', 'screen')], origin: null as 'manual' | 'automatic' | null },
@@ -16,7 +16,7 @@ describe('useAutoFocusScreenShare', () => {
     expect(onAutoFocus).not.toHaveBeenCalled();
   });
 
-  it('foca quando uma tela nova aparece depois da primeira renderizacao', () => {
+  it('focuses when a new screen appears after the first render', () => {
     const onAutoFocus = vi.fn();
     const { rerender } = renderHook(({ descriptors, origin }) => useAutoFocusScreenShare(descriptors, origin, onAutoFocus), {
       initialProps: { descriptors: [] as TileDescriptor[], origin: null as 'manual' | 'automatic' | null },
@@ -25,7 +25,7 @@ describe('useAutoFocusScreenShare', () => {
     expect(onAutoFocus).toHaveBeenCalledWith('p1:screen');
   });
 
-  it('nunca substitui um foco manual ativo', () => {
+  it('never replaces an active manual focus', () => {
     const onAutoFocus = vi.fn();
     const { rerender } = renderHook(({ descriptors, origin }) => useAutoFocusScreenShare(descriptors, origin, onAutoFocus), {
       initialProps: { descriptors: [] as TileDescriptor[], origin: 'manual' as 'manual' | 'automatic' | null },
@@ -34,7 +34,7 @@ describe('useAutoFocusScreenShare', () => {
     expect(onAutoFocus).not.toHaveBeenCalled();
   });
 
-  it('uma segunda tela nova ainda pode sugerir foco automatico se a origem nao e manual', () => {
+  it('a second new screen can still suggest automatic focus if the origin is not manual', () => {
     const onAutoFocus = vi.fn();
     const { rerender } = renderHook(({ descriptors, origin }) => useAutoFocusScreenShare(descriptors, origin, onAutoFocus), {
       initialProps: { descriptors: [] as TileDescriptor[], origin: null as 'manual' | 'automatic' | null },
@@ -47,7 +47,7 @@ describe('useAutoFocusScreenShare', () => {
     expect(onAutoFocus).toHaveBeenCalledWith('p2:screen');
   });
 
-  it('tiles de camera/avatar nao disparam foco automatico', () => {
+  it('camera/avatar tiles do not trigger automatic focus', () => {
     const onAutoFocus = vi.fn();
     const { rerender } = renderHook(({ descriptors, origin }) => useAutoFocusScreenShare(descriptors, origin, onAutoFocus), {
       initialProps: { descriptors: [] as TileDescriptor[], origin: null as 'manual' | 'automatic' | null },
@@ -56,7 +56,7 @@ describe('useAutoFocusScreenShare', () => {
     expect(onAutoFocus).not.toHaveBeenCalled();
   });
 
-  it('uma tela nova AINDA sobrescreve um foco com origem "capacity" (so "manual" bloqueia)', () => {
+  it('a new screen STILL overrides a focus with origin "capacity" (only "manual" blocks it)', () => {
     const onAutoFocus = vi.fn();
     const { rerender } = renderHook(({ descriptors, origin }) => useAutoFocusScreenShare(descriptors, origin, onAutoFocus), {
       initialProps: { descriptors: [] as TileDescriptor[], origin: null as 'manual' | 'automatic' | 'capacity' | null },
@@ -65,7 +65,7 @@ describe('useAutoFocusScreenShare', () => {
     expect(onAutoFocus).toHaveBeenCalledWith('p1:screen');
   });
 
-  it('uma tela que some e reaparece com a mesma chave nao dispara de novo (ainda "vista")', () => {
+  it('a screen that disappears and reappears with the same key does not trigger again (still "seen")', () => {
     const onAutoFocus = vi.fn();
     const { rerender } = renderHook(({ descriptors, origin }) => useAutoFocusScreenShare(descriptors, origin, onAutoFocus), {
       initialProps: { descriptors: [] as TileDescriptor[], origin: null as 'manual' | 'automatic' | null },

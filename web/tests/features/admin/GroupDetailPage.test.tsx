@@ -24,7 +24,7 @@ beforeEach(() => {
 });
 
 describe('GroupDetailPage', () => {
-  it('mostra dono e membros, sem nenhuma forma de abrir a conversa', async () => {
+  it('shows owner and members, with no way to open the conversation', async () => {
     open();
     expect((await screen.findAllByText('@ana')).length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: /BIA/ })).toHaveAttribute('href', '/admin/users/bia');
@@ -32,44 +32,44 @@ describe('GroupDetailPage', () => {
     expect(screen.queryByRole('button', { name: /entrar|abrir/i })).not.toBeInTheDocument();
   });
 
-  it('suspender pede motivo e chama a API do grupo', async () => {
+  it('suspending asks for a reason and calls the group API', async () => {
     const u = userEvent.setup();
     mocked.suspendGroup.mockResolvedValue({ ok: true });
     open();
     await u.click(await screen.findByRole('button', { name: 'Suspender grupo' }));
-    await u.type(screen.getByLabelText(/Motivo/), 'denúncia procedente');
+    await u.type(screen.getByLabelText(/Motivo/), 'confirmed report');
     await u.click(screen.getAllByRole('button', { name: 'Suspender' }).at(-1)!);
-    await waitFor(() => expect(mocked.suspendGroup).toHaveBeenCalledWith('g1', 'denúncia procedente'));
+    await waitFor(() => expect(mocked.suspendGroup).toHaveBeenCalledWith('g1', 'confirmed report'));
   });
 
-  it('grupo sem dono: admin atribui a um membro, com motivo', async () => {
+  it('group with no owner: admin assigns one to a member, with a reason', async () => {
     const u = userEvent.setup();
     mocked.fetchAdminGroup.mockResolvedValue(detail({}, false));
     mocked.assignGroupOwner.mockResolvedValue({ ok: true });
     open();
     expect(await screen.findByText(/nenhum \(grupo sem dono\)/)).toBeInTheDocument();
     await u.click(screen.getByRole('button', { name: 'Tornar dono' }));
-    await u.type(screen.getByLabelText(/Motivo/), 'recuperação');
+    await u.type(screen.getByLabelText(/Motivo/), 'recovery');
     await u.click(screen.getByRole('button', { name: 'Atribuir' }));
-    await waitFor(() => expect(mocked.assignGroupOwner).toHaveBeenCalledWith('g1', 'bia', 'recuperação'));
+    await waitFor(() => expect(mocked.assignGroupOwner).toHaveBeenCalledWith('g1', 'bia', 'recovery'));
   });
 
-  it('grupo suspenso oferece Reativar e mostra o motivo', async () => {
+  it('suspended group offers Reactivate and shows the reason', async () => {
     mocked.fetchAdminGroup.mockResolvedValue(detail({ status: 'suspended', statusReason: 'conteúdo ilegal' }));
     open();
     expect(await screen.findByRole('button', { name: 'Reativar grupo' })).toBeInTheDocument();
     expect(screen.getByText('conteúdo ilegal')).toBeInTheDocument();
   });
 
-  it('excluir exige o nome do grupo digitado', async () => {
+  it('deleting requires the group name to be typed in', async () => {
     const u = userEvent.setup();
     mocked.deleteGroup.mockResolvedValue({ ok: true });
     open();
     await u.click(await screen.findByRole('button', { name: 'Excluir grupo' }));
-    await u.type(screen.getByLabelText(/Motivo/), 'ilegal');
+    await u.type(screen.getByLabelText(/Motivo/), 'illegal');
     expect(screen.getByRole('button', { name: 'Excluir para sempre' })).toBeDisabled();
     await u.type(screen.getByLabelText(/Para confirmar/), 'Squad');
     await u.click(screen.getByRole('button', { name: 'Excluir para sempre' }));
-    await waitFor(() => expect(mocked.deleteGroup).toHaveBeenCalledWith('g1', 'ilegal'));
+    await waitFor(() => expect(mocked.deleteGroup).toHaveBeenCalledWith('g1', 'illegal'));
   });
 });

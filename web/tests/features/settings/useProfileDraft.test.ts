@@ -3,8 +3,8 @@ import { act, renderHook } from '@testing-library/react';
 import { useProfileDraft } from '@/features/settings/useProfileDraft';
 import type { ProfileDraftFields } from '@/features/settings/useProfileDraft';
 
-const baselineA: ProfileDraftFields = { displayName: 'Fulana', avatarColor: 'green', bio: 'bio original', profileLinks: [''] };
-const baselineB: ProfileDraftFields = { displayName: 'Outro nome', avatarColor: 'blue', bio: 'bio diferente', profileLinks: ['https://x.com/outra'] };
+const baselineA: ProfileDraftFields = { displayName: 'Fulana', avatarColor: 'green', bio: 'original bio', profileLinks: [''] };
+const baselineB: ProfileDraftFields = { displayName: 'Other name', avatarColor: 'blue', bio: 'different bio', profileLinks: ['https://x.com/other'] };
 
 function setup(baseline: ProfileDraftFields, save = vi.fn().mockResolvedValue(undefined)) {
   const { result, rerender } = renderHook(({ baseline: b }) => useProfileDraft({ baseline: b, save }), {
@@ -14,30 +14,30 @@ function setup(baseline: ProfileDraftFields, save = vi.fn().mockResolvedValue(un
 }
 
 describe('useProfileDraft', () => {
-  it('comeca limpo, com o rascunho igual a base', () => {
+  it('starts clean, with the draft equal to the baseline', () => {
     const { result } = setup(baselineA);
     expect(result.current.dirty).toBe(false);
     expect(result.current.draft).toEqual(baselineA);
   });
 
-  it('editar um campo marca dirty; uma linha de link vazia e intocada nao conta', () => {
+  it('editing a field marks it dirty; an empty, untouched link row does not count', () => {
     const { result } = setup(baselineA);
     act(() => result.current.setField('displayName', 'Fulana'));
     expect(result.current.dirty).toBe(false); // same value, still clean
 
-    act(() => result.current.setField('bio', 'bio nova'));
+    act(() => result.current.setField('bio', 'new bio'));
     expect(result.current.dirty).toBe(true);
   });
 
-  it('adicionar e depois remover um link (voltando ao mesmo conteudo normalizado) volta a ficar limpo', () => {
+  it('adding then removing a link (back to the same normalized content) becomes clean again', () => {
     const { result } = setup(baselineA);
-    act(() => result.current.setField('profileLinks', ['', 'https://x.com/nova']));
+    act(() => result.current.setField('profileLinks', ['', 'https://x.com/new']));
     expect(result.current.dirty).toBe(true);
     act(() => result.current.setField('profileLinks', ['']));
     expect(result.current.dirty).toBe(false);
   });
 
-  it('mudanca externa da base enquanto limpo apenas segue a nova base', () => {
+  it('an external baseline change while clean simply follows the new baseline', () => {
     const { result, rerender } = setup(baselineA);
     rerender({ baseline: baselineB });
     expect(result.current.draft).toEqual(baselineB);
@@ -45,18 +45,18 @@ describe('useProfileDraft', () => {
     expect(result.current.conflict).toBe(false);
   });
 
-  it('mudanca externa da base enquanto sujo nao sobrescreve o rascunho — so acende o conflito', () => {
+  it('an external baseline change while dirty does not overwrite the draft — it only raises the conflict flag', () => {
     const { result, rerender } = setup(baselineA);
-    act(() => result.current.setField('displayName', 'Editando agora'));
+    act(() => result.current.setField('displayName', 'Editing now'));
     rerender({ baseline: baselineB });
 
-    expect(result.current.draft.displayName).toBe('Editando agora');
+    expect(result.current.draft.displayName).toBe('Editing now');
     expect(result.current.conflict).toBe(true);
   });
 
-  it('usar valores salvos (applyIncoming) adota a base nova e limpa o conflito', () => {
+  it('using the saved values (applyIncoming) adopts the new baseline and clears the conflict', () => {
     const { result, rerender } = setup(baselineA);
-    act(() => result.current.setField('displayName', 'Editando agora'));
+    act(() => result.current.setField('displayName', 'Editing now'));
     rerender({ baseline: baselineB });
     expect(result.current.conflict).toBe(true);
 
@@ -66,9 +66,9 @@ describe('useProfileDraft', () => {
     expect(result.current.dirty).toBe(false);
   });
 
-  it('descartar volta o rascunho a base atual e limpa erro/conflito', () => {
+  it('discarding resets the draft to the current baseline and clears error/conflict', () => {
     const { result } = setup(baselineA);
-    act(() => result.current.setField('bio', 'rascunho perdido'));
+    act(() => result.current.setField('bio', 'lost draft'));
     act(() => result.current.discard());
 
     expect(result.current.draft).toEqual(baselineA);
@@ -76,41 +76,41 @@ describe('useProfileDraft', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('salvar com sucesso manda o rascunho atual e volta a idle', async () => {
+  it('a successful save sends the current draft and returns to idle', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
     const { result } = setup(baselineA, save);
-    act(() => result.current.setField('bio', 'bio nova'));
+    act(() => result.current.setField('bio', 'new bio'));
 
     await act(async () => { await result.current.save(); });
 
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({ bio: 'bio nova' }));
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ bio: 'new bio' }));
     expect(result.current.saveState).toBe('idle');
     expect(result.current.error).toBeNull();
   });
 
-  it('salvar com falha guarda a mensagem de erro e preserva o rascunho editado', async () => {
-    const save = vi.fn().mockRejectedValue(new Error('falhou'));
+  it('a failed save keeps the error message and preserves the edited draft', async () => {
+    const save = vi.fn().mockRejectedValue(new Error('failed'));
     const { result } = setup(baselineA, save);
-    act(() => result.current.setField('bio', 'nao pode se perder'));
+    act(() => result.current.setField('bio', 'must not be lost'));
 
     await act(async () => {
-      await expect(result.current.save()).rejects.toThrow('falhou');
+      await expect(result.current.save()).rejects.toThrow('failed');
     });
 
     expect(result.current.saveState).toBe('error');
     expect(result.current.error).toBeTruthy();
-    expect(result.current.draft.bio).toBe('nao pode se perder');
+    expect(result.current.draft.bio).toBe('must not be lost');
     expect(result.current.dirty).toBe(true);
   });
 
-  it('so registra o listener de beforeunload enquanto ha algo sujo', () => {
+  it('only registers the beforeunload listener while something is dirty', () => {
     const addSpy = vi.spyOn(window, 'addEventListener');
     const removeSpy = vi.spyOn(window, 'removeEventListener');
     const { result } = setup(baselineA);
 
     expect(addSpy).not.toHaveBeenCalledWith('beforeunload', expect.any(Function));
 
-    act(() => result.current.setField('bio', 'algo novo'));
+    act(() => result.current.setField('bio', 'something new'));
     expect(addSpy).toHaveBeenCalledWith('beforeunload', expect.any(Function));
 
     act(() => result.current.discard());

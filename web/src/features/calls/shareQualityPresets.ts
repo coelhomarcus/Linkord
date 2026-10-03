@@ -21,12 +21,12 @@ export const SHARE_QUALITY_PRESETS: Record<ShareQualityId, ShareQualityPreset> =
     encoding: ScreenSharePresets.h1080fps30.encoding,
   },
   sharp: {
-    label: 'Nítida, pouco movimento (1080p, 15 fps)',
+    label: 'Nítida (1080p, 15 fps)',
     resolution: { width: 1920, height: 1080, frameRate: 15 },
     encoding: ScreenSharePresets.h1080fps15.encoding,
   },
   smooth: {
-    label: 'Fluida, para vídeo ou jogos (720p, 30 fps)',
+    label: 'Fluida (720p, 30 fps)',
     resolution: { width: 1280, height: 720, frameRate: 30 },
     encoding: ScreenSharePresets.h720fps30.encoding,
   },

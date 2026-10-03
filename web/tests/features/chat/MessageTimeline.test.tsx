@@ -52,7 +52,7 @@ afterEach(() => {
 });
 
 const message = (msgId: number, over: Partial<ChatMessage> = {}): ChatMessage => ({
-  msgId, conversationId: 'conv-1', id: `u${msgId % 3}`, name: 'Alguém', avatar: '', text: `mensagem ${msgId}`, ts: Date.UTC(2026, 8, 1) + msgId * 600_000, ...over,
+  msgId, conversationId: 'conv-1', id: `u${msgId % 3}`, name: 'Someone', avatar: '', text: `message ${msgId}`, ts: Date.UTC(2026, 8, 1) + msgId * 600_000, ...over,
 });
 
 function renderTimeline(overrides: Partial<RoomContextValue>, surfaces = 1) {
@@ -68,35 +68,35 @@ function renderTimeline(overrides: Partial<RoomContextValue>, surfaces = 1) {
   );
 }
 
-describe('MessageTimeline — virtualizacao', () => {
-  it('com 1000 mensagens, so as visiveis (e uma folga) ficam no DOM', async () => {
+describe('MessageTimeline — virtualization', () => {
+  it('with 1000 messages, only the visible ones (plus a buffer) stay in the DOM', async () => {
     const messages = Array.from({ length: 1000 }, (_, i) => message(i + 1));
     const { container } = renderTimeline({ messagesByConversation: new Map([['conv-1', messages]]) });
     await waitFor(() => expect(container.querySelectorAll('[data-msg-id]').length).toBeGreaterThan(0));
     expect(container.querySelectorAll('[data-msg-id]').length).toBeLessThan(60);
   });
 
-  it('abre no presente: a ultima mensagem esta montada', async () => {
+  it('opens at the present: the last message is mounted', async () => {
     const messages = Array.from({ length: 300 }, (_, i) => message(i + 1));
     const { container } = renderTimeline({ messagesByConversation: new Map([['conv-1', messages]]) });
     await waitFor(() => expect(container.querySelector('[data-msg-id="300"]')).not.toBeNull());
     expect(container.querySelector('[data-msg-id="1"]')).toBeNull();
   });
 
-  it('uma edicao aberta continua montada mesmo fora da tela', async () => {
+  it('an open edit stays mounted even off-screen', async () => {
     const messages = Array.from({ length: 300 }, (_, i) => message(i + 1));
     const { container } = renderTimeline({ messagesByConversation: new Map([['conv-1', messages]]), editingMsgId: 1 });
     await waitFor(() => expect(container.querySelector('[data-msg-id="300"]')).not.toBeNull());
     expect(container.querySelector('[data-msg-id="1"]')).not.toBeNull();
   });
 
-  it('no topo com historico anterior disponivel, pede a pagina anterior', async () => {
+  it('at the top with older history available, requests the previous page', async () => {
     const loadOlderMessages = vi.fn();
     renderTimeline({ messagesByConversation: new Map([['conv-1', [message(1), message(2)]]]), hasMoreByConversation: new Map([['conv-1', true]]), loadOlderMessages });
     await waitFor(() => expect(loadOlderMessages).toHaveBeenCalledWith('conv-1'));
   });
 
-  it('janela antiga: no fim pede a pagina seguinte e mostra como voltar ao presente', async () => {
+  it('old window: at the end requests the next page and shows how to return to the present', async () => {
     const loadNewerMessages = vi.fn();
     const openConversation = vi.fn();
     renderTimeline({
@@ -112,8 +112,8 @@ describe('MessageTimeline — virtualizacao', () => {
   });
 });
 
-describe('MessageTimeline — salto para mensagem', () => {
-  it('com a mesma conversa em duas superficies, o salto so rola a lista que o pediu', async () => {
+describe('MessageTimeline — jump to message', () => {
+  it('with the same conversation on two surfaces, the jump only scrolls the list that requested it', async () => {
     const original = message(1, { text: 'original' });
     const reply = message(2, { text: 'resposta', replyTo: { msgId: 1, authorId: 'u1', text: 'original' } });
     const { container } = renderTimeline({ messagesByConversation: new Map([['conv-1', [original, reply]]]) }, 2);
@@ -130,7 +130,7 @@ describe('MessageTimeline — salto para mensagem', () => {
     expect(scrolled.some((s) => s.el === mainRoot)).toBe(false);
   });
 
-  it('janela aberta por um salto comeca no alvo, nao no fim, e o destaca', async () => {
+  it('a window opened by a jump starts at the target, not at the end, and highlights it', async () => {
     const clearPendingJumpTarget = vi.fn();
     const messages = Array.from({ length: 300 }, (_, i) => message(i + 1));
     const { container } = renderTimeline({
@@ -145,7 +145,7 @@ describe('MessageTimeline — salto para mensagem', () => {
     expect(container.querySelector('[data-msg-id="40"]')!.className).toContain('bg-primary/10');
   });
 
-  it('alvo fora da janela carregada: pede a janela em torno dele', async () => {
+  it('target outside the loaded window: requests the window around it', async () => {
     const jumpToMessage = vi.fn();
     const reply = message(50, { text: 'resposta', replyTo: { msgId: 7, authorId: 'u1', text: 'antiga' } });
     renderTimeline({ messagesByConversation: new Map([['conv-1', [reply]]]), hasMoreByConversation: new Map([['conv-1', false]]), jumpToMessage });
@@ -155,11 +155,11 @@ describe('MessageTimeline — salto para mensagem', () => {
   });
 });
 
-describe('MessageTimeline — posicao de leitura e midia ativa', () => {
+describe('MessageTimeline — reading position and active media', () => {
   const scrollRootOf = (container: HTMLElement) => container.querySelector('[data-scroll-root]') as HTMLElement;
   const scrollRootTo = (root: HTMLElement, top: number) => { root.scrollTo({ top }); };
 
-  it('voltar a conversa restaura a linha onde a leitura parou, nao o fim', async () => {
+  it('returning to the conversation restores the row where reading stopped, not the end', async () => {
     const messages = Array.from({ length: 300 }, (_, i) => message(i + 1));
     const first = renderTimeline({ messagesByConversation: new Map([['conv-1', messages]]) });
     await waitFor(() => expect(first.container.querySelector('[data-msg-id="300"]')).not.toBeNull());
@@ -174,7 +174,7 @@ describe('MessageTimeline — posicao de leitura e midia ativa', () => {
     expect(second.container.querySelector('[data-msg-id="300"]')).toBeNull();
   });
 
-  it('estava no fim: volta ao fim', async () => {
+  it('was at the end: returns to the end', async () => {
     const messages = Array.from({ length: 300 }, (_, i) => message(i + 1));
     const first = renderTimeline({ messagesByConversation: new Map([['conv-1', messages]]) });
     await waitFor(() => expect(first.container.querySelector('[data-msg-id="300"]')).not.toBeNull());
@@ -183,7 +183,7 @@ describe('MessageTimeline — posicao de leitura e midia ativa', () => {
     await waitFor(() => expect(second.container.querySelector('[data-msg-id="300"]')).not.toBeNull());
   });
 
-  it('linha com midia tocando continua montada ao rolar para longe', async () => {
+  it('a row with media playing stays mounted when scrolled far away', async () => {
     const messages = Array.from({ length: 300 }, (_, i) => message(i + 1));
     const { container } = renderTimeline({ messagesByConversation: new Map([['conv-1', messages]]) });
     await waitFor(() => expect(container.querySelector('[data-msg-id="300"]')).not.toBeNull());
@@ -198,12 +198,12 @@ describe('MessageTimeline — posicao de leitura e midia ativa', () => {
   });
 });
 
-describe('MessageTimeline — animacao de chegada', () => {
+describe('MessageTimeline — arrival animation', () => {
   // an animated row sits inside the entrance wrapper; any other row is a
   // direct child of the positioned, measured wrapper
   const animated = (container: HTMLElement, id: number) => !container.querySelector(`[data-msg-id="${id}"]`)!.parentElement!.hasAttribute('data-index');
 
-  it('mensagem que acabou de chegar entra uma vez; remontar nao repete', async () => {
+  it('a message that just arrived animates in once; remounting does not repeat it', async () => {
     const messages = [message(1), message(2)];
     markArrival('2');
     const first = renderTimeline({ messagesByConversation: new Map([['conv-1', messages]]) });

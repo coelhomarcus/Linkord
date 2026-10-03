@@ -4,19 +4,19 @@ import userEvent from '@testing-library/user-event';
 import { CloseButton } from '@/shared/ui/primitives/close-button';
 
 describe('CloseButton', () => {
-  it('chama onClick e se chama "Fechar" por padrao', async () => {
+  it('calls onClick and is named "Fechar" by default', async () => {
     const onClick = vi.fn();
     render(<CloseButton onClick={onClick} />);
     await userEvent.setup().click(screen.getByRole('button', { name: 'Fechar' }));
     expect(onClick).toHaveBeenCalledOnce();
   });
 
-  it('aceita outro nome acessivel', () => {
+  it('accepts a different accessible name', () => {
     render(<CloseButton label="Dispensar aviso" />);
     expect(screen.getByRole('button', { name: 'Dispensar aviso' })).toBeInTheDocument();
   });
 
-  it('a variante overlay ganha fundo escuro para nao sumir sobre uma imagem', () => {
+  it('the overlay variant gets a dark background so it does not vanish over an image', () => {
     render(<CloseButton variant="overlay" />);
     expect(screen.getByRole('button', { name: 'Fechar' }).className).toContain('bg-black/60');
     expect(screen.getByRole('button', { name: 'Fechar' }).className).toContain('text-white');

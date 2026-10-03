@@ -16,14 +16,14 @@ describe('useCallFullscreen', () => {
     setFullscreenEnabled(true);
   });
 
-  it('nao esta em tela cheia por padrao', () => {
+  it('is not fullscreen by default', () => {
     const containerRef = { current: document.createElement('main') } as RefObject<HTMLElement | null>;
     const { result } = renderHook(() => useCallFullscreen(containerRef));
     expect(result.current.isCallFullscreen).toBe(false);
     expect(result.current.fullscreenElement).toBeNull();
   });
 
-  it('isCallFullscreen so e true quando o elemento em tela cheia e ESTE container, nao qualquer um (ex: um tile)', () => {
+  it('isCallFullscreen is only true when the fullscreen element is THIS container, not any element (e.g. a tile)', () => {
     const containerRef = { current: document.createElement('main') } as RefObject<HTMLElement | null>;
     const someTile = document.createElement('div');
     setFullscreenElement(someTile);
@@ -32,7 +32,7 @@ describe('useCallFullscreen', () => {
     expect(result.current.fullscreenElement).toBe(someTile);
   });
 
-  it('isCallFullscreen e true quando o proprio container esta em tela cheia', () => {
+  it('isCallFullscreen is true when the container itself is fullscreen', () => {
     const container = document.createElement('main');
     const containerRef = { current: container } as RefObject<HTMLElement | null>;
     setFullscreenElement(container);
@@ -40,7 +40,7 @@ describe('useCallFullscreen', () => {
     expect(result.current.isCallFullscreen).toBe(true);
   });
 
-  it('toggleCallFullscreen chama requestFullscreen no container quando nada esta em tela cheia', async () => {
+  it('toggleCallFullscreen calls requestFullscreen on the container when nothing is fullscreen', async () => {
     const container = document.createElement('main');
     const requestFullscreen = vi.fn(async () => undefined);
     container.requestFullscreen = requestFullscreen;
@@ -51,7 +51,7 @@ describe('useCallFullscreen', () => {
     expect(requestFullscreen).toHaveBeenCalled();
   });
 
-  it('toggleCallFullscreen chama exitFullscreen quando algo ja esta em tela cheia', async () => {
+  it('toggleCallFullscreen calls exitFullscreen when something is already fullscreen', async () => {
     const container = document.createElement('main');
     setFullscreenElement(container);
     const exitFullscreen = vi.fn(async () => undefined);
@@ -63,7 +63,7 @@ describe('useCallFullscreen', () => {
     expect(exitFullscreen).toHaveBeenCalled();
   });
 
-  it('sem suporte a Fullscreen API (fullscreenEnabled false), nao chama requestFullscreen nem quebra — fallback silencioso', async () => {
+  it('without Fullscreen API support (fullscreenEnabled false), does not call requestFullscreen nor throw — silent fallback', async () => {
     setFullscreenEnabled(false);
     const container = document.createElement('main');
     const requestFullscreen = vi.fn(async () => undefined);
@@ -75,7 +75,7 @@ describe('useCallFullscreen', () => {
     expect(requestFullscreen).not.toHaveBeenCalled();
   });
 
-  it('requestFullscreen falhando (ex: bloqueado) nao propaga erro nem deixa estado preso', async () => {
+  it('requestFullscreen failing (e.g. blocked) does not propagate an error nor leave state stuck', async () => {
     const container = document.createElement('main');
     container.requestFullscreen = vi.fn(async () => { throw new Error('blocked'); });
     const containerRef = { current: container } as RefObject<HTMLElement | null>;

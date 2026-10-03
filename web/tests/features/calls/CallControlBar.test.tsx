@@ -6,7 +6,7 @@ import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
 import { CallControlBar } from '@/features/calls/CallControlBar';
 
 describe('CallControlBar', () => {
-  it('renderiza reacoes e os controles da chamada (mic/ouvir/camera/tela) e sair', () => {
+  it('renders reactions and the call controls (mic/listen/camera/screen) and leave', () => {
     renderWithRoom(<CallControlBar />);
     expect(screen.getByLabelText('Reagir')).toBeInTheDocument();
     // no mic publication yet (initial state), so the button offers to activate it.
@@ -17,7 +17,7 @@ describe('CallControlBar', () => {
     expect(screen.getByLabelText('Sair da chamada')).toBeInTheDocument();
   });
 
-  it('aciona toggleMicMuted ao clicar no controle de microfone', () => {
+  it('triggers toggleMicMuted when clicking the mic control', () => {
     const toggleMicMuted = vi.fn();
     const livekitRoom = new Room();
     vi.spyOn(livekitRoom.localParticipant, 'getTrackPublication').mockImplementation((source) => (
@@ -28,7 +28,7 @@ describe('CallControlBar', () => {
     expect(toggleMicMuted).toHaveBeenCalledTimes(1);
   });
 
-  it('sem microfone publicado, o botao tenta ativar o microfone em vez de mutar', () => {
+  it('with no mic published, the button tries to activate the mic instead of muting', () => {
     const activateMic = vi.fn();
     const toggleMicMuted = vi.fn();
     renderWithRoom(<CallControlBar />, { activateMic, toggleMicMuted });
@@ -37,7 +37,7 @@ describe('CallControlBar', () => {
     expect(toggleMicMuted).not.toHaveBeenCalled();
   });
 
-  it('sem microfone conectado, avisa no botao e com um aviso que so some ao dispensar', () => {
+  it('with no mic connected, warns on the button and with a notice that only disappears when dismissed', () => {
     renderWithRoom(<CallControlBar />, { state: { ...initialRoomState, micProblem: 'not-found' } });
     expect(screen.getByLabelText('Nenhum microfone encontrado')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('conecte um microfone');
@@ -47,33 +47,33 @@ describe('CallControlBar', () => {
     expect(screen.getByLabelText('Nenhum microfone encontrado')).toBeInTheDocument();
   });
 
-  it('com o microfone bloqueado pelo navegador, explica como liberar', () => {
+  it('with the mic blocked by the browser, explains how to unblock it', () => {
     renderWithRoom(<CallControlBar />, { state: { ...initialRoomState, micProblem: 'denied' } });
     expect(screen.getByLabelText('Microfone bloqueado pelo navegador')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('permissões do site');
   });
 
-  it('aciona leaveCall ao clicar em sair da chamada', () => {
+  it('triggers leaveCall when clicking leave call', () => {
     const leaveCall = vi.fn();
     renderWithRoom(<CallControlBar />, { leaveCall });
     fireEvent.click(screen.getByLabelText('Sair da chamada'));
     expect(leaveCall).toHaveBeenCalledTimes(1);
   });
 
-  it('mostra o aviso de erro de compartilhamento quando presente', () => {
+  it('shows the share error notice when present', () => {
     renderWithRoom(<CallControlBar />, {
       state: { ...initialRoomState, shareError: 'Nao foi possivel acessar a camera.' },
     });
     expect(screen.getByText('Nao foi possivel acessar a camera.')).toBeInTheDocument();
   });
 
-  it('microfone que nao inicia: sugere que pode estar em uso por outro aplicativo', () => {
+  it('mic that fails to start: suggests it may be in use by another application', () => {
     renderWithRoom(<CallControlBar />, { state: { ...initialRoomState, micProblem: 'unavailable' } });
     expect(screen.getByLabelText('Microfone indisponível')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('em uso por outro aplicativo');
   });
 
-  it('camera e compartilhamento ativos usam o mesmo tratamento visual (verde)', () => {
+  it('active camera and screen share use the same visual treatment (green)', () => {
     renderWithRoom(<CallControlBar />, {
       state: { ...initialRoomState, me: { ...initialRoomState.me, cameraOn: true, sharing: true } },
     });
@@ -81,13 +81,13 @@ describe('CallControlBar', () => {
     expect(screen.getByLabelText('Parar compartilhamento').className).toMatch(/bg-green/);
   });
 
-  it('camera e compartilhamento desligados nao usam a cor de ativo', () => {
+  it('camera and screen share turned off do not use the active color', () => {
     renderWithRoom(<CallControlBar />);
     expect(screen.getByLabelText('Ligar câmera').className).not.toMatch(/bg-green/);
     expect(screen.getByLabelText('Compartilhar tela').className).not.toMatch(/bg-green/);
   });
 
-  it('microfone mutado e ensurdecido usam o tratamento vermelho', () => {
+  it('muted and deafened mic use the red treatment', () => {
     const livekitRoom = new Room();
     vi.spyOn(livekitRoom.localParticipant, 'getTrackPublication').mockImplementation((source) => (
       source === Track.Source.Microphone ? { isMuted: true, track: undefined } as never : undefined
@@ -97,31 +97,31 @@ describe('CallControlBar', () => {
     expect(screen.getByLabelText('Voltar a ouvir').className).toMatch(/bg-red/);
   });
 
-  it('sair da chamada continua com destaque vermelho proprio, fora do agrupamento neutro', () => {
+  it('leave call keeps its own red highlight, outside the neutral grouping', () => {
     renderWithRoom(<CallControlBar />);
     expect(screen.getByLabelText('Sair da chamada').className).toMatch(/bg-red\b/);
   });
 
-  it('mostra o botao de tela cheia e aciona toggleCallFullscreen ao clicar', () => {
+  it('shows the fullscreen button and triggers toggleCallFullscreen when clicked', () => {
     const toggleCallFullscreen = vi.fn();
     renderWithRoom(<CallControlBar />, { toggleCallFullscreen });
     fireEvent.click(screen.getByLabelText('Tela cheia'));
     expect(toggleCallFullscreen).toHaveBeenCalledTimes(1);
   });
 
-  it('quando ja esta em tela cheia, o botao oferece sair', () => {
+  it('when already in fullscreen, the button offers to exit', () => {
     renderWithRoom(<CallControlBar />, { isCallFullscreen: true });
     expect(screen.getByLabelText('Sair da tela cheia')).toBeInTheDocument();
     expect(screen.queryByLabelText('Tela cheia')).not.toBeInTheDocument();
   });
 
-  it('sem hudVisible (padrao true), a barra fica visivel', () => {
+  it('without hudVisible (defaults to true), the bar stays visible', () => {
     renderWithRoom(<CallControlBar />);
     const bar = screen.getByLabelText('Sair da chamada').closest('div.absolute');
     expect(bar).toHaveClass('opacity-100');
   });
 
-  it('com hudVisible=false, a barra fica com opacidade zero mas continua no DOM', () => {
+  it('with hudVisible=false, the bar has zero opacity but stays in the DOM', () => {
     renderWithRoom(<CallControlBar hudVisible={false} />);
     const bar = screen.getByLabelText('Sair da chamada').closest('div.absolute');
     expect(bar).toHaveClass('opacity-0', 'pointer-events-none');

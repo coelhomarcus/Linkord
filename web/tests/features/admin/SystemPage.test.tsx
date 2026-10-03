@@ -26,7 +26,7 @@ beforeEach(() => {
 });
 
 describe('SystemPage', () => {
-  it('mostra a cota da instancia, conexoes, cadastros e servicos', async () => {
+  it('shows instance quota, connections, signups and services', async () => {
     open();
     expect(await screen.findByText(/10.0 MB de 100.0 MB/)).toBeInTheDocument();
     expect(screen.getByText(/4 de 50 \(até 5 por conta\)/)).toBeInTheDocument();
@@ -34,14 +34,14 @@ describe('SystemPage', () => {
     expect(screen.getByText('configurado')).toBeInTheDocument();
   });
 
-  it('avisa quando o cadastro esta pausado e quando o outbox tem falhas', async () => {
+  it('warns when signups are paused and when the outbox has failures', async () => {
     mocked.fetchSystem.mockResolvedValue(info({ accounts: { total: 20, newLastHour: 30, newPerHourCap: 30, activeAdmins: 2, suspended: 0 }, outbox: { pending: 1, failed: 2 } }));
     open();
     expect(await screen.findByText(/Cadastros pausados/)).toBeInTheDocument();
     expect(screen.getByText(/esgotaram as tentativas/)).toBeInTheDocument();
   });
 
-  it('apagar orfaos exige a previa primeiro e depois motivo', async () => {
+  it('deleting orphans requires the preview first, then a reason', async () => {
     const u = userEvent.setup();
     mocked.sweepOrphans.mockResolvedValueOnce({ result: sweep() }).mockResolvedValueOnce({ result: sweep({ dryRun: false, deleted: 3 }) });
     open();
@@ -54,13 +54,13 @@ describe('SystemPage', () => {
     expect(apagar).toBeEnabled();
 
     await u.click(apagar);
-    await u.type(screen.getByLabelText(/Motivo/), 'limpeza mensal');
+    await u.type(screen.getByLabelText(/Motivo/), 'monthly cleanup');
     await u.click(screen.getByRole('button', { name: 'Apagar' }));
-    await waitFor(() => expect(mocked.sweepOrphans).toHaveBeenLastCalledWith({ dryRun: false, reason: 'limpeza mensal' }));
+    await waitFor(() => expect(mocked.sweepOrphans).toHaveBeenLastCalledWith({ dryRun: false, reason: 'monthly cleanup' }));
     expect(await screen.findByText(/3 apagado\(s\), 0 falha\(s\)/)).toBeInTheDocument();
   });
 
-  it('sem orfaos na previa, nao oferece apagar', async () => {
+  it('with no orphans in the preview, does not offer delete', async () => {
     const u = userEvent.setup();
     mocked.sweepOrphans.mockResolvedValue({ result: sweep({ orphanCount: 0, orphanBytes: 0 }) });
     open();
@@ -69,7 +69,7 @@ describe('SystemPage', () => {
     expect(screen.getByRole('button', { name: 'Apagar órfãos' })).toBeDisabled();
   });
 
-  it('erro de carga oferece nova tentativa', async () => {
+  it('load error offers a retry', async () => {
     const u = userEvent.setup();
     mocked.fetchSystem.mockRejectedValueOnce(new Error('x'));
     open();

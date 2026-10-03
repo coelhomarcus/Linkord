@@ -29,7 +29,7 @@ beforeEach(() => {
 });
 
 describe('NotificationBell', () => {
-  it('mostra o contador de nao lidas e 9+ acima de nove', async () => {
+  it('shows the unread counter and 9+ above nine', async () => {
     mocked.fetchUnreadNotificationCount.mockResolvedValue({ unread: 12 });
     mocked.fetchNotifications.mockResolvedValue({ items: [], nextCursor: null });
     renderBell();
@@ -37,7 +37,7 @@ describe('NotificationBell', () => {
     expect(screen.getByRole('button', { name: 'Notificações, 12 não lidas' })).toBeInTheDocument();
   });
 
-  it('lista vazia', async () => {
+  it('empty list', async () => {
     const user = userEvent.setup();
     mocked.fetchUnreadNotificationCount.mockResolvedValue({ unread: 0 });
     mocked.fetchNotifications.mockResolvedValue({ items: [], nextCursor: null });
@@ -46,7 +46,7 @@ describe('NotificationBell', () => {
     expect(await screen.findByText('Nenhuma notificação por enquanto.')).toBeInTheDocument();
   });
 
-  it('clicar num item marca como lido e navega', async () => {
+  it('clicking an item marks it as read and navigates', async () => {
     const user = userEvent.setup();
     mocked.fetchUnreadNotificationCount.mockResolvedValue({ unread: 1 });
     mocked.fetchNotifications.mockResolvedValue({ items: [entry({ kind: 'group_invitation', invitationId: 'i1', friendshipId: null, group: { id: 'g', title: 'Squad', avatar: '' } })], nextCursor: null });
@@ -57,7 +57,7 @@ describe('NotificationBell', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/app/friends?tab=invitations');
   });
 
-  it('item ja lido nao chama a API ao clicar', async () => {
+  it('an already-read item does not call the API on click', async () => {
     const user = userEvent.setup();
     mocked.fetchUnreadNotificationCount.mockResolvedValue({ unread: 0 });
     mocked.fetchNotifications.mockResolvedValue({ items: [entry({ read: true, kind: 'friend_accepted' })], nextCursor: null });
@@ -68,7 +68,7 @@ describe('NotificationBell', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/app/friends');
   });
 
-  it('marcar todas como lidas', async () => {
+  it('marking all as read', async () => {
     const user = userEvent.setup();
     mocked.fetchUnreadNotificationCount.mockResolvedValue({ unread: 2 });
     mocked.fetchNotifications.mockResolvedValue({ items: [entry()], nextCursor: null });
@@ -78,7 +78,7 @@ describe('NotificationBell', () => {
     expect(mocked.markNotificationsRead).toHaveBeenCalledWith({ all: true });
   });
 
-  it('falha ao marcar mostra o erro e recarrega o contador real', async () => {
+  it('a failure marking as read shows the error and reloads the real counter', async () => {
     const user = userEvent.setup();
     mocked.fetchUnreadNotificationCount.mockResolvedValue({ unread: 2 });
     mocked.fetchNotifications.mockResolvedValue({ items: [entry()], nextCursor: null });
@@ -90,7 +90,7 @@ describe('NotificationBell', () => {
     await waitFor(() => expect(mocked.fetchUnreadNotificationCount.mock.calls.length).toBeGreaterThan(1));
   });
 
-  it('erro de carregamento oferece tentar de novo', async () => {
+  it('a loading error offers a retry', async () => {
     const user = userEvent.setup();
     mocked.fetchUnreadNotificationCount.mockResolvedValue({ unread: 0 });
     mocked.fetchNotifications.mockRejectedValueOnce(new Error('x')).mockResolvedValue({ items: [entry()], nextCursor: null });
@@ -100,7 +100,7 @@ describe('NotificationBell', () => {
     expect(await screen.findByText('Ana enviou uma solicitação de amizade')).toBeInTheDocument();
   });
 
-  it('descartar um item chama a API sem navegar e sem marcar como lido', async () => {
+  it('dismissing an item calls the API without navigating and without marking as read', async () => {
     const user = userEvent.setup();
     mocked.fetchUnreadNotificationCount.mockResolvedValue({ unread: 1 });
     mocked.fetchNotifications.mockResolvedValue({ items: [entry()], nextCursor: null });
@@ -112,7 +112,7 @@ describe('NotificationBell', () => {
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/$/);
   });
 
-  it('limpar tudo apaga a lista inteira', async () => {
+  it('clearing everything wipes out the whole list', async () => {
     const user = userEvent.setup();
     mocked.fetchUnreadNotificationCount.mockResolvedValue({ unread: 0 });
     mocked.fetchNotifications.mockResolvedValue({ items: [entry({ read: true })], nextCursor: null });
@@ -122,7 +122,7 @@ describe('NotificationBell', () => {
     expect(mocked.clearNotifications).toHaveBeenCalled();
   });
 
-  it('falha ao descartar mostra o erro e recarrega o estado real', async () => {
+  it('a failure dismissing shows the error and reloads the real state', async () => {
     const user = userEvent.setup();
     mocked.fetchUnreadNotificationCount.mockResolvedValue({ unread: 0 });
     mocked.fetchNotifications.mockResolvedValue({ items: [entry({ read: true })], nextCursor: null });

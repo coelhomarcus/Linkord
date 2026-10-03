@@ -23,14 +23,14 @@ function currentTile() {
   return screen.getByTestId('pip-tile');
 }
 
-describe('FloatingPip — selecao por identidade estavel', () => {
-  it('audio-only (sem descritores nao-avatar): nao renderiza nada', () => {
+describe('FloatingPip — selection by stable identity', () => {
+  it('audio-only (no non-avatar descriptors): renders nothing', () => {
     vi.mocked(useCallTiles).mockReturnValue([]);
     const { container } = renderWithRoom(<FloatingPip allIds={['p-1', 'p-2']} />);
     expect(container.querySelector('[data-testid="pip-tile"]')).not.toBeInTheDocument();
   });
 
-  it('sem foco e sem escolha manual, mostra o primeiro descritor disponivel', () => {
+  it('with no focus and no manual pick, shows the first available descriptor', () => {
     vi.mocked(useCallTiles).mockReturnValue([
       descriptor({ key: 'p-2:screen', participantId: 'p-2', kind: 'screen' }),
       descriptor({ key: 'p-3:participant', participantId: 'p-3', kind: 'camera' }),
@@ -39,7 +39,7 @@ describe('FloatingPip — selecao por identidade estavel', () => {
     expect(currentTile()).toHaveAttribute('data-participant', 'p-2');
   });
 
-  it('prioriza a fonte em FOCO sobre o primeiro da lista', () => {
+  it('prioritizes the FOCUSED source over the first one in the list', () => {
     vi.mocked(useCallTiles).mockReturnValue([
       descriptor({ key: 'p-2:screen', participantId: 'p-2', kind: 'screen' }),
       descriptor({ key: 'p-3:participant', participantId: 'p-3', kind: 'camera' }),
@@ -50,7 +50,7 @@ describe('FloatingPip — selecao por identidade estavel', () => {
     expect(currentTile()).toHaveAttribute('data-participant', 'p-3');
   });
 
-  it('escolha manual (proxima/anterior) tem prioridade sobre o foco automatico', () => {
+  it('manual pick (next/previous) takes priority over automatic focus', () => {
     vi.mocked(useCallTiles).mockReturnValue([
       descriptor({ key: 'p-2:screen', participantId: 'p-2', kind: 'screen' }),
       descriptor({ key: 'p-3:participant', participantId: 'p-3', kind: 'camera' }),
@@ -64,7 +64,7 @@ describe('FloatingPip — selecao por identidade estavel', () => {
     expect(currentTile()).toHaveAttribute('data-participant', 'p-3');
   });
 
-  it('quando a escolha manual desaparece da lista, volta a seguir o foco (fallback valido, nunca um indice morto)', () => {
+  it('when the manual pick disappears from the list, falls back to following focus (valid fallback, never a dead index)', () => {
     const value = createFakeRoomContextValue({ state: { ...initialRoomState, focusedId: 'p-3:participant' } });
     vi.mocked(useCallTiles).mockReturnValue([
       descriptor({ key: 'p-2:screen', participantId: 'p-2', kind: 'screen' }),
@@ -90,15 +90,15 @@ describe('FloatingPip — selecao por identidade estavel', () => {
     expect(currentTile()).toHaveAttribute('data-participant', 'p-3');
   });
 
-  it('passa "paused" adiante pro Tile', () => {
+  it('passes "paused" through to the Tile', () => {
     vi.mocked(useCallTiles).mockReturnValue([descriptor({ paused: true })]);
     renderWithRoom(<FloatingPip allIds={['p-2']} />);
     expect(currentTile()).toHaveAttribute('data-paused', '1');
   });
 });
 
-describe('FloatingPip — clique vs. arraste', () => {
-  it('clique simples (sem movimento) chama onExpand', () => {
+describe('FloatingPip — click vs. drag', () => {
+  it('a simple click (no movement) calls onExpand', () => {
     vi.mocked(useCallTiles).mockReturnValue([descriptor()]);
     const onExpand = vi.fn();
     renderWithRoom(<FloatingPip allIds={['p-2']} onExpand={onExpand} />);
@@ -109,7 +109,7 @@ describe('FloatingPip — clique vs. arraste', () => {
     expect(onExpand).toHaveBeenCalledTimes(1);
   });
 
-  it('arrastar alem do limiar NAO chama onExpand', () => {
+  it('dragging past the threshold does NOT call onExpand', () => {
     vi.mocked(useCallTiles).mockReturnValue([descriptor()]);
     const onExpand = vi.fn();
     renderWithRoom(<FloatingPip allIds={['p-2']} onExpand={onExpand} />);
@@ -121,7 +121,7 @@ describe('FloatingPip — clique vs. arraste', () => {
     expect(onExpand).not.toHaveBeenCalled();
   });
 
-  it('pointercancel apos um arraste tambem nao chama onExpand', () => {
+  it('pointercancel after a drag also does not call onExpand', () => {
     vi.mocked(useCallTiles).mockReturnValue([descriptor()]);
     const onExpand = vi.fn();
     renderWithRoom(<FloatingPip allIds={['p-2']} onExpand={onExpand} />);

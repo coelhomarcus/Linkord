@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
-import { PanelLeftOpen, PhoneCall, Settings, ShieldCheck, UsersRound } from 'lucide-react';
+import { MessageCircle, PanelLeftOpen, PhoneCall, Settings, ShieldCheck, UsersRound } from 'lucide-react';
 import { Avatar } from '@/shared/Avatar';
 import { useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/primitives/tooltip';
@@ -15,7 +15,7 @@ import { CountBadge } from '@/shared/CountBadge';
 const itemClass = 'relative grid size-11 place-items-center rounded-xl outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring';
 
 function stateClass(active: boolean): string {
-  return active ? 'bg-primary/20 text-text-primary' : 'text-text-muted hover:bg-white/[0.06] hover:text-text-primary';
+  return active ? 'bg-white/10 text-text-primary shadow-[inset_0_1px_0_rgb(255_255_255_/_0.06)]' :'text-text-muted hover:bg-white/[0.06] hover:text-text-primary';
 }
 
 /** A short bar on the edge: the selected destination isn't told by colour alone. */
@@ -86,7 +86,7 @@ export function AppNavigationRail({ onOpenProfile, onReturnToCall, className }: 
   return (
     <nav aria-label="Navegação principal" className={cn('flex w-16 flex-none flex-col items-center gap-1.5 bg-bg-primary py-3', className)}>
       <RailLink to={ROUTES.conversations} label="Conversas" active={isConversationsPath(pathname)} onNavigate={afterNavigate}>
-        <img src="/logo.svg" alt="" className="size-7" />
+        <MessageCircle size={20} aria-hidden />
       </RailLink>
       <RailLink to={ROUTES.friends} label={friendsLabel} active={pathname === ROUTES.friends} badge={pendingIncomingCount} onNavigate={afterNavigate}>
         <UsersRound size={20} aria-hidden />

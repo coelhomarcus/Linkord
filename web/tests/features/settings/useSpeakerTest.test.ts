@@ -26,12 +26,12 @@ afterEach(() => {
 });
 
 describe('useSpeakerTest', () => {
-  it('nao toca nada sozinho — so apos test() explicito', () => {
+  it('does not play anything on its own — only after an explicit test()', () => {
     renderHook(() => useSpeakerTest());
     expect(FakeAudio.instances).toHaveLength(0);
   });
 
-  it('test(deviceId) roteia pro dispositivo escolhido antes de tocar', async () => {
+  it('test(deviceId) routes to the chosen device before playing', async () => {
     const { result } = renderHook(() => useSpeakerTest());
     await act(async () => { await result.current.test('speaker-1'); });
 
@@ -41,14 +41,14 @@ describe('useSpeakerTest', () => {
     expect(result.current.testing).toBe(true);
   });
 
-  it('onended volta testing pra false sozinho', async () => {
+  it('onended turns testing back to false on its own', async () => {
     const { result } = renderHook(() => useSpeakerTest());
     await act(async () => { await result.current.test(); });
     act(() => FakeAudio.instances[0]!.onended?.());
     expect(result.current.testing).toBe(false);
   });
 
-  it('um segundo test() pausa o audio anterior antes de tocar o novo', async () => {
+  it('a second test() pauses the previous audio before playing the new one', async () => {
     const { result } = renderHook(() => useSpeakerTest());
     await act(async () => { await result.current.test('a'); });
     await act(async () => { await result.current.test('b'); });
@@ -57,14 +57,14 @@ describe('useSpeakerTest', () => {
     expect(FakeAudio.instances[1]!.play).toHaveBeenCalledTimes(1);
   });
 
-  it('desmontar no meio de um teste pausa o audio (nao continua tocando)', async () => {
+  it('unmounting mid-test pauses the audio (does not keep playing)', async () => {
     const { result, unmount } = renderHook(() => useSpeakerTest());
     await act(async () => { await result.current.test(); });
     unmount();
     expect(FakeAudio.instances[0]!.pause).toHaveBeenCalledTimes(1);
   });
 
-  it('falha ao tocar mostra um erro recuperavel', async () => {
+  it('a failure to play shows a recoverable error', async () => {
     class FailingAudio extends FakeAudio {
       play = vi.fn().mockRejectedValue(new Error('nope'));
     }

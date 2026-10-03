@@ -9,7 +9,7 @@ describe('LinkPreview', () => {
     vi.restoreAllMocks();
   });
 
-  it('renderiza embed direto de video com o player proprio e lightbox interno', async () => {
+  it('renders a direct video embed with its own player and inner lightbox', async () => {
     const user = userEvent.setup();
     vi.spyOn(window.HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
     const { container } = render(<LinkPreview embed={{ kind: 'video', url: 'https://cdn.example.com/video.mp4' }} />);
@@ -24,7 +24,7 @@ describe('LinkPreview', () => {
     expect(screen.getByRole('button', { name: 'Fechar' })).toBeInTheDocument();
   });
 
-  it('renderiza embed direto de audio com o player proprio', () => {
+  it('renders a direct audio embed with its own player', () => {
     const { container } = render(<LinkPreview embed={{ kind: 'audio', url: 'https://cdn.example.com/audio.mp3' }} />);
 
     const audio = container.querySelector('audio');
@@ -34,8 +34,8 @@ describe('LinkPreview', () => {
     expect(container.querySelector('[aria-label="Volume"]')).toBeInTheDocument();
   });
 
-  describe('embed de imagem direta', () => {
-    it('sem fitContainer (mensagem de chat): usa o cap de largura em px calculado via JS', () => {
+  describe('direct image embed', () => {
+    it('without fitContainer (chat message): uses the px width cap computed via JS', () => {
       const { container } = render(<LinkPreview embed={{ kind: 'image', url: 'https://cdn.example.com/foto.png' }} />);
 
       const img = container.querySelector('img');
@@ -47,7 +47,7 @@ describe('LinkPreview', () => {
       expect(img?.className.split(/\s+/)).not.toContain('w-full');
     });
 
-    it('com fitContainer (grid de mídias): preenche o container real via w-full, sem o cap em px', () => {
+    it('with fitContainer (media grid): fills the real container via w-full, without the px cap', () => {
       const { container } = render(<LinkPreview embed={{ kind: 'image', url: 'https://cdn.example.com/foto.png' }} fitContainer />);
 
       const img = container.querySelector('img');
@@ -61,10 +61,10 @@ describe('LinkPreview', () => {
   });
 });
 
-describe('LinkPreview — previa de link so perto da tela', () => {
+describe('LinkPreview — link preview only near the screen', () => {
   afterEach(() => { vi.unstubAllGlobals(); __resetLinkPreviewCacheForTests(); });
 
-  it('nao busca enquanto o card esta longe; busca quando se aproxima', async () => {
+  it('does not fetch while the card is far away; fetches when it gets close', async () => {
     let fire: (visible: boolean) => void = () => {};
     vi.stubGlobal('IntersectionObserver', class {
       constructor(cb: IntersectionObserverCallback) { fire = (visible) => cb([{ isIntersecting: visible } as IntersectionObserverEntry], this as unknown as IntersectionObserver); }

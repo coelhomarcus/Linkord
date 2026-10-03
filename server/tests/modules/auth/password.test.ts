@@ -3,29 +3,29 @@ import assert from 'node:assert/strict';
 import { hashPassword, verifyPassword, needsRehash, DUMMY_HASH } from '../../../src/modules/auth/password.js';
 
 describe('hashPassword / verifyPassword', () => {
-  test('senha certa verifica true', async () => {
+  test('the right password verifies true', async () => {
     const hash = await hashPassword('correta-123');
     assert.equal(await verifyPassword('correta-123', hash), true);
   });
 
-  test('senha errada verifica false', async () => {
+  test('the wrong password verifies false', async () => {
     const hash = await hashPassword('correta-123');
     assert.equal(await verifyPassword('errada-456', hash), false);
   });
 
-  test('hash tem o formato scrypt$N$r$p$salt$hash', async () => {
+  test('the hash has the format scrypt$N$r$p$salt$hash', async () => {
     const hash = await hashPassword('qualquer');
     const parts = hash.split('$');
     assert.equal(parts.length, 6);
     assert.equal(parts[0], 'scrypt');
   });
 
-  test('duas senhas iguais geram hashes diferentes (salt aleatorio)', async () => {
+  test('two identical passwords produce different hashes (random salt)', async () => {
     const [a, b] = await Promise.all([hashPassword('mesma-senha'), hashPassword('mesma-senha')]);
     assert.notEqual(a, b);
   });
 
-  test('nunca lanca contra um hash corrompido/formato desconhecido — so falha a verificacao', async () => {
+  test('never throws against a corrupted hash/unknown format — just fails verification', async () => {
     await assert.doesNotReject(async () => {
       const ok = await verifyPassword('qualquer', 'nao-e-um-hash-scrypt');
       assert.equal(ok, false);
@@ -38,14 +38,14 @@ describe('hashPassword / verifyPassword', () => {
     });
   });
 
-  test('rejeita parametros N/r/p absurdos (protecao contra DoS via linha corrompida)', async () => {
+  test('rejects absurd N/r/p parameters (protection against DoS via a corrupted row)', async () => {
     // N above the ceiling (2**20) — if it weren't blocked, it would try to
     // allocate memory/CPU far beyond reasonable just to verify one password.
     const forged = `scrypt$${2 ** 21}$8$1$${'a'.repeat(22)}$${'b'.repeat(86)}`;
     assert.equal(await verifyPassword('qualquer', forged), false);
   });
 
-  test('DUMMY_HASH tem o mesmo formato de um hash real, mas nunca bate com nenhuma senha', async () => {
+  test('DUMMY_HASH has the same format as a real hash, but never matches any password', async () => {
     const parts = DUMMY_HASH.split('$');
     assert.equal(parts.length, 6);
     assert.equal(parts[0], 'scrypt');
@@ -54,16 +54,16 @@ describe('hashPassword / verifyPassword', () => {
 });
 
 describe('needsRehash', () => {
-  test('hash com N atual nao precisa rehash', async () => {
+  test('a hash with the current N does not need a rehash', async () => {
     const hash = await hashPassword('senha');
     assert.equal(needsRehash(hash), false);
   });
 
-  test('hash com N mais fraco que o atual precisa rehash', () => {
+  test('a hash with a weaker N than the current one needs a rehash', () => {
     assert.equal(needsRehash('scrypt$1024$8$1$c2FsdA$aGFzaA'), true);
   });
 
-  test('formato desconhecido/vazio conta como "precisa rehash" (fail safe)', () => {
+  test('unknown/empty format counts as "needs rehash" (fail safe)', () => {
     assert.equal(needsRehash('lixo'), true);
     assert.equal(needsRehash(null), true);
     assert.equal(needsRehash(undefined), true);

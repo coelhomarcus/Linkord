@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { parseClientLog } from '../../../src/modules/logs/clientLogs.js';
 
 describe('parseClientLog', () => {
-  it('aceita warn/error com mensagem e corta o excesso', () => {
+  it('accepts warn/error with a message and trims the excess', () => {
     const entry = parseClientLog({ level: 'error', message: 'm'.repeat(900), stack: 's'.repeat(9000), url: 'u'.repeat(900), userAgent: 'a'.repeat(900) })!;
     assert.equal(entry.level, 'error');
     assert.ok(entry.message.length <= 501);
@@ -12,7 +12,7 @@ describe('parseClientLog', () => {
     assert.ok(entry.userAgent!.length <= 201);
   });
 
-  it('recusa nivel de fora (debug/info), sem mensagem ou lixo', () => {
+  it('rejects an out-of-range level (debug/info), missing message, or garbage', () => {
     assert.equal(parseClientLog({ level: 'info', message: 'x' }), null);
     assert.equal(parseClientLog({ level: 'debug', message: 'x' }), null);
     assert.equal(parseClientLog({ level: 'error' }), null);
@@ -20,14 +20,14 @@ describe('parseClientLog', () => {
     assert.equal(parseClientLog({ level: 'error', message: 123 }), null);
   });
 
-  it('mantem so os ultimos 5 breadcrumbs, cortados', () => {
+  it('keeps only the last 5 breadcrumbs, trimmed', () => {
     const entry = parseClientLog({ level: 'warn', message: 'x', breadcrumbs: Array.from({ length: 9 }, (_, i) => `${i}${'z'.repeat(400)}`) })!;
     assert.equal(entry.breadcrumbs!.length, 5);
     assert.ok(entry.breadcrumbs![0]!.startsWith('4'));
     assert.ok(entry.breadcrumbs!.every((b) => b.length <= 201));
   });
 
-  it('context so entra se for objeto pequeno', () => {
+  it('context is only kept if it is a small object', () => {
     assert.deepEqual(parseClientLog({ level: 'warn', message: 'x', context: { a: 1 } })!.context, { a: 1 });
     assert.equal(parseClientLog({ level: 'warn', message: 'x', context: [1] })!.context, undefined);
     assert.equal(parseClientLog({ level: 'warn', message: 'x', context: { big: 'z'.repeat(2000) } })!.context, undefined);

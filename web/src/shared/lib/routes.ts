@@ -22,7 +22,6 @@ export function parseFriendsView(raw: string | null | undefined): FriendsView {
 
 export const ROUTES = {
   conversations: '/app/conversations',
-  conversation: (id: string) => `/app/conversations/${encodeURIComponent(id)}`,
   friends: '/app/friends',
   /** legacy: redirects to the pending view of Friends; new links use friendsView/friendsSection */
   requests: '/app/requests',
@@ -43,8 +42,9 @@ export function friendsSection(section: FriendsSection): string {
   return `${friendsView('pending')}#${section}`;
 }
 
-/** The conversation id in a `/app/conversations/:id` path, or null on any
- * other page (or on the bare list route). */
+/** The conversation id in a legacy `/app/conversations/:id` path (an old
+ * bookmark or link), or null on any other page (or on the bare list route).
+ * The app itself no longer writes ids into the URL — see `conversationNav`. */
 export function conversationIdFromPath(pathname: string): string | null {
   const match = /^\/app\/conversations\/([^/]+)\/?$/.exec(pathname);
   if (!match) return null;
@@ -53,6 +53,20 @@ export function conversationIdFromPath(pathname: string): string | null {
 
 export function isConversationsPath(pathname: string): boolean {
   return pathname === ROUTES.conversations || pathname.startsWith(`${ROUTES.conversations}/`);
+}
+
+/** Which conversation is open lives in the history entry's state, not in the
+ * path: the URL stays `/app/conversations` like WhatsApp Web, while back/forward
+ * and a refresh still land on the right conversation (the browser keeps the
+ * state of each entry). */
+export function conversationNav(conversationId: string) {
+  return { state: { conversationId } };
+}
+
+export function conversationIdFromState(state: unknown): string | null {
+  if (!state || typeof state !== 'object') return null;
+  const id = (state as { conversationId?: unknown }).conversationId;
+  return typeof id === 'string' && id !== '' ? id : null;
 }
 
 /** Navigation options for "take me to the conversations page, the specific

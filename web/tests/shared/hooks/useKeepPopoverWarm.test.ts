@@ -3,19 +3,19 @@ import { renderHook } from '@testing-library/react';
 import { useKeepPopoverWarm } from '@/shared/hooks/useKeepPopoverWarm';
 
 describe('useKeepPopoverWarm', () => {
-  it('começa frio (false) enquanto nunca foi aberto', () => {
+  it('starts cold (false) while it has never been opened', () => {
     const { result } = renderHook(() => useKeepPopoverWarm(false));
     expect(result.current).toBe(false);
   });
 
-  it('esquenta (true) assim que abre pela primeira vez', () => {
+  it('warms up (true) as soon as it opens for the first time', () => {
     const { result, rerender } = renderHook(({ open }) => useKeepPopoverWarm(open), { initialProps: { open: false } });
     expect(result.current).toBe(false);
     rerender({ open: true });
     expect(result.current).toBe(true);
   });
 
-  it('depois de esquentar, continua true mesmo fechando de novo', () => {
+  it('once warmed up, stays true even after closing again', () => {
     const { result, rerender } = renderHook(({ open }) => useKeepPopoverWarm(open), { initialProps: { open: true } });
     expect(result.current).toBe(true);
     rerender({ open: false });

@@ -16,7 +16,7 @@ const joinedState = { ...initialRoomState, joined: true };
 afterEach(() => clearAllDrafts());
 
 function fakeFile(name: string, type: string): File {
-  return new File(['conteudo'], name, { type });
+  return new File(['content'], name, { type });
 }
 
 function dropFiles(target: Element, files: File[]) {
@@ -27,7 +27,7 @@ function dropFiles(target: Element, files: File[]) {
 }
 
 describe('ChatSurface — drag and drop', () => {
-  it('mostra overlay ao arrastar arquivo sobre a conversa e some ao soltar', () => {
+  it('shows an overlay while dragging a file over the conversation and hides it on drop', () => {
     const { container } = renderWithRoom(
       <ChatSurface conversationId="conv-1" onOpenProfile={() => {}} />,
       { state: joinedState }
@@ -41,7 +41,7 @@ describe('ChatSurface — drag and drop', () => {
     expect(screen.queryByText('Solte para anexar')).not.toBeInTheDocument();
   });
 
-  it('soltar um arquivo o anexa na mensagem (aparece como pendente no composer)', () => {
+  it('dropping a file attaches it to the message (shows up as pending in the composer)', () => {
     const { container } = renderWithRoom(
       <ChatSurface conversationId="conv-1" onOpenProfile={() => {}} />,
       { state: joinedState }
@@ -53,7 +53,7 @@ describe('ChatSurface — drag and drop', () => {
     expect(screen.getByTitle('relatorio.pdf')).toBeInTheDocument();
   });
 
-  it('nao anexa nada quando o usuario ainda nao entrou na conversa', () => {
+  it('attaches nothing when the user has not joined the conversation yet', () => {
     const { container } = renderWithRoom(
       <ChatSurface conversationId="conv-1" onOpenProfile={() => {}} />,
       { state: { ...initialRoomState, joined: false } }
@@ -66,12 +66,12 @@ describe('ChatSurface — drag and drop', () => {
   });
 });
 
-describe('ChatSurface — digitacao nao desloca a lista', () => {
+describe('ChatSurface — typing does not shift the list', () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
   const fulano: PublicUser = { id: 'u1', username: 'fulano', displayName: 'Fulano', avatar: '', avatarColor: 'blurple', banner: '', bio: '', profileLinks: [], role: 'user' };
 
-  it('o indicador fica fora da area medida e a folga da lista nao muda quando alguem comeca a digitar', () => {
+  it('the indicator sits outside the measured area and the list height stays put when someone starts typing', () => {
     const observed: Element[] = [];
     vi.stubGlobal('ResizeObserver', class {
       observe(el: Element) { observed.push(el); }

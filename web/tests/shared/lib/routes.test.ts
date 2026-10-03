@@ -1,31 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ROUTES, conversationIdFromPath, friendsSection, friendsView, isAwaitingOpen, isConversationsPath, isSettingsTab, parseFriendsView,
+  conversationIdFromPath, conversationIdFromState, conversationNav, friendsSection, friendsView, isAwaitingOpen, isConversationsPath, isSettingsTab, parseFriendsView,
 } from '@/shared/lib/routes';
 
 describe('conversationIdFromPath', () => {
-  it('extrai o id de /app/conversations/:id', () => {
+  it('extracts the id from a legacy /app/conversations/:id link', () => {
     expect(conversationIdFromPath('/app/conversations/abc-123')).toBe('abc-123');
     expect(conversationIdFromPath('/app/conversations/abc-123/')).toBe('abc-123');
   });
 
-  it('decodifica o id (ida e volta com ROUTES.conversation)', () => {
-    expect(conversationIdFromPath(ROUTES.conversation('a b/c'))).toBe('a b/c');
+  it('decodes a percent-encoded id', () => {
+    expect(conversationIdFromPath(`/app/conversations/${encodeURIComponent('a b/c')}`)).toBe('a b/c');
   });
 
-  it('e null na rota sem id e em qualquer outra pagina', () => {
+  it('is null for the route without an id and for any other page', () => {
     expect(conversationIdFromPath('/app/conversations')).toBeNull();
     expect(conversationIdFromPath('/app/friends')).toBeNull();
     expect(conversationIdFromPath('/app/conversations/a/extra')).toBeNull();
   });
 
-  it('percent-encoding quebrado nao lanca', () => {
+  it('broken percent-encoding does not throw', () => {
     expect(conversationIdFromPath('/app/conversations/%E0%A4%A')).toBeNull();
   });
 });
 
 describe('isConversationsPath', () => {
-  it('cobre a lista e a conversa, e nada alem disso', () => {
+  it('covers the list and the conversation, and nothing beyond that', () => {
     expect(isConversationsPath('/app/conversations')).toBe(true);
     expect(isConversationsPath('/app/conversations/x')).toBe(true);
     expect(isConversationsPath('/app/conversationsX')).toBe(false);
@@ -35,7 +35,7 @@ describe('isConversationsPath', () => {
 });
 
 describe('isSettingsTab', () => {
-  it('aceita so as abas conhecidas', () => {
+  it('accepts only the known tabs', () => {
     expect(isSettingsTab('privacy')).toBe(true);
     expect(isSettingsTab('moderation')).toBe(true);
     expect(isSettingsTab('nope')).toBe(false);
@@ -43,36 +43,50 @@ describe('isSettingsTab', () => {
   });
 });
 
+describe('conversationNav / conversationIdFromState', () => {
+  it('round-trips the id through the navigation state', () => {
+    expect(conversationIdFromState(conversationNav('c1').state)).toBe('c1');
+  });
+
+  it('reads the id from state without trusting any shape', () => {
+    expect(conversationIdFromState({ conversationId: 42 })).toBeNull();
+    expect(conversationIdFromState({ conversationId: '' })).toBeNull();
+    expect(conversationIdFromState({ awaitingOpen: true })).toBeNull();
+    expect(conversationIdFromState(null)).toBeNull();
+    expect(conversationIdFromState('c1')).toBeNull();
+  });
+});
+
 describe('isAwaitingOpen', () => {
-  it('le a marca do state de navegacao, sem confiar em qualquer forma', () => {
+  it('reads the flag from navigation state, without trusting any shape', () => {
     expect(isAwaitingOpen({ awaitingOpen: true })).toBe(true);
-    expect(isAwaitingOpen({ awaitingOpen: 'sim' })).toBe(false);
+    expect(isAwaitingOpen({ awaitingOpen: 'yes' })).toBe(false);
     expect(isAwaitingOpen(null)).toBe(false);
     expect(isAwaitingOpen('x')).toBe(false);
   });
 });
 
-describe('rotas de Amigos', () => {
-  it('Todos e a rota sem query; as outras visoes usam ?tab=', () => {
+describe('Friends routes', () => {
+  it('All is the route with no query; the other views use ?tab=', () => {
     expect(friendsView('all')).toBe('/app/friends');
     expect(friendsView('online')).toBe('/app/friends?tab=online');
     expect(friendsView('invitations')).toBe('/app/friends?tab=invitations');
     expect(friendsView('add')).toBe('/app/friends?tab=add');
   });
 
-  it('a busca acompanha a visao', () => {
+  it('the search term follows the view', () => {
     expect(friendsView('online', 'ana')).toBe('/app/friends?tab=online&q=ana');
     expect(friendsView('all', 'ana')).toBe('/app/friends?q=ana');
   });
 
-  it('secoes de Pendentes usam hash', () => {
+  it('Pending sections use a hash', () => {
     expect(friendsSection('received')).toBe('/app/friends?tab=pending#received');
     expect(friendsSection('sent')).toBe('/app/friends?tab=pending#sent');
   });
 
-  it('valor desconhecido ou ausente cai em Todos', () => {
+  it('an unknown or missing value falls back to All', () => {
     expect(parseFriendsView(null)).toBe('all');
-    expect(parseFriendsView('lixo')).toBe('all');
+    expect(parseFriendsView('garbage')).toBe('all');
     expect(parseFriendsView('')).toBe('all');
     expect(parseFriendsView('pending')).toBe('pending');
     expect(parseFriendsView('add')).toBe('add');

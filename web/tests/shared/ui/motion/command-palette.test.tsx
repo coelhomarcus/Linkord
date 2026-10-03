@@ -18,8 +18,8 @@ function buildItems(onLeafSelect: () => void): CommandItem[] {
   ];
 }
 
-describe('CommandPalette — etapas (CommandItem.stage)', () => {
-  it('selecionar um item com stage abre a sub-lista sem fechar nem chamar onSelect', async () => {
+describe('CommandPalette — stages (CommandItem.stage)', () => {
+  it('selecting an item with a stage opens the sub-list without closing or calling onSelect', async () => {
     const user = userEvent.setup();
     const onLeafSelect = vi.fn();
     const onOpenChange = vi.fn();
@@ -33,7 +33,7 @@ describe('CommandPalette — etapas (CommandItem.stage)', () => {
     expect(screen.queryByText('Conversa X')).not.toBeInTheDocument();
   });
 
-  it('Backspace com a busca vazia volta pra raiz', async () => {
+  it('Backspace with an empty search goes back to the root', async () => {
     const user = userEvent.setup();
     render(<CommandPalette items={buildItems(vi.fn())} open onOpenChange={vi.fn()} />);
     await user.click(await screen.findByText('Ligar para…'));
@@ -45,7 +45,7 @@ describe('CommandPalette — etapas (CommandItem.stage)', () => {
     expect(screen.queryByText('Ana')).not.toBeInTheDocument();
   });
 
-  it('Escape dentro de uma etapa volta pra raiz em vez de fechar o palette', async () => {
+  it('Escape inside a stage goes back to the root instead of closing the palette', async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
     render(<CommandPalette items={buildItems(vi.fn())} open onOpenChange={onOpenChange} />);
@@ -57,7 +57,7 @@ describe('CommandPalette — etapas (CommandItem.stage)', () => {
     expect(await screen.findByText('Ligar para…')).toBeInTheDocument();
   });
 
-  it('selecionar um item terminal dentro de uma etapa chama onSelect e fecha o palette', async () => {
+  it('selecting a leaf item inside a stage calls onSelect and closes the palette', async () => {
     const user = userEvent.setup();
     const onLeafSelect = vi.fn();
     const onOpenChange = vi.fn();
@@ -69,7 +69,7 @@ describe('CommandPalette — etapas (CommandItem.stage)', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it('reabrir o palette sempre volta pra raiz, mesmo saindo de dentro de uma etapa', async () => {
+  it('reopening the palette always goes back to the root, even coming from inside a stage', async () => {
     const user = userEvent.setup();
     const { rerender } = render(<CommandPalette items={buildItems(vi.fn())} open onOpenChange={vi.fn()} />);
     await user.click(await screen.findByText('Ligar para…'));

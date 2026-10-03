@@ -9,53 +9,53 @@ const conv = (id: string, over: Partial<Conversation> = {}): Conversation => ({
 });
 
 describe('useConversationsList — conversation-updated', () => {
-  it('atualiza uma conversa que o cliente ja tem', () => {
+  it('updates a conversation the client already has', () => {
     const { result } = renderHook(() => useConversationsList(vi.fn()));
-    act(() => result.current.setInitial([conv('a', { title: 'antigo' })]));
-    act(() => result.current.onConversationUpdated({ t: 'conversation-updated', conversation: conv('a', { title: 'novo' }) }));
-    expect(result.current.conversations.map((c) => c.title)).toEqual(['novo']);
+    act(() => result.current.setInitial([conv('a', { title: 'old' })]));
+    act(() => result.current.onConversationUpdated({ t: 'conversation-updated', conversation: conv('a', { title: 'new' }) }));
+    expect(result.current.conversations.map((c) => c.title)).toEqual(['new']);
   });
 
-  it('um update de conversa DESCONHECIDA vira insercao — e assim que o destinatario de uma primeira DM a recebe', () => {
+  it('an update for an UNKNOWN conversation becomes an insert — this is exactly how the recipient of a first DM gets it', () => {
     const { result } = renderHook(() => useConversationsList(vi.fn()));
     act(() => result.current.setInitial([conv('a', { lastMessageAt: 1000 })]));
-    act(() => result.current.onConversationUpdated({ t: 'conversation-updated', conversation: conv('nova-dm', { lastMessageAt: 2000 }) }));
-    expect(result.current.conversations.map((c) => c.id)).toEqual(['nova-dm', 'a']);
+    act(() => result.current.onConversationUpdated({ t: 'conversation-updated', conversation: conv('new-dm', { lastMessageAt: 2000 }) }));
+    expect(result.current.conversations.map((c) => c.id)).toEqual(['new-dm', 'a']);
   });
 });
 
-describe('useConversationsList — conversation-opened/conversation-created respeitam o fixado', () => {
-  it('abrir uma conversa nova (DM ou grupo recem-criado) nao empurra a fixada pra baixo', () => {
+describe('useConversationsList — conversation-opened/conversation-created respect the pinned item', () => {
+  it('opening a new conversation (DM or freshly-created group) does not push the pinned one down', () => {
     // handleDirectOpen/handleGroupCreate on the server both send
     // 'conversation-opened' for a brand-new conversation the client never
     // had — reproduces exactly that: a pinned conversation already in the
     // list, then a new one arrives.
     const { result } = renderHook(() => useConversationsList(vi.fn()));
-    act(() => result.current.setInitial([conv('fixada', { pinnedAt: 5000, lastMessageAt: 1000 })]));
+    act(() => result.current.setInitial([conv('pinned', { pinnedAt: 5000, lastMessageAt: 1000 })]));
     act(() => result.current.onConversationOpened(
-      { t: 'conversation-opened', conversationId: 'nova', conversation: conv('nova', { lastMessageAt: 9999 }) },
+      { t: 'conversation-opened', conversationId: 'new', conversation: conv('new', { lastMessageAt: 9999 }) },
       vi.fn(),
     ));
-    expect(result.current.conversations.map((c) => c.id)).toEqual(['fixada', 'nova']);
+    expect(result.current.conversations.map((c) => c.id)).toEqual(['pinned', 'new']);
   });
 
-  it('reabrir uma conversa ja conhecida tambem mantem a fixada no topo', () => {
+  it('reopening an already-known conversation also keeps the pinned one on top', () => {
     const { result } = renderHook(() => useConversationsList(vi.fn()));
     act(() => result.current.setInitial([
-      conv('fixada', { pinnedAt: 5000, lastMessageAt: 1000 }),
-      conv('existente', { lastMessageAt: 2000 }),
+      conv('pinned', { pinnedAt: 5000, lastMessageAt: 1000 }),
+      conv('existing', { lastMessageAt: 2000 }),
     ]));
     act(() => result.current.onConversationOpened(
-      { t: 'conversation-opened', conversationId: 'existente', conversation: conv('existente', { lastMessageAt: 9999 }) },
+      { t: 'conversation-opened', conversationId: 'existing', conversation: conv('existing', { lastMessageAt: 9999 }) },
       vi.fn(),
     ));
-    expect(result.current.conversations.map((c) => c.id)).toEqual(['fixada', 'existente']);
+    expect(result.current.conversations.map((c) => c.id)).toEqual(['pinned', 'existing']);
   });
 
-  it('conversation-created tambem respeita o fixado', () => {
+  it('conversation-created also respects the pinned item', () => {
     const { result } = renderHook(() => useConversationsList(vi.fn()));
-    act(() => result.current.setInitial([conv('fixada', { pinnedAt: 5000, lastMessageAt: 1000 })]));
-    act(() => result.current.onConversationCreated({ t: 'conversation-created', conversation: conv('nova', { lastMessageAt: 9999 }) }));
-    expect(result.current.conversations.map((c) => c.id)).toEqual(['fixada', 'nova']);
+    act(() => result.current.setInitial([conv('pinned', { pinnedAt: 5000, lastMessageAt: 1000 })]));
+    act(() => result.current.onConversationCreated({ t: 'conversation-created', conversation: conv('new', { lastMessageAt: 9999 }) }));
+    expect(result.current.conversations.map((c) => c.id)).toEqual(['pinned', 'new']);
   });
 });

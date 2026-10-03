@@ -28,8 +28,8 @@ async function attachmentExists(id: string): Promise<boolean> {
 // rows directly to reproduce "the old value is still someone else's current
 // one" without needing a real handler round-trip.
 
-describe('deleteAvatarFile — nunca apaga um arquivo que outra conta/grupo ainda usa (Postgres real)', () => {
-  it('outra conta ainda tem essa URL como o proprio avatar: nao apaga', async () => {
+describe('deleteAvatarFile — never deletes a file another account/group still uses (real Postgres)', () => {
+  it('another account still has this URL as its own avatar: does not delete', async () => {
     const id = await makeAvatarRow((await makeUser('ac')).id);
     const url = `/uploads/${id}`;
     const stillUsingIt = await makeUser('ac');
@@ -37,10 +37,10 @@ describe('deleteAvatarFile — nunca apaga um arquivo que outra conta/grupo aind
 
     await deleteAvatarFile(url);
 
-    assert.equal(await attachmentExists(id), true, 'a linha nao deveria ter sido apagada');
+    assert.equal(await attachmentExists(id), true, 'the row should not have been deleted');
   });
 
-  it('outra conta ainda tem essa URL como o proprio banner: nao apaga', async () => {
+  it('another account still has this URL as its own banner: does not delete', async () => {
     const id = await makeAvatarRow((await makeUser('ac')).id);
     const url = `/uploads/${id}`;
     const stillUsingIt = await makeUser('ac');
@@ -51,7 +51,7 @@ describe('deleteAvatarFile — nunca apaga um arquivo que outra conta/grupo aind
     assert.equal(await attachmentExists(id), true);
   });
 
-  it('um grupo ainda tem essa URL como o proprio avatar: nao apaga', async () => {
+  it('a group still has this URL as its own avatar: does not delete', async () => {
     const owner = await makeUser('ac');
     const id = await makeAvatarRow(owner.id);
     const url = `/uploads/${id}`;
@@ -63,12 +63,12 @@ describe('deleteAvatarFile — nunca apaga um arquivo que outra conta/grupo aind
     assert.equal(await attachmentExists(id), true);
   });
 
-  it('ninguem mais referencia essa URL: apaga normalmente', async () => {
+  it('nobody else references this URL: deletes normally', async () => {
     const id = await makeAvatarRow((await makeUser('ac')).id);
     const url = `/uploads/${id}`;
 
     await deleteAvatarFile(url);
 
-    assert.equal(await attachmentExists(id), false, 'sem nenhuma referencia, a limpeza deveria ter acontecido');
+    assert.equal(await attachmentExists(id), false, 'with no references at all, cleanup should have happened');
   });
 });

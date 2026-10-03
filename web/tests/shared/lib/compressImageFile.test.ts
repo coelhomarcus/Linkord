@@ -27,7 +27,7 @@ describe('compressImageFile', () => {
     vi.unstubAllGlobals();
   });
 
-  it('comprime um JPEG pra WebP menor, trocando a extensao', async () => {
+  it('compresses a JPEG into a smaller WebP, swapping the extension', async () => {
     mockCanvasEncode(new Blob([new Uint8Array(500)], { type: 'image/webp' }));
     const original = fakeFile('foto.jpg', 'image/jpeg', 1000);
 
@@ -39,13 +39,13 @@ describe('compressImageFile', () => {
     expect(result).not.toBe(original);
   });
 
-  it('troca a extensao preservando maiusculas do nome base (foto.JPG -> foto.webp)', async () => {
+  it('swaps the extension while preserving the base name\'s case (foto.JPG -> foto.webp)', async () => {
     mockCanvasEncode(new Blob([new Uint8Array(10)], { type: 'image/webp' }));
     const result = await compressImageFile(fakeFile('foto.JPG', 'image/jpeg', 1000));
     expect(result.name).toBe('foto.webp');
   });
 
-  it('pula GIF sem tentar decodificar (preserva animacao)', async () => {
+  it('skips GIF without trying to decode it (preserves the animation)', async () => {
     const original = fakeFile('anim.gif', 'image/gif', 1000);
     const result = await compressImageFile(original);
 
@@ -53,7 +53,7 @@ describe('compressImageFile', () => {
     expect(createImageBitmapMock).not.toHaveBeenCalled();
   });
 
-  it('quando o navegador recusa WebP e cai pra PNG, devolve o arquivo original', async () => {
+  it('when the browser refuses WebP and falls back to PNG, returns the original file', async () => {
     mockCanvasEncode(new Blob([new Uint8Array(500)], { type: 'image/png' }));
     const original = fakeFile('foto.jpg', 'image/jpeg', 1000);
 
@@ -61,7 +61,7 @@ describe('compressImageFile', () => {
     expect(result).toBe(original);
   });
 
-  it('quando o resultado nao fica menor, devolve o arquivo original', async () => {
+  it('when the result is not smaller, returns the original file', async () => {
     mockCanvasEncode(new Blob([new Uint8Array(2000)], { type: 'image/webp' }));
     const original = fakeFile('foto.jpg', 'image/jpeg', 1000);
 
@@ -69,8 +69,8 @@ describe('compressImageFile', () => {
     expect(result).toBe(original);
   });
 
-  it('se a decodificacao falhar, devolve o arquivo original sem lancar', async () => {
-    vi.stubGlobal('createImageBitmap', vi.fn(async () => { throw new Error('imagem corrompida'); }));
+  it('if decoding fails, returns the original file without throwing', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => { throw new Error('corrupted image'); }));
     const original = fakeFile('foto.jpg', 'image/jpeg', 1000);
 
     await expect(compressImageFile(original)).resolves.toBe(original);

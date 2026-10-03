@@ -29,14 +29,14 @@ beforeEach(() => {
   mocked.fetchReceivedInvitations.mockResolvedValue({ items: [], nextCursor: null });
 });
 
-describe('Amigos — a visao vem da URL', () => {
-  it('sem tab abre em Todos; a visao atual e marcada como pagina atual', async () => {
+describe('Amigos — the view comes from the URL', () => {
+  it('no tab opens on Todos; the current view is marked as the current page', async () => {
     at('/app/friends');
     expect(await screen.findByText('Ana')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Todos' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('?tab=pending abre Pendentes com Recebidas e Enviadas na mesma pagina', async () => {
+  it('?tab=pending opens Pendentes with Recebidas and Enviadas on the same page', async () => {
     mocked.fetchFriendRequests.mockImplementation(async (direction) => (direction === 'incoming' ? page(ana) : page(bea)));
     at('/app/friends?tab=pending');
     expect(await screen.findByRole('heading', { level: 2, name: 'Recebidas' })).toBeInTheDocument();
@@ -46,26 +46,26 @@ describe('Amigos — a visao vem da URL', () => {
     expect(mocked.fetchFriends).not.toHaveBeenCalled();
   });
 
-  it('?tab=invitations abre direto nos Convites', async () => {
+  it('?tab=invitations opens directly on Convites', async () => {
     at('/app/friends?tab=invitations');
     expect(await screen.findByText('Nenhum convite de grupo pendente.')).toBeInTheDocument();
     expect(mocked.fetchFriendRequests).not.toHaveBeenCalled();
   });
 
-  it('?tab=add abre o formulario e o username para compartilhar', async () => {
+  it('?tab=add opens the form and the username to share', async () => {
     at('/app/friends?tab=add');
     expect(await screen.findByPlaceholderText('@nomedeusuario')).toBeInTheDocument();
     expect(screen.getByText('@fulana')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Adicionar amigo' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('tab desconhecida cai em Todos (sem pagina vazia)', async () => {
+  it('an unknown tab falls back to Todos (no empty page)', async () => {
     at('/app/friends?tab=naoexiste');
     expect(await screen.findByText('Ana')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Todos' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('trocar de visao navega pela URL', async () => {
+  it('switching views navigates via the URL', async () => {
     const user = userEvent.setup();
     at('/app/friends');
     await screen.findByText('Ana');
@@ -73,13 +73,13 @@ describe('Amigos — a visao vem da URL', () => {
     expect(await screen.findByRole('heading', { level: 2, name: 'Recebidas' })).toBeInTheDocument();
   });
 
-  it('a busca vem de ?q= e vai para o servidor', async () => {
+  it('the search comes from ?q= and goes to the server', async () => {
     at('/app/friends?q=an');
     await waitFor(() => expect(mocked.fetchFriends).toHaveBeenCalledWith(null, 'an', undefined));
     expect(screen.getByLabelText('Buscar nos seus amigos')).toHaveValue('an');
   });
 
-  it('badges dos modos distinguem solicitacoes e convites', async () => {
+  it('mode badges distinguish requests and invitations', async () => {
     mocked.fetchRequestSummary.mockResolvedValue({ incoming: 2, invitations: 1 });
     at('/app/friends');
     expect(await screen.findByLabelText('2 solicitações aguardando resposta')).toBeInTheDocument();
@@ -88,7 +88,7 @@ describe('Amigos — a visao vem da URL', () => {
 });
 
 describe('Amigos — Pendentes', () => {
-  it('aceita recebida sem pedir confirmacao', async () => {
+  it('accepts an incoming request without asking for confirmation', async () => {
     const user = userEvent.setup();
     mocked.fetchFriendRequests.mockImplementation(async (direction) => (direction === 'incoming' ? page(ana) : page()));
     mocked.acceptFriendRequest.mockResolvedValue({});
@@ -100,7 +100,7 @@ describe('Amigos — Pendentes', () => {
     expect(mocked.acceptFriendRequest).toHaveBeenCalledWith('u-ana');
   });
 
-  it('recusar chama o endpoint de recusa', async () => {
+  it('declining calls the decline endpoint', async () => {
     const user = userEvent.setup();
     mocked.fetchFriendRequests.mockImplementation(async (direction) => (direction === 'incoming' ? page(ana) : page()));
     mocked.declineFriendRequest.mockResolvedValue({});
@@ -109,7 +109,7 @@ describe('Amigos — Pendentes', () => {
     expect(mocked.declineFriendRequest).toHaveBeenCalledWith('u-ana');
   });
 
-  it('enviadas: so Cancelar (nunca Aceitar sobre uma solicitacao enviada)', async () => {
+  it('sent requests: only Cancelar (never Aceitar on a sent request)', async () => {
     const user = userEvent.setup();
     mocked.fetchFriendRequests.mockImplementation(async (direction) => (direction === 'incoming' ? page() : page(bea)));
     mocked.cancelFriendRequest.mockResolvedValue({});
@@ -121,7 +121,7 @@ describe('Amigos — Pendentes', () => {
     expect(mocked.cancelFriendRequest).toHaveBeenCalledWith('u-bea');
   });
 
-  it('acao que falha mostra o erro e mantem a linha', async () => {
+  it('an action that fails shows the error and keeps the row', async () => {
     const user = userEvent.setup();
     mocked.fetchFriendRequests.mockImplementation(async (direction) => (direction === 'incoming' ? page(ana) : page()));
     mocked.acceptFriendRequest.mockRejectedValue(new Error('x'));
@@ -132,15 +132,15 @@ describe('Amigos — Pendentes', () => {
     await waitFor(() => expect(screen.getByText('Ana')).toBeInTheDocument());
   });
 
-  it('cada secao diz quando esta vazia, sem parecer erro', async () => {
+  it('each section says when it is empty, without looking like an error', async () => {
     at('/app/friends?tab=pending');
     expect(await screen.findByText('Nenhuma solicitação recebida.')).toBeInTheDocument();
     expect(screen.getByText('Você não tem solicitações enviadas.')).toBeInTheDocument();
   });
 });
 
-describe('Amigos — busca em Pendentes e Convites (no servidor, antes da paginacao)', () => {
-  it('Pendentes manda ?q= para recebidas e enviadas', async () => {
+describe('Amigos — search in Pendentes and Convites (on the server, before pagination)', () => {
+  it('Pendentes sends ?q= to both received and sent', async () => {
     at('/app/friends?tab=pending&q=ana');
     await waitFor(() => {
       expect(mocked.fetchFriendRequests).toHaveBeenCalledWith('incoming', null, 'ana');
@@ -149,18 +149,18 @@ describe('Amigos — busca em Pendentes e Convites (no servidor, antes da pagina
     expect(screen.getByLabelText('Buscar nas solicitações')).toHaveValue('ana');
   });
 
-  it('busca sem resultado diz isso (nao "nenhuma solicitacao")', async () => {
+  it('a search with no results says so (not "nenhuma solicitacao")', async () => {
     at('/app/friends?tab=pending&q=zzz');
     expect((await screen.findAllByText('Nenhum resultado para esta busca.')).length).toBe(2);
   });
 
-  it('Convites manda ?q= e mostra vazio de busca', async () => {
+  it('Convites sends ?q= and shows an empty search state', async () => {
     at('/app/friends?tab=invitations&q=squad');
     await waitFor(() => expect(mocked.fetchReceivedInvitations).toHaveBeenCalledWith(null, 'squad'));
     expect(await screen.findByText('Nenhum resultado para esta busca.')).toBeInTheDocument();
   });
 
-  it('digitar na busca de Pendentes escreve ?q= sem trocar de visao', async () => {
+  it('typing in the Pendentes search writes ?q= without switching views', async () => {
     const user = userEvent.setup();
     at('/app/friends?tab=pending');
     await user.type(await screen.findByLabelText('Buscar nas solicitações'), 'bia');
@@ -169,10 +169,10 @@ describe('Amigos — busca em Pendentes e Convites (no servidor, antes da pagina
   });
 });
 
-describe('Amigos — Convites de grupo', () => {
+describe('Friends — group invitations', () => {
   const entry = { id: 'inv-1', at: '2026-01-01T00:00:00.000Z', group: { id: 'g', title: 'Squad', avatar: '', memberCount: 3 }, inviter: ana };
 
-  it('lista convites e aceita/recusa por id do convite', async () => {
+  it('lists invitations and accepts/declines by invitation id', async () => {
     const user = userEvent.setup();
     mocked.fetchReceivedInvitations.mockResolvedValue({ items: [entry], nextCursor: null });
     mocked.acceptInvitation.mockResolvedValue({ invitation: {} as never });
@@ -187,7 +187,7 @@ describe('Amigos — Convites de grupo', () => {
     expect(mocked.declineInvitation).toHaveBeenCalledWith('inv-1');
   });
 
-  it('grupo cheio no aceite mostra o motivo', async () => {
+  it('a full group on acceptance shows the reason', async () => {
     const user = userEvent.setup();
     mocked.fetchReceivedInvitations.mockResolvedValue({ items: [entry], nextCursor: null });
     mocked.acceptInvitation.mockRejectedValue(new api.ApiError(409, 'group_full', 'x'));
@@ -198,8 +198,8 @@ describe('Amigos — Convites de grupo', () => {
   });
 });
 
-describe('FriendsContext — contagens', () => {
-  it('separa solicitacoes recebidas, convites e a soma do que aguarda resposta', async () => {
+describe('FriendsContext — counts', () => {
+  it('separates received requests, invitations, and the sum of what is awaiting a response', async () => {
     mocked.fetchRequestSummary.mockResolvedValue({ incoming: 1, invitations: 2 });
     function Badge() {
       const { pendingFriendRequestCount, pendingIncomingCount, pendingInvitationCount } = useFriends();
@@ -210,10 +210,10 @@ describe('FriendsContext — contagens', () => {
   });
 });
 
-describe('Amigos — acoes e listas robustas (E5)', () => {
+describe('Amigos — robust actions and lists (E5)', () => {
   const incoming = (...users: (typeof ana)[]) => mocked.fetchFriendRequests.mockImplementation(async (direction) => (direction === 'incoming' ? page(...users) : page()));
 
-  it('a pendencia e por linha: aceitar a Ana nao trava os botoes da Bea', async () => {
+  it('pending state is per row: accepting Ana does not lock Bea\'s buttons', async () => {
     const user = userEvent.setup();
     incoming(ana, bea);
     let finish!: () => void;
@@ -230,7 +230,7 @@ describe('Amigos — acoes e listas robustas (E5)', () => {
     await act(async () => finish());
   });
 
-  it('sucesso: a linha sai na hora, aparece a confirmacao e o foco vai para o titulo da secao', async () => {
+  it('success: the row leaves immediately, a confirmation appears, and focus moves to the section title', async () => {
     const user = userEvent.setup();
     incoming(ana, bea);
     // once accepted, the server no longer lists her
@@ -245,7 +245,7 @@ describe('Amigos — acoes e listas robustas (E5)', () => {
     expect(screen.getByText('Bea')).toBeInTheDocument();
   });
 
-  it('o erro de uma acao sobrevive ao recarregamento da lista', async () => {
+  it('an action\'s error survives the list reload', async () => {
     const user = userEvent.setup();
     incoming(ana);
     mocked.acceptFriendRequest.mockRejectedValue(new Error('x'));
@@ -258,7 +258,7 @@ describe('Amigos — acoes e listas robustas (E5)', () => {
     expect(screen.getByText('Ana')).toBeInTheDocument();
   });
 
-  it('convite: entrar mostra a confirmacao; falha por grupo cheio mantem o motivo apos reler', async () => {
+  it('invitation: joining shows the confirmation; a full-group failure keeps the reason after re-reading', async () => {
     const user = userEvent.setup();
     const entry = { id: 'inv-1', at: '2026-01-01T00:00:00.000Z', group: { id: 'g', title: 'Squad', avatar: '', memberCount: 3 }, inviter: ana };
     mocked.fetchReceivedInvitations.mockResolvedValue({ items: [entry], nextCursor: null });
@@ -271,7 +271,7 @@ describe('Amigos — acoes e listas robustas (E5)', () => {
     expect(screen.getByText('Squad')).toBeInTheDocument();
   });
 
-  it('erro em "Carregar mais" nao troca a lista por uma tela de erro', async () => {
+  it('an error on "Carregar mais" does not swap the list for an error screen', async () => {
     const user = userEvent.setup();
     mocked.fetchFriends
       .mockResolvedValueOnce({ items: [{ user: ana, at: '2026-01-01T00:00:00.000Z' }], nextCursor: 'c1' })
@@ -287,7 +287,7 @@ describe('Amigos — acoes e listas robustas (E5)', () => {
     expect(await screen.findByText('Bea')).toBeInTheDocument();
   });
 
-  it('lista que nao conseguiu atualizar avisa, mantem as linhas e permite tentar de novo', async () => {
+  it('a list that failed to refresh warns, keeps the rows, and allows retrying', async () => {
     const user = userEvent.setup();
     incoming(ana);
     // the action fails, and so does the read that follows it
@@ -303,13 +303,13 @@ describe('Amigos — acoes e listas robustas (E5)', () => {
   });
 });
 
-describe('FriendsContext — resumo de pendencias (E5)', () => {
+describe('FriendsContext — pending summary (E5)', () => {
   function Probe() {
     const { summaryStatus, pendingIncomingCount, bump } = useFriends();
     return <div><p>{`${summaryStatus}:${pendingIncomingCount}`}</p><button type="button" onClick={bump}>reler</button></div>;
   }
 
-  it('comeca desconhecido (nao e "zero") e passa a pronto quando a primeira leitura chega', async () => {
+  it('starts unknown (not "zero") and switches to ready when the first read arrives', async () => {
     let resolve!: (v: { incoming: number; invitations: number }) => void;
     mocked.fetchRequestSummary.mockImplementation(() => new Promise((r) => { resolve = r; }));
     renderSocial(<Probe />);
@@ -318,7 +318,7 @@ describe('FriendsContext — resumo de pendencias (E5)', () => {
     expect(screen.getByText('ready:3')).toBeInTheDocument();
   });
 
-  it('falha ao reler preserva o ultimo numero valido, marcado como desatualizado', async () => {
+  it('a failed re-read preserves the last valid number, marked as stale', async () => {
     const user = userEvent.setup();
     mocked.fetchRequestSummary.mockResolvedValueOnce({ incoming: 2, invitations: 0 }).mockRejectedValueOnce(new Error('rede'));
     renderSocial(<Probe />);
@@ -327,7 +327,7 @@ describe('FriendsContext — resumo de pendencias (E5)', () => {
     expect(await screen.findByText('stale:2')).toBeInTheDocument();
   });
 
-  it('o numero acompanha uma notificacao que chega com Amigos aberto em outra visao', async () => {
+  it('the number follows a notification that arrives while Amigos is open on another view', async () => {
     const user = userEvent.setup();
     mocked.fetchRequestSummary.mockResolvedValueOnce({ incoming: 0, invitations: 0 }).mockResolvedValue({ incoming: 1, invitations: 0 });
     at('/app/friends?tab=online');

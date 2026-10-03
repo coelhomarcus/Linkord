@@ -14,7 +14,7 @@ function controlled() {
 }
 
 describe('useCursorList', () => {
-  it('carrega a primeira pagina e pagina por cursor', async () => {
+  it('loads the first page and paginates by cursor', async () => {
     const { calls, fetchPage } = controlled();
     const { result } = renderHook(() => useCursorList(fetchPage, 'q', { getKey: key }));
     expect(result.current.status).toBe('loading');
@@ -28,7 +28,7 @@ describe('useCursorList', () => {
     expect(result.current.hasMore).toBe(false);
   });
 
-  it('mudar a identidade limpa as linhas antigas na hora (nada do contexto anterior sob o novo)', async () => {
+  it('changing the identity clears the old rows immediately (nothing from the previous context leaks into the new one)', async () => {
     const { calls, fetchPage } = controlled();
     const { result, rerender } = renderHook(({ q }) => useCursorList(fetchPage, q, { getKey: key }), { initialProps: { q: 'ana' } });
     await act(async () => calls[0]!.resolve({ items: rows('a'), nextCursor: null }));
@@ -38,7 +38,7 @@ describe('useCursorList', () => {
     expect(result.current.items).toEqual([]);
   });
 
-  it('resposta de uma consulta substituida nao sobrescreve a nova (fora de ordem)', async () => {
+  it('a response for a superseded query does not overwrite the new one (out of order)', async () => {
     const { calls, fetchPage } = controlled();
     const { result, rerender } = renderHook(({ q }) => useCursorList(fetchPage, q, { getKey: key }), { initialProps: { q: 'ana' } });
     rerender({ q: 'bea' });
@@ -48,7 +48,7 @@ describe('useCursorList', () => {
     expect(result.current.items).toEqual(rows('bea'));
   });
 
-  it('a revisao refaz TODAS as paginas ja carregadas, mantendo as linhas enquanto le', async () => {
+  it('a revision redoes ALL pages already loaded, keeping the rows while reading', async () => {
     const { calls, fetchPage } = controlled();
     const { result, rerender } = renderHook(({ rev }) => useCursorList(fetchPage, 'q', { revision: rev, getKey: key }), { initialProps: { rev: 0 } });
     await act(async () => calls[0]!.resolve({ items: rows('a', 'b'), nextCursor: 'c1' }));
@@ -69,7 +69,7 @@ describe('useCursorList', () => {
     expect(result.current.stale).toBe(false);
   });
 
-  it('falha no refresh mantem a janela anterior, marcada como desatualizada, e da para tentar de novo', async () => {
+  it('a refresh failure keeps the previous window, marked as stale, and allows retrying', async () => {
     const { calls, fetchPage } = controlled();
     const { result, rerender } = renderHook(({ rev }) => useCursorList(fetchPage, 'q', { revision: rev, getKey: key }), { initialProps: { rev: 0 } });
     await act(async () => calls[0]!.resolve({ items: rows('a'), nextCursor: null }));
@@ -86,7 +86,7 @@ describe('useCursorList', () => {
     expect(result.current.items).toEqual(rows('a', 'z'));
   });
 
-  it('erro em "carregar mais" nao apaga a lista: fica separado e da para repetir', async () => {
+  it('an error on "load more" does not wipe the list: it stays separate and can be retried', async () => {
     const { calls, fetchPage } = controlled();
     const { result } = renderHook(() => useCursorList(fetchPage, 'q', { getKey: key }));
     await act(async () => calls[0]!.resolve({ items: rows('a'), nextCursor: 'c1' }));
@@ -101,7 +101,7 @@ describe('useCursorList', () => {
     expect(result.current.items).toEqual(rows('a', 'b'));
   });
 
-  it('falha na PRIMEIRA carga vira erro e o retry recarrega', async () => {
+  it('a failure on the FIRST load becomes an error and retry reloads', async () => {
     const { calls, fetchPage } = controlled();
     const { result } = renderHook(() => useCursorList(fetchPage, 'q'));
     await act(async () => calls[0]!.reject(new Error('rede')));
@@ -111,7 +111,7 @@ describe('useCursorList', () => {
     expect(result.current.status).toBe('ready');
   });
 
-  it('deduplica por id (uma linha que aparece em duas paginas)', async () => {
+  it('dedupes by id (a row that appears on two pages)', async () => {
     const { calls, fetchPage } = controlled();
     const { result } = renderHook(() => useCursorList(fetchPage, 'q', { getKey: key }));
     await act(async () => calls[0]!.resolve({ items: rows('a', 'b'), nextCursor: 'c1' }));
@@ -120,7 +120,7 @@ describe('useCursorList', () => {
     expect(result.current.items).toEqual(rows('a', 'b', 'c'));
   });
 
-  it('removeItem tira a linha e descarta uma leitura anterior que a traria de volta', async () => {
+  it('removeItem drops the row and discards a stale read that would bring it back', async () => {
     const { calls, fetchPage } = controlled();
     const { result, rerender } = renderHook(({ rev }) => useCursorList(fetchPage, 'q', { revision: rev, getKey: key }), { initialProps: { rev: 0 } });
     await act(async () => calls[0]!.resolve({ items: rows('a', 'b'), nextCursor: null }));
@@ -131,7 +131,7 @@ describe('useCursorList', () => {
     expect(result.current.items).toEqual(rows('b'));
   });
 
-  it('resposta que chega depois de desmontar e ignorada', async () => {
+  it('a response that arrives after unmount is ignored', async () => {
     const { calls, fetchPage } = controlled();
     const { unmount } = renderHook(() => useCursorList(fetchPage, 'q'));
     unmount();

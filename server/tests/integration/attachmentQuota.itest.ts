@@ -6,8 +6,8 @@ import { getUsage } from '../../src/modules/attachments/attachmentQuota.js';
 
 after(() => pool.end());
 
-describe('getUsage (Postgres real) — o total da instancia agora inclui avatares/banners', () => {
-  it('uma linha com message_id NULO (avatar/banner/foto de grupo) entra na soma', async () => {
+describe('getUsage (real Postgres) — the instance total now includes avatars/banners', () => {
+  it('a row with a NULL message_id (avatar/banner/group photo) counts toward the sum', async () => {
     const before = await getUsage();
     const id = crypto.randomUUID().replace(/-/g, '');
     const size = 123_456;
@@ -19,7 +19,7 @@ describe('getUsage (Postgres real) — o total da instancia agora inclui avatare
     // >= (not ===) tolerant of other integration test files inserting
     // concurrently against the same shared test database — the point here
     // is proving inclusion, not an exact snapshot.
-    assert.ok(afterInsert.totalBytes >= before.totalBytes + size, 'o tamanho do avatar deveria contar no total');
-    assert.ok(afterInsert.totalFiles >= before.totalFiles + 1, 'o arquivo do avatar deveria contar no total de arquivos');
+    assert.ok(afterInsert.totalBytes >= before.totalBytes + size, 'the avatar size should count toward the total');
+    assert.ok(afterInsert.totalFiles >= before.totalFiles + 1, 'the avatar file should count toward the total file count');
   });
 });

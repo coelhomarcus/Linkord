@@ -57,6 +57,9 @@
   --text-display: 1.375rem;
   --text-display--line-height: 1.25;
 
+  /* the one gap between the shell's surfaces (the content panel's margins, the conversation list's inner edge) so they stay equal */
+  --spacing-shell: 0.5rem;
+
   --font-sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Roboto, Arial, sans-serif;
 
   --radius-sm: 4px;

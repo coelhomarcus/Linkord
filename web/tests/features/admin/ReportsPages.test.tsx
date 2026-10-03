@@ -25,7 +25,7 @@ beforeEach(() => {
 });
 
 describe('ReportsPage', () => {
-  it('lista a fila aberta e troca de fila pelo filtro', async () => {
+  it('lists the open queue and switches queue via filter', async () => {
     const u = userEvent.setup();
     renderAdmin(<ReportsPage />, { path: '/admin/reports', pattern: '/admin/reports' });
     expect(await screen.findByRole('link', { name: /Mensagem: mensagem de bia/ })).toHaveAttribute('href', '/admin/reports/r1');
@@ -36,14 +36,14 @@ describe('ReportsPage', () => {
 });
 
 describe('ReportDetailPage', () => {
-  it('mostra evidencia e denunciante (so para a administracao)', async () => {
+  it('shows evidence and reporter (admin-only)', async () => {
     openDetail();
     expect(await screen.findByText('texto da mensagem')).toBeInTheDocument();
     expect(screen.getByText('@ana')).toBeInTheDocument();
     expect(screen.getByText('foi ofensivo')).toBeInTheDocument();
   });
 
-  it('em denuncia de mensagem, as acoes sao apagar ou suspender o autor — nunca suspender o grupo', async () => {
+  it('for a message report, the actions are delete or suspend the author — never suspend the group', async () => {
     openDetail();
     await screen.findByText('texto da mensagem');
     expect(screen.getByRole('button', { name: 'Apagar a mensagem' })).toBeInTheDocument();
@@ -51,34 +51,34 @@ describe('ReportDetailPage', () => {
     expect(screen.queryByRole('button', { name: 'Suspender o grupo' })).not.toBeInTheDocument();
   });
 
-  it('resolver com acao exige motivo e manda acao + motivo', async () => {
+  it('resolving with an action requires a reason and sends action + reason', async () => {
     const u = userEvent.setup();
     mocked.resolveReport.mockResolvedValue({ ok: true });
     openDetail();
     await u.click(await screen.findByRole('button', { name: 'Apagar a mensagem' }));
-    await u.type(screen.getByLabelText(/Motivo/), 'ofensa confirmada');
+    await u.type(screen.getByLabelText(/Motivo/), 'confirmed offense');
     await u.click(screen.getByRole('button', { name: 'Confirmar' }));
-    await waitFor(() => expect(mocked.resolveReport).toHaveBeenCalledWith('r1', { reason: 'ofensa confirmada', action: 'delete_message', dismiss: false }));
+    await waitFor(() => expect(mocked.resolveReport).toHaveBeenCalledWith('r1', { reason: 'confirmed offense', action: 'delete_message', dismiss: false }));
   });
 
-  it('dispensar e assumir usam os endpoints proprios', async () => {
+  it('dismiss and claim use their own endpoints', async () => {
     const u = userEvent.setup();
     mocked.claimReport.mockResolvedValue({ ok: true });
     mocked.resolveReport.mockResolvedValue({ ok: true });
     openDetail();
     await u.click(await screen.findByRole('button', { name: 'Assumir análise' }));
-    await u.type(screen.getByLabelText(/Motivo/), 'vou analisar');
+    await u.type(screen.getByLabelText(/Motivo/), 'will review');
     await u.click(screen.getByRole('button', { name: 'Assumir' }));
-    await waitFor(() => expect(mocked.claimReport).toHaveBeenCalledWith('r1', 'vou analisar'));
+    await waitFor(() => expect(mocked.claimReport).toHaveBeenCalledWith('r1', 'will review'));
 
     await u.click(await screen.findByRole('button', { name: 'Dispensar' }));
-    await u.type(screen.getByLabelText(/Motivo/), 'sem problema');
+    await u.type(screen.getByLabelText(/Motivo/), 'no problem');
     await u.click(screen.getAllByRole('button', { name: 'Dispensar' }).at(-1)!);
-    await waitFor(() => expect(mocked.resolveReport).toHaveBeenCalledWith('r1', { reason: 'sem problema', action: null, dismiss: true }));
+    await waitFor(() => expect(mocked.resolveReport).toHaveBeenCalledWith('r1', { reason: 'no problem', action: null, dismiss: true }));
   });
 
-  it('denuncia encerrada nao oferece acoes e mostra o desfecho', async () => {
-    mocked.fetchAdminReport.mockResolvedValue(detail({ status: 'resolved', resolution: 'message_deleted', resolutionNote: 'removida' }));
+  it('a closed report offers no actions and shows the outcome', async () => {
+    mocked.fetchAdminReport.mockResolvedValue(detail({ status: 'resolved', resolution: 'message_deleted', resolutionNote: 'removed' }));
     openDetail();
     expect(await screen.findByText(/message_deleted/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Apagar a mensagem' })).not.toBeInTheDocument();

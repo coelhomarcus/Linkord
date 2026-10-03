@@ -42,7 +42,7 @@ function descriptors(count: number): TileDescriptor[] {
 }
 
 describe('TileGrid', () => {
-  it('lista plana: cada tile e filho direto do grid, sem wrapper de linha', () => {
+  it('flat list: each tile is a direct child of the grid, no row wrapper', () => {
     const { container } = renderWithRoom(<TileGrid descriptors={descriptors(5)} focusedId={null} />);
     const grid = container.querySelector('[data-tile-grid]');
 
@@ -50,14 +50,14 @@ describe('TileGrid', () => {
     expect(container.querySelectorAll('[data-tile-row]')).toHaveLength(0);
   });
 
-  it('o grid normal usa flex-wrap centralizado (o CSS cuida de centralizar a ultima linha, sem JS agrupando por linha)', () => {
+  it('the normal grid uses centered flex-wrap (CSS handles centering the last row, no JS grouping by row)', () => {
     const { container } = renderWithRoom(<TileGrid descriptors={descriptors(5)} focusedId={null} />);
     const grid = container.querySelector('[data-tile-grid]');
 
     expect(grid).toHaveClass('flex', 'flex-wrap', 'justify-center');
   });
 
-  it('trocar a quantidade de tiles nao remonta os que ja existiam (mesmo no DOM, so um pai)', () => {
+  it('changing the tile count does not remount the ones that already existed (same DOM node, just one parent)', () => {
     const value = createFakeRoomContextValue();
     const { container, rerender } = renderWithRoom(<TileGrid descriptors={descriptors(3)} focusedId={null} />);
     const firstTileBefore = container.querySelector('[data-testid="tile-p-0"]');
@@ -72,7 +72,7 @@ describe('TileGrid', () => {
     expect(firstTileAfter).toBe(firstTileBefore);
   });
 
-  it.each([2, 3, 5])('modo de foco mostra o tile principal e todas as %i miniaturas (lista plana, sem linhas por JS)', (thumbnailCount) => {
+  it.each([2, 3, 5])('focus mode shows the main tile and all %i thumbnails (flat list, no rows via JS)', (thumbnailCount) => {
     const all = descriptors(thumbnailCount + 1);
     const { container, getByTestId } = renderWithRoom(<TileGrid descriptors={all} focusedId={all[0]!.key} />);
 
@@ -82,7 +82,7 @@ describe('TileGrid', () => {
     expect(container.querySelectorAll('[data-tile-row]')).toHaveLength(0);
   });
 
-  it('a faixa de miniaturas tem altura maxima fixa (nao cresce sem limite e esmaga o principal)', () => {
+  it('the thumbnail strip has a fixed max height (does not grow unbounded and squeeze the main tile)', () => {
     const all = descriptors(9);
     const { container } = renderWithRoom(<TileGrid descriptors={all} focusedId={all[0]!.key} />);
     const strip = container.querySelector('[data-thumb-strip]') as HTMLElement;
@@ -91,7 +91,7 @@ describe('TileGrid', () => {
     expect(strip.className).toContain('overflow-y-auto');
   });
 
-  it('a faixa de miniaturas e recolhivel', async () => {
+  it('the thumbnail strip is collapsible', async () => {
     const user = userEvent.setup();
     const all = descriptors(3);
     const { container, getByRole } = renderWithRoom(<TileGrid descriptors={all} focusedId={all[0]!.key} />);
@@ -103,26 +103,26 @@ describe('TileGrid', () => {
     expect(container.querySelector('[data-thumb-strip]')).toBeInTheDocument();
   });
 
-  it('sem miniaturas (sozinho em foco), nao mostra o controle de recolher', () => {
+  it('without thumbnails (alone in focus), does not show the collapse control', () => {
     const all = descriptors(1);
     const { queryByRole } = renderWithRoom(<TileGrid descriptors={all} focusedId={all[0]!.key} />);
     expect(queryByRole('button', { name: /participantes/ })).not.toBeInTheDocument();
   });
 
-  it('tiles do grid normal usam contain por padrao (nunca cortam camera/tela) e ficam centralizados na celula', () => {
+  it('normal grid tiles use contain by default (never crop camera/screen) and stay centered in the cell', () => {
     const { container, getByTestId } = renderWithRoom(<TileGrid descriptors={descriptors(2)} focusedId={null} />);
     expect(getByTestId('tile-p-0')).toHaveAttribute('data-fit', 'contain');
     const wrapper = container.querySelector('[data-testid="tile-p-0"]')?.parentElement;
     expect(wrapper).toHaveClass('items-center', 'justify-center');
   });
 
-  it('o tile em foco tambem usa contain', () => {
+  it('the focused tile also uses contain', () => {
     const all = descriptors(2);
     const { getByTestId } = renderWithRoom(<TileGrid descriptors={all} focusedId={all[0]!.key} />);
     expect(getByTestId(`tile-${all[0]!.participantId}`)).toHaveAttribute('data-fit', 'contain');
   });
 
-  it('miniaturas da faixa secundaria continuam em cover (preview pequena, cortar preenche melhor)', () => {
+  it('secondary strip thumbnails keep using cover (small preview, cropping fills better)', () => {
     const all = descriptors(2);
     const { container, getByTestId } = renderWithRoom(<TileGrid descriptors={all} focusedId={all[0]!.key} />);
     const thumbTestId = `tile-${all[1]!.participantId}`;
@@ -131,7 +131,7 @@ describe('TileGrid', () => {
     expect(wrapper).not.toHaveClass('items-center');
   });
 
-  it('foca a camera e a tela da MESMA pessoa de forma independente (chaves distintas por fonte)', () => {
+  it('focuses the camera and screen of the SAME person independently (distinct keys per source)', () => {
     const camera: TileDescriptor = { key: 'u1:participant', participantId: 'u1', kind: 'camera', loading: false, paused: false };
     const screen: TileDescriptor = { key: 'u1:screen', participantId: 'u1', kind: 'screen', loading: false, paused: false };
 
@@ -151,19 +151,19 @@ describe('TileGrid', () => {
 });
 
 describe('TileGrid — onCapacityChange', () => {
-  it('reporta meetsMinimum=true quando os tiles cabem no minTileWidth padrao', () => {
+  it('reports meetsMinimum=true when tiles fit within the default minTileWidth', () => {
     const onCapacityChange = vi.fn();
     renderWithRoom(<TileGrid descriptors={descriptors(2)} focusedId={null} onCapacityChange={onCapacityChange} />);
     expect(onCapacityChange).toHaveBeenCalledWith(true, 'p-0:avatar');
   });
 
-  it('reporta meetsMinimum=false quando o minTileWidth exigido nao cabe (container fake e 600x600)', () => {
+  it('reports meetsMinimum=false when the required minTileWidth does not fit (fake container is 600x600)', () => {
     const onCapacityChange = vi.fn();
     renderWithRoom(<TileGrid descriptors={descriptors(9)} focusedId={null} minTileWidth={1000} onCapacityChange={onCapacityChange} />);
     expect(onCapacityChange).toHaveBeenCalledWith(false, 'p-0:avatar');
   });
 
-  it('sem descritores, nao chama onCapacityChange (nada pra caber)', () => {
+  it('without descriptors, does not call onCapacityChange (nothing to fit)', () => {
     const onCapacityChange = vi.fn();
     renderWithRoom(<TileGrid descriptors={[]} focusedId={null} onCapacityChange={onCapacityChange} />);
     expect(onCapacityChange).not.toHaveBeenCalled();

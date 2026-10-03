@@ -7,28 +7,28 @@ import {
 const TS = '2026-09-18T18:16:13.592123Z';
 const ID = '9a26e8d3-7b27-4d77-aa4b-4aeea422fc7d';
 
-describe('cursor de tempo (solicitações/bloqueios)', () => {
-  it('ida e volta preserva o timestamp com microssegundos', () => {
+describe('time cursor (requests/blocks)', () => {
+  it('round trip preserves the timestamp with microseconds', () => {
     assert.deepEqual(decodeTimeCursor(encodeTimeCursor(TS, ID)), { ts: TS, id: ID });
   });
 
-  it('rejeita lixo em vez de adivinhar', () => {
-    for (const bad of ['', 'abc', `${TS}`, `_${ID}`, `${TS}_`, `2026-09-18_${ID}`, `${TS}_ id com espaço`, `${TS}_'; drop table users;--`]) {
+  it('rejects garbage instead of guessing', () => {
+    for (const bad of ['', 'abc', `${TS}`, `_${ID}`, `${TS}_`, `2026-09-18_${ID}`, `${TS}_ id with space`, `${TS}_'; drop table users;--`]) {
       assert.equal(decodeTimeCursor(bad), null, bad);
     }
   });
 
-  it('rejeita timestamp sem 6 casas (só milissegundos perderia linhas na paginação)', () => {
+  it('rejects a timestamp without 6 digits (milliseconds-only would drop rows in pagination)', () => {
     assert.equal(decodeTimeCursor(`2026-09-18T18:16:13.592Z_${ID}`), null);
   });
 });
 
-describe('cursor de username (amigos)', () => {
-  it('normaliza para minúsculas', () => {
+describe('username cursor (friends)', () => {
+  it('normalizes to lowercase', () => {
     assert.equal(decodeUsernameCursor('Lune_99'), 'lune_99');
   });
 
-  it('rejeita caracteres fora do alfabeto de usernames e tamanhos absurdos', () => {
+  it('rejects characters outside the username alphabet and absurd lengths', () => {
     assert.equal(decodeUsernameCursor(''), null);
     assert.equal(decodeUsernameCursor('a b'), null);
     assert.equal(decodeUsernameCursor("x'--"), null);
@@ -37,11 +37,11 @@ describe('cursor de username (amigos)', () => {
 });
 
 describe('escapeLike / normalizeSearchQuery', () => {
-  it('escapa %, _ e \\ para casar literalmente', () => {
+  it('escapes %, _ and \\ to match them literally', () => {
     assert.equal(escapeLike('50%_off\\'), '50\\%\\_off\\\\');
   });
 
-  it('busca é aparada, em minúsculas e limitada', () => {
+  it('the search term is trimmed, lowercased and capped', () => {
     assert.equal(normalizeSearchQuery('  LuNe '), 'lune');
     assert.equal(normalizeSearchQuery(undefined), '');
     assert.equal(normalizeSearchQuery('x'.repeat(500)).length, MAX_SEARCH_LEN);

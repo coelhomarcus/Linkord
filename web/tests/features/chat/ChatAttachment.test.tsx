@@ -18,14 +18,14 @@ describe('ChatAttachment', () => {
     __resetPreviewCacheForTests();
   });
 
-  it('imagem usa a miniatura (thumbId) quando existe, nao o original', async () => {
+  it('image uses the thumbnail (thumbId) when it exists, not the original', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, blob: async () => new Blob() })));
     const { container } = render(<ChatAttachment attachment={{ id: 'img-id', thumbId: 'thumb-id', name: 'foto.png', mime: 'image/png', size: 789 }} />);
     await waitFor(() => expect(container.querySelector('img')).toHaveAttribute('src'));
     expect(vi.mocked(fetch)).toHaveBeenCalledWith('/uploads/thumb-id', expect.objectContaining({ credentials: 'same-origin' }));
   });
 
-  it('imagem sem thumbId cai pro original', async () => {
+  it('image without thumbId falls back to the original', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, blob: async () => new Blob() })));
     render(<ChatAttachment attachment={{ id: 'img-id', name: 'foto.png', mime: 'image/png', size: 789 }} />);
     await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledWith('/uploads/img-id', expect.objectContaining({ credentials: 'same-origin' })));
@@ -35,7 +35,7 @@ describe('ChatAttachment', () => {
     ['video/mp4', 'clip.mp4'],
     ['audio/mpeg', 'song.mp3'],
     ['application/zip', 'projeto.zip'],
-  ])('%s nao baixa o arquivo como blob de imagem', async (mime, name) => {
+  ])('%s does not download the file as an image blob', async (mime, name) => {
     const fetchMock = vi.fn(async () => ({ ok: true, blob: async () => new Blob() }));
     vi.stubGlobal('fetch', fetchMock);
     render(<ChatAttachment attachment={{ id: 'file-id', name, mime, size: 2 * 1024 ** 3 }} />);
@@ -43,7 +43,7 @@ describe('ChatAttachment', () => {
     expect(fetchMock).not.toHaveBeenCalledWith('/uploads/file-id', expect.anything());
   });
 
-  it('arquivo generico (nao previsualizavel) mostra a identidade e um link de download proprio', () => {
+  it('generic file (not previewable) shows its identity and its own download link', () => {
     render(<ChatAttachment attachment={{ id: 'zip-id', name: 'projeto.zip', mime: 'application/zip', size: 999 }} />);
     expect(screen.getByTitle('projeto.zip')).toBeInTheDocument();
     const link = screen.getByRole('link', { name: 'Baixar projeto.zip' });
@@ -51,7 +51,7 @@ describe('ChatAttachment', () => {
     expect(link).toHaveAttribute('download', 'projeto.zip');
   });
 
-  it('arquivo de texto/codigo busca o preview e mostra o conteudo', async () => {
+  it('text/code file fetches the preview and shows the content', async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       json: async () => ({ previewable: true, content: 'print("oi")', truncated: false, totalSize: 12, language: 'python' }),
@@ -64,7 +64,7 @@ describe('ChatAttachment', () => {
     await waitFor(() => expect(screen.getByText('print("oi")')).toBeInTheDocument());
   });
 
-  it('renderiza upload de video com o player proprio e lightbox interno', async () => {
+  it('renders a video upload with its own player and internal lightbox', async () => {
     const user = userEvent.setup();
     vi.spyOn(window.HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
     const { container } = render(<ChatAttachment attachment={{ id: 'video-id', name: 'clip.mp4', mime: 'video/mp4', size: 123 }} />);
@@ -79,7 +79,7 @@ describe('ChatAttachment', () => {
     expect(screen.getByRole('button', { name: 'Fechar' })).toBeInTheDocument();
   });
 
-  it('renderiza upload de audio com o player proprio', () => {
+  it('renders an audio upload with its own player', () => {
     const { container } = render(<ChatAttachment attachment={{ id: 'audio-id', name: 'voz.mp3', mime: 'audio/mpeg', size: 456 }} />);
 
     const audio = container.querySelector('audio');

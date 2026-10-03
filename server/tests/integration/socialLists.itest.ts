@@ -26,8 +26,8 @@ async function pending(requester: string, other: string): Promise<void> {
   await db.insert(friendships).values({ id: crypto.randomUUID(), userLowId: low, userHighId: high, requestedBy: requester, status: 'pending' });
 }
 
-describe('amigos online: filtrado antes da paginacao (Postgres real)', () => {
-  it('31 amigos, so o ultimo (fora da primeira pagina) online: aparece em Online', async () => {
+describe('online friends: filtered before pagination (real Postgres)', () => {
+  it('31 friends, only the last one (outside the first page) online: shows up in Online', async () => {
     const me = await makeUser('on');
     const friends = [];
     for (let i = 0; i < SOCIAL_PAGE_SIZE + 1; i++) { const f = await makeUser('fr'); await befriend(me.id, f.id); friends.push(f); }
@@ -37,8 +37,8 @@ describe('amigos online: filtrado antes da paginacao (Postgres real)', () => {
     const all = await listFriends(me.id, {});
     assert.ok(typeof all !== 'string');
     assert.equal(all.items.length, SOCIAL_PAGE_SIZE);
-    assert.ok(all.nextCursor, 'a lista completa continua paginada');
-    assert.ok(!names(all).includes(last.username), 'o ultimo esta na segunda pagina');
+    assert.ok(all.nextCursor, 'the full list is still paginated');
+    assert.ok(!names(all).includes(last.username), 'the last one is on the second page');
 
     const stranger = await makeUser('st'); // online, but not a friend
     const online = await listFriends(me.id, { onlineIds: [last.id, stranger.id] });
@@ -46,7 +46,7 @@ describe('amigos online: filtrado antes da paginacao (Postgres real)', () => {
     assert.equal((online as { nextCursor: string | null }).nextCursor, null);
   });
 
-  it('ids online vazios: lista vazia; um conhecido de grupo que nao e amigo nunca aparece', async () => {
+  it('empty online ids: empty list; a group acquaintance who is not a friend never shows up', async () => {
     const me = await makeUser('on'); const friend = await makeUser('fr'); const groupmate = await makeUser('gm');
     await befriend(me.id, friend.id);
     await makeGroupWithMembers(me.id, [groupmate.id]);
@@ -55,16 +55,16 @@ describe('amigos online: filtrado antes da paginacao (Postgres real)', () => {
     assert.deepEqual(names(await listFriends(me.id, { onlineIds: [friend.id, groupmate.id] })), [friend.username]);
   });
 
-  it('busca e online se combinam antes da paginacao', async () => {
-    const me = await makeUser('on'); const a = await makeUser('alvo'); const b = await makeUser('outro');
+  it('search and online combine before pagination', async () => {
+    const me = await makeUser('on'); const a = await makeUser('target'); const b = await makeUser('other');
     await befriend(me.id, a.id); await befriend(me.id, b.id);
-    assert.deepEqual(names(await listFriends(me.id, { q: 'alvo', onlineIds: [a.id, b.id] })), [a.username]);
-    assert.deepEqual(names(await listFriends(me.id, { q: 'alvo', onlineIds: [b.id] })), []);
+    assert.deepEqual(names(await listFriends(me.id, { q: 'target', onlineIds: [a.id, b.id] })), [a.username]);
+    assert.deepEqual(names(await listFriends(me.id, { q: 'target', onlineIds: [b.id] })), []);
   });
 });
 
-describe('busca em pedidos e convites (Postgres real)', () => {
-  it('% e _ sao literais (nao coringas)', async () => {
+describe('search over requests and invitations (real Postgres)', () => {
+  it('% and _ are literals (not wildcards)', async () => {
     const me = await makeUser('sq'); const plain = await makeUser('pl'); const odd = await makeUser('od');
     await db.update(users).set({ displayName: '100%_real' }).where(eq(users.id, odd.id));
     await befriend(me.id, plain.id); await befriend(me.id, odd.id);
@@ -76,7 +76,7 @@ describe('busca em pedidos e convites (Postgres real)', () => {
     assert.deepEqual(names(await listFriends(me.id, { q: '\\' })), []);
   });
 
-  it('pedidos: a busca vale para recebidos e enviados, sem cruzar as direcoes', async () => {
+  it('requests: search applies to both received and sent, without crossing directions', async () => {
     const me = await makeUser('rq'); const inc = await makeUser('ana'); const out = await makeUser('bia'); const other = await makeUser('ana');
     await pending(inc.id, me.id); await pending(me.id, out.id); await pending(other.id, me.id);
     const incoming = await listFriendRequests(me.id, 'incoming', undefined, 'ana');
@@ -90,34 +90,34 @@ describe('busca em pedidos e convites (Postgres real)', () => {
     assert.equal(none.items.length, 0);
   });
 
-  it('convites: casa pelo nome do grupo ou pelo remetente, so entre os proprios', async () => {
+  it('invitations: matched by group name or by the sender, only among one\'s own', async () => {
     const owner = await makeUser('ow'); const guest = await makeUser('gu'); const other = await makeUser('ot');
     await befriend(owner.id, guest.id);
-    const groupId = await makeGroupWithMembers(owner.id, [], 'Turma do Futebol');
+    const groupId = await makeGroupWithMembers(owner.id, [], 'Football Team');
     await db.insert(groupInvitations).values({ id: crypto.randomUUID(), conversationId: groupId, inviterId: owner.id, inviteeId: guest.id });
-    const byTitle = await listReceivedInvitations(guest.id, undefined, 'futebol');
+    const byTitle = await listReceivedInvitations(guest.id, undefined, 'football');
     assert.ok(typeof byTitle !== 'string');
     assert.equal(byTitle.items.length, 1);
     const byInviter = await listReceivedInvitations(guest.id, undefined, owner.username.toLowerCase());
     assert.ok(typeof byInviter !== 'string');
     assert.equal(byInviter.items.length, 1);
-    const miss = await listReceivedInvitations(guest.id, undefined, 'xadrez');
+    const miss = await listReceivedInvitations(guest.id, undefined, 'chess');
     assert.ok(typeof miss !== 'string');
     assert.equal(miss.items.length, 0);
-    const notMine = await listReceivedInvitations(other.id, undefined, 'futebol');
+    const notMine = await listReceivedInvitations(other.id, undefined, 'football');
     assert.ok(typeof notMine !== 'string');
     assert.equal(notMine.items.length, 0);
   });
 });
 
 describe('/api/friends?status=online (HTTP)', () => {
-  it('valida o filtro e exige sessao', async () => {
+  it('validates the filter and requires a session', async () => {
     const me = await makeUser('ht');
     const token = (await createSession(me.id)).rawToken;
     const headers = { cookie: `${config.SESSION_COOKIE}=${token}` };
     assert.equal((await app.inject({ method: 'GET', url: '/api/friends?status=online' })).statusCode, 401);
     assert.equal((await app.inject({ method: 'GET', url: '/api/friends?status=online', headers })).statusCode, 200);
-    const bad = await app.inject({ method: 'GET', url: '/api/friends?status=todos', headers });
+    const bad = await app.inject({ method: 'GET', url: '/api/friends?status=all', headers });
     assert.equal(bad.statusCode, 400);
     assert.equal(JSON.parse(bad.body).error.code, 'invalid_request');
   });

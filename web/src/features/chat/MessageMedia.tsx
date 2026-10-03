@@ -34,7 +34,7 @@ export function MessageMedia({ attachments }: { attachments: ChatAttachmentData[
       </button>
     ) : (
       // stored before dimensions existed: natural size, as it always was
-      <button type="button" aria-label={`Abrir ${attachment.name}`} onClick={() => openAt(0)} className={cn(cellButton, 'max-w-full rounded-xl')} style={{ maxWidth: `min(100%, ${MEDIA_MAX_WIDTH}px)` }}>
+      <button type="button" aria-label={`Abrir ${attachment.name}`} onClick={() => openAt(0)} className={cn(cellButton, 'inline-block max-w-full rounded-xl')} style={{ maxWidth: `min(100%, ${MEDIA_MAX_WIDTH}px)` }}>
         <MediaImage attachment={attachment} className="block h-auto max-h-80 max-w-full object-contain" />
       </button>
     );

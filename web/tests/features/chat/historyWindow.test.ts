@@ -6,19 +6,19 @@ const msgs = (...ids: number[]): ChatMessage[] => ids.map((msgId) => ({ msgId, c
 const ids = (list: ChatMessage[]) => list.map((m) => m.msgId);
 
 describe('historyWindow', () => {
-  it('pagina antiga entra antes, sem duplicar', () => {
+  it('an older page goes in before, without duplicating', () => {
     const r = withOlderPage(msgs(3, 4), msgs(1, 2, 3));
     expect(ids(r.messages)).toEqual([1, 2, 3, 4]);
     expect(r.trimmedNewest).toBe(false);
   });
 
-  it('pagina antiga alem do limite corta as mais novas (longe de quem le no topo)', () => {
+  it("an older page beyond the limit trims the newest ones (far from whoever's reading at the top)", () => {
     const r = withOlderPage(msgs(4, 5, 6), msgs(1, 2, 3), 4);
     expect(ids(r.messages)).toEqual([1, 2, 3, 4]);
     expect(r.trimmedNewest).toBe(true);
   });
 
-  it('mensagens novas alem do limite cortam as mais antigas', () => {
+  it('new messages beyond the limit trim the oldest ones', () => {
     const r = withNewerMessages(msgs(1, 2, 3), msgs(3, 4, 5), 4);
     expect(ids(r.messages)).toEqual([2, 3, 4, 5]);
     expect(r.trimmedOldest).toBe(true);

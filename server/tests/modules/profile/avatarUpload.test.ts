@@ -42,7 +42,7 @@ function animatedGif(): Buffer {
 }
 
 describe('encodeAndStoreProfileImage', () => {
-  test('recorta a imagem inteira e preserva as dimensoes em JPEG', async () => {
+  test('crops the whole image and preserves the dimensions in JPEG', async () => {
     const result = await encodeAndStoreProfileImage(await staticPng(), { left: 0, top: 0, width: 8, height: 5 }, UPLOADER_ID);
     const id = result.avatar.split('/').pop()!;
     const metadata = await sharp(await fs.readFile(filePathFor(id))).metadata();
@@ -53,7 +53,7 @@ describe('encodeAndStoreProfileImage', () => {
     assert.equal(result.avatarPoster, undefined);
   });
 
-  test('mantem GIF animado e gera poster JPEG', async () => {
+  test('keeps an animated GIF and generates a JPEG poster', async () => {
     const result = await encodeAndStoreProfileImage(animatedGif(), { left: 0, top: 0, width: 2, height: 2 }, UPLOADER_ID);
     const imageId = result.avatar.split('/').pop()!;
     const posterId = result.avatarPoster?.split('/').pop();
@@ -67,7 +67,7 @@ describe('encodeAndStoreProfileImage', () => {
     assert.equal(posterMetadata.height, 2);
   });
 
-  test('rejeita um recorte fora dos limites da imagem', async () => {
+  test('rejects a crop outside the image bounds', async () => {
     const input = await staticPng();
     await assert.rejects(
       () => encodeAndStoreProfileImage(input, { left: 0, top: 0, width: 999, height: 999 }, UPLOADER_ID),
@@ -75,7 +75,7 @@ describe('encodeAndStoreProfileImage', () => {
     );
   });
 
-  test('remove o arquivo principal se a gravação do attachment falhar', async () => {
+  test('removes the main file if writing the attachment fails', async () => {
     mock.restoreAll();
     mock.method(db, 'insert', () => ({ values: async () => { throw new Error('db offline'); } }) as never);
 

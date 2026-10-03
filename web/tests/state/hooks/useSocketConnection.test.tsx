@@ -27,13 +27,13 @@ function setup() {
 }
 
 describe('useSocketConnection — join', () => {
-  it('o join anuncia a versao do protocolo (sem ela o servidor manda atualizar)', () => {
+  it('the join announces the protocol version (without it the server tells the client to update)', () => {
     const { sendWs } = setup();
     fake.handlers.get('connect')!();
     expect(sendWs).toHaveBeenCalledWith(expect.objectContaining({ t: 'join', v: PROTOCOL_VERSION }));
   });
 
-  it('repassa as mensagens do servidor, inclusive o client_outdated', () => {
+  it('forwards messages from the server, including client_outdated', () => {
     const { onMessage } = setup();
     fake.any!('error', { t: 'error', code: 'client_outdated', message: 'x' });
     expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ code: 'client_outdated' }));

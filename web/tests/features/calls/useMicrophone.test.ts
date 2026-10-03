@@ -29,7 +29,7 @@ function fakeRoom(setMicrophoneEnabled = vi.fn(async () => undefined), track: Re
   } as unknown as Room;
 }
 
-describe('useMicrophone — activateMic aplica o microfone salvo', () => {
+describe('useMicrophone — activateMic applies the saved microphone', () => {
   beforeEach(() => {
     // jsdom doesn't implement mediaDevices — without this, activateMic bails
     // early (with an "unsupported browser" error) before even checking the
@@ -41,18 +41,18 @@ describe('useMicrophone — activateMic aplica o microfone salvo', () => {
     localStorage.clear();
   });
 
-  it('passa o deviceId salvo em Configuracoes pro setMicrophoneEnabled', async () => {
-    saveDevicePreference('audioinput', 'mic-preferido');
+  it('passes the deviceId saved in Settings to setMicrophoneEnabled', async () => {
+    saveDevicePreference('audioinput', 'preferred-mic');
     const setMicrophoneEnabled = vi.fn(async () => undefined);
     const room = fakeRoom(setMicrophoneEnabled);
     const { result } = renderHook(() => useMicrophone(room, vi.fn()));
 
     await result.current.activateMic();
 
-    expect(setMicrophoneEnabled).toHaveBeenCalledWith(true, { deviceId: 'mic-preferido' });
+    expect(setMicrophoneEnabled).toHaveBeenCalledWith(true, { deviceId: 'preferred-mic' });
   });
 
-  it('sem preferencia salva, nao forca nenhum deviceId (deixa o navegador escolher)', async () => {
+  it('without a saved preference, does not force any deviceId (lets the browser choose)', async () => {
     const setMicrophoneEnabled = vi.fn(async () => undefined);
     const room = fakeRoom(setMicrophoneEnabled);
     const { result } = renderHook(() => useMicrophone(room, vi.fn()));
@@ -62,7 +62,7 @@ describe('useMicrophone — activateMic aplica o microfone salvo', () => {
     expect(setMicrophoneEnabled).toHaveBeenCalledWith(true, undefined);
   });
 
-  it('nao ativa de novo se ja existe uma publicacao de microfone', async () => {
+  it('does not activate again if a microphone publication already exists', async () => {
     const setMicrophoneEnabled = vi.fn(async () => undefined);
     const room = fakeRoom(setMicrophoneEnabled);
     (room.localParticipant.getTrackPublication as ReturnType<typeof vi.fn>).mockReturnValue({ source: Track.Source.Microphone });
@@ -74,7 +74,7 @@ describe('useMicrophone — activateMic aplica o microfone salvo', () => {
   });
 });
 
-describe('useMicrophone — microfone ausente ou bloqueado', () => {
+describe('useMicrophone — missing or blocked microphone', () => {
   let deviceChangeListeners: Array<() => void>;
 
   beforeEach(() => {
@@ -89,7 +89,7 @@ describe('useMicrophone — microfone ausente ou bloqueado', () => {
     });
   });
 
-  it('sem nenhum microfone (NotFoundError), marca o problema em vez de um erro dispensavel', async () => {
+  it('with no microphone at all (NotFoundError), marks the problem instead of a dismissible error', async () => {
     const room = fakeRoom(vi.fn(async () => { throw new DOMException('Requested device not found', 'NotFoundError'); }));
     const dispatch = vi.fn();
     const { result } = renderHook(() => useMicrophone(room, dispatch));
@@ -100,7 +100,7 @@ describe('useMicrophone — microfone ausente ou bloqueado', () => {
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_SHARE_ERROR' }));
   });
 
-  it('permissao negada (NotAllowedError) vira o problema "denied"', async () => {
+  it('permission denied (NotAllowedError) becomes the "denied" problem', async () => {
     const room = fakeRoom(vi.fn(async () => { throw new DOMException('Permission denied', 'NotAllowedError'); }));
     const dispatch = vi.fn();
     const { result } = renderHook(() => useMicrophone(room, dispatch));
@@ -110,7 +110,7 @@ describe('useMicrophone — microfone ausente ou bloqueado', () => {
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_MIC_PROBLEM', problem: 'denied' });
   });
 
-  it.each(['NotReadableError', 'AbortError'])('microfone que nao inicia (%s) vira o problema "unavailable"', async (errName) => {
+  it.each(['NotReadableError', 'AbortError'])('a microphone that fails to start (%s) becomes the "unavailable" problem', async (errName) => {
     const room = fakeRoom(vi.fn(async () => { throw new DOMException('Could not start audio source', errName); }));
     const dispatch = vi.fn();
     const { result } = renderHook(() => useMicrophone(room, dispatch));
@@ -120,7 +120,7 @@ describe('useMicrophone — microfone ausente ou bloqueado', () => {
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_MIC_PROBLEM', problem: 'unavailable' });
   });
 
-  it('conectar um microfone no meio da chamada tenta ativar de novo e limpa o problema', async () => {
+  it('plugging in a microphone mid-call tries to activate again and clears the problem', async () => {
     const setMicrophoneEnabled = vi.fn(async () => undefined);
     setMicrophoneEnabled.mockRejectedValueOnce(new DOMException('Requested device not found', 'NotFoundError'));
     const room = fakeRoom(setMicrophoneEnabled);
@@ -134,7 +134,7 @@ describe('useMicrophone — microfone ausente ou bloqueado', () => {
     expect(dispatch).toHaveBeenLastCalledWith({ type: 'SET_MIC_PROBLEM', problem: null });
   });
 
-  it('com permissao negada, conectar um dispositivo nao dispara nova tentativa sozinha', async () => {
+  it('with permission denied, plugging in a device does not trigger a new attempt on its own', async () => {
     const setMicrophoneEnabled = vi.fn(async () => { throw new DOMException('Permission denied', 'NotAllowedError'); });
     const room = fakeRoom(setMicrophoneEnabled);
     const { result } = renderHook(() => useMicrophone(room, vi.fn()));
@@ -146,12 +146,12 @@ describe('useMicrophone — microfone ausente ou bloqueado', () => {
   });
 });
 
-describe('useMicrophone — supressao de ruido (RNNoise)', () => {
+describe('useMicrophone — noise suppression (RNNoise)', () => {
   afterEach(() => {
     localStorage.clear();
   });
 
-  it('com a preferencia ligada, anexa o processor RNNoise e so entao desliga a supressao nativa', async () => {
+  it('with the preference on, attaches the RNNoise processor and only then turns off the native suppression', async () => {
     saveNoiseSuppression(true);
     const track = fakeTrack();
     const room = fakeRoom(vi.fn(async () => undefined), track);
@@ -161,15 +161,15 @@ describe('useMicrophone — supressao de ruido (RNNoise)', () => {
 
     expect(track.setProcessor).toHaveBeenCalledTimes(1);
     expect(track.applyConstraints).toHaveBeenCalledWith({ noiseSuppression: false });
-    // setProcessor deve ser chamado antes de mexer na constraint nativa.
+    // setProcessor must be called before touching the native constraint.
     const setProcessorOrder = track.setProcessor.mock.invocationCallOrder[0];
     const applyConstraintsOrder = track.applyConstraints.mock.invocationCallOrder[0];
     expect(setProcessorOrder).toBeLessThan(applyConstraintsOrder);
   });
 
-  it('se o processor falhar ao anexar, a supressao nativa nao e tocada (nunca fica sem nenhuma)', async () => {
+  it('if the processor fails to attach, the native suppression is not touched (never left with none at all)', async () => {
     const track = fakeTrack();
-    track.setProcessor.mockRejectedValueOnce(new Error('sem suporte'));
+    track.setProcessor.mockRejectedValueOnce(new Error('unsupported'));
     const room = fakeRoom(vi.fn(async () => undefined), track);
     const { result } = renderHook(() => useMicrophone(room, vi.fn()));
 
@@ -179,7 +179,7 @@ describe('useMicrophone — supressao de ruido (RNNoise)', () => {
     expect(outcome).toBe('failed');
   });
 
-  it('processor anexa mas a constraint nativa falha: para o processor em vez de deixar as duas ligadas', async () => {
+  it('processor attaches but the native constraint fails: stops the processor instead of leaving both on', async () => {
     const track = fakeTrack();
     // setProcessor "succeeding" means the track is now really attached —
     // getProcessor has to reflect that for the rest of this test to mean
@@ -187,7 +187,7 @@ describe('useMicrophone — supressao de ruido (RNNoise)', () => {
     track.setProcessor.mockImplementation(async () => {
       track.getProcessor.mockReturnValue({ name: 'rnnoise-noise-suppression' });
     });
-    track.applyConstraints.mockRejectedValueOnce(new Error('constraint recusada'));
+    track.applyConstraints.mockRejectedValueOnce(new Error('constraint rejected'));
     const room = fakeRoom(vi.fn(async () => undefined), track);
     const { result } = renderHook(() => useMicrophone(room, vi.fn()));
 
@@ -198,7 +198,7 @@ describe('useMicrophone — supressao de ruido (RNNoise)', () => {
     expect(outcome).toBe('failed');
   });
 
-  it('sem track ativo (fora de chamada), so avisa que nao ha nada pra aplicar agora', async () => {
+  it("without an active track (outside a call), just reports there's nothing to apply right now", async () => {
     const room = fakeRoom(vi.fn(async () => undefined), undefined);
     const { result } = renderHook(() => useMicrophone(room, vi.fn()));
 
@@ -207,7 +207,7 @@ describe('useMicrophone — supressao de ruido (RNNoise)', () => {
     expect(outcome).toBe('no-active-track');
   });
 
-  it('duas trocas seguidas aplicam em ordem, nao em paralelo', async () => {
+  it('two consecutive toggles apply in order, not in parallel', async () => {
     const track = fakeTrack();
     const applyOrder: string[] = [];
     track.applyConstraints.mockImplementation(async (constraints) => {
@@ -226,7 +226,7 @@ describe('useMicrophone — supressao de ruido (RNNoise)', () => {
     expect(applyOrder).toEqual(['native-off', 'native-on']);
   });
 
-  it('ao desligar, para o processor (se houver) e religa a supressao nativa', async () => {
+  it('when turning off, stops the processor (if any) and re-enables the native suppression', async () => {
     const track = fakeTrack();
     track.getProcessor.mockReturnValue({ name: 'rnnoise-noise-suppression' });
     const room = fakeRoom(vi.fn(async () => undefined), track);
@@ -238,7 +238,7 @@ describe('useMicrophone — supressao de ruido (RNNoise)', () => {
     expect(track.applyConstraints).toHaveBeenCalledWith({ noiseSuppression: true });
   });
 
-  it('leaveMic para o processor antes de sair, se um estiver anexado', async () => {
+  it('leaveMic stops the processor before leaving, if one is attached', async () => {
     const track = fakeTrack();
     track.getProcessor.mockReturnValue({ name: 'rnnoise-noise-suppression' });
     const unpublishTrack = vi.fn(async () => undefined);

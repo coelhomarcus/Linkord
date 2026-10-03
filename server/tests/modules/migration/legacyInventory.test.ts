@@ -9,12 +9,12 @@ const group = (id: string, createdBy: string | null = null) => ({ id, type: 'gro
 const direct = (id: string, dmKey: string | null) => ({ id, type: 'direct', createdBy: null, dmKey });
 
 describe('classifyInventory', () => {
-  it('grupo saudavel nao gera achado nem bloqueio', () => {
+  it('healthy group generates no finding or blocker', () => {
     const f = classifyInventory(inv({ conversations: [group('g')], members: [member('g', 'a', 'owner', '2025-01-01'), member('g', 'b', 'member', '2025-01-02')] }));
     assert.deepEqual([f.groupsWithoutOwner, f.groupsWithMultipleOwners, f.emptyGroups, f.blockers], [[], [], [], []]);
   });
 
-  it('acha sem dono, multi-dono (bloqueia), vazio, papel estranho, DM com dono e DM incompleta', () => {
+  it('finds no owner, multiple owners (blocks), empty, odd role, DM with owner and incomplete DM', () => {
     const f = classifyInventory(inv({
       conversations: [group('none'), group('multi'), group('empty'), group('odd'), direct('dm1', 'a:b'), direct('dm2', 'c:d')],
       members: [
@@ -35,7 +35,7 @@ describe('classifyInventory', () => {
     assert.match(f.blockers[0]!, /mais de um dono/);
   });
 
-  it('dm_key duplicada tambem bloqueia', () => {
+  it('duplicate dm_key also blocks', () => {
     const f = classifyInventory(inv({ conversations: [direct('x', 'a:b'), direct('y', 'a:b')], members: [] }));
     assert.deepEqual(f.duplicateDmKeys, ['a:b']);
     assert.equal(f.blockers.length, 1);
@@ -43,27 +43,27 @@ describe('classifyInventory', () => {
 });
 
 describe('planRepairs', () => {
-  it('nao mexe em grupo com exatamente um dono', () => {
+  it('does not touch a group with exactly one owner', () => {
     assert.deepEqual(planRepairs(inv({ conversations: [group('g', 'a')], members: [member('g', 'a', 'owner', '2025-01-01'), member('g', 'b', 'member', '2025-01-02')] })), []);
   });
 
-  it('sem dono: o criador, se ainda e membro', () => {
+  it('no owner: the creator, if still a member', () => {
     const plan = planRepairs(inv({ conversations: [group('g', 'b')], members: [member('g', 'a', 'member', '2025-01-01'), member('g', 'b', 'member', '2025-02-01')] }));
     assert.equal(plan.length, 1);
     assert.deepEqual([plan[0]!.kind, plan[0]!.userId, plan[0]!.needsReview], ['assign_owner', 'b', false]);
   });
 
-  it('sem dono e criador fora: o membro mais antigo, marcado para revisao', () => {
+  it('no owner and creator gone: the oldest member, flagged for review', () => {
     const plan = planRepairs(inv({ conversations: [group('g', null)], members: [member('g', 'z', 'member', '2025-03-01'), member('g', 'y', 'member', '2025-01-01')] }));
     assert.deepEqual([plan[0]!.userId, plan[0]!.needsReview], ['y', true]);
   });
 
-  it('empate no joinedAt desempata por id', () => {
+  it('tie on joinedAt is broken by id', () => {
     const plan = planRepairs(inv({ conversations: [group('g')], members: [member('g', 'b', 'member', '2025-01-01'), member('g', 'a', 'member', '2025-01-01')] }));
     assert.equal(plan[0]!.userId, 'a');
   });
 
-  it('sem dono: prefere membro ativo quando o status e conhecido', () => {
+  it('no owner: prefers an active member when status is known', () => {
     const plan = planRepairs(inv({
       conversations: [group('g', null)], members: [member('g', 'old', 'member', '2025-01-01'), member('g', 'new', 'member', '2025-02-01')],
       userStatus: new Map([['old', 'suspended'], ['new', 'active']]),
@@ -71,32 +71,32 @@ describe('planRepairs', () => {
     assert.equal(plan[0]!.userId, 'new');
   });
 
-  it('varios donos: fica o criador, os demais viram membro', () => {
+  it('multiple owners: the creator stays, the rest become members', () => {
     const plan = planRepairs(inv({ conversations: [group('g', 'a')], members: [member('g', 'a', 'owner', '2025-02-01'), member('g', 'b', 'owner', '2025-01-01'), member('g', 'c', 'owner', '2025-03-01')] }));
     assert.deepEqual(plan.map((p) => [p.kind, p.userId]).sort(), [['demote_extra_owner', 'b'], ['demote_extra_owner', 'c']]);
     assert.ok(plan.every((p) => !p.needsReview));
   });
 
-  it('varios donos sem criador entre eles: fica o mais antigo, com revisao', () => {
+  it('multiple owners with no creator among them: the oldest stays, flagged for review', () => {
     const plan = planRepairs(inv({ conversations: [group('g', null)], members: [member('g', 'a', 'owner', '2025-02-01'), member('g', 'b', 'owner', '2025-01-01')] }));
     assert.deepEqual([plan.length, plan[0]!.userId, plan[0]!.needsReview], [1, 'a', true]);
   });
 
-  it('papel inesperado vira membro; se era o unico "dono" possivel, o grupo segue a regra normal', () => {
+  it('unexpected role becomes member; if it was the only possible "owner", the group follows the normal rule', () => {
     const plan = planRepairs(inv({ conversations: [group('g', 'a')], members: [member('g', 'a', 'owner', '2025-01-01'), member('g', 'b', 'admin', '2025-01-02')] }));
     assert.deepEqual(plan.map((p) => [p.kind, p.userId]), [['normalize_role', 'b']]);
   });
 
-  it('DM nunca tem dono', () => {
+  it('a DM never has an owner', () => {
     const plan = planRepairs(inv({ conversations: [direct('dm', 'a:b')], members: [member('dm', 'a', 'owner', '2025-01-01'), member('dm', 'b', 'member', '2025-01-01')] }));
     assert.deepEqual(plan.map((p) => p.kind), ['demote_direct_owner']);
   });
 
-  it('grupo vazio e DM incompleta nao geram acao (so relatorio)', () => {
+  it('empty group and incomplete DM generate no action (report only)', () => {
     assert.deepEqual(planRepairs(inv({ conversations: [group('g'), direct('dm', 'a:b')], members: [member('dm', 'a', 'member', '2025-01-01')] })), []);
   });
 
-  it('rebaixamentos vem antes de promocoes', () => {
+  it('demotions come before promotions', () => {
     const plan = planRepairs(inv({
       conversations: [group('x', null), group('y', 'a')],
       members: [member('x', 'p', 'member', '2025-01-01'), member('y', 'a', 'owner', '2025-01-01'), member('y', 'b', 'owner', '2025-01-02')],
@@ -104,7 +104,7 @@ describe('planRepairs', () => {
     assert.deepEqual(plan.map((p) => p.after.role), ['member', 'owner']);
   });
 
-  it('e idempotente: aplicar o plano no estado e planejar de novo da vazio', () => {
+  it('is idempotent: applying the plan to the state and planning again yields empty', () => {
     const before = inv({
       conversations: [group('a', null), group('b', 'q'), direct('dm', 'x:y')],
       members: [

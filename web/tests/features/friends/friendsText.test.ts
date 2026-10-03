@@ -3,7 +3,7 @@ import { ApiError } from '@/shared/api/api';
 import { describeOutcome, describeSendError, normalizeUsernameInput } from '@/features/friends/friendsText';
 
 describe('normalizeUsernameInput', () => {
-  it('tira espacos e o @ que a pessoa digita naturalmente', () => {
+  it('strips spaces and the @ that people naturally type', () => {
     expect(normalizeUsernameInput('  @Lune ')).toBe('Lune');
     expect(normalizeUsernameInput('@@lune')).toBe('lune');
     expect(normalizeUsernameInput('lune')).toBe('lune');
@@ -12,29 +12,29 @@ describe('normalizeUsernameInput', () => {
 });
 
 describe('describeSendError', () => {
-  it('usuario inexistente e bloqueio tem a MESMA mensagem generica (nao revela bloqueio)', () => {
+  it('a nonexistent user and a block share the SAME generic message (does not reveal the block)', () => {
     const text = describeSendError(new ApiError(404, 'user_unavailable', 'x'));
     expect(text).toMatch(/Não foi possível enviar/);
     expect(text).not.toMatch(/bloque/i);
   });
 
-  it('cooldown informa quando volta a poder', () => {
+  it('cooldown tells you when you can retry', () => {
     const text = describeSendError(new ApiError(409, 'cooldown', 'x', '2026-09-19T18:16:53.312Z'));
     expect(text).toMatch(/a partir de/);
   });
 
-  it('cooldown sem data ainda orienta a esperar', () => {
+  it('cooldown with no date still tells you to wait', () => {
     expect(describeSendError(new ApiError(409, 'cooldown', 'x'))).toMatch(/Aguarde/);
   });
 
-  it('limite de taxa repassa a mensagem do servidor; o resto vira generico', () => {
+  it('rate limit passes through the server message; everything else becomes generic', () => {
     expect(describeSendError(new ApiError(429, 'rate_limited', 'Devagar!'))).toBe('Devagar!');
     expect(describeSendError(new Error('boom'))).toBe('Não foi possível enviar a solicitação.');
   });
 });
 
 describe('describeOutcome', () => {
-  it('cada desfecho tem um texto proprio e um tom', () => {
+  it('each outcome has its own text and tone', () => {
     expect(describeOutcome('created', 'ana')).toEqual({ text: 'Solicitação enviada para @ana.', tone: 'success' });
     expect(describeOutcome('pending_received', 'ana').text).toMatch(/Solicitações/);
     expect(describeOutcome('already_pending', 'ana').tone).toBe('info');

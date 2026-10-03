@@ -9,7 +9,7 @@ describe('stageFileInChunks', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-  it('limite de novos uploads (429): espera o Retry-After e tenta de novo, sem falhar o arquivo', async () => {
+  it('new-upload rate limit (429): waits for Retry-After and retries, without failing the file', async () => {
     const calls: string[] = [];
     let inits = 0;
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
@@ -17,7 +17,7 @@ describe('stageFileInChunks', () => {
       if (url === '/api/attachments/init') {
         inits++;
         return inits === 1
-          ? json(429, { error: { code: 'rate_limited', message: 'calma' } }, { 'Retry-After': '7' })
+          ? json(429, { error: { code: 'rate_limited', message: 'slow down' } }, { 'Retry-After': '7' })
           : json(201, { uploadId: 'u1', chunkSize: 10, totalChunks: 1 });
       }
       if (url.endsWith('/chunk/0')) return json(200, { received: 0 });
@@ -32,8 +32,8 @@ describe('stageFileInChunks', () => {
     expect(inits).toBe(2);
   });
 
-  it('erro definitivo no init (403) nao e repetido', async () => {
-    const fetchMock = vi.fn(async () => json(403, { error: { code: 'relationship_required', message: 'amigos' } }));
+  it('a definitive error on init (403) is not retried', async () => {
+    const fetchMock = vi.fn(async () => json(403, { error: { code: 'relationship_required', message: 'friends only' } }));
     vi.stubGlobal('fetch', fetchMock);
     await expect(stageFileInChunks({ conversationId: 'c', file: new File(['a'], 'a.pdf') })).rejects.toMatchObject({ status: 403 });
     expect(fetchMock).toHaveBeenCalledTimes(1);

@@ -10,7 +10,7 @@ import { shortcutHint } from '@/shared/lib/platform';
 import { CountBadge } from '@/shared/CountBadge';
 import { useRoom } from '@/state/RoomContext';
 import type { Conversation } from '@/shared/types/protocol';
-import { ROUTES, isConversationsPath } from '@/shared/lib/routes';
+import { ROUTES, conversationNav, isConversationsPath } from '@/shared/lib/routes';
 import { conversationTitle, directUser } from './conversationUtils';
 import { GroupAvatar } from './GroupAvatar';
 import { GroupCreateDialog } from './GroupCreateDialog';
@@ -126,7 +126,7 @@ export function ConversationSidebar({ onOpenPalette, mobileRail }: ConversationS
     // ALREADY active (from the friends page, say) changes no state, so nothing
     // else would navigate. Done before requestChatView so that call sees a
     // conversations path and doesn't push a second history entry.
-    navigate(ROUTES.conversation(conversationId));
+    navigate(ROUTES.conversations, conversationNav(conversationId));
     requestChatView();
     if (isOverlay) setOpenMobile(false);
   }
@@ -158,7 +158,7 @@ export function ConversationSidebar({ onOpenPalette, mobileRail }: ConversationS
               )}
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col gap-3 px-3 pb-3">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 pb-3 pl-3 pr-shell">
               <div className="flex flex-none items-center gap-2 rounded-xl border border-white/10 bg-white/[0.045] px-3">
                 <Search size={15} className="text-text-muted" />
                 <input

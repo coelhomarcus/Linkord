@@ -22,12 +22,12 @@ afterEach(() => {
 });
 
 describe('useCameraPreview', () => {
-  it('nao inicia sozinho — so apos start() explicito', () => {
+  it('does not start on its own — only after an explicit start()', () => {
     renderHook(() => useCameraPreview());
     expect(getUserMedia).not.toHaveBeenCalled();
   });
 
-  it('start() abre a camera pedida e expoe a stream', async () => {
+  it('start() opens the requested camera and exposes the stream', async () => {
     const { result } = renderHook(() => useCameraPreview());
     await act(async () => { await result.current.start('cam-1'); });
     expect(getUserMedia).toHaveBeenCalledWith({ video: { deviceId: { exact: 'cam-1' } } });
@@ -35,7 +35,7 @@ describe('useCameraPreview', () => {
     expect(result.current.stream).not.toBeNull();
   });
 
-  it('stop() para todas as tracks — a luz da camera tem que apagar', async () => {
+  it('stop() stops all tracks — the camera light has to turn off', async () => {
     const track = fakeTrack();
     getUserMedia.mockResolvedValue(fakeStream([track]));
     const { result } = renderHook(() => useCameraPreview());
@@ -47,7 +47,7 @@ describe('useCameraPreview', () => {
     expect(result.current.stream).toBeNull();
   });
 
-  it('desmontar sem chamar stop() ainda assim libera a camera', async () => {
+  it('unmounting without calling stop() still releases the camera', async () => {
     const track = fakeTrack();
     getUserMedia.mockResolvedValue(fakeStream([track]));
     const { result, unmount } = renderHook(() => useCameraPreview());
@@ -57,7 +57,7 @@ describe('useCameraPreview', () => {
     expect(track.stop).toHaveBeenCalledTimes(1);
   });
 
-  it('trocar de dispositivo com a previa ja ativa para a antiga stream antes de abrir a nova', async () => {
+  it('switching devices while the preview is already active stops the old stream before opening the new one', async () => {
     const trackA = fakeTrack();
     const trackB = fakeTrack();
     getUserMedia.mockResolvedValueOnce(fakeStream([trackA])).mockResolvedValueOnce(fakeStream([trackB]));
@@ -69,13 +69,13 @@ describe('useCameraPreview', () => {
     expect(trackB.stop).not.toHaveBeenCalled();
   });
 
-  it('deviceId "default" (sentinela do LiveKit) nao vira uma constraint exata', async () => {
+  it('deviceId "default" (LiveKit\'s sentinel) does not become an exact constraint', async () => {
     const { result } = renderHook(() => useCameraPreview());
     await act(async () => { await result.current.start('default'); });
     expect(getUserMedia).toHaveBeenCalledWith({ video: true });
   });
 
-  it('permissao negada mostra erro proprio, sem ficar "ativa"', async () => {
+  it('a denied permission shows its own error, without staying "active"', async () => {
     getUserMedia.mockRejectedValue(Object.assign(new Error('nope'), { name: 'NotAllowedError' }));
     const { result } = renderHook(() => useCameraPreview());
     await act(async () => { await result.current.start(); });

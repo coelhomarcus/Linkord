@@ -56,27 +56,27 @@ function renderSidebar(overrides: { activeCallConversationId?: string | null; pa
   );
 }
 
-describe('ConversationSidebar — linha da conversa so mostra o nome (sem @, sem previa, sem "membros")', () => {
-  it('DM com mensagem: mostra so o nome de exibição, nao a previa da ultima mensagem', () => {
+describe('ConversationSidebar — the conversation row only shows the name (no @, no preview, no "members")', () => {
+  it('DM with a message: shows only the display name, not the last message preview', () => {
     renderSidebar();
     expect(screen.getByText('Bea')).toBeInTheDocument();
     expect(screen.queryByText(/tudo bem/)).not.toBeInTheDocument();
     expect(screen.queryByText(/@bea/)).not.toBeInTheDocument();
   });
 
-  it('grupo sem mensagem: mostra so o titulo, nao a contagem de membros', () => {
+  it('group with no message: shows only the title, not the member count', () => {
     renderSidebar();
     expect(screen.getByText('os xerecas')).toBeInTheDocument();
     expect(screen.queryByText(/membros/)).not.toBeInTheDocument();
   });
 
-  it('nao mostra mais o horario da ultima mensagem — so avatar e nome, igual Discord', () => {
+  it("no longer shows the last message's time — just avatar and name, like Discord", () => {
     renderSidebar();
     // 17:32-shaped or similar — any DM/group row's time text is gone entirely.
     expect(screen.queryByText(/^\d{1,2}:\d{2}$/)).not.toBeInTheDocument();
   });
 
-  it('sem chamada ativa: a linha da conversa tem so uma linha (nome), nada embaixo', () => {
+  it('no active call: the conversation row has only one line (the name), nothing below', () => {
     renderSidebar();
     const title = screen.getByText('os xerecas');
     // title's own wrapping <span> has no sibling below it (no second line) —
@@ -84,7 +84,7 @@ describe('ConversationSidebar — linha da conversa so mostra o nome (sem @, sem
     expect(title.parentElement?.children).toHaveLength(1);
   });
 
-  it('grupo com chamada ativa: aparece uma segunda linha com quem esta na chamada, no lugar onde era a data', () => {
+  it('group with an active call: a second line appears with who is on the call, in the slot where the date used to be', () => {
     const participants = new Map([['p-bea', callParticipant()]]);
     renderSidebar({ participants });
     const title = screen.getByText('os xerecas');

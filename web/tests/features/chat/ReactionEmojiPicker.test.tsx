@@ -3,19 +3,19 @@ import { render, screen } from '@testing-library/react';
 import { ReactionEmojiPicker } from '@/features/chat/ReactionEmojiPicker';
 
 describe('ReactionEmojiPicker', () => {
-  it('nunca aberto: mostra so a linha rapida, nao monta o picker completo', () => {
+  it('never opened: shows only the quick row, does not mount the full picker', () => {
     render(<ReactionEmojiPicker fullPickerOpen={false} warmed={false} onPick={vi.fn()} onMore={vi.fn()} />);
     expect(screen.getByLabelText('Mais emojis')).toBeInTheDocument();
     expect(screen.queryByPlaceholderText('Buscar emoji…')).not.toBeInTheDocument();
   });
 
-  it('picker completo aberto: mostra o picker, esconde a linha rapida', () => {
+  it('full picker open: shows the picker, hides the quick row', () => {
     render(<ReactionEmojiPicker fullPickerOpen warmed onPick={vi.fn()} onMore={vi.fn()} />);
     expect(screen.getByPlaceholderText('Buscar emoji…')).toBeVisible();
     expect(screen.queryByLabelText('Mais emojis')).not.toBeInTheDocument();
   });
 
-  it('esquentado mas voltou pra linha rapida: picker fica no DOM, so escondido (nao remonta no proximo "mais")', () => {
+  it('warmed but back to the quick row: picker stays in the DOM, just hidden (does not remount on the next "more")', () => {
     const { container } = render(<ReactionEmojiPicker fullPickerOpen={false} warmed onPick={vi.fn()} onMore={vi.fn()} />);
     expect(screen.getByLabelText('Mais emojis')).toBeInTheDocument();
     const hiddenPicker = container.querySelector('[hidden]');

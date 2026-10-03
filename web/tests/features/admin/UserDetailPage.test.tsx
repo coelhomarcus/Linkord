@@ -23,7 +23,7 @@ beforeEach(() => {
 });
 
 describe('UserDetailPage', () => {
-  it('mostra e-mail, grupos, armazenamento e historico da conta', async () => {
+  it('shows email, groups, storage and account history', async () => {
     open();
     expect(await screen.findByText('ana@example.com')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Squad' })).toHaveAttribute('href', '/admin/groups/g1');
@@ -32,20 +32,20 @@ describe('UserDetailPage', () => {
     expect(screen.getByText('“spam em massa”')).toBeInTheDocument();
   });
 
-  it('suspender exige motivo, manda o motivo e recarrega', async () => {
+  it('suspending requires a reason, sends it, and reloads', async () => {
     const u = userEvent.setup();
     mocked.suspendUser.mockResolvedValue({ ok: true });
     open();
     await u.click(await screen.findByRole('button', { name: 'Suspender' }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog.querySelector('button:disabled')).not.toBeNull();
-    await u.type(screen.getByLabelText(/Motivo/), 'spam confirmado');
+    await u.type(screen.getByLabelText(/Motivo/), 'confirmed spam');
     await u.click(screen.getAllByRole('button', { name: 'Suspender' }).at(-1)!);
-    await waitFor(() => expect(mocked.suspendUser).toHaveBeenCalledWith('u1', 'spam confirmado'));
+    await waitFor(() => expect(mocked.suspendUser).toHaveBeenCalledWith('u1', 'confirmed spam'));
     await waitFor(() => expect(mocked.fetchAdminUser).toHaveBeenCalledTimes(2));
   });
 
-  it('conta suspensa oferece Reativar (e nao Suspender)', async () => {
+  it('suspended account offers Reactivate (and not Suspend)', async () => {
     mocked.fetchAdminUser.mockResolvedValue(detail({ status: 'suspended', statusReason: 'abuso', statusChangedAt: '2026-01-02T00:00:00.000Z' }));
     open();
     expect(await screen.findByRole('button', { name: 'Reativar conta' })).toBeInTheDocument();
@@ -53,46 +53,46 @@ describe('UserDetailPage', () => {
     expect(screen.getByText(/“abuso”/)).toBeInTheDocument();
   });
 
-  it('excluir pede o username digitado e so entao chama a API', async () => {
+  it('deleting asks for the username to be typed, and only then calls the API', async () => {
     const u = userEvent.setup();
     mocked.deleteUser.mockResolvedValue({ ok: true });
     open();
     await u.click(await screen.findByRole('button', { name: 'Excluir conta' }));
-    await u.type(screen.getByLabelText(/Motivo/), 'pedido do titular');
+    await u.type(screen.getByLabelText(/Motivo/), 'requested by the account holder');
     const confirm = screen.getByRole('button', { name: 'Excluir para sempre' });
     expect(confirm).toBeDisabled();
     await u.type(screen.getByLabelText(/Para confirmar/), 'ana');
     await u.click(confirm);
-    await waitFor(() => expect(mocked.deleteUser).toHaveBeenCalledWith('u1', 'pedido do titular', 'ana'));
+    await waitFor(() => expect(mocked.deleteUser).toHaveBeenCalledWith('u1', 'requested by the account holder', 'ana'));
     expect(await screen.findByText(/Conta excluída/)).toBeInTheDocument();
   });
 
-  it('na propria conta, suspender e excluir ficam desabilitados', async () => {
+  it('on your own account, suspend and delete stay disabled', async () => {
     open(adminRoom('admin', 'u1'));
     expect(await screen.findByRole('button', { name: 'Suspender' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Excluir conta' })).toBeDisabled();
   });
 
-  it('conta inexistente mostra aviso, sem quebrar', async () => {
+  it('nonexistent account shows a warning, without crashing', async () => {
     mocked.fetchAdminUser.mockRejectedValue(Object.assign(new Error('x'), { status: 404 }));
     open();
     expect(await screen.findByText(/Conta não encontrada/)).toBeInTheDocument();
   });
 
-  it('conceder admin exige motivo e o username digitado', async () => {
+  it('granting admin requires a reason and the username to be typed', async () => {
     const u = userEvent.setup();
     mocked.grantAdmin.mockResolvedValue({ ok: true });
     open();
     await u.click(await screen.findByRole('button', { name: 'Conceder admin' }));
-    await u.type(screen.getByLabelText(/Motivo/), 'segunda pessoa de confiança');
+    await u.type(screen.getByLabelText(/Motivo/), 'second trusted person');
     const confirm = screen.getAllByRole('button', { name: 'Conceder admin' }).at(-1)!;
     expect(confirm).toBeDisabled();
     await u.type(screen.getByLabelText(/Para confirmar/), 'ana');
     await u.click(confirm);
-    await waitFor(() => expect(mocked.grantAdmin).toHaveBeenCalledWith('u1', 'segunda pessoa de confiança'));
+    await waitFor(() => expect(mocked.grantAdmin).toHaveBeenCalledWith('u1', 'second trusted person'));
   });
 
-  it('conta admin oferece Remover admin (desabilitado na propria)', async () => {
+  it('admin account offers Remove admin (disabled on your own)', async () => {
     mocked.fetchAdminUser.mockResolvedValue(detail({ role: 'admin' }));
     const { unmount } = open();
     expect(await screen.findByRole('button', { name: 'Remover admin' })).toBeEnabled();
@@ -103,19 +103,19 @@ describe('UserDetailPage', () => {
     expect(await screen.findByRole('button', { name: 'Remover admin' })).toBeDisabled();
   });
 
-  it('conta suspensa nao pode receber admin', async () => {
+  it('suspended account cannot be granted admin', async () => {
     mocked.fetchAdminUser.mockResolvedValue(detail({ status: 'suspended', statusChangedAt: '2026-01-02T00:00:00.000Z' }));
     open();
     expect(await screen.findByRole('button', { name: 'Conceder admin' })).toBeDisabled();
   });
 
-  it('o ultimo admin ativo mostra o erro traduzido', async () => {
+  it('the last active admin shows the translated error', async () => {
     const u = userEvent.setup();
     mocked.fetchAdminUser.mockResolvedValue(detail({ role: 'admin' }));
     mocked.revokeAdmin.mockRejectedValue(new ApiError(409, 'last_admin', 'x'));
     open();
     await u.click(await screen.findByRole('button', { name: 'Remover admin' }));
-    await u.type(screen.getByLabelText(/Motivo/), 'rodízio');
+    await u.type(screen.getByLabelText(/Motivo/), 'rotation');
     await u.type(screen.getByLabelText(/Para confirmar/), 'ana');
     await u.click(screen.getAllByRole('button', { name: 'Remover admin' }).at(-1)!);
     expect(await screen.findByRole('alert')).toHaveTextContent('último administrador ativo');

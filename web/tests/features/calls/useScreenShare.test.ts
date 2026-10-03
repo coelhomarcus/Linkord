@@ -16,7 +16,7 @@ function fakeRoom(overrides: { setScreenShareEnabled?: ReturnType<typeof vi.fn>;
   } as unknown as Room;
 }
 
-describe('useScreenShare — qualidade aplicada na captura', () => {
+describe('useScreenShare — quality applied to the capture', () => {
   beforeEach(() => {
     Object.defineProperty(navigator, 'mediaDevices', { value: { getDisplayMedia: vi.fn() }, configurable: true });
     Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
@@ -26,7 +26,7 @@ describe('useScreenShare — qualidade aplicada na captura', () => {
     localStorage.clear();
   });
 
-  it('sem preferencia salva, usa o preset padrao (1080p/30) — igual ao comportamento anterior', async () => {
+  it('without a saved preference, uses the default preset (1080p/30) — same as previous behavior', async () => {
     const setScreenShareEnabled = vi.fn(async () => undefined);
     const room = fakeRoom({ setScreenShareEnabled });
     const { result } = renderHook(() => useScreenShare(room, vi.fn()));
@@ -40,7 +40,7 @@ describe('useScreenShare — qualidade aplicada na captura', () => {
     );
   });
 
-  it('com uma preferencia de qualidade salva, a proxima captura usa o preset escolhido', async () => {
+  it('with a saved quality preference, the next capture uses the chosen preset', async () => {
     saveShareQuality('smooth');
     const setScreenShareEnabled = vi.fn(async () => undefined);
     const room = fakeRoom({ setScreenShareEnabled });
@@ -56,13 +56,13 @@ describe('useScreenShare — qualidade aplicada na captura', () => {
   });
 });
 
-describe('useScreenShare — trocar fonte', () => {
+describe('useScreenShare — changing source', () => {
   beforeEach(() => {
     Object.defineProperty(navigator, 'mediaDevices', { value: { getDisplayMedia: vi.fn() }, configurable: true });
     Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
   });
 
-  it('para a captura atual e reabre um seletor novo (encerra, depois inicia de novo)', async () => {
+  it('stops the current capture and reopens a new picker (ends, then starts again)', async () => {
     const setScreenShareEnabled = vi.fn(async () => undefined);
     const room = fakeRoom({ setScreenShareEnabled });
     const { result } = renderHook(() => useScreenShare(room, vi.fn()));
@@ -73,7 +73,7 @@ describe('useScreenShare — trocar fonte', () => {
     expect(setScreenShareEnabled).toHaveBeenNthCalledWith(2, true, expect.any(Object), expect.any(Object));
   });
 
-  it('cancelar o seletor ao trocar de fonte nao deixa "sharing" travado em true', async () => {
+  it('cancelling the picker while changing source does not leave "sharing" stuck at true', async () => {
     const dispatch = vi.fn();
     const setScreenShareEnabled = vi.fn()
       .mockImplementationOnce(async () => undefined) // the stop call inside changeSource
@@ -89,8 +89,8 @@ describe('useScreenShare — trocar fonte', () => {
   });
 });
 
-describe('useScreenShare — pausar/retomar a propria previa', () => {
-  it('pausar chama mute() na publicacao existente, sem encerrar o compartilhamento', async () => {
+describe('useScreenShare — pause/resume own preview', () => {
+  it('pausing calls mute() on the existing publication, without ending the share', async () => {
     const mute = vi.fn(async () => undefined);
     const room = fakeRoom({ getTrackPublication: vi.fn(() => ({ mute, unmute: vi.fn() })) });
     const dispatch = vi.fn();
@@ -102,7 +102,7 @@ describe('useScreenShare — pausar/retomar a propria previa', () => {
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_LOCAL_SHARING' }));
   });
 
-  it('retomar chama unmute() na publicacao existente', async () => {
+  it('resuming calls unmute() on the existing publication', async () => {
     const unmute = vi.fn(async () => undefined);
     const room = fakeRoom({ getTrackPublication: vi.fn(() => ({ mute: vi.fn(), unmute })) });
     const { result } = renderHook(() => useScreenShare(room, vi.fn()));
@@ -112,7 +112,7 @@ describe('useScreenShare — pausar/retomar a propria previa', () => {
     expect(unmute).toHaveBeenCalled();
   });
 
-  it('sem publicacao de tela (nao esta compartilhando), pausar/retomar nao fazem nada nem quebram', async () => {
+  it('without a screen publication (not sharing), pause/resume do nothing and do not break', async () => {
     const room = fakeRoom({ getTrackPublication: vi.fn(() => undefined) });
     const { result } = renderHook(() => useScreenShare(room, vi.fn()));
 
@@ -120,7 +120,7 @@ describe('useScreenShare — pausar/retomar a propria previa', () => {
     await expect(result.current.resumeSharePreview()).resolves.toBeUndefined();
   });
 
-  it('falha ao pausar reporta o erro, sem deixar o estado travado', async () => {
+  it('failing to pause reports the error, without leaving the state stuck', async () => {
     const mute = vi.fn(async () => { throw new Error('boom'); });
     const room = fakeRoom({ getTrackPublication: vi.fn(() => ({ mute, unmute: vi.fn() })) });
     const dispatch = vi.fn();

@@ -35,8 +35,8 @@ async function sessionFor(userId: string): Promise<string> {
   return `${config.SESSION_COOKIE}=${rawToken}`;
 }
 
-describe('upload preparado e publicacao do lote (Postgres real)', () => {
-  async function stage(cookie: string, conversationId: string, buffer = bigPng, fileName = 'foto.png'): Promise<string> {
+describe('staged upload and batch publishing (real Postgres)', () => {
+  async function stage(cookie: string, conversationId: string, buffer = bigPng, fileName = 'photo.png'): Promise<string> {
     const init = await app.inject({
       method: 'POST', url: '/api/attachments/init', headers: { cookie },
       payload: { conversationId, fileName, mimeType: 'image/png', totalSize: buffer.length },
@@ -66,7 +66,7 @@ describe('upload preparado e publicacao do lote (Postgres real)', () => {
     }
   };
 
-  it('preparar nao publica nada, nao serve o arquivo a ninguem e conta na cota', async () => {
+  it('staging does not publish anything, does not serve the file to anyone, and counts toward the quota', async () => {
     const { owner, conversationId, cookie } = await member();
     const before = await getUserUsage(owner.id);
     const id = await stage(cookie, conversationId);
@@ -76,11 +76,11 @@ describe('upload preparado e publicacao do lote (Postgres real)', () => {
     const served = await app.inject({ method: 'GET', url: `/uploads/${id}`, headers: { cookie } });
     assert.equal(served.statusCode, 404);
     const after = await getUserUsage(owner.id);
-    assert.ok(after.totalBytes >= before.totalBytes + bigPng.length, 'bytes preparados contam na cota');
-    assert.ok((await stagedFileIds()).includes(id), 'a limpeza de orfaos enxerga o arquivo preparado');
+    assert.ok(after.totalBytes >= before.totalBytes + bigPng.length, 'staged bytes count toward the quota');
+    assert.ok((await stagedFileIds()).includes(id), 'the orphan sweep sees the staged file');
   });
 
-  it('repetir o complete depois do sucesso devolve o mesmo arquivo preparado', async () => {
+  it('repeating complete after success returns the same staged file', async () => {
     const { conversationId, cookie } = await member();
     const id = await stage(cookie, conversationId);
     const again = await app.inject({ method: 'POST', url: `/api/attachments/${id}/complete`, headers: { cookie }, payload: {} });
@@ -88,27 +88,27 @@ describe('upload preparado e publicacao do lote (Postgres real)', () => {
     assert.equal((again.json() as { staged: { id: string } }).staged.id, id);
   });
 
-  it('o envio publica o lote inteiro na ordem escolhida, numa mensagem so, sem duplicar miniaturas', async () => {
+  it('sending publishes the whole batch in the chosen order, in a single message, without duplicating thumbnails', async () => {
     const { owner, conversationId, cookie } = await member();
     const small = await sharp({ create: { width: 40, height: 40, channels: 3, background: '#00ff00' } }).png().toBuffer();
     // finished out of order on purpose: the order sent is what counts
     const [c, a, b] = [await stage(cookie, conversationId, small, 'c.png'), await stage(cookie, conversationId, bigPng, 'a.png'), await stage(cookie, conversationId, small, 'b.png')];
     const clientMessageId = crypto.randomUUID();
 
-    const result = await correlatedSend(owner, conversationId, [a!, b!, c!], 'lote', clientMessageId);
+    const result = await correlatedSend(owner, conversationId, [a!, b!, c!], 'batch', clientMessageId);
     assert.deepEqual(result.message.attachments.map((x: { name: string }) => x.name), ['a.png', 'b.png', 'c.png']);
-    assert.ok(result.message.attachments[0].thumbId, 'a imagem grande leva miniatura');
+    assert.ok(result.message.attachments[0].thumbId, 'the big image gets a thumbnail');
 
     const history = await getByMessageIds([result.message.msgId]);
     assert.deepEqual(history.get(result.message.msgId)!.map((x) => x.fileName), ['a.png', 'b.png', 'c.png']);
     assert.equal((await db.select().from(stagedAttachments).where(eq(stagedAttachments.ownerId, owner.id))).length, 0);
 
-    const retry = await correlatedSend(owner, conversationId, [a!, b!, c!], 'lote', clientMessageId);
+    const retry = await correlatedSend(owner, conversationId, [a!, b!, c!], 'batch', clientMessageId);
     assert.equal(retry.message.msgId, result.message.msgId);
     assert.equal((await db.select().from(messages).where(eq(messages.conversationId, conversationId))).length, 1);
   });
 
-  it('arquivo preparado por outra conta nao pode ser publicado; nada muda e a chave fica livre', async () => {
+  it('a file staged by another account cannot be published; nothing changes and the key stays free', async () => {
     const victim = await member();
     const victimFile = await stage(victim.cookie, victim.conversationId);
     const attacker = await makeUser('st');
@@ -122,7 +122,7 @@ describe('upload preparado e publicacao do lote (Postgres real)', () => {
     assert.equal((await db.select().from(messageSendOperations).where(eq(messageSendOperations.clientMessageId, clientMessageId))).length, 0);
   });
 
-  it('arquivo preparado para outra conversa nao entra nesta', async () => {
+  it('a file staged for another conversation does not enter this one', async () => {
     const { owner, conversationId, cookie } = await member();
     const otherConversation = await makeGroupWithMembers(owner.id, []);
     const id = await stage(cookie, otherConversation);
@@ -130,7 +130,7 @@ describe('upload preparado e publicacao do lote (Postgres real)', () => {
     assert.equal(result.error.code, 'attachments_unavailable');
   });
 
-  it('descartar remove o registro e o arquivo; vencidos sao varridos', async () => {
+  it('discarding removes the record and the file; expired ones get swept', async () => {
     const { owner, conversationId, cookie } = await member();
     const kept = await stage(cookie, conversationId);
     const dropped = await stage(cookie, conversationId);
@@ -145,46 +145,46 @@ describe('upload preparado e publicacao do lote (Postgres real)', () => {
     assert.equal(fs.existsSync(path.join(uploadDir, kept)), false);
   });
 
-  it('miniaturas nao contam no limite: 4 imagens grandes publicam juntas, um 5o id e recusado antes de publicar', async () => {
+  it('thumbnails do not count toward the limit: 4 big images publish together, a 5th id is refused before publishing', async () => {
     const { owner, conversationId, cookie } = await member();
     const ids: string[] = [];
     for (let i = 0; i < 4; i++) ids.push((await stage(cookie, conversationId, bigPng, `f${i}.png`))!);
 
-    const ok = await correlatedSend(owner, conversationId, ids, 'quatro');
+    const ok = await correlatedSend(owner, conversationId, ids, 'four');
     const rows = await db.select().from(attachmentsTable).where(eq(attachmentsTable.messageId, ok.message.msgId));
     assert.equal(rows.filter((r) => !r.isThumbnail).length, 4);
-    assert.ok(rows.some((r) => r.isThumbnail), 'o teste so prova algo se miniaturas foram geradas');
+    assert.ok(rows.some((r) => r.isThumbnail), 'the test only proves something if thumbnails were generated');
 
     const fifthId = await stage(cookie, conversationId, bigPng, 'f4.png');
-    const refused = await correlatedSend(owner, conversationId, [...ids, fifthId!], 'cinco');
+    const refused = await correlatedSend(owner, conversationId, [...ids, fifthId!], 'five');
     assert.equal(refused.error.code, 'invalid_message');
     // the 5th file is still staged, untouched — the send never got that far
     assert.equal((await db.select().from(stagedAttachments).where(eq(stagedAttachments.id, fifthId!))).length, 1);
   });
 
-  it('resposta com anexo guarda a referencia da mensagem respondida', async () => {
+  it('replying with an attachment keeps the reference to the replied-to message', async () => {
     const { owner, conversationId, cookie } = await member();
-    const [original] = await db.insert(messages).values({ conversationId, authorId: owner.id, text: 'mensagem original' }).returning();
+    const [original] = await db.insert(messages).values({ conversationId, authorId: owner.id, text: 'original message' }).returning();
     const id = await stage(cookie, conversationId);
 
     const { socket, sent, participant } = joinNew(owner);
     let result: any;
     try {
-      await chatHandlers.chat!(socket, { conversationId, text: 'olha isso', replyTo: original!.id, requestId: 'r', clientMessageId: crypto.randomUUID(), attachmentIds: [id] });
+      await chatHandlers.chat!(socket, { conversationId, text: 'look at this', replyTo: original!.id, requestId: 'r', clientMessageId: crypto.randomUUID(), attachmentIds: [id] });
       result = sent.find((s) => s.event === 'chat-send-result')!.payload;
     } finally {
       cleanupParticipant(participant);
     }
     assert.equal(result.message.replyTo?.msgId, original!.id);
-    assert.equal(result.message.replyTo?.text, 'mensagem original');
+    assert.equal(result.message.replyTo?.text, 'original message');
     const [row] = await db.select({ replyTo: messages.replyTo }).from(messages).where(eq(messages.id, result.message.msgId));
     assert.equal((row!.replyTo as { msgId: number }).msgId, original!.id);
   });
 
-  it('resposta a uma mensagem de outra conversa e descartada, sem falhar o envio com anexo', async () => {
+  it('a reply to a message from another conversation is dropped, without failing the send with an attachment', async () => {
     const { owner, conversationId, cookie } = await member();
     const otherConversationId = await makeGroupWithMembers(owner.id, []);
-    const [elsewhere] = await db.insert(messages).values({ conversationId: otherConversationId, authorId: owner.id, text: 'outra conversa' }).returning();
+    const [elsewhere] = await db.insert(messages).values({ conversationId: otherConversationId, authorId: owner.id, text: 'another conversation' }).returning();
     const id = await stage(cookie, conversationId);
 
     const { socket, sent, participant } = joinNew(owner);
@@ -202,7 +202,7 @@ describe('upload preparado e publicacao do lote (Postgres real)', () => {
   });
 });
 
-describe('dimensoes de midia (Postgres real)', () => {
+describe('media dimensions (real Postgres)', () => {
   async function stageBuffer(cookie: string, conversationId: string, buffer: Buffer, fileName: string, mimeType: string) {
     const init = await app.inject({ method: 'POST', url: '/api/attachments/init', headers: { cookie }, payload: { conversationId, fileName, mimeType, totalSize: buffer.length } });
     const { uploadId } = init.json() as { uploadId: string };
@@ -211,11 +211,11 @@ describe('dimensoes de midia (Postgres real)', () => {
     return (complete.json() as { staged: { id: string; width?: number; height?: number; thumbId?: string } }).staged;
   }
 
-  it('imagem preparada informa largura/altura e a mensagem publicada tambem', async () => {
+  it('a staged image reports width/height and so does the published message', async () => {
     const owner = await makeUser('dm');
     const conversationId = await makeGroupWithMembers(owner.id, []);
     const cookie = await sessionFor(owner.id);
-    const staged = await stageBuffer(cookie, conversationId, bigPng, 'paisagem.png', 'image/png');
+    const staged = await stageBuffer(cookie, conversationId, bigPng, 'landscape.png', 'image/png');
     assert.deepEqual([staged.width, staged.height], [1200, 900]);
 
     const { socket, sent, participant } = joinNew(owner);
@@ -230,19 +230,19 @@ describe('dimensoes de midia (Postgres real)', () => {
     assert.deepEqual([row!.width, row!.height], [1200, 900]);
   });
 
-  it('foto girada por EXIF: dimensoes de exibicao e miniatura em retrato', async () => {
+  it('photo rotated by EXIF: display and thumbnail dimensions come out portrait', async () => {
     const owner = await makeUser('dm');
     const conversationId = await makeGroupWithMembers(owner.id, []);
     const cookie = await sessionFor(owner.id);
     // stored landscape, displayed portrait (orientation 6 = rotate 90°)
     const rotated = await sharp({ create: { width: 1200, height: 900, channels: 3, background: '#aa3300' } }).jpeg().withMetadata({ orientation: 6 }).toBuffer();
-    const staged = await stageBuffer(cookie, conversationId, rotated, 'celular.jpg', 'image/jpeg');
+    const staged = await stageBuffer(cookie, conversationId, rotated, 'phone.jpg', 'image/jpeg');
     assert.deepEqual([staged.width, staged.height], [900, 1200]);
     const thumb = await sharp(path.join(uploadDir, staged.thumbId!)).metadata();
-    assert.ok(thumb.height! > thumb.width!, `miniatura deveria ser retrato, veio ${thumb.width}x${thumb.height}`);
+    assert.ok(thumb.height! > thumb.width!, `thumbnail should be portrait, got ${thumb.width}x${thumb.height}`);
   });
 
-  it('arquivo que nao e imagem nao inventa dimensoes', async () => {
+  it('a file that is not an image does not invent dimensions', async () => {
     const owner = await makeUser('dm');
     const conversationId = await makeGroupWithMembers(owner.id, []);
     const staged = await stageBuffer(await sessionFor(owner.id), conversationId, Buffer.from('%PDF-1.4 x'), 'doc.pdf', 'application/pdf');

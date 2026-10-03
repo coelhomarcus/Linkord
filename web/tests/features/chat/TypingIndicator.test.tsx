@@ -9,14 +9,14 @@ function user(id: string, displayName: string): PublicUser {
 }
 
 describe('TypingIndicator', () => {
-  it('ninguem digitando: a regiao de status existe, mas vazia (anuncia a primeira mudanca)', () => {
+  it('nobody typing: the status region exists, but empty (announces the first change)', () => {
     renderWithRoom(<TypingIndicator conversationId="conv-1" />, {
       typingByConversation: new Map(),
     });
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
   });
 
-  it('uma pessoa digitando: mostra o avatar dela e o texto', () => {
+  it('one person typing: shows their avatar and the text', () => {
     renderWithRoom(<TypingIndicator conversationId="conv-1" />, {
       allUsers: new Map([['u1', user('u1', 'Fulano')]]),
       typingByConversation: new Map([['conv-1', new Set(['u1'])]]),
@@ -24,7 +24,7 @@ describe('TypingIndicator', () => {
     expect(screen.getByText('Fulano está digitando...')).toBeInTheDocument();
   });
 
-  it('so mostra quem digita NESSA conversa, nao em outra', () => {
+  it('only shows who is typing in THIS conversation, not another one', () => {
     renderWithRoom(<TypingIndicator conversationId="conv-1" />, {
       allUsers: new Map([['u1', user('u1', 'Fulano')]]),
       typingByConversation: new Map([['conv-2', new Set(['u1'])]]),
@@ -32,7 +32,7 @@ describe('TypingIndicator', () => {
     expect(screen.queryByText(/digitando/)).not.toBeInTheDocument();
   });
 
-  it('mais de 3 pessoas: texto generico, mas ainda mostra ate 3 avatares', () => {
+  it('more than 3 people: generic text, but still shows up to 3 avatars', () => {
     renderWithRoom(<TypingIndicator conversationId="conv-1" />, {
       allUsers: new Map([
         ['u1', user('u1', 'Fulano')], ['u2', user('u2', 'Beltrana')],
@@ -43,7 +43,7 @@ describe('TypingIndicator', () => {
     expect(screen.getByText('Várias pessoas estão digitando...')).toBeInTheDocument();
   });
 
-  it('nao trava se o usuario que digita ja saiu do allUsers (race de presenca)', () => {
+  it('does not crash if the typing user already left allUsers (presence race)', () => {
     renderWithRoom(<TypingIndicator conversationId="conv-1" />, {
       allUsers: new Map(),
       typingByConversation: new Map([['conv-1', new Set(['ghost'])]]),

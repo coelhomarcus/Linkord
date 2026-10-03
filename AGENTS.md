@@ -77,6 +77,7 @@ No Portuguese comments in any source. Comments and identifiers in English; follo
 
 - Comments always explain the *why* (a non-obvious decision, an invariant, a workaround) — never the *what* (the code already says that). Prefer no comment at all when the name is already clear.
 - UI strings are in Portuguese (the product itself is Portuguese-language). Code identifiers (variables, functions, types), comments and commit messages are in English.
+- **This English-only rule covers tests too**: `describe`/`it` titles, comments, and internal fixture/variable names are in English. The one exception is a literal that's asserting against real UI-rendered text (`getByText`, `aria-label`, toast copy, etc.) — that stays in Portuguese, because it has to match what the app actually renders.
 
 ## Commits
 

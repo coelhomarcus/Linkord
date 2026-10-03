@@ -32,14 +32,14 @@ beforeEach(() => {
 });
 
 describe('DirectComposerGate', () => {
-  it('amigos: o compositor fica', async () => {
+  it('friends: the composer stays', async () => {
     mocked.fetchRelationship.mockResolvedValue({ relation: 'friends', retryAfter: null });
     renderGate(conversation({}));
     expect(await screen.findByText('compositor')).toBeInTheDocument();
     expect(screen.queryByText(/precisam ser amigos/)).not.toBeInTheDocument();
   });
 
-  it('nao amigos: aviso no lugar do compositor, com a acao que resolve', async () => {
+  it('not friends: warning replaces the composer, with the action that resolves it', async () => {
     mocked.fetchRelationship.mockResolvedValue({ relation: 'none', retryAfter: null });
     renderGate(conversation({}));
     expect(await screen.findByText(/precisam ser amigos/)).toBeInTheDocument();
@@ -47,14 +47,14 @@ describe('DirectComposerGate', () => {
     expect(await screen.findByRole('button', { name: 'Adicionar amigo' })).toBeInTheDocument();
   });
 
-  it('bloqueado por mim: pede para desbloquear', async () => {
+  it('blocked by me: asks to unblock', async () => {
     mocked.fetchRelationship.mockResolvedValue({ relation: 'blocked', retryAfter: null });
     renderGate(conversation({}));
     expect(await screen.findByText(/enquanto essa pessoa estiver bloqueada/)).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Desbloquear' })).toBeInTheDocument();
   });
 
-  it('enquanto carrega ou se falhar, o compositor NAO some (o servidor e quem recusa a escrita)', async () => {
+  it('while loading or on failure, the composer does NOT disappear (the server is what refuses the write)', async () => {
     mocked.fetchRelationship.mockReturnValue(new Promise(() => {}));
     const first = renderGate(conversation({}));
     expect(screen.getByText('compositor')).toBeInTheDocument();
@@ -66,7 +66,7 @@ describe('DirectComposerGate', () => {
     expect(screen.queryByText(/precisam ser amigos/)).not.toBeInTheDocument();
   });
 
-  it('grupo: nunca consulta a relacao nem mostra aviso', () => {
+  it('group: never queries the relationship nor shows a warning', () => {
     renderGate(conversation({ type: 'group', memberIds: ['me', 'peer', 'other'] }));
     expect(screen.getByText('compositor')).toBeInTheDocument();
     expect(mocked.fetchRelationship).not.toHaveBeenCalled();

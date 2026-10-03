@@ -2,79 +2,79 @@ import { describe, expect, it } from 'vitest';
 import { presentFile, splitFileName } from '@/features/media/filePresentation';
 
 describe('splitFileName', () => {
-  it('nome comum: extensao e o que vem depois do ultimo ponto', () => {
+  it('common name: extension is whatever comes after the last dot', () => {
     expect(splitFileName('relatorio.pdf')).toEqual({ baseName: 'relatorio', extension: 'pdf' });
   });
 
-  it('extensao composta conhecida (.tar.gz) fica inteira, nao so o ultimo pedaco', () => {
+  it('a known compound extension (.tar.gz) stays whole, not just the last piece', () => {
     expect(splitFileName('backup.tar.gz')).toEqual({ baseName: 'backup', extension: 'tar.gz' });
   });
 
-  it('sem extensao: o nome inteiro vira base', () => {
+  it('no extension: the whole name becomes the base', () => {
     expect(splitFileName('README')).toEqual({ baseName: 'README', extension: '' });
   });
 
-  it('dotfile sem outro ponto (.env): sem extensao, nao "vira" um arquivo ".env" sem nome', () => {
+  it('a dotfile with no other dot (.env): no extension, does not "become" a nameless ".env" file', () => {
     expect(splitFileName('.env')).toEqual({ baseName: '.env', extension: '' });
   });
 
-  it('nome vazio nao quebra', () => {
+  it('an empty name does not break', () => {
     expect(splitFileName('')).toEqual({ baseName: '', extension: '' });
   });
 
-  it('nome unicode preserva os caracteres', () => {
+  it('a unicode name preserves its characters', () => {
     expect(splitFileName('café com açúcar.docx')).toEqual({ baseName: 'café com açúcar', extension: 'docx' });
   });
 });
 
 describe('presentFile', () => {
-  it('MIME especifico reconhecido tem precedencia sobre a extensao', () => {
+  it('a recognized specific MIME type takes precedence over the extension', () => {
     // extension says .txt, but the MIME says PDF — MIME wins
     expect(presentFile('relatorio.txt', 'application/pdf').family).toBe('pdf');
   });
 
-  it('MIME com parametros (charset) e normalizado antes de reconhecer', () => {
+  it('a MIME with parameters (charset) is normalized before matching', () => {
     expect(presentFile('notas.md', 'text/markdown; charset=utf-8').family).toBe('text-code');
   });
 
-  it('MIME generico (octet-stream) cai pra extensao', () => {
+  it('a generic MIME (octet-stream) falls back to the extension', () => {
     expect(presentFile('planilha.xlsx', 'application/octet-stream').family).toBe('spreadsheet');
   });
 
-  it('MIME vazio cai pra extensao', () => {
+  it('an empty MIME falls back to the extension', () => {
     expect(presentFile('projeto.zip', '').family).toBe('archive');
   });
 
-  it('extensao em maiusculas ainda classifica certo', () => {
+  it('an uppercase extension still classifies correctly', () => {
     expect(presentFile('CONTRATO.PDF', 'application/octet-stream').family).toBe('pdf');
   });
 
-  it('extensao composta (.tar.gz) classifica como arquivo compactado', () => {
+  it('a compound extension (.tar.gz) classifies as an archive', () => {
     expect(presentFile('dump.tar.gz', 'application/octet-stream').family).toBe('archive');
   });
 
-  it('sem extensao e MIME desconhecido vira "unknown", nunca um fragmento tecnico', () => {
+  it('no extension and an unknown MIME becomes "unknown", never a technical fragment', () => {
     const p = presentFile('README', 'application/x-something-weird');
     expect(p.family).toBe('unknown');
     expect(p.typeLabel).toBe('Arquivo');
   });
 
-  it('tamanho zero nao afeta a classificacao', () => {
+  it('zero size does not affect classification', () => {
     expect(presentFile('vazio.csv', 'text/csv').family).toBe('spreadsheet');
   });
 
-  it('imagem/audio/video sem player aplicavel mantem identidade coerente com a midia', () => {
+  it('image/audio/video with no applicable player keeps an identity consistent with the media', () => {
     expect(presentFile('foto.tiff', 'image/tiff').family).toBe('image');
     expect(presentFile('som.flac', 'audio/flac').family).toBe('audio');
     expect(presentFile('filme.mkv', 'video/x-matroska').family).toBe('video');
   });
 
-  it('so o PDF recebe marcador — os demais se diferenciam pelo icone, nao por cor', () => {
+  it('only PDF gets a badge — the rest are told apart by icon, not by color', () => {
     expect(presentFile('a.pdf', 'application/pdf').badge).toBe('PDF');
     expect(presentFile('a.docx', 'application/octet-stream').badge).toBeUndefined();
   });
 
-  it('familias distintas usam icones distintos', () => {
+  it('distinct families use distinct icons', () => {
     const icons = new Set([
       presentFile('a.pdf', 'application/pdf').icon,
       presentFile('a.docx', 'application/octet-stream').icon,
@@ -89,7 +89,7 @@ describe('presentFile', () => {
     expect(icons.size).toBe(6);
   });
 
-  it('nome divergente do MIME nao libera preview binario: so troca a identidade visual', () => {
+  it('a name diverging from the MIME does not unlock a binary preview: it only swaps the visual identity', () => {
     // a .html file served as octet-stream still just gets an identity, never special handling here
     const p = presentFile('pagina.html', 'application/octet-stream');
     expect(p.family).toBe('text-code');

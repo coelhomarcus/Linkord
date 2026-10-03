@@ -17,7 +17,7 @@ beforeEach(() => {
 });
 
 describe('PrivacyTab', () => {
-  it('lista os bloqueados e desbloqueia — deixando claro que a amizade nao volta', async () => {
+  it("lists blocked users and unblocks — making it clear the friendship doesn't come back", async () => {
     const user = userEvent.setup();
     mocked.fetchBlocks.mockResolvedValueOnce({ items: [{ user: ana, at: '2026-01-01T00:00:00.000Z' }], nextCursor: null })
       .mockResolvedValueOnce({ items: [], nextCursor: null });
@@ -32,7 +32,7 @@ describe('PrivacyTab', () => {
     await waitFor(() => expect(screen.getByText('Você não bloqueou ninguém.')).toBeInTheDocument());
   });
 
-  it('nao mostra presenca dos bloqueados', async () => {
+  it('does not show presence for blocked users', async () => {
     mocked.fetchBlocks.mockResolvedValue({ items: [{ user: ana, at: '2026-01-01T00:00:00.000Z' }], nextCursor: null });
     renderSocial(<PrivacyTab onOpenProfile={vi.fn()} />);
     await screen.findByText('Ana');

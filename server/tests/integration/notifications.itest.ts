@@ -28,8 +28,8 @@ async function invite(groupId: string, inviter: string, invitee: string): Promis
   return id;
 }
 
-describe('lista de notificacoes com ator e grupo (Postgres real)', () => {
-  it('pedido: o ator e quem pediu; aceite: o ator e quem aceitou', async () => {
+describe('notification list with actor and group (real Postgres)', () => {
+  it('request: the actor is whoever asked; acceptance: the actor is whoever accepted', async () => {
     const a = await makeUser('na'); const b = await makeUser('nb');
     const friendshipId = await pendingFriendship(a.id, b.id);
     await notify(b.id, 'friend_request', { friendshipId });
@@ -49,7 +49,7 @@ describe('lista de notificacoes com ator e grupo (Postgres real)', () => {
     assert.equal('email' in (forA.items[0]!.actor ?? {}), false);
   });
 
-  it('convite: traz o grupo; grupo apagado deixa a notificacao sem grupo', async () => {
+  it('invitation: carries the group; a deleted group leaves the notification without a group', async () => {
     const owner = await makeUser('go'); const guest = await makeUser('gg');
     await befriend(owner.id, guest.id);
     const groupId = await makeGroupWithMembers(owner.id, [], 'Squad');
@@ -68,7 +68,7 @@ describe('lista de notificacoes com ator e grupo (Postgres real)', () => {
     assert.equal(after.items.length, 0);
   });
 
-  it('outra conta nao ve a notificacao', async () => {
+  it('another account does not see the notification', async () => {
     const a = await makeUser('oa'); const b = await makeUser('ob'); const c = await makeUser('oc');
     const friendshipId = await pendingFriendship(a.id, b.id);
     await notify(b.id, 'friend_request', { friendshipId });

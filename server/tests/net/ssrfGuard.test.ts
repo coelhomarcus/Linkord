@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { isBlockedIp } from '../../src/net/ssrfGuard.js';
 
-describe('isBlockedIp — protecao contra SSRF', () => {
+describe('isBlockedIp — SSRF protection', () => {
   const blockedV4 = [
     '127.0.0.1', // loopback
     '10.0.0.5', // RFC1918
@@ -19,7 +19,7 @@ describe('isBlockedIp — protecao contra SSRF', () => {
     '224.0.0.1', // multicast
   ];
   for (const ip of blockedV4) {
-    test(`bloqueia ${ip}`, () => assert.equal(isBlockedIp(ip, 4), true));
+    test(`blocks ${ip}`, () => assert.equal(isBlockedIp(ip, 4), true));
   }
 
   // regression: the real bug that flagged nasa.gov as a false positive — the
@@ -38,26 +38,26 @@ describe('isBlockedIp — protecao contra SSRF', () => {
     '198.20.5.5', // just outside the benchmark /15
   ];
   for (const ip of publicV4) {
-    test(`NAO bloqueia ${ip} (publico)`, () => assert.equal(isBlockedIp(ip, 4), false));
+    test(`does NOT block ${ip} (public)`, () => assert.equal(isBlockedIp(ip, 4), false));
   }
 
-  test('endereco IPv4 malformado e bloqueado por seguranca (fail closed)', () => {
-    assert.equal(isBlockedIp('nao-e-um-ip', 4), true);
+  test('a malformed IPv4 address is blocked for safety (fail closed)', () => {
+    assert.equal(isBlockedIp('not-an-ip', 4), true);
   });
 
   describe('IPv6', () => {
-    test('bloqueia loopback/link-local/ULA', () => {
+    test('blocks loopback/link-local/ULA', () => {
       assert.equal(isBlockedIp('::1', 6), true);
       assert.equal(isBlockedIp('fe80::1', 6), true);
       assert.equal(isBlockedIp('fc00::1', 6), true);
       assert.equal(isBlockedIp('fd12::1', 6), true);
     });
 
-    test('nao bloqueia IPv6 publico', () => {
+    test('does not block public IPv6', () => {
       assert.equal(isBlockedIp('2606:4700:4700::1111', 6), false);
     });
 
-    test('desembrulha IPv4 mapeado em IPv6 (::ffff:a.b.c.d) e valida a parte v4', () => {
+    test('unwraps an IPv4-mapped IPv6 (::ffff:a.b.c.d) and validates the v4 part', () => {
       assert.equal(isBlockedIp('::ffff:127.0.0.1', 6), true);
       assert.equal(isBlockedIp('::ffff:8.8.8.8', 6), false);
     });

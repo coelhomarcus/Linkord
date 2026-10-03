@@ -33,13 +33,13 @@ afterEach(() => {
 });
 
 describe('NotificationsSettings', () => {
-  it('preferencia salva como true, mas sem permissao concedida: o switch nao aparenta estar ligado', () => {
+  it('preference saved as true, but without permission granted: the switch does not appear on', () => {
     renderNotifications({ notificationsEnabled: true });
     expect(screen.getByRole('switch', { name: 'Notificações de mensagens' })).not.toBeChecked();
     expect(screen.getByText(/Permissão necessária/)).toBeInTheDocument();
   });
 
-  it('permissao negada: mostra o motivo, sem oferecer pedir de novo', async () => {
+  it('permission denied: shows the reason, without offering to ask again', async () => {
     FakeNotification.permission = 'denied';
     const user = userEvent.setup();
     renderNotifications({ notificationsEnabled: true });
@@ -50,7 +50,7 @@ describe('NotificationsSettings', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Notificações bloqueadas');
   });
 
-  it('ativar com permissao ainda nao pedida: pede so no gesto e liga se concedida', async () => {
+  it('enabling with permission not yet requested: asks only on the gesture and turns on if granted', async () => {
     const setNotificationsEnabled = vi.fn();
     const user = userEvent.setup();
     renderNotifications({ notificationsEnabled: false, setNotificationsEnabled });
@@ -61,14 +61,14 @@ describe('NotificationsSettings', () => {
     expect(setNotificationsEnabled).toHaveBeenCalledWith(true);
   });
 
-  it('permissao concedida e preferencia ligada: switch aparece ligado, sem aviso de estado', () => {
+  it('permission granted and preference on: switch appears on, without a status warning', () => {
     FakeNotification.permission = 'granted';
     renderNotifications({ notificationsEnabled: true });
     expect(screen.getByRole('switch', { name: 'Notificações de mensagens' })).toBeChecked();
     expect(screen.queryByText(/Permissão necessária|Bloqueadas|não disponíveis/i)).not.toBeInTheDocument();
   });
 
-  it('sem suporte a Notification: mostra estado proprio ao tentar ligar', async () => {
+  it('no Notification support: shows its own state when trying to turn on', async () => {
     vi.unstubAllGlobals();
     const user = userEvent.setup();
     renderNotifications({ notificationsEnabled: false });
@@ -78,14 +78,14 @@ describe('NotificationsSettings', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('não suporta notificações');
   });
 
-  it('testar som toca o som de nova mensagem, sem notificacao real', async () => {
+  it('testing the sound plays the new-message sound, without a real notification', async () => {
     const user = userEvent.setup();
     renderNotifications();
     await user.click(screen.getByRole('button', { name: 'Testar som' }));
     expect(playSound).toHaveBeenCalledWith('newMessage');
   });
 
-  it('revogar a permissao e voltar pra pagina reavalia o estado (visibilitychange)', async () => {
+  it('revoking permission and coming back to the page re-evaluates the state (visibilitychange)', async () => {
     renderNotifications({ notificationsEnabled: true });
     FakeNotification.permission = 'granted';
     document.dispatchEvent(new Event('visibilitychange'));

@@ -13,7 +13,7 @@ describe('useMessageActionRequests', () => {
     return { ...hook, sent };
   }
 
-  it('resolve quando o servidor confirma', async () => {
+  it('resolves when the server confirms', async () => {
     const { result, sent } = setup();
     let promise!: Promise<void>;
     act(() => { promise = result.current.request({ t: 'chat-delete', msgId: 1 }); });
@@ -21,7 +21,7 @@ describe('useMessageActionRequests', () => {
     await expect(promise).resolves.toBeUndefined();
   });
 
-  it('rejeita com o motivo do servidor', async () => {
+  it('rejects with the server\'s reason', async () => {
     const { result, sent } = setup();
     let promise!: Promise<void>;
     act(() => { promise = result.current.request({ t: 'chat-edit', msgId: 1, text: 'x' }); });
@@ -29,7 +29,7 @@ describe('useMessageActionRequests', () => {
     await expect(promise).rejects.toThrow('Não é sua.');
   });
 
-  it('offline rejeita na hora; sem resposta rejeita depois do prazo', async () => {
+  it('offline rejects right away; no response rejects after the deadline', async () => {
     await expect(setup(false).result.current.request({ t: 'chat-delete', msgId: 1 })).rejects.toThrow('Sem conexão');
     const { result } = setup();
     let promise!: Promise<void>;
