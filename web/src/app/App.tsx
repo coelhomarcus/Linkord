@@ -29,7 +29,7 @@ import { FriendsProvider, useFriends } from '@/features/friends/FriendsContext';
 import { FriendsPage } from '@/features/friends/FriendsPage';
 import { RequestsRedirect } from '@/features/friends/RequestsRedirect';
 import { SettingsPage } from '@/features/settings/SettingsPage';
-import { AWAITING_OPEN, ROUTES, isConversationsPath } from '@/shared/lib/routes';
+import { AWAITING_OPEN, ROUTES, conversationNav, isConversationsPath } from '@/shared/lib/routes';
 import { useConversationRouteSync } from '@/app/useConversationRouteSync';
 import { AnimatedSidebarInset, AnimatedSidebarProvider, useAnimatedSidebar } from '@/shared/ui/motion/animated-sidebar';
 import { CommandPalette } from '@/shared/ui/motion/command-palette';
@@ -119,14 +119,14 @@ function Shell() {
     joinCall(conversationId);
     setActiveView('call');
     setMobileShowSidebar(false);
-    if (!isConversationsPath(window.location.pathname)) navigate(ROUTES.conversation(conversationId));
+    if (!isConversationsPath(window.location.pathname)) navigate(ROUTES.conversations, conversationNav(conversationId));
   }
 
   // Jump back to the Stage from wherever you wandered off to — used by both
   // FloatingPip (clicking it) and the rail's own "in a call" indicator.
   function handleReturnToCall() {
     setActiveView('call');
-    if (!onConversations) navigate(activeCallConversationId ? ROUTES.conversation(activeCallConversationId) : ROUTES.conversations);
+    if (!onConversations) navigate(ROUTES.conversations, activeCallConversationId ? conversationNav(activeCallConversationId) : undefined);
   }
 
   // The call stage only ever shows on the conversations page. Elsewhere the
@@ -274,7 +274,7 @@ function CommandPaletteMount({ open, onOpenChange, onCall, onMobileNavigated, on
     {
       onOpenConversation: (id) => {
         openConversation(id);
-        navigate(ROUTES.conversation(id));
+        navigate(ROUTES.conversations, conversationNav(id));
         requestChatView();
         if (isOverlay) onMobileNavigated();
       },

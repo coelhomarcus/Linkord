@@ -10,7 +10,7 @@ import { shortcutHint } from '@/shared/lib/platform';
 import { CountBadge } from '@/shared/CountBadge';
 import { useRoom } from '@/state/RoomContext';
 import type { Conversation } from '@/shared/types/protocol';
-import { ROUTES, isConversationsPath } from '@/shared/lib/routes';
+import { ROUTES, conversationNav, isConversationsPath } from '@/shared/lib/routes';
 import { conversationTitle, directUser } from './conversationUtils';
 import { GroupAvatar } from './GroupAvatar';
 import { GroupCreateDialog } from './GroupCreateDialog';
@@ -126,7 +126,7 @@ export function ConversationSidebar({ onOpenPalette, mobileRail }: ConversationS
     // ALREADY active (from the friends page, say) changes no state, so nothing
     // else would navigate. Done before requestChatView so that call sees a
     // conversations path and doesn't push a second history entry.
-    navigate(ROUTES.conversation(conversationId));
+    navigate(ROUTES.conversations, conversationNav(conversationId));
     requestChatView();
     if (isOverlay) setOpenMobile(false);
   }
