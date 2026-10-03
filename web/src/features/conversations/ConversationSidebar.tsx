@@ -158,7 +158,7 @@ export function ConversationSidebar({ onOpenPalette, mobileRail }: ConversationS
               )}
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col gap-3 px-3 pb-3">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 pb-3 pl-3 pr-shell">
               <div className="flex flex-none items-center gap-2 rounded-xl border border-white/10 bg-white/[0.045] px-3">
                 <Search size={15} className="text-text-muted" />
                 <input
