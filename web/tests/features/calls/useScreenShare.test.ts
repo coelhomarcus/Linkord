@@ -131,3 +131,58 @@ describe('useScreenShare — pause/resume own preview', () => {
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_SHARE_ERROR', message: expect.stringContaining('pausar') }));
   });
 });
+
+describe('useScreenShare — audio loopback guard', () => {
+  beforeEach(() => {
+    Object.defineProperty(navigator, 'mediaDevices', { value: { getDisplayMedia: vi.fn() }, configurable: true });
+    Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
+  });
+
+  function roomSharing(displaySurface: string, audioSettings: Record<string, unknown> | null) {
+    const unpublishTrack = vi.fn(async () => undefined);
+    const audioTrack = audioSettings ? { mediaStreamTrack: { getSettings: () => audioSettings } } : undefined;
+    const room = {
+      state: ConnectionState.Connected,
+      localParticipant: {
+        setScreenShareEnabled: vi.fn(async () => undefined),
+        unpublishTrack,
+        getTrackPublication: vi.fn((source: string) => {
+          if (source === 'screen_share') return { track: { mediaStreamTrack: { getSettings: () => ({ displaySurface }) } } };
+          if (source === 'screen_share_audio') return audioTrack ? { track: audioTrack } : undefined;
+          return undefined;
+        }),
+      },
+    } as unknown as Room;
+    return { room, unpublishTrack, audioTrack };
+  }
+
+  it('unpublishes the audio of a whole-display capture when the browser could not exclude its own audio', async () => {
+    const { room, unpublishTrack, audioTrack } = roomSharing('monitor', {});
+    const dispatch = vi.fn();
+    const { result } = renderHook(() => useScreenShare(room, dispatch));
+
+    await result.current.startSharing();
+
+    expect(unpublishTrack).toHaveBeenCalledWith(audioTrack, true);
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_LOCAL_SHARING', sharing: true });
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_SHARE_ERROR', message: expect.stringContaining('sem áudio') }));
+  });
+
+  it('keeps the audio when the browser confirms it excludes its own audio', async () => {
+    const { room, unpublishTrack } = roomSharing('monitor', { restrictOwnAudio: true });
+    const { result } = renderHook(() => useScreenShare(room, vi.fn()));
+
+    await result.current.startSharing();
+
+    expect(unpublishTrack).not.toHaveBeenCalled();
+  });
+
+  it('keeps the audio of a tab or window capture', async () => {
+    const { room, unpublishTrack } = roomSharing('browser', {});
+    const { result } = renderHook(() => useScreenShare(room, vi.fn()));
+
+    await result.current.startSharing();
+
+    expect(unpublishTrack).not.toHaveBeenCalled();
+  });
+});
