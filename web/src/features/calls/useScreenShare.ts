@@ -21,6 +21,22 @@ interface ScreenShareApi {
   resumeSharePreview: () => Promise<void>;
 }
 
+// Capturing the whole display also captures what this tab plays — the other
+// participants' voices — and publishing it sends them their own audio back.
+// `restrictOwnAudio` is the only way to filter it out, and browsers that
+// don't implement it silently ignore the constraint, so the resulting track
+// has to be checked rather than trusted.
+async function dropAudioThatLoopsBack(room: Room): Promise<boolean> {
+  const { localParticipant } = room;
+  const surface = localParticipant.getTrackPublication(Track.Source.ScreenShare)?.track?.mediaStreamTrack.getSettings().displaySurface;
+  const audioTrack = localParticipant.getTrackPublication(Track.Source.ScreenShareAudio)?.track;
+  if (surface !== 'monitor' || !audioTrack) return false;
+  const { restrictOwnAudio } = audioTrack.mediaStreamTrack.getSettings() as { restrictOwnAudio?: boolean };
+  if (restrictOwnAudio === true) return false;
+  await localParticipant.unpublishTrack(audioTrack, true);
+  return true;
+}
+
 export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): ScreenShareApi {
   const startSharing = useCallback(async () => {
     if (room.state !== ConnectionState.Connected) {
@@ -62,8 +78,12 @@ export function useScreenShare(room: Room, dispatch: Dispatch<RoomAction>): Scre
       return;
     }
 
+    if (await dropAudioThatLoopsBack(room)) {
+      dispatch({ type: 'SET_SHARE_ERROR', message: 'Seu navegador não separa o áudio do Linkord da tela inteira, então ela foi compartilhada sem áudio para evitar retorno. Compartilhe uma aba ou janela para incluir áudio.' });
+    } else {
+      dispatch({ type: 'SET_SHARE_ERROR', message: null });
+    }
     dispatch({ type: 'SET_LOCAL_SHARING', sharing: true });
-    dispatch({ type: 'SET_SHARE_ERROR', message: null });
   }, [dispatch, room]);
 
   const stopSharing = useCallback(() => {
