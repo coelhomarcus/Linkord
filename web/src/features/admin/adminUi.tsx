@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router';
 import { Button } from '@/shared/ui/primitives/button';
 import { cn } from '@/shared/lib/utils';
 import type { AuditRow } from './adminApi';
 import { ACTION_LABELS, formatWhen } from './adminFormat';
+import type { AdminDetailStatus } from './useAdminDetail';
 
 const TONES: Record<string, string> = {
   active: 'bg-green/15 text-green', suspended: 'bg-red/15 text-red-text',
@@ -82,6 +84,44 @@ export function Field({ label, children }: { label: string; children: ReactNode 
     <div className="flex flex-col gap-0.5">
       <dt className="text-caption text-text-muted">{label}</dt>
       <dd className="min-w-0 break-words text-label text-text-primary">{children}</dd>
+    </div>
+  );
+}
+
+/** What a detail page shows until it has data: loading, "gone", or a failed read
+ * with a retry. Renders nothing once the data is there. */
+export function DetailStatusView({ status, missing, failed, backTo, backLabel, onRetry }: {
+  status: AdminDetailStatus;
+  /** "Conta não encontrada." */
+  missing: string;
+  /** "Não foi possível carregar a conta." */
+  failed: string;
+  backTo: string;
+  backLabel: string;
+  onRetry: () => void;
+}) {
+  if (status === 'loading') return <p className="py-8 text-center text-label text-text-muted">Carregando…</p>;
+  if (status === 'missing') {
+    return <p className="py-8 text-center text-label text-text-muted">{missing} <Link to={backTo} className="underline">{backLabel}</Link></p>;
+  }
+  if (status === 'error') {
+    return (
+      <div className="flex flex-col items-center gap-3 py-8">
+        <p className="text-body text-text-muted">{failed}</p>
+        <Button type="button" variant="secondary" size="sm" onClick={onRetry}>Tentar de novo</Button>
+      </div>
+    );
+  }
+  return null;
+}
+
+/** After a mutation succeeded but the follow-up read failed: the action is DONE,
+ * only the view is old — the retry is a read, never the mutation. */
+export function RefreshFailedNotice({ refreshing, onRetry }: { refreshing: boolean; onRetry: () => void }) {
+  return (
+    <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-yellow/30 bg-yellow/10 px-3 py-2 text-label text-text-primary">
+      <p className="min-w-0 flex-1">Ação concluída, mas não foi possível atualizar os dados. O que você vê pode estar desatualizado.</p>
+      <Button type="button" variant="secondary" size="sm" disabled={refreshing} onClick={onRetry}>{refreshing ? 'Atualizando…' : 'Atualizar'}</Button>
     </div>
   );
 }

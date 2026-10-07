@@ -1,52 +1,42 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { Avatar } from '@/shared/Avatar';
 import { Button } from '@/shared/ui/primitives/button';
 import { formatFileSize } from '@/shared/lib/formatBytes';
 import { useRoom } from '@/state/RoomContext';
 import { deleteUser, fetchAdminUser, grantAdmin, reactivateUser, revokeAdmin, revokeUserSessions, suspendUser } from './adminApi';
-import type { AdminUserDetail } from './adminApi';
 import { ReasonDialog } from './ReasonDialog';
 import { formatWhen } from './adminFormat';
-import { AuditList, Badge, Field, Section } from './adminUi';
+import { AuditList, Badge, DetailStatusView, Field, RefreshFailedNotice, Section } from './adminUi';
+import { useAdminDetail } from './useAdminDetail';
 
 type Dialog = 'suspend' | 'reactivate' | 'revoke' | 'delete' | 'grant-admin' | 'revoke-admin' | null;
 
+/** Keyed by id: opening another account starts from a clean slate (dialogs,
+ * the "deleted" flag), not from the previous account's leftovers. */
 export function UserDetailPage() {
   const { id = '' } = useParams();
+  return <UserDetail key={id} id={id} />;
+}
+
+function UserDetail({ id }: { id: string }) {
   const { state } = useRoom();
-  const [detail, setDetail] = useState<AdminUserDetail | null>(null);
-  const [status, setStatus] = useState<'loading' | 'error' | 'missing' | 'ready'>('loading');
+  const { data: detail, status, refresh, refreshing, refreshFailed, reload } = useAdminDetail(id, fetchAdminUser);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [deleted, setDeleted] = useState(false);
 
-  const load = useCallback(() => {
-    fetchAdminUser(id)
-      .then((d) => { setDetail(d); setStatus('ready'); })
-      .catch((err: { status?: number }) => setStatus(err?.status === 404 ? 'missing' : 'error'));
-  }, [id]);
-  useEffect(() => { load(); }, [load]);
-
   if (deleted) return <p className="py-8 text-center text-label text-text-muted">Conta excluída. <Link to="/admin/users" className="underline">Voltar à lista</Link></p>;
-  if (status === 'loading') return <p className="py-8 text-center text-label text-text-muted">Carregando…</p>;
-  if (status === 'missing') return <p className="py-8 text-center text-label text-text-muted">Conta não encontrada. <Link to="/admin/users" className="underline">Voltar</Link></p>;
-  if (status === 'error' || !detail) {
-    return (
-      <div className="flex flex-col items-center gap-3 py-8">
-        <p className="text-body text-text-muted">Não foi possível carregar a conta.</p>
-        <Button type="button" variant="secondary" size="sm" onClick={load}>Tentar de novo</Button>
-      </div>
-    );
-  }
+  if (!detail) return <DetailStatusView status={status} missing="Conta não encontrada." failed="Não foi possível carregar a conta." backTo="/admin/users" backLabel="Voltar" onRetry={reload} />;
 
   const { user, groups, storage, history } = detail;
   const isSelf = user.id === state.me.userId;
   const suspended = user.status === 'suspended';
-  const run = (action: () => Promise<unknown>) => async () => { await action(); load(); };
+  const run = (action: () => Promise<unknown>) => async () => { await action(); void refresh(); };
 
   return (
     <div className="flex flex-col gap-4">
       <Link to="/admin/users" className="w-fit text-caption text-text-muted underline">← Usuários</Link>
+      {refreshFailed && <RefreshFailedNotice refreshing={refreshing} onRetry={() => void refresh()} />}
       <div className="flex items-center gap-3">
         <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={56} />
         <div className="min-w-0 flex-1">

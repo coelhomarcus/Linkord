@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { Avatar } from '@/shared/Avatar';
 import { Button } from '@/shared/ui/primitives/button';
@@ -7,61 +7,63 @@ import { assignGroupOwner, deleteGroup, fetchAdminGroup, reactivateGroup, suspen
 import type { AdminGroupDetail, AdminGroupMember } from './adminApi';
 import { ReasonDialog } from './ReasonDialog';
 import { formatWhen } from './adminFormat';
-import { AuditList, Badge, Field, Section } from './adminUi';
+import { AuditList, Badge, DetailStatusView, Field, RefreshFailedNotice, Section } from './adminUi';
+import { useAdminDetail } from './useAdminDetail';
 
 type Dialog = 'suspend' | 'reactivate' | 'delete' | { owner: AdminGroupMember } | null;
 
-/** Administrative detail of a group. Deliberately offers no way to open the
- * conversation: an admin sees who is in it and acts on it, without joining. */
+/** Members fetched beyond the first page, tied to the detail they were fetched
+ * against: after a refresh (a new `detail`) they are dropped with it instead of
+ * hanging off a cursor that no longer matches. */
+interface MoreMembers { base: AdminGroupDetail; items: AdminGroupMember[]; cursor: string | null }
+
+/** Keyed by id so a different group never inherits dialogs or loaded members. */
 export function GroupDetailPage() {
   const { id = '' } = useParams();
-  const [detail, setDetail] = useState<AdminGroupDetail | null>(null);
-  const [status, setStatus] = useState<'loading' | 'error' | 'missing' | 'ready'>('loading');
+  return <GroupDetail key={id} id={id} />;
+}
+
+/** Administrative detail of a group. Deliberately offers no way to open the
+ * conversation: an admin sees who is in it and acts on it, without joining. */
+function GroupDetail({ id }: { id: string }) {
+  const { data: detail, status, refresh, refreshing, refreshFailed, reload } = useAdminDetail(id, (groupId) => fetchAdminGroup(groupId));
   const [dialog, setDialog] = useState<Dialog>(null);
   const [deleted, setDeleted] = useState(false);
-  const [moreMembers, setMoreMembers] = useState<AdminGroupMember[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [more, setMore] = useState<MoreMembers | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-
-  const load = useCallback(() => {
-    fetchAdminGroup(id)
-      .then((d) => { setDetail(d); setNextCursor(d.members.nextCursor); setMoreMembers([]); setStatus('ready'); })
-      .catch((err: { status?: number }) => setStatus(err?.status === 404 ? 'missing' : 'error'));
-  }, [id]);
-  useEffect(() => { load(); }, [load]);
+  const [loadMoreError, setLoadMoreError] = useState(false);
 
   async function loadMoreMembers() {
-    if (!nextCursor || loadingMore) return;
+    if (!detail || loadingMore) return;
+    const base = detail;
+    const cursor = more?.base === base ? more.cursor : base.members.nextCursor;
+    if (!cursor) return;
     setLoadingMore(true);
+    setLoadMoreError(false);
     try {
-      const page = await fetchAdminGroup(id, nextCursor);
-      setMoreMembers((prev) => [...prev, ...page.members.items]);
-      setNextCursor(page.members.nextCursor);
+      const page = await fetchAdminGroup(id, cursor);
+      setMore((prev) => ({ base, items: [...(prev?.base === base ? prev.items : []), ...page.members.items], cursor: page.members.nextCursor }));
+    } catch {
+      setLoadMoreError(true);
     } finally {
       setLoadingMore(false);
     }
   }
 
   if (deleted) return <p className="py-8 text-center text-label text-text-muted">Grupo excluído. <Link to="/admin/groups" className="underline">Voltar à lista</Link></p>;
-  if (status === 'loading') return <p className="py-8 text-center text-label text-text-muted">Carregando…</p>;
-  if (status === 'missing') return <p className="py-8 text-center text-label text-text-muted">Grupo não encontrado. <Link to="/admin/groups" className="underline">Voltar</Link></p>;
-  if (status === 'error' || !detail) {
-    return (
-      <div className="flex flex-col items-center gap-3 py-8">
-        <p className="text-body text-text-muted">Não foi possível carregar o grupo.</p>
-        <Button type="button" variant="secondary" size="sm" onClick={load}>Tentar de novo</Button>
-      </div>
-    );
-  }
+  if (!detail) return <DetailStatusView status={status} missing="Grupo não encontrado." failed="Não foi possível carregar o grupo." backTo="/admin/groups" backLabel="Voltar" onRetry={reload} />;
 
   const { group, history } = detail;
-  const members = [...detail.members.items, ...moreMembers];
+  const extra = more?.base === detail ? more : null;
+  const members = [...detail.members.items, ...(extra?.items ?? [])];
+  const nextCursor = extra ? extra.cursor : detail.members.nextCursor;
   const suspended = group.status === 'suspended';
-  const run = (action: () => Promise<unknown>) => async () => { await action(); load(); };
+  const run = (action: () => Promise<unknown>) => async () => { await action(); void refresh(); };
 
   return (
     <div className="flex flex-col gap-4">
       <Link to="/admin/groups" className="w-fit text-caption text-text-muted underline">← Grupos</Link>
+      {refreshFailed && <RefreshFailedNotice refreshing={refreshing} onRetry={() => void refresh()} />}
       <div className="flex items-center gap-3">
         <GroupAvatar title={group.title} avatar={group.avatar} size={56} />
         <div className="min-w-0 flex-1">
@@ -102,9 +104,10 @@ export function GroupDetailPage() {
             </li>
           ))}
         </ul>
+        {loadMoreError && <p role="alert" className="text-center text-caption text-red-text">Não foi possível carregar mais membros.</p>}
         {nextCursor && (
           <Button type="button" variant="ghost" size="sm" className="self-center" disabled={loadingMore} onClick={() => void loadMoreMembers()}>
-            {loadingMore ? 'Carregando…' : 'Carregar mais'}
+            {loadingMore ? 'Carregando…' : loadMoreError ? 'Tentar de novo' : 'Carregar mais'}
           </Button>
         )}
       </Section>

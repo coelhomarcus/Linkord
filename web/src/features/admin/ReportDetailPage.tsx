@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { Button } from '@/shared/ui/primitives/button';
 import { claimReport, fetchAdminReport, resolveReport } from './adminApi';
-import type { AdminReportDetail, ReportAction } from './adminApi';
+import type { ReportAction } from './adminApi';
 import { ReasonDialog } from './ReasonDialog';
 import { formatWhen } from './adminFormat';
-import { AuditList, Badge, Field, Section } from './adminUi';
+import { AuditList, Badge, DetailStatusView, Field, RefreshFailedNotice, Section } from './adminUi';
+import { useAdminDetail } from './useAdminDetail';
 import { categoryLabel } from '@/features/reports/reportCategories';
 
 type Dialog = { kind: 'claim' } | { kind: 'dismiss' } | { kind: 'resolve'; action: ReportAction | null } | null;
@@ -20,41 +21,30 @@ function actionsFor(targetType: string): ReportAction[] {
   return targetType === 'user' ? ['suspend_user'] : targetType === 'group' ? ['suspend_group'] : ['delete_message', 'suspend_user'];
 }
 
+/** Keyed by id so a different report never inherits an open decision dialog. */
+export function ReportDetailPage() {
+  const { id = '' } = useParams();
+  return <ReportDetail key={id} id={id} />;
+}
+
 /** Opening this page is what fetches — and audits — the evidence. The reporter
  * is shown to administrators only; nothing on the reported account's side can
  * reach this. */
-export function ReportDetailPage() {
-  const { id = '' } = useParams();
-  const [detail, setDetail] = useState<AdminReportDetail | null>(null);
-  const [status, setStatus] = useState<'loading' | 'error' | 'missing' | 'ready'>('loading');
+function ReportDetail({ id }: { id: string }) {
+  const { data: detail, status, refresh, refreshing, refreshFailed, reload } = useAdminDetail(id, fetchAdminReport);
   const [dialog, setDialog] = useState<Dialog>(null);
 
-  const load = useCallback(() => {
-    fetchAdminReport(id)
-      .then((d) => { setDetail(d); setStatus('ready'); })
-      .catch((err: { status?: number }) => setStatus(err?.status === 404 ? 'missing' : 'error'));
-  }, [id]);
-  useEffect(() => { load(); }, [load]);
-
-  if (status === 'loading') return <p className="py-8 text-center text-label text-text-muted">Carregando…</p>;
-  if (status === 'missing') return <p className="py-8 text-center text-label text-text-muted">Denúncia não encontrada. <Link to="/admin/reports" className="underline">Voltar</Link></p>;
-  if (status === 'error' || !detail) {
-    return (
-      <div className="flex flex-col items-center gap-3 py-8">
-        <p className="text-body text-text-muted">Não foi possível carregar a denúncia.</p>
-        <Button type="button" variant="secondary" size="sm" onClick={load}>Tentar de novo</Button>
-      </div>
-    );
-  }
+  if (!detail) return <DetailStatusView status={status} missing="Denúncia não encontrada." failed="Não foi possível carregar a denúncia." backTo="/admin/reports" backLabel="Voltar" onRetry={reload} />;
 
   const { report, history } = detail;
   const closed = report.status === 'resolved' || report.status === 'dismissed';
   const snapshotText = typeof report.snapshot.text === 'string' ? report.snapshot.text : null;
-  const done = async () => { load(); };
+  const done = async () => { void refresh(); };
 
   return (
     <div className="flex flex-col gap-4">
       <Link to="/admin/reports" className="w-fit text-caption text-text-muted underline">← Denúncias</Link>
+      {refreshFailed && <RefreshFailedNotice refreshing={refreshing} onRetry={() => void refresh()} />}
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-title font-semibold text-text-primary">{report.targetLabel || report.targetId}</h2>

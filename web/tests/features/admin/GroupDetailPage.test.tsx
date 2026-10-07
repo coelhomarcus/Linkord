@@ -72,4 +72,25 @@ describe('GroupDetailPage', () => {
     await u.click(screen.getByRole('button', { name: 'Excluir para sempre' }));
     await waitFor(() => expect(mocked.deleteGroup).toHaveBeenCalledWith('g1', 'illegal'));
   });
+
+  it('a failed "load more" keeps the members already shown and offers to try again', async () => {
+    const u = userEvent.setup();
+    const first = detail();
+    first.members.nextCursor = 'c1';
+    mocked.fetchAdminGroup.mockResolvedValueOnce(first);
+    open();
+    expect(await screen.findByRole('link', { name: /BIA/ })).toBeInTheDocument();
+
+    mocked.fetchAdminGroup.mockRejectedValueOnce(new Error('offline'));
+    await u.click(screen.getByRole('button', { name: 'Carregar mais' }));
+    expect(await screen.findByText('Não foi possível carregar mais membros.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /BIA/ })).toBeInTheDocument();
+
+    mocked.fetchAdminGroup.mockResolvedValueOnce({ ...detail(), members: { items: [member('cai', 'member')], nextCursor: null } });
+    await u.click(screen.getByRole('button', { name: 'Tentar de novo' }));
+    expect(await screen.findByRole('link', { name: /CAI/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /BIA/ })).toBeInTheDocument();
+    expect(screen.queryByText('Não foi possível carregar mais membros.')).not.toBeInTheDocument();
+    expect(mocked.fetchAdminGroup).toHaveBeenLastCalledWith('g1', 'c1');
+  });
 });

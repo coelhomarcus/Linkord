@@ -120,4 +120,24 @@ describe('UserDetailPage', () => {
     await u.click(screen.getAllByRole('button', { name: 'Remover admin' }).at(-1)!);
     expect(await screen.findByRole('alert')).toHaveTextContent('último administrador ativo');
   });
+
+  it('a mutation that succeeded but whose refresh failed says so, and retrying only re-reads', async () => {
+    const u = userEvent.setup();
+    mocked.suspendUser.mockResolvedValue({ ok: true });
+    open();
+    await u.click(await screen.findByRole('button', { name: 'Suspender' }));
+    mocked.fetchAdminUser.mockRejectedValueOnce(new Error('offline'));
+    await u.type(screen.getByLabelText(/Motivo/), 'confirmed spam');
+    await u.click(screen.getAllByRole('button', { name: 'Suspender' }).at(-1)!);
+
+    expect(await screen.findByText(/Ação concluída, mas não foi possível atualizar/)).toBeInTheDocument();
+    expect(screen.getByText('ana@example.com')).toBeInTheDocument();
+    expect(mocked.suspendUser).toHaveBeenCalledTimes(1);
+
+    mocked.fetchAdminUser.mockResolvedValue(detail({ status: 'suspended', statusChangedAt: '2026-01-02T00:00:00.000Z' }));
+    await u.click(screen.getByRole('button', { name: 'Atualizar' }));
+    expect(await screen.findByRole('button', { name: 'Reativar conta' })).toBeInTheDocument();
+    expect(mocked.suspendUser).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Ação concluída, mas/)).not.toBeInTheDocument();
+  });
 });
