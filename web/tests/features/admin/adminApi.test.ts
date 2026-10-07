@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, apiFetch } from '@/shared/api/api';
-import { subscribeAdminAccessLost } from '@/features/admin/adminAccess';
+import { subscribeAdminAccessLost, subscribeAdminSessionEnded } from '@/features/admin/adminAccess';
 import { fetchAdminUsers, suspendUser } from '@/features/admin/adminApi';
 import { invalidateAdminLists, readListWindow, saveListWindow } from '@/features/admin/adminListCache';
 
@@ -8,9 +8,12 @@ vi.mock('@/shared/api/api', async (importOriginal) => ({ ...(await importOrigina
 const mockedFetch = vi.mocked(apiFetch);
 
 const lost = vi.fn();
+const ended = vi.fn();
+let unsubscribe: Array<() => void> = [];
 beforeEach(() => {
   vi.clearAllMocks();
-  subscribeAdminAccessLost(lost);
+  unsubscribe.forEach((off) => off());
+  unsubscribe = [subscribeAdminAccessLost(lost), subscribeAdminSessionEnded(ended)];
 });
 
 describe('admin access lost', () => {
@@ -32,6 +35,28 @@ describe('admin access lost', () => {
     mockedFetch.mockRejectedValueOnce(new ApiError(500, 'unknown_error', 'x'));
     await expect(fetchAdminUsers({}, null)).rejects.toBeInstanceOf(ApiError);
     expect(lost).not.toHaveBeenCalled();
+  });
+});
+
+describe('admin session ended', () => {
+  it('a 401 on a read raises it — and is not mistaken for a loss of the admin role', async () => {
+    mockedFetch.mockRejectedValue(new ApiError(401, 'unauthenticated', 'x'));
+    await expect(fetchAdminUsers({}, null)).rejects.toBeInstanceOf(ApiError);
+    expect(ended).toHaveBeenCalledTimes(1);
+    expect(lost).not.toHaveBeenCalled();
+  });
+
+  it('so does a 401 on a mutation, and the caller still gets the error', async () => {
+    mockedFetch.mockRejectedValue(new ApiError(401, 'unauthenticated', 'x'));
+    await expect(suspendUser('u1', 'reason')).rejects.toBeInstanceOf(ApiError);
+    expect(ended).toHaveBeenCalledTimes(1);
+  });
+
+  it('a 403 is the other loss, not this one', async () => {
+    mockedFetch.mockRejectedValue(new ApiError(403, 'forbidden', 'x'));
+    await expect(fetchAdminUsers({}, null)).rejects.toBeInstanceOf(ApiError);
+    expect(ended).not.toHaveBeenCalled();
+    expect(lost).toHaveBeenCalledTimes(1);
   });
 });
 

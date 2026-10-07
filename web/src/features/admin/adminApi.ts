@@ -1,6 +1,6 @@
 import { ApiError, apiFetch } from '@/shared/api/api';
 import { ERROR_CODES } from '@/shared/api/errorCodes';
-import { reportAdminAccessLost } from './adminAccess';
+import { reportAdminAccessLost, reportAdminSessionEnded } from './adminAccess';
 import { invalidateAdminLists } from './adminListCache';
 
 // Client for /api/admin/* (docs/plano-rede-social.md §9). The server is the
@@ -8,9 +8,10 @@ import { invalidateAdminLists } from './adminListCache';
 
 export interface Page<T> { items: T[]; nextCursor: string | null }
 
-/** apiFetch plus one rule: a 403 `forbidden` means the server no longer sees this
- * account as an administrator (demoted, suspended, session out of date). The
- * area reacts to it as a whole instead of each page showing its own error. */
+/** apiFetch plus two rules, so the area reacts as a whole instead of each page
+ * showing its own error: a 403 `forbidden` means the server no longer sees this
+ * account as an administrator (demoted, suspended, role out of date); a 401
+ * means there is no session any more (expired, revoked — even by this very admin). */
 async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     const result = await apiFetch<T>(path, init);
@@ -19,6 +20,7 @@ async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
     return result;
   } catch (err) {
     if (err instanceof ApiError && err.status === 403 && err.code === ERROR_CODES.forbidden) reportAdminAccessLost();
+    else if (err instanceof ApiError && err.status === 401) reportAdminSessionEnded();
     throw err;
   }
 }

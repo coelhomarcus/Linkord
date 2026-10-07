@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { reportAdminAccessLost } from '@/features/admin/adminAccess';
+import { reportAdminAccessLost, reportAdminSessionEnded } from '@/features/admin/adminAccess';
 import { renderAdmin, adminRoom } from './adminFixture';
 import AdminArea from '@/features/admin/AdminArea';
 import * as adminApi from '@/features/admin/adminApi';
@@ -13,6 +13,8 @@ vi.mock('@/shared/PageHeader', () => ({
   ),
 }));
 vi.mock('@/features/admin/adminApi');
+const refreshAuth = vi.fn().mockResolvedValue(undefined);
+vi.mock('@/state/AuthContext', () => ({ useAuth: () => ({ refresh: refreshAuth }) }));
 vi.mock('@/features/admin/useAdminLayout', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/admin/useAdminLayout')>()),
   useAdminLayout: vi.fn(() => ({ mode: 'wide', measured: true })),
@@ -100,5 +102,16 @@ describe('AdminArea', () => {
     await u.click(screen.getByRole('button', { name: 'Voltar às conversas' }));
     expect(dispatch).toHaveBeenCalledWith({ type: 'SET_ROLE', role: 'user' });
     expect(screen.getByText('outra rota')).toBeInTheDocument();
+  });
+
+  it('a request answered 401 replaces the pages with "session ended" and re-reads the auth state', async () => {
+    renderAdmin(<AdminArea />, { path: '/admin/users', pattern: '/admin/*' });
+    expect(await screen.findByText('Nenhuma conta encontrada.')).toBeInTheDocument();
+
+    act(() => reportAdminSessionEnded());
+    expect(screen.getByRole('alert')).toHaveTextContent('Sua sessão terminou');
+    expect(screen.queryByText('Nenhuma conta encontrada.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Grupos' })).not.toBeInTheDocument();
+    expect(refreshAuth).toHaveBeenCalledTimes(1);
   });
 });
