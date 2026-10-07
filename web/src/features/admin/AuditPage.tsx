@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { useCursorList } from '@/shared/hooks/useCursorList';
 import { useUrlSearch } from '@/shared/hooks/useUrlSearch';
 import { Button } from '@/shared/ui/primitives/button';
 import { Input } from '@/shared/ui/primitives/input';
@@ -8,6 +7,7 @@ import { fetchAudit } from './adminApi';
 import type { AuditRow } from './adminApi';
 import { ACTION_LABELS, formatWhen } from './adminFormat';
 import { ListChrome } from './adminUi';
+import { useAdminList } from './useAdminList';
 import { useAdminQuery } from './useAdminQuery';
 import type { QuerySchema } from './useAdminQuery';
 
@@ -54,7 +54,7 @@ export function AuditPage() {
     from: from ? new Date(`${from}T00:00:00`).toISOString() : undefined,
     to: to ? new Date(`${to}T23:59:59.999`).toISOString() : undefined,
   }, cursor), [filters.action, filters.actor, filters.targetId, from, to]);
-  const list = useCursorList(fetchPage, identity);
+  const list = useAdminList(fetchPage, identity, (row) => row.id);
   const field = 'h-9 border-white/10 bg-white/[0.04] text-label';
 
   return (

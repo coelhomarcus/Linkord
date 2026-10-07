@@ -8,7 +8,7 @@ import { deleteUser, fetchAdminUser, grantAdmin, reactivateUser, revokeAdmin, re
 import { ReasonDialog } from './ReasonDialog';
 import { formatWhen } from './adminFormat';
 import { AuditList, Badge, DetailStatusView, Field, RefreshFailedNotice, Section } from './adminUi';
-import { useAdminBack } from './useAdminBack';
+import { RESTORE_LIST, useAdminBack } from './useAdminBack';
 import { useAdminDetail } from './useAdminDetail';
 
 type Dialog = 'suspend' | 'reactivate' | 'revoke' | 'delete' | 'grant-admin' | 'revoke-admin' | null;
@@ -37,7 +37,7 @@ function UserDetail({ id }: { id: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <Link to={back} className="w-fit text-caption text-text-muted underline">← Usuários</Link>
+      <Link to={back} state={RESTORE_LIST} className="w-fit text-caption text-text-muted underline">← Usuários</Link>
       {refreshFailed && <RefreshFailedNotice refreshing={refreshing} onRetry={() => void refresh()} />}
       <div className="flex items-center gap-3">
         <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={56} />

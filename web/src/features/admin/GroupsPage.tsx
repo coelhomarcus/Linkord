@@ -3,7 +3,6 @@ import { Link, useLocation } from 'react-router';
 import { History } from 'lucide-react';
 import { GroupAvatar } from '@/features/conversations/GroupAvatar';
 import { buttonVariants } from '@/shared/ui/primitives/button';
-import { useCursorList } from '@/shared/hooks/useCursorList';
 import { useUrlSearch } from '@/shared/hooks/useUrlSearch';
 import { fetchAdminGroups } from './adminApi';
 import type { AdminGroupRow } from './adminApi';
@@ -13,6 +12,7 @@ import { AdminTable, AdminTd, AdminTh, AdminTr } from './AdminTable';
 import { Badge, ListChrome } from './adminUi';
 import { CopyIdButton } from './CopyIdButton';
 import { fromList } from './useAdminBack';
+import { useAdminList } from './useAdminList';
 import { useAdminMode } from './useAdminMode';
 import { useAdminQuery } from './useAdminQuery';
 import type { QuerySchema } from './useAdminQuery';
@@ -60,7 +60,7 @@ export function GroupsPage() {
   const fetchPage = useCallback((cursor: string | null) => fetchAdminGroups({
     q: filters.q, status: filter === 'active' || filter === 'suspended' ? filter : undefined, orphan: filter === 'orphan',
   }, cursor), [filters.q, filter]);
-  const list = useCursorList(fetchPage, identity, { getKey: (g) => g.id });
+  const list = useAdminList(fetchPage, identity, (g) => g.id);
   const origin = fromList(pathname, search);
 
   return (

@@ -10,6 +10,7 @@ import { AuditPage } from '@/features/admin/AuditPage';
 import { ReportsPage } from '@/features/admin/ReportsPage';
 import { ListChrome } from '@/features/admin/adminUi';
 import * as adminApi from '@/features/admin/adminApi';
+import { invalidateAdminLists } from '@/features/admin/adminListCache';
 
 vi.mock('@/features/admin/adminApi');
 const mocked = vi.mocked(adminApi);
@@ -25,6 +26,7 @@ function Where() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  invalidateAdminLists();
   mocked.fetchAdminUsers.mockResolvedValue({ items: [user()], nextCursor: null });
   mocked.fetchAdminUser.mockResolvedValue({
     user: { ...user(), email: 'ana@example.com', statusReason: '', statusChangedAt: null },

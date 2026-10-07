@@ -9,7 +9,10 @@ import { useAdminMode } from '@/features/admin/useAdminMode';
 import * as adminApi from '@/features/admin/adminApi';
 
 vi.mock('@/features/admin/adminApi');
-vi.mock('@/features/admin/useAdminMode', () => ({ useAdminMode: vi.fn(() => 'wide') }));
+vi.mock('@/features/admin/useAdminMode', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/admin/useAdminMode')>()),
+  useAdminMode: vi.fn(() => 'wide'),
+}));
 const mocked = vi.mocked(adminApi);
 
 const user = (over: Partial<adminApi.AdminUserRow> = {}): adminApi.AdminUserRow => ({

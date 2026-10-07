@@ -1,12 +1,12 @@
 import { useCallback } from 'react';
 import { Link, useLocation } from 'react-router';
 import { Segmented } from '@/features/friends/Segmented';
-import { useCursorList } from '@/shared/hooks/useCursorList';
 import { categoryLabel } from '@/features/reports/reportCategories';
 import { fetchAdminReports } from './adminApi';
 import { formatWhen } from './adminFormat';
 import { Badge, ListChrome } from './adminUi';
 import { fromList } from './useAdminBack';
+import { useAdminList } from './useAdminList';
 import { useAdminQuery } from './useAdminQuery';
 import type { QuerySchema } from './useAdminQuery';
 
@@ -19,7 +19,7 @@ export function ReportsPage() {
   const { pathname, search } = useLocation();
   const filter = filters.status as Filter;
   const fetchPage = useCallback((cursor: string | null) => fetchAdminReports({ status: filter }, cursor), [filter]);
-  const list = useCursorList(fetchPage, identity);
+  const list = useAdminList(fetchPage, identity, (r) => r.id);
 
   return (
     <div className="flex flex-col gap-4">

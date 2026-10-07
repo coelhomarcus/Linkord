@@ -3,14 +3,18 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import type { RenderResult } from '@testing-library/react';
 import type { RoomContextValue } from '@/state/RoomContext';
 import { initialRoomState } from '@/state/roomReducer';
+import { invalidateAdminLists } from '@/features/admin/adminListCache';
 import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
 
 export function adminRoom(role: 'admin' | 'user' = 'admin', userId = 'admin-1'): Partial<RoomContextValue> {
   return { state: { ...initialRoomState, me: { ...initialRoomState.me, userId, role } } };
 }
 
-/** Renders `ui` at `path`, matched by `pattern` so useParams works. */
+/** Renders `ui` at `path`, matched by `pattern` so useParams works. Starts every
+ * render with no remembered list windows: MemoryRouter's first entry counts as a
+ * POP, which would otherwise restore whatever the previous test left behind. */
 export function renderAdmin(ui: ReactElement, { path, pattern, room = adminRoom() }: { path: string; pattern: string; room?: Partial<RoomContextValue> }): RenderResult {
+  invalidateAdminLists();
   return renderWithRoom(
     <MemoryRouter initialEntries={[path]}>
       <Routes>

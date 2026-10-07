@@ -8,6 +8,9 @@ export function fromList(pathname: string, search: string): FromListState {
   return { from: `${pathname}${search}` };
 }
 
+/** Carried by "back to the list" links: the list restores its loaded rows and scroll position. */
+export const RESTORE_LIST = { restoreList: true } as const;
+
 /** Where "back" goes: the list query the admin came from, when that is an
  * internal admin URL of the same list; otherwise the plain list. A direct
  * access (or a tampered history state) lands on the fallback, never elsewhere. */

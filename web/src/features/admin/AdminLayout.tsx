@@ -6,6 +6,7 @@ import { Button, buttonVariants } from '@/shared/ui/primitives/button';
 import { ROUTES } from '@/shared/lib/routes';
 import { useRoom } from '@/state/RoomContext';
 import { subscribeAdminAccessLost } from './adminAccess';
+import { consumeScrollRestore, invalidateAdminLists } from './adminListCache';
 import { ADMIN_PATH, sectionForPath } from './adminCatalog';
 import { AdminSidebar } from './AdminNavigation';
 import { useAdminLayout } from './useAdminLayout';
@@ -41,7 +42,9 @@ export function AdminLayout() {
   const compactSection = mode === 'compact' && section !== null;
   const [accessLost, setAccessLost] = useState(false);
 
-  useEffect(() => subscribeAdminAccessLost(() => setAccessLost(true)), []);
+  useEffect(() => subscribeAdminAccessLost(() => { invalidateAdminLists(); setAccessLost(true); }), []);
+  // remembered list windows belong to this visit of the area
+  useEffect(() => invalidateAdminLists, []);
 
   // opening another page starts at its top instead of inheriting the previous scroll
   useEffect(() => {
@@ -49,6 +52,8 @@ export function AdminLayout() {
       firstRender.current = false;
       return;
     }
+    // a list that just restored its own position keeps it
+    if (consumeScrollRestore()) return;
     scrollerRef.current?.scrollTo?.({ top: 0 });
   }, [pathname]);
 
@@ -67,7 +72,7 @@ export function AdminLayout() {
         {mode === 'wide' && !accessLost ? <AdminSidebar /> : null}
         <main ref={scrollerRef} aria-label={section?.label ?? 'Administração'} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
           <div className="flex w-full flex-col gap-4 px-4 py-4 @[520px]:px-6 @[960px]:px-8 @[960px]:py-6">
-            {accessLost ? <AccessLost /> : <Outlet context={{ mode } satisfies AdminOutletContext} />}
+            {accessLost ? <AccessLost /> : <Outlet context={{ mode, scroller: scrollerRef } satisfies AdminOutletContext} />}
           </div>
         </main>
       </div>

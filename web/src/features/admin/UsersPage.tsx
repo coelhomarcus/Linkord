@@ -3,7 +3,6 @@ import { Link, useLocation } from 'react-router';
 import { History } from 'lucide-react';
 import { Avatar } from '@/shared/Avatar';
 import { buttonVariants } from '@/shared/ui/primitives/button';
-import { useCursorList } from '@/shared/hooks/useCursorList';
 import { useUrlSearch } from '@/shared/hooks/useUrlSearch';
 import { fetchAdminUsers } from './adminApi';
 import type { AdminUserRow } from './adminApi';
@@ -13,6 +12,7 @@ import { AdminTable, AdminTd, AdminTh, AdminTr } from './AdminTable';
 import { Badge, ListChrome } from './adminUi';
 import { CopyIdButton } from './CopyIdButton';
 import { fromList } from './useAdminBack';
+import { useAdminList } from './useAdminList';
 import { useAdminMode } from './useAdminMode';
 import { useAdminQuery } from './useAdminQuery';
 import type { QuerySchema } from './useAdminQuery';
@@ -65,7 +65,7 @@ export function UsersPage() {
     from: dayStartIso(filters.from),
     to: nextDayStartIso(filters.to),
   }, cursor), [filters.q, status, role, filters.from, filters.to]);
-  const list = useCursorList(fetchPage, identity, { getKey: (u) => u.id });
+  const list = useAdminList(fetchPage, identity, (u) => u.id);
   const origin = fromList(pathname, search);
 
   return (

@@ -1,6 +1,7 @@
 import { ApiError, apiFetch } from '@/shared/api/api';
 import { ERROR_CODES } from '@/shared/api/errorCodes';
 import { reportAdminAccessLost } from './adminAccess';
+import { invalidateAdminLists } from './adminListCache';
 
 // Client for /api/admin/* (docs/plano-rede-social.md §9). The server is the
 // authority on every one of these — a non-admin gets 403 whatever the UI shows.
@@ -12,7 +13,10 @@ export interface Page<T> { items: T[]; nextCursor: string | null }
  * area reacts to it as a whole instead of each page showing its own error. */
 async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
   try {
-    return await apiFetch<T>(path, init);
+    const result = await apiFetch<T>(path, init);
+    // anything but a read may have changed what a remembered list shows
+    if (init?.method && init.method !== 'GET') invalidateAdminLists();
+    return result;
   } catch (err) {
     if (err instanceof ApiError && err.status === 403 && err.code === ERROR_CODES.forbidden) reportAdminAccessLost();
     throw err;
