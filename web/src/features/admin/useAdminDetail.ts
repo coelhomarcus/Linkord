@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isStaleStateError } from './adminErrors';
 
 export type AdminDetailStatus = 'loading' | 'ready' | 'missing' | 'error';
 
@@ -69,9 +70,22 @@ export function useAdminDetail<T>(id: string, fetcher: (id: string) => Promise<T
     }
   }, [id]);
 
+  /** Runs a mutation, then re-reads. A refusal because the entity changed under
+   * the admin (409/404) re-reads too, so the screen catches up with what the
+   * error message says — and the error still reaches the caller. */
+  const mutate = useCallback(async (action: () => Promise<unknown>): Promise<void> => {
+    try {
+      await action();
+    } catch (err) {
+      if (isStaleStateError(err)) void refresh();
+      throw err;
+    }
+    void refresh();
+  }, [refresh]);
+
   const data = loaded?.id === id ? loaded.data : null;
   const failed = failure?.id === id ? failure.status : null;
   const status: AdminDetailStatus = failed ?? (data ? 'ready' : 'loading');
 
-  return { data, status, refresh, refreshing: refreshingId === id, refreshFailed: refreshFailedId === id, reload };
+  return { data, status, refresh, mutate, refreshing: refreshingId === id, refreshFailed: refreshFailedId === id, reload };
 }

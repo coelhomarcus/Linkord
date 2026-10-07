@@ -47,7 +47,7 @@ function UserDetail({ id }: { id: string }) {
   const back = useAdminBack('/admin/users');
   const { filters } = useAdminQuery(QUERY);
   const tab = filters.tab as Tab;
-  const { data: detail, status, refresh, refreshing, refreshFailed, reload } = useAdminDetail(id, fetchAdminUser);
+  const { data: detail, status, refresh, mutate, refreshing, refreshFailed, reload } = useAdminDetail(id, fetchAdminUser);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [deleted, setDeleted] = useState(false);
   const [ownSessionsEnded, setOwnSessionsEnded] = useState(false);
@@ -59,12 +59,11 @@ function UserDetail({ id }: { id: string }) {
   const isSelf = user.id === state.me.userId;
   const suspended = user.status === 'suspended';
   const isAdmin = user.role === 'admin';
-  const run = (action: () => Promise<unknown>) => async () => { await action(); void refresh(); };
   // revoking your own sessions ends this very session: the re-read would fail, and that is the expected outcome
   const revokeSessions = async (reason: string) => {
+    if (!isSelf) return mutate(() => revokeUserSessions(user.id, reason));
     await revokeUserSessions(user.id, reason);
-    if (isSelf) setOwnSessionsEnded(true);
-    else void refresh();
+    setOwnSessionsEnded(true);
   };
 
   return (
@@ -194,19 +193,19 @@ function UserDetail({ id }: { id: string }) {
 
       <ReasonDialog open={dialog === 'suspend'} onOpenChange={(o) => !o && setDialog(null)} title="Suspender conta"
         description={`@${user.username} perde a sessão agora e não consegue entrar até ser reativada.`} confirmLabel="Suspender" destructive
-        onSubmit={(reason) => run(() => suspendUser(user.id, reason))()} />
+        onSubmit={(reason) => mutate(() => suspendUser(user.id, reason))} />
       <ReasonDialog open={dialog === 'reactivate'} onOpenChange={(o) => !o && setDialog(null)} title="Reativar conta"
         description={`@${user.username} volta a poder entrar.`} confirmLabel="Reativar"
-        onSubmit={(reason) => run(() => reactivateUser(user.id, reason))()} />
+        onSubmit={(reason) => mutate(() => reactivateUser(user.id, reason))} />
       <ReasonDialog open={dialog === 'revoke'} onOpenChange={(o) => !o && setDialog(null)} title="Revogar sessões"
         description={`Encerra todas as sessões e conexões de @${user.username}. A conta continua ativa.`} confirmLabel="Revogar"
         onSubmit={revokeSessions} />
       <ReasonDialog open={dialog === 'grant-admin'} onOpenChange={(o) => !o && setDialog(null)} title="Conceder administração"
         description={`@${user.username} passa a ver e operar toda a instância: usuários, grupos, denúncias e auditoria. Faça isso só para quem você confia.`}
-        confirmLabel="Conceder admin" confirmText={user.username} onSubmit={(reason) => run(() => grantAdmin(user.id, reason))()} />
+        confirmLabel="Conceder admin" confirmText={user.username} onSubmit={(reason) => mutate(() => grantAdmin(user.id, reason))} />
       <ReasonDialog open={dialog === 'revoke-admin'} onOpenChange={(o) => !o && setDialog(null)} title="Remover administração"
         description={`@${user.username} volta a ser uma conta comum. Não é possível remover o último administrador ativo.`}
-        confirmLabel="Remover admin" destructive confirmText={user.username} onSubmit={(reason) => run(() => revokeAdmin(user.id, reason))()} />
+        confirmLabel="Remover admin" destructive confirmText={user.username} onSubmit={(reason) => mutate(() => revokeAdmin(user.id, reason))} />
       <ReasonDialog open={dialog === 'delete'} onOpenChange={(o) => !o && setDialog(null)} title="Excluir conta"
         description="Definitivo. Grupos que ela possui passam ao membro mais antigo; grupos sem outros membros são apagados. As mensagens já enviadas continuam no histórico."
         confirmLabel="Excluir para sempre" destructive confirmText={user.username}

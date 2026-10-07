@@ -35,6 +35,9 @@ export const ERROR_CODES = {
   already_admin: 'already_admin',
   not_admin: 'not_admin',
   target_inactive: 'target_inactive',
+  already_suspended: 'already_suspended',
+  not_suspended: 'not_suspended',
+  not_member: 'not_member',
 } as const;
 
 export type KnownErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

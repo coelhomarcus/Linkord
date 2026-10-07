@@ -236,4 +236,16 @@ describe('UserDetailPage', () => {
     await screen.findByRole('button', { name: 'Suspender' });
     expect(screen.getByRole('link', { name: '← Usuários' })).toHaveAttribute('href', '/admin/users?status=suspended');
   });
+
+  it('suspending an account somebody else already suspended explains it and re-reads', async () => {
+    const u = userEvent.setup();
+    mocked.suspendUser.mockRejectedValue(new ApiError(409, 'already_suspended', 'x'));
+    openModeration();
+    await u.click(await screen.findByRole('button', { name: 'Suspender' }));
+    await u.type(screen.getByLabelText(/Motivo/), 'confirmed spam');
+    mocked.fetchAdminUser.mockResolvedValue(detail({ status: 'suspended', statusReason: 'outro admin', statusChangedAt: '2026-01-02T00:00:00.000Z' }));
+    await u.click(screen.getAllByRole('button', { name: 'Suspender' }).at(-1)!);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Já estava suspenso');
+    await waitFor(() => expect(mocked.fetchAdminUser).toHaveBeenCalledTimes(2));
+  });
 });
