@@ -121,7 +121,7 @@ export interface SystemInfo {
   livekit: { configured: boolean };
   outbox: { pending: number; failed: number };
   notifications: { unread: number };
-  orphanSweep: { dryRunByDefault: boolean; last: SweepResult | null };
+  orphanSweep: { dryRunByDefault: boolean; /** absent on a server that predates it */ graceMs?: number; last: SweepResult | null };
 }
 
 export const fetchSystem = () => adminFetch<SystemInfo>('/api/admin/system');

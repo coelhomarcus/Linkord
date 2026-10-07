@@ -5,7 +5,9 @@ import { cn } from '@/shared/lib/utils';
 /** A vertical section of a detail page: a title, what it is for, its content,
  * and a divider above every one but the first — a sequence, not a mosaic of
  * cards. `danger` marks the irreversible ones. */
-export function AdminSection({ title, description, danger, children, className }: {
+export function AdminSection({ id, title, description, danger, children, className }: {
+  /** anchor target (`/admin/system#storage`) */
+  id?: string;
   title: string;
   description?: ReactNode;
   danger?: boolean;
@@ -14,7 +16,7 @@ export function AdminSection({ title, description, danger, children, className }
 }) {
   const headingId = useId();
   return (
-    <section aria-labelledby={headingId} className={cn('flex flex-col gap-3 border-t border-white/10 pt-6 first:border-t-0 first:pt-0', className)}>
+    <section id={id} aria-labelledby={headingId} className={cn('flex scroll-mt-4 flex-col gap-3 border-t border-white/10 pt-6 first:border-t-0 first:pt-0', className)}>
       <div className="flex flex-col gap-0.5">
         <h3 id={headingId} className={cn('text-title font-semibold', danger ? 'text-red-text' : 'text-text-primary')}>{title}</h3>
         {description && <p className="text-label text-text-muted">{description}</p>}
