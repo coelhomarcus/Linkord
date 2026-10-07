@@ -100,24 +100,6 @@ export function ListChrome({ list, empty, emptyAction, children }: {
   );
 }
 
-export function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-4">
-      <h2 className="text-label font-medium text-text-secondary">{title}</h2>
-      {children}
-    </section>
-  );
-}
-
-export function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <dt className="text-caption text-text-muted">{label}</dt>
-      <dd className="min-w-0 break-words text-label text-text-primary">{children}</dd>
-    </div>
-  );
-}
-
 /** What a detail page shows until it has data: loading, "gone", or a failed read
  * with a retry. Renders nothing once the data is there. */
 export function DetailStatusView({ status, missing, failed, backTo, backLabel, onRetry }: {
