@@ -6,6 +6,7 @@ import type { ReportAction } from './adminApi';
 import { ReasonDialog } from './ReasonDialog';
 import { formatWhen } from './adminFormat';
 import { AuditList, Badge, DetailStatusView, Field, RefreshFailedNotice, Section } from './adminUi';
+import { useAdminBack } from './useAdminBack';
 import { useAdminDetail } from './useAdminDetail';
 import { categoryLabel } from '@/features/reports/reportCategories';
 
@@ -31,10 +32,11 @@ export function ReportDetailPage() {
  * is shown to administrators only; nothing on the reported account's side can
  * reach this. */
 function ReportDetail({ id }: { id: string }) {
+  const back = useAdminBack('/admin/reports');
   const { data: detail, status, refresh, refreshing, refreshFailed, reload } = useAdminDetail(id, fetchAdminReport);
   const [dialog, setDialog] = useState<Dialog>(null);
 
-  if (!detail) return <DetailStatusView status={status} missing="Denúncia não encontrada." failed="Não foi possível carregar a denúncia." backTo="/admin/reports" backLabel="Voltar" onRetry={reload} />;
+  if (!detail) return <DetailStatusView status={status} missing="Denúncia não encontrada." failed="Não foi possível carregar a denúncia." backTo={back} backLabel="Voltar" onRetry={reload} />;
 
   const { report, history } = detail;
   const closed = report.status === 'resolved' || report.status === 'dismissed';
@@ -43,7 +45,7 @@ function ReportDetail({ id }: { id: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <Link to="/admin/reports" className="w-fit text-caption text-text-muted underline">← Denúncias</Link>
+      <Link to={back} className="w-fit text-caption text-text-muted underline">← Denúncias</Link>
       {refreshFailed && <RefreshFailedNotice refreshing={refreshing} onRetry={() => void refresh()} />}
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">

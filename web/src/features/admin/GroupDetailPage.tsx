@@ -8,6 +8,7 @@ import type { AdminGroupDetail, AdminGroupMember } from './adminApi';
 import { ReasonDialog } from './ReasonDialog';
 import { formatWhen } from './adminFormat';
 import { AuditList, Badge, DetailStatusView, Field, RefreshFailedNotice, Section } from './adminUi';
+import { useAdminBack } from './useAdminBack';
 import { useAdminDetail } from './useAdminDetail';
 
 type Dialog = 'suspend' | 'reactivate' | 'delete' | { owner: AdminGroupMember } | null;
@@ -26,6 +27,7 @@ export function GroupDetailPage() {
 /** Administrative detail of a group. Deliberately offers no way to open the
  * conversation: an admin sees who is in it and acts on it, without joining. */
 function GroupDetail({ id }: { id: string }) {
+  const back = useAdminBack('/admin/groups');
   const { data: detail, status, refresh, refreshing, refreshFailed, reload } = useAdminDetail(id, (groupId) => fetchAdminGroup(groupId));
   const [dialog, setDialog] = useState<Dialog>(null);
   const [deleted, setDeleted] = useState(false);
@@ -50,8 +52,8 @@ function GroupDetail({ id }: { id: string }) {
     }
   }
 
-  if (deleted) return <p className="py-8 text-center text-label text-text-muted">Grupo excluído. <Link to="/admin/groups" className="underline">Voltar à lista</Link></p>;
-  if (!detail) return <DetailStatusView status={status} missing="Grupo não encontrado." failed="Não foi possível carregar o grupo." backTo="/admin/groups" backLabel="Voltar" onRetry={reload} />;
+  if (deleted) return <p className="py-8 text-center text-label text-text-muted">Grupo excluído. <Link to={back} className="underline">Voltar à lista</Link></p>;
+  if (!detail) return <DetailStatusView status={status} missing="Grupo não encontrado." failed="Não foi possível carregar o grupo." backTo={back} backLabel="Voltar" onRetry={reload} />;
 
   const { group, history } = detail;
   const extra = more?.base === detail ? more : null;
@@ -62,7 +64,7 @@ function GroupDetail({ id }: { id: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <Link to="/admin/groups" className="w-fit text-caption text-text-muted underline">← Grupos</Link>
+      <Link to={back} className="w-fit text-caption text-text-muted underline">← Grupos</Link>
       {refreshFailed && <RefreshFailedNotice refreshing={refreshing} onRetry={() => void refresh()} />}
       <div className="flex items-center gap-3">
         <GroupAvatar title={group.title} avatar={group.avatar} size={56} />

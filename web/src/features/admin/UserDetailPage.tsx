@@ -8,6 +8,7 @@ import { deleteUser, fetchAdminUser, grantAdmin, reactivateUser, revokeAdmin, re
 import { ReasonDialog } from './ReasonDialog';
 import { formatWhen } from './adminFormat';
 import { AuditList, Badge, DetailStatusView, Field, RefreshFailedNotice, Section } from './adminUi';
+import { useAdminBack } from './useAdminBack';
 import { useAdminDetail } from './useAdminDetail';
 
 type Dialog = 'suspend' | 'reactivate' | 'revoke' | 'delete' | 'grant-admin' | 'revoke-admin' | null;
@@ -20,13 +21,14 @@ export function UserDetailPage() {
 }
 
 function UserDetail({ id }: { id: string }) {
+  const back = useAdminBack('/admin/users');
   const { state } = useRoom();
   const { data: detail, status, refresh, refreshing, refreshFailed, reload } = useAdminDetail(id, fetchAdminUser);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [deleted, setDeleted] = useState(false);
 
-  if (deleted) return <p className="py-8 text-center text-label text-text-muted">Conta excluída. <Link to="/admin/users" className="underline">Voltar à lista</Link></p>;
-  if (!detail) return <DetailStatusView status={status} missing="Conta não encontrada." failed="Não foi possível carregar a conta." backTo="/admin/users" backLabel="Voltar" onRetry={reload} />;
+  if (deleted) return <p className="py-8 text-center text-label text-text-muted">Conta excluída. <Link to={back} className="underline">Voltar à lista</Link></p>;
+  if (!detail) return <DetailStatusView status={status} missing="Conta não encontrada." failed="Não foi possível carregar a conta." backTo={back} backLabel="Voltar" onRetry={reload} />;
 
   const { user, groups, storage, history } = detail;
   const isSelf = user.id === state.me.userId;
@@ -35,7 +37,7 @@ function UserDetail({ id }: { id: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <Link to="/admin/users" className="w-fit text-caption text-text-muted underline">← Usuários</Link>
+      <Link to={back} className="w-fit text-caption text-text-muted underline">← Usuários</Link>
       {refreshFailed && <RefreshFailedNotice refreshing={refreshing} onRetry={() => void refresh()} />}
       <div className="flex items-center gap-3">
         <Avatar id={user.id} name={user.displayName} avatar={user.avatar} avatarColor={user.avatarColor} size={56} />

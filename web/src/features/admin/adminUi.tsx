@@ -42,10 +42,26 @@ export function AuditList({ items, empty = 'Nenhuma ação registrada.' }: { ite
   );
 }
 
-/** Loading / error / empty / "load more" chrome shared by every admin table. */
-export function ListChrome({ list, empty, children }: {
-  list: { status: 'loading' | 'error' | 'ready'; items: unknown[]; hasMore: boolean; loadingMore: boolean; loadMore: () => void; retry: () => void };
+interface ChromeList {
+  status: 'loading' | 'error' | 'ready';
+  items: unknown[];
+  hasMore: boolean;
+  loadingMore: boolean;
+  loadMoreError: boolean;
+  refreshing: boolean;
+  stale: boolean;
+  loadMore: () => void;
+  retry: () => void;
+}
+
+/** Loading / error / empty / "load more" chrome shared by every admin table.
+ * Every state `useCursorList` can be in has a face here: a failed next page and
+ * a failed re-read never replace the rows already on screen. */
+export function ListChrome({ list, empty, emptyAction, children }: {
+  list: ChromeList;
   empty: string;
+  /** shown under the empty message (e.g. "Limpar filtros") */
+  emptyAction?: ReactNode;
   children: ReactNode;
 }) {
   if (list.status === 'loading') return <p className="py-8 text-center text-label text-text-muted">Carregando…</p>;
@@ -57,13 +73,27 @@ export function ListChrome({ list, empty, children }: {
       </div>
     );
   }
-  if (list.items.length === 0) return <p className="py-10 text-center text-label text-text-muted">{empty}</p>;
+  if (list.items.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-10 text-center">
+        <p className="text-label text-text-muted">{empty}</p>
+        {emptyAction}
+      </div>
+    );
+  }
   return (
     <>
+      {list.stale && (
+        <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-yellow/30 bg-yellow/10 px-3 py-2 text-label text-text-primary">
+          <p className="min-w-0 flex-1">Não foi possível atualizar a lista. Estes dados podem estar desatualizados.</p>
+          <Button type="button" variant="secondary" size="sm" disabled={list.refreshing} onClick={list.retry}>{list.refreshing ? 'Atualizando…' : 'Atualizar'}</Button>
+        </div>
+      )}
       <div className="flex flex-col">{children}</div>
+      {list.loadMoreError && <p role="alert" className="text-center text-caption text-red-text">Não foi possível carregar mais.</p>}
       {list.hasMore && (
         <Button type="button" variant="ghost" size="sm" className="mt-2 self-center" disabled={list.loadingMore} onClick={list.loadMore}>
-          {list.loadingMore ? 'Carregando…' : 'Carregar mais'}
+          {list.loadingMore ? 'Carregando…' : list.loadMoreError ? 'Tentar de novo' : 'Carregar mais'}
         </Button>
       )}
     </>

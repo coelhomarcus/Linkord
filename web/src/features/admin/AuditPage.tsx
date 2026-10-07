@@ -1,12 +1,15 @@
 import { useCallback, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useCursorList } from '@/shared/hooks/useCursorList';
-import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue';
+import { useUrlSearch } from '@/shared/hooks/useUrlSearch';
+import { Button } from '@/shared/ui/primitives/button';
 import { Input } from '@/shared/ui/primitives/input';
 import { fetchAudit } from './adminApi';
 import type { AuditRow } from './adminApi';
 import { ACTION_LABELS, formatWhen } from './adminFormat';
 import { ListChrome } from './adminUi';
+import { useAdminQuery } from './useAdminQuery';
+import type { QuerySchema } from './useAdminQuery';
 
 function Row({ row }: { row: AuditRow }) {
   const [open, setOpen] = useState(false);
@@ -34,36 +37,36 @@ function Row({ row }: { row: AuditRow }) {
   );
 }
 
+const QUERY: QuerySchema<'action' | 'actor' | 'targetId' | 'from' | 'to'> = {
+  action: { default: '' }, actor: { default: '' }, targetId: { default: '' }, from: { default: '' }, to: { default: '' },
+};
+
 /** Read-only by construction: there is no edit or delete anywhere in this
  * feature or its API. */
 export function AuditPage() {
-  const [action, setAction] = useState('');
-  const [actor, setActor] = useState('');
-  const [targetId, setTargetId] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const debounced = useDebouncedValue(`${action}|${actor}|${targetId}`, 300);
-  const fetchPage = useCallback((cursor: string | null) => {
-    const [a, who, target] = debounced.split('|');
-    return fetchAudit({
-      action: a?.trim(), actor: who?.trim(), targetId: target?.trim(),
-      from: from ? new Date(`${from}T00:00:00`).toISOString() : undefined,
-      to: to ? new Date(`${to}T23:59:59.999`).toISOString() : undefined,
-    }, cursor);
-  }, [debounced, from, to]);
-  const list = useCursorList(fetchPage, `${debounced}|${from}|${to}`);
+  const { filters, update, clear, active, identity } = useAdminQuery(QUERY);
+  const action = useUrlSearch(filters.action, (next) => update({ action: next }));
+  const actor = useUrlSearch(filters.actor, (next) => update({ actor: next }));
+  const target = useUrlSearch(filters.targetId, (next) => update({ targetId: next }));
+  const { from, to } = filters;
+  const fetchPage = useCallback((cursor: string | null) => fetchAudit({
+    action: filters.action, actor: filters.actor, targetId: filters.targetId,
+    from: from ? new Date(`${from}T00:00:00`).toISOString() : undefined,
+    to: to ? new Date(`${to}T23:59:59.999`).toISOString() : undefined,
+  }, cursor), [filters.action, filters.actor, filters.targetId, from, to]);
+  const list = useCursorList(fetchPage, identity);
   const field = 'h-9 border-white/10 bg-white/[0.04] text-label';
 
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
-        <Input aria-label="Ação" placeholder="Ação (ex.: user.suspend)" value={action} onChange={(e) => setAction(e.target.value)} className={field} />
-        <Input aria-label="Ator" placeholder="Ator (usuário ou id)" value={actor} onChange={(e) => setActor(e.target.value)} className={field} />
-        <Input aria-label="Alvo" placeholder="ID do alvo" value={targetId} onChange={(e) => setTargetId(e.target.value)} className={field} />
-        <Input aria-label="De" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={field} />
-        <Input aria-label="Até" type="date" value={to} onChange={(e) => setTo(e.target.value)} className={field} />
+        <Input aria-label="Ação" placeholder="Ação (ex.: user.suspend)" value={action.value} onChange={(e) => action.setValue(e.target.value)} className={field} />
+        <Input aria-label="Ator" placeholder="Ator (usuário ou id)" value={actor.value} onChange={(e) => actor.setValue(e.target.value)} className={field} />
+        <Input aria-label="Alvo" placeholder="ID do alvo" value={target.value} onChange={(e) => target.setValue(e.target.value)} className={field} />
+        <Input aria-label="De" type="date" value={from} onChange={(e) => update({ from: e.target.value })} className={field} />
+        <Input aria-label="Até" type="date" value={to} onChange={(e) => update({ to: e.target.value })} className={field} />
       </div>
-      <ListChrome list={list} empty="Nenhum registro para esses filtros.">
+      <ListChrome list={list} empty="Nenhum registro para esses filtros." emptyAction={active ? <Button type="button" variant="secondary" size="sm" onClick={clear}>Limpar filtros</Button> : undefined}>
         {list.items.map((row) => <Row key={row.id} row={row} />)}
       </ListChrome>
     </div>

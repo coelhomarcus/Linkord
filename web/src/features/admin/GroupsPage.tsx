@@ -1,24 +1,34 @@
-import { useCallback, useState } from 'react';
-import { Link } from 'react-router';
+import { useCallback } from 'react';
+import { Link, useLocation } from 'react-router';
 import { Search } from 'lucide-react';
 import { Segmented } from '@/features/friends/Segmented';
 import { useCursorList } from '@/shared/hooks/useCursorList';
-import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue';
+import { useUrlSearch } from '@/shared/hooks/useUrlSearch';
+import { Button } from '@/shared/ui/primitives/button';
 import { GroupAvatar } from '@/features/conversations/GroupAvatar';
 import { fetchAdminGroups } from './adminApi';
 import { formatWhen } from './adminFormat';
 import { Badge, ListChrome } from './adminUi';
+import { fromList } from './useAdminBack';
+import { useAdminQuery } from './useAdminQuery';
+import type { QuerySchema } from './useAdminQuery';
 
 type StatusFilter = 'all' | 'active' | 'suspended' | 'orphan';
 
+const QUERY: QuerySchema<'q' | 'filter'> = {
+  q: { default: '' },
+  filter: { default: 'all', allowed: ['all', 'active', 'suspended', 'orphan'] },
+};
+
 export function GroupsPage() {
-  const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<StatusFilter>('all');
-  const q = useDebouncedValue(query.trim(), 250);
+  const { filters, update, clear, active, identity } = useAdminQuery(QUERY);
+  const { pathname, search } = useLocation();
+  const { value: query, setValue: setQuery } = useUrlSearch(filters.q, (q) => update({ q }));
+  const filter = filters.filter as StatusFilter;
   const fetchPage = useCallback((cursor: string | null) => fetchAdminGroups({
-    q, status: filter === 'active' || filter === 'suspended' ? filter : undefined, orphan: filter === 'orphan',
-  }, cursor), [q, filter]);
-  const list = useCursorList(fetchPage, `${q}|${filter}`);
+    q: filters.q, status: filter === 'active' || filter === 'suspended' ? filter : undefined, orphan: filter === 'orphan',
+  }, cursor), [filters.q, filter]);
+  const list = useCursorList(fetchPage, identity);
 
   return (
     <div className="flex flex-col gap-4">
@@ -28,12 +38,12 @@ export function GroupsPage() {
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por nome ou ID" aria-label="Buscar grupos"
             className="h-9 min-w-0 flex-1 bg-transparent text-label outline-none placeholder:text-text-muted" />
         </div>
-        <Segmented<StatusFilter> label="Estado" value={filter} onChange={setFilter}
+        <Segmented<StatusFilter> label="Estado" value={filter} onChange={(next) => update({ filter: next })}
           options={[{ value: 'all', label: 'Todos' }, { value: 'active', label: 'Ativos' }, { value: 'suspended', label: 'Suspensos' }, { value: 'orphan', label: 'Sem dono' }]} />
       </div>
-      <ListChrome list={list} empty="Nenhum grupo encontrado.">
+      <ListChrome list={list} empty="Nenhum grupo encontrado." emptyAction={active ? <Button type="button" variant="secondary" size="sm" onClick={clear}>Limpar filtros</Button> : undefined}>
         {list.items.map((g) => (
-          <Link key={g.id} to={`/admin/groups/${g.id}`} className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Link key={g.id} to={`/admin/groups/${g.id}`} state={fromList(pathname, search)} className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <GroupAvatar title={g.title} avatar={g.avatar} size={36} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-body font-medium text-text-primary">{g.title || 'Grupo sem nome'}</p>
