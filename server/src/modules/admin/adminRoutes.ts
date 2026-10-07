@@ -38,6 +38,7 @@ const ERRORS: Record<string, [number, ErrorCode, string]> = {
   not_open: [409, 'not_open', 'Essa denúncia já está em análise.'],
   invalid_action: [400, 'invalid_action', 'Essa ação não se aplica a esse tipo de denúncia.'],
   action_failed: [409, 'action_failed', 'Não foi possível aplicar a ação; a denúncia continua aberta.'],
+  busy: [409, 'conflict', 'Outra decisão sobre esta denúncia está em andamento. Atualize e confira o resultado.'],
 };
 
 function respond(reply: FastifyReply, result: UserActionResult | GroupActionResult | ReportActionResult | AdminRoleResult): void {
