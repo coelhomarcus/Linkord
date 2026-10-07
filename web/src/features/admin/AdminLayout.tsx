@@ -1,12 +1,32 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import { Link, Outlet, useLocation } from 'react-router';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { PageHeader } from '@/shared/PageHeader';
-import { buttonVariants } from '@/shared/ui/primitives/button';
+import { Button, buttonVariants } from '@/shared/ui/primitives/button';
+import { ROUTES } from '@/shared/lib/routes';
+import { useRoom } from '@/state/RoomContext';
+import { subscribeAdminAccessLost } from './adminAccess';
 import { ADMIN_PATH, sectionForPath } from './adminCatalog';
 import { AdminSidebar } from './AdminNavigation';
 import { useAdminLayout } from './useAdminLayout';
 import type { AdminOutletContext } from './useAdminMode';
+
+/** Shown when the server stopped treating this account as an administrator.
+ * The pages are gone by then (their data, dialogs and pending reads with them);
+ * leaving also fixes the stale role so the guard and the rail agree. */
+function AccessLost() {
+  const { dispatch } = useRoom();
+  const navigate = useNavigate();
+  return (
+    <div role="alert" className="flex flex-col items-center gap-3 py-12 text-center">
+      <h2 className="text-title font-semibold text-text-primary">Você não tem mais acesso à administração</h2>
+      <p className="max-w-md text-label text-text-muted">Sua conta deixou de ser administradora ou foi suspensa. Nada foi alterado pela última ação.</p>
+      <Button type="button" onClick={() => { dispatch({ type: 'SET_ROLE', role: 'user' }); navigate(ROUTES.conversations, { replace: true }); }}>
+        Voltar às conversas
+      </Button>
+    </div>
+  );
+}
 
 /** Shell of the administrative area: header, section sidebar (wide) or index
  * (compact), and one scrolling content column that uses the whole width left
@@ -19,6 +39,9 @@ export function AdminLayout() {
   const mode = useAdminLayout(areaRef);
   const section = sectionForPath(pathname);
   const compactSection = mode === 'compact' && section !== null;
+  const [accessLost, setAccessLost] = useState(false);
+
+  useEffect(() => subscribeAdminAccessLost(() => setAccessLost(true)), []);
 
   // opening another page starts at its top instead of inheriting the previous scroll
   useEffect(() => {
@@ -41,10 +64,10 @@ export function AdminLayout() {
         ) : undefined}
       />
       <div ref={areaRef} className="@container flex min-h-0 min-w-0 flex-1">
-        {mode === 'wide' ? <AdminSidebar /> : null}
+        {mode === 'wide' && !accessLost ? <AdminSidebar /> : null}
         <main ref={scrollerRef} aria-label={section?.label ?? 'Administração'} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
           <div className="flex w-full flex-col gap-4 px-4 py-4 @[520px]:px-6 @[960px]:px-8 @[960px]:py-6">
-            <Outlet context={{ mode } satisfies AdminOutletContext} />
+            {accessLost ? <AccessLost /> : <Outlet context={{ mode } satisfies AdminOutletContext} />}
           </div>
         </main>
       </div>

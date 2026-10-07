@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { reportAdminAccessLost } from '@/features/admin/adminAccess';
 import { renderAdmin, adminRoom } from './adminFixture';
 import AdminArea from '@/features/admin/AdminArea';
 import * as adminApi from '@/features/admin/adminApi';
@@ -82,5 +84,21 @@ describe('AdminArea', () => {
       expect(screen.getByRole('link', { name: 'Voltar à administração' })).toBeInTheDocument();
       expect(mocked.fetchAdminUsers).not.toHaveBeenCalled();
     });
+  });
+
+  it('losing admin access replaces the pages with an explanation, then leaves for the conversations', async () => {
+    const u = userEvent.setup();
+    const dispatch = vi.fn();
+    renderAdmin(<AdminArea />, { path: '/admin/users', pattern: '/admin/*', room: { ...adminRoom(), dispatch } });
+    expect(await screen.findByText('Nenhuma conta encontrada.')).toBeInTheDocument();
+
+    act(() => reportAdminAccessLost());
+    expect(screen.getByRole('alert')).toHaveTextContent('Você não tem mais acesso à administração');
+    expect(screen.queryByText('Nenhuma conta encontrada.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Grupos' })).not.toBeInTheDocument();
+
+    await u.click(screen.getByRole('button', { name: 'Voltar às conversas' }));
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SET_ROLE', role: 'user' });
+    expect(screen.getByText('outra rota')).toBeInTheDocument();
   });
 });
