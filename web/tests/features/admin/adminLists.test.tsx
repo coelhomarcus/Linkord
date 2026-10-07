@@ -70,7 +70,7 @@ describe('filters live in the URL', () => {
     mocked.fetchAudit.mockResolvedValue({ items: [], nextCursor: null });
     renderAdmin(<AuditPage />, { path: '/admin/audit', pattern: '/admin/audit' });
     await screen.findByText('Nenhum registro para esses filtros.');
-    await u.type(screen.getByLabelText('Ator'), 'a|b');
+    await u.type(screen.getByLabelText('Administrador'), 'a|b');
     await waitFor(() => expect(mocked.fetchAudit).toHaveBeenLastCalledWith(expect.objectContaining({ actor: 'a|b', action: '', targetId: '' }), null));
   });
 
