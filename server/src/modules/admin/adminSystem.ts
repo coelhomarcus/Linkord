@@ -31,6 +31,6 @@ export async function getSystemInfo() {
     livekit: { configured: !!(config.LIVEKIT_URL && config.LIVEKIT_API_KEY && config.LIVEKIT_API_SECRET) },
     outbox,
     notifications: { unread: unread[0]?.n ?? 0 },
-    orphanSweep: { dryRunByDefault: config.ORPHAN_SWEEP_DRY_RUN, last: getLastSweep() },
+    orphanSweep: { dryRunByDefault: config.ORPHAN_SWEEP_DRY_RUN, graceMs: config.ORPHAN_GRACE_MS, last: getLastSweep() },
   };
 }

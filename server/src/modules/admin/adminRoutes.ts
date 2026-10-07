@@ -16,7 +16,7 @@ import {
 import { claimReport, getAdminReport, listAdminReports, resolveReport, type ReportActionResult } from './adminReports.js';
 import type { AuditActor } from './auditLog.js';
 import { getSystemInfo } from './adminSystem.js';
-import { sweepOrphans } from '../attachments/orphanSweeper.js';
+import { SweepInProgressError, sweepOrphans } from '../attachments/orphanSweeper.js';
 import type { ReportAction } from '../reports/reportsPolicy.js';
 
 type Query = Record<string, string | undefined>;
@@ -40,6 +40,15 @@ const ERRORS: Record<string, [number, ErrorCode, string]> = {
   action_failed: [409, 'action_failed', 'Não foi possível aplicar a ação; a denúncia continua aberta.'],
   busy: [409, 'conflict', 'Outra decisão sobre esta denúncia está em andamento. Atualize e confira o resultado.'],
 };
+
+async function runSweep(reply: FastifyReply, opts: Parameters<typeof sweepOrphans>[0]): Promise<void> {
+  try {
+    sendJson(reply, 200, { result: await sweepOrphans(opts) });
+  } catch (err) {
+    if (!(err instanceof SweepInProgressError)) throw err;
+    sendError(reply, 409, 'conflict', err.message);
+  }
+}
 
 function respond(reply: FastifyReply, result: UserActionResult | GroupActionResult | ReportActionResult | AdminRoleResult): void {
   if (result.code === 'ok') return sendJson(reply, 200, { ok: true });
@@ -165,11 +174,11 @@ export function registerAdminRoutes(fastify: FastifyInstance): void {
     if (body.dryRun !== false) {
       const actor = await requireAdmin(request, reply);
       if (!actor) return;
-      return sendJson(reply, 200, { result: await sweepOrphans({ dryRun: true, actor, requestId: request.id }) });
+      return runSweep(reply, { dryRun: true, actor, requestId: request.id });
     }
     const m = await mutating(request, reply);
     if (!m) return;
-    sendJson(reply, 200, { result: await sweepOrphans({ dryRun: false, actor: m.actor, requestId: request.id, reason: m.reason }) });
+    await runSweep(reply, { dryRun: false, actor: m.actor, requestId: request.id, reason: m.reason });
   });
 
   fastify.get('/api/admin/audit', (request: FastifyRequest<{ Querystring: Query }>, reply) => reading(request, reply, () => {

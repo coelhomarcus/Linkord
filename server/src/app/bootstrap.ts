@@ -7,7 +7,7 @@ import { sweepExpiredSessions } from '../modules/auth/session.js';
 import { sweepSendOperations } from '../modules/messages/sendOperations.js';
 import { sweepExpiredStaged } from '../modules/attachments/stagedAttachments.js';
 import { ensureUploadDir, sweepStaleUploads } from '../modules/attachments/uploadSession.js';
-import { sweepOrphans } from '../modules/attachments/orphanSweeper.js';
+import { SweepInProgressError, sweepOrphans } from '../modules/attachments/orphanSweeper.js';
 import { drainOutbox, pruneNotifications } from '../modules/notifications/outboxWorker.js';
 import { OUTBOX_POLL_MS } from '../modules/notifications/notificationsPolicy.js';
 import { logger } from '../lib/logger.js';
@@ -101,7 +101,8 @@ export async function bootstrap(): Promise<void> {
   // run a real one from /admin/system.
   const sweepOrphanFiles = () => sweepOrphans({ dryRun: config.ORPHAN_SWEEP_DRY_RUN, actor: null })
     .then((r) => { if (r.orphanCount > 0) log.info('orphan files found', { count: r.orphanCount, bytes: r.orphanBytes, dryRun: r.dryRun, deleted: r.deleted }); })
-    .catch((err) => log.error('orphan sweep failed', err));
+    // an admin's run is already doing this work: skip, the next tick will come
+    .catch((err) => { if (!(err instanceof SweepInProgressError)) log.error('orphan sweep failed', err); });
   setTimeout(sweepOrphanFiles, 60_000).unref();
   const orphanTimer = setInterval(sweepOrphanFiles, 24 * 60 * 60 * 1000);
   orphanTimer.unref();
