@@ -8,5 +8,6 @@ export interface AdminOutletContext {
 /** Lets a routed page know which navigation surface is showing (the bare
  * /admin entry is the index in compact and a redirect in wide). */
 export function useAdminMode(): AdminMode {
-  return useOutletContext<AdminOutletContext>().mode;
+  // a page rendered outside the layout (a test, a future standalone use) is wide
+  return useOutletContext<AdminOutletContext | undefined>()?.mode ?? 'wide';
 }

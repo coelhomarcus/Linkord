@@ -48,7 +48,7 @@ export interface AdminUserDetail {
   history: AuditRow[];
 }
 
-export const fetchAdminUsers = (filters: { q?: string; status?: string; role?: string }, cursor: string | null) =>
+export const fetchAdminUsers = (filters: { q?: string; status?: string; role?: string; from?: string; to?: string }, cursor: string | null) =>
   adminFetch<Page<AdminUserRow>>(`/api/admin/users${qs({ ...filters, cursor })}`);
 export const fetchAdminUser = (id: string) => adminFetch<AdminUserDetail>(`/api/admin/users/${encodeURIComponent(id)}`);
 export const suspendUser = (id: string, reason: string) => post(`/api/admin/users/${encodeURIComponent(id)}/suspend`, { reason });

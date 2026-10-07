@@ -38,7 +38,8 @@ describe('filters live in the URL', () => {
     await screen.findByText('Ana');
     expect(mocked.fetchAdminUsers).toHaveBeenCalledWith({ q: 'bia', status: 'suspended', role: 'admin' }, null);
     expect(screen.getByLabelText('Buscar usuários')).toHaveValue('bia');
-    expect(screen.getByRole('button', { name: 'Suspensos' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('Situação')).toHaveValue('suspended');
+    expect(screen.getByLabelText('Papel')).toHaveValue('admin');
   });
 
   it('an unknown filter value in the URL is ignored instead of breaking the list', async () => {
@@ -56,7 +57,7 @@ describe('filters live in the URL', () => {
     );
     await screen.findByText('Nenhuma conta encontrada.');
     expect(screen.queryByRole('button', { name: 'Limpar filtros' })).not.toBeInTheDocument();
-    await u.click(screen.getByRole('button', { name: 'Suspensos' }));
+    await u.selectOptions(screen.getByLabelText('Situação'), 'suspended');
     expect(screen.getByLabelText('location')).toHaveTextContent('/admin/users?status=suspended');
     await u.click(await screen.findByRole('button', { name: 'Limpar filtros' }));
     expect(screen.getByLabelText('location')).toHaveTextContent(/^\/admin\/users$/);
@@ -95,7 +96,7 @@ describe('back from a detail', () => {
   it('returns to the exact query the admin came from', async () => {
     const u = userEvent.setup();
     app('/admin/users?status=suspended&q=ana');
-    await u.click(await screen.findByRole('link', { name: /Ana/ }));
+    await u.click(await screen.findByRole('link', { name: /Ana.*@ana/ }));
     expect(await screen.findByText('ana@example.com')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '← Usuários' })).toHaveAttribute('href', '/admin/users?status=suspended&q=ana');
   });
