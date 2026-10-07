@@ -139,4 +139,54 @@ describe('useCursorList', () => {
     // nothing to assert beyond "no state update on an unmounted hook, no throw"
     expect(calls).toHaveLength(1);
   });
+
+  describe('restore', () => {
+    const snapshot = { items: rows('a', 'b', 'c'), nextCursor: 'c2', pages: 2 };
+
+    it('shows the restored rows at once and re-reads the same number of pages in place', async () => {
+      const { calls, fetchPage } = controlled();
+      const { result } = renderHook(() => useCursorList(fetchPage, 'q', { getKey: key, restore: snapshot }));
+      expect(result.current.status).toBe('ready');
+      expect(result.current.items).toEqual(rows('a', 'b', 'c'));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0]!.cursor).toBeNull();
+      expect(result.current.refreshing).toBe(true);
+
+      await act(async () => calls[0]!.resolve({ items: rows('a', 'x'), nextCursor: 'n1' }));
+      await waitFor(() => expect(calls).toHaveLength(2));
+      expect(calls[1]!.cursor).toBe('n1');
+      await act(async () => calls[1]!.resolve({ items: rows('y'), nextCursor: 'n2' }));
+      expect(result.current.items).toEqual(rows('a', 'x', 'y'));
+      expect(result.current.refreshing).toBe(false);
+      expect(result.current.hasMore).toBe(true);
+    });
+
+    it('a failed re-read keeps the restored rows and marks them stale', async () => {
+      const { calls, fetchPage } = controlled();
+      const { result } = renderHook(() => useCursorList(fetchPage, 'q', { getKey: key, restore: snapshot }));
+      await waitFor(() => expect(calls).toHaveLength(1));
+      await act(async () => calls[0]!.reject(new Error('offline')));
+      expect(result.current.items).toEqual(rows('a', 'b', 'c'));
+      expect(result.current.stale).toBe(true);
+      expect(result.current.status).toBe('ready');
+    });
+
+    it('a different identity afterwards still starts from scratch', async () => {
+      const { calls, fetchPage } = controlled();
+      const { result, rerender } = renderHook(({ q }) => useCursorList(fetchPage, q, { getKey: key, restore: snapshot }), { initialProps: { q: 'q' } });
+      await waitFor(() => expect(calls).toHaveLength(1));
+      rerender({ q: 'other' });
+      await waitFor(() => expect(result.current.status).toBe('loading'));
+      expect(result.current.items).toEqual([]);
+    });
+
+    it('snapshot returns the window as it is now, ready to be restored', async () => {
+      const { calls, fetchPage } = controlled();
+      const { result } = renderHook(() => useCursorList(fetchPage, 'q', { getKey: key }));
+      await act(async () => calls[0]!.resolve({ items: rows('a', 'b'), nextCursor: 'c1' }));
+      act(() => result.current.loadMore());
+      await act(async () => calls[1]!.resolve({ items: rows('c'), nextCursor: 'c2' }));
+      expect(result.current.snapshot()).toEqual({ items: rows('a', 'b', 'c'), nextCursor: 'c2', pages: 2 });
+    });
+  });
 });

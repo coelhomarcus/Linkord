@@ -4,7 +4,14 @@ interface Page<T> { items: T[]; nextCursor: string | null }
 
 export type ListStatus = 'loading' | 'error' | 'ready';
 
+/** A window of a list to start from instead of an empty one (see `restore`). */
+export interface ListSnapshot<T> { items: T[]; nextCursor: string | null; pages: number }
+
 interface Options<T> {
+  /** Start from rows loaded earlier (coming back to a list): they show at once and
+   * the same pages are re-read in the background, so they never stay out of date
+   * silently — if that read fails the list is marked `stale`. Read once, at mount. */
+  restore?: ListSnapshot<T> | null;
   /** Changes whenever the SAME query may have new data (a social event, an action
    * of this tab). The rows on screen stay while it is re-read. */
   revision?: string | number;
@@ -37,20 +44,22 @@ interface Options<T> {
  *   nothing here caught it) — removed instead of patched around. */
 export function useCursorList<T>(fetchPage: (cursor: string | null) => Promise<Page<T>>, identity: string, options: Options<T> = {}) {
   const { revision = 0 } = options;
-  const [items, setItems] = useState<T[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [status, setStatus] = useState<ListStatus>('loading');
+  const restored = useRef(options.restore ?? null);
+  const [items, setItems] = useState<T[]>(() => restored.current?.items ?? []);
+  const [nextCursor, setNextCursor] = useState<string | null>(() => restored.current?.nextCursor ?? null);
+  const [status, setStatus] = useState<ListStatus>(() => (restored.current ? 'ready' : 'loading'));
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [stale, setStale] = useState(false);
   const generation = useRef(0);
-  const pagesLoaded = useRef(0);
-  const cursorRef = useRef<string | null>(null);
+  const pagesLoaded = useRef(restored.current?.pages ?? 0);
+  const cursorRef = useRef<string | null>(restored.current?.nextCursor ?? null);
+  const itemsRef = useRef(items);
   const fetchRef = useRef(fetchPage);
   const getKeyRef = useRef(options.getKey);
   const seen = useRef<{ identity: string; revision: string | number } | null>(null);
-  useEffect(() => { fetchRef.current = fetchPage; getKeyRef.current = options.getKey; });
+  useEffect(() => { fetchRef.current = fetchPage; getKeyRef.current = options.getKey; itemsRef.current = items; });
 
   const dedupe = useCallback((rows: T[]): T[] => {
     const key = getKeyRef.current;
@@ -112,7 +121,10 @@ export function useCursorList<T>(fetchPage: (cursor: string | null) => Promise<P
   useEffect(() => {
     const previous = seen.current;
     seen.current = { identity, revision };
-    if (!previous || previous.identity !== identity) {
+    if (!previous && restored.current) {
+      // rows are already on screen: re-read the window in place instead of blanking it
+      refresh();
+    } else if (!previous || previous.identity !== identity) {
       // a different query: nothing from the old one may stay on screen
       setItems([]);
       setNextCursor(null);
@@ -158,5 +170,8 @@ export function useCursorList<T>(fetchPage: (cursor: string | null) => Promise<P
     setItems((prev) => prev.filter((row) => keyOf(row) !== key));
   }, []);
 
-  return { items, status, loadingMore, loadMoreError, hasMore: nextCursor !== null, loadMore, retry, refreshing, stale, removeItem };
+  /** The rows, cursor and page count as they are now, to restore later. */
+  const snapshot = useCallback((): ListSnapshot<T> => ({ items: itemsRef.current, nextCursor: cursorRef.current, pages: pagesLoaded.current }), []);
+
+  return { items, status, snapshot, loadingMore, loadMoreError, hasMore: nextCursor !== null, loadMore, retry, refreshing, stale, removeItem };
 }
