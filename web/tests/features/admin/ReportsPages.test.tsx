@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderAdmin } from './adminFixture';
 import { ApiError } from '@/shared/api/api';
-import { useAdminMode } from '@/features/admin/useAdminMode';
+import { useAdminTableFits } from '@/features/admin/useAdminMode';
 import { ReportsPage } from '@/features/admin/ReportsPage';
 import { ReportDetailPage } from '@/features/admin/ReportDetailPage';
 import * as adminApi from '@/features/admin/adminApi';
@@ -11,7 +11,7 @@ import * as adminApi from '@/features/admin/adminApi';
 vi.mock('@/features/admin/adminApi');
 vi.mock('@/features/admin/useAdminMode', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/admin/useAdminMode')>()),
-  useAdminMode: vi.fn(() => 'wide'),
+  useAdminTableFits: vi.fn(() => true),
 }));
 const mocked = vi.mocked(adminApi);
 
@@ -26,7 +26,7 @@ const openDetail = () => renderAdmin(<ReportDetailPage />, { path: '/admin/repor
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(useAdminMode).mockReturnValue('wide');
+  vi.mocked(useAdminTableFits).mockReturnValue(true);
   mocked.fetchAdminReports.mockResolvedValue({ items: [row()], nextCursor: null });
   mocked.fetchAdminReport.mockResolvedValue(detail());
 });
@@ -60,7 +60,7 @@ describe('ReportsPage', () => {
   });
 
   it('compact: stacked rows only', async () => {
-    vi.mocked(useAdminMode).mockReturnValue('compact');
+    vi.mocked(useAdminTableFits).mockReturnValue(false);
     renderAdmin(<ReportsPage />, { path: '/admin/reports', pattern: '/admin/reports' });
     expect(await screen.findByRole('link', { name: /mensagem de bia/ })).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();

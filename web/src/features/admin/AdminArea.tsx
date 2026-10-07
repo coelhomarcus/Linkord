@@ -11,13 +11,16 @@ import { ReportsPage } from './ReportsPage';
 import { SystemPage } from './SystemPage';
 import { UserDetailPage } from './UserDetailPage';
 import { UsersPage } from './UsersPage';
-import { useAdminMode } from './useAdminMode';
+import { useAdminMeasured, useAdminMode } from './useAdminMode';
 
 /** Bare /admin: the section index when there is no sidebar to pick from,
  * Users otherwise. Only this entry depends on the mode — a detail URL is
  * never redirected because of the window size. */
 function AdminEntry() {
-  return useAdminMode() === 'compact' ? <AdminIndex /> : <Navigate to={ROUTES.admin} replace />;
+  const mode = useAdminMode();
+  // before the first measurement `mode` is a guess: deciding on it would redirect a narrow screen
+  if (!useAdminMeasured()) return null;
+  return mode === 'compact' ? <AdminIndex /> : <Navigate to={ROUTES.admin} replace />;
 }
 
 /** The administrative area (docs/plano-rede-social.md §9). Loaded on demand —

@@ -15,13 +15,13 @@ vi.mock('@/shared/PageHeader', () => ({
 vi.mock('@/features/admin/adminApi');
 vi.mock('@/features/admin/useAdminLayout', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/admin/useAdminLayout')>()),
-  useAdminLayout: vi.fn(() => 'wide'),
+  useAdminLayout: vi.fn(() => ({ mode: 'wide', measured: true })),
 }));
 const mocked = vi.mocked(adminApi);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(useAdminLayout).mockReturnValue('wide');
+  vi.mocked(useAdminLayout).mockReturnValue({ mode: 'wide', measured: true });
   mocked.fetchAdminUsers.mockResolvedValue({ items: [], nextCursor: null });
   mocked.fetchAdminUser.mockReturnValue(new Promise(() => {}));
   mocked.fetchAdminReport.mockReturnValue(new Promise(() => {}));
@@ -60,7 +60,7 @@ describe('AdminArea', () => {
   });
 
   describe('compact', () => {
-    beforeEach(() => vi.mocked(useAdminLayout).mockReturnValue('compact'));
+    beforeEach(() => vi.mocked(useAdminLayout).mockReturnValue({ mode: 'compact', measured: true }));
 
     it('the bare /admin entry is the section index, not a redirect', () => {
       renderAdmin(<AdminArea />, { path: '/admin', pattern: '/admin/*' });

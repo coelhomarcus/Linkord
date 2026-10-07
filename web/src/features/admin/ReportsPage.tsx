@@ -3,13 +3,13 @@ import { Link, useLocation } from 'react-router';
 import { categoryLabel } from '@/features/reports/reportCategories';
 import { fetchAdminReports } from './adminApi';
 import type { AdminReportRow } from './adminApi';
-import { REPORT_TARGET_LABEL, formatWhen } from './adminFormat';
+import { REPORT_TARGET_LABEL, formatWhen, formatWhenShort } from './adminFormat';
 import { AdminListToolbar, AdminSelectField } from './AdminListToolbar';
 import { AdminTable, AdminTd, AdminTh, AdminTr } from './AdminTable';
 import { Badge, ListChrome } from './adminUi';
 import { fromList } from './useAdminBack';
 import { useAdminList } from './useAdminList';
-import { useAdminMode } from './useAdminMode';
+import { useAdminTableFits } from './useAdminMode';
 import { useAdminQuery } from './useAdminQuery';
 import type { QuerySchema } from './useAdminQuery';
 
@@ -35,7 +35,7 @@ const assignee = (report: AdminReportRow) => (report.assignee ? `@${report.assig
 export function ReportsPage() {
   const { filters, update, clear, active, identity } = useAdminQuery(QUERY);
   const { pathname, search } = useLocation();
-  const mode = useAdminMode();
+  const tableFits = useAdminTableFits();
   const queue = filters.status as Queue;
   const target = filters.targetType as TargetFilter;
   const fetchPage = useCallback((cursor: string | null) => fetchAdminReports({
@@ -59,11 +59,11 @@ export function ReportsPage() {
         onClear={active ? clear : undefined}
       />
       <ListChrome list={list} empty="Nenhuma denúncia nesta fila.">
-        {mode === 'wide' ? (
+        {tableFits ? (
           <AdminTable caption="Denúncias">
             <thead>
               <tr>
-                <AdminTh>Alvo</AdminTh><AdminTh>Categoria</AdminTh><AdminTh>Situação</AdminTh><AdminTh>Responsável</AdminTh><AdminTh>Recebida em</AdminTh>
+                <AdminTh className="min-w-52">Alvo</AdminTh><AdminTh>Categoria</AdminTh><AdminTh>Situação</AdminTh><AdminTh>Responsável</AdminTh><AdminTh>Recebida em</AdminTh>
               </tr>
             </thead>
             <tbody>
@@ -73,7 +73,7 @@ export function ReportsPage() {
                   <AdminTd>{categoryLabel(r.category)}</AdminTd>
                   <AdminTd><Badge value={r.status} /></AdminTd>
                   <AdminTd className="max-w-40 truncate">{assignee(r)}</AdminTd>
-                  <AdminTd className="whitespace-nowrap">{formatWhen(r.createdAt)}</AdminTd>
+                  <AdminTd className="whitespace-nowrap">{formatWhenShort(r.createdAt)}</AdminTd>
                 </AdminTr>
               ))}
             </tbody>

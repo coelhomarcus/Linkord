@@ -6,14 +6,14 @@ import { buttonVariants } from '@/shared/ui/primitives/button';
 import { useUrlSearch } from '@/shared/hooks/useUrlSearch';
 import { fetchAdminUsers } from './adminApi';
 import type { AdminUserRow } from './adminApi';
-import { dayStartIso, formatWhen, nextDayStartIso } from './adminFormat';
+import { dayStartIso, formatDateShort, formatWhen, nextDayStartIso } from './adminFormat';
 import { AdminDateField, AdminListToolbar, AdminSelectField } from './AdminListToolbar';
 import { AdminTable, AdminTd, AdminTh, AdminTr } from './AdminTable';
 import { Badge, ListChrome } from './adminUi';
 import { CopyIdButton } from './CopyIdButton';
 import { fromList } from './useAdminBack';
 import { useAdminList } from './useAdminList';
-import { useAdminMode } from './useAdminMode';
+import { useAdminTableFits } from './useAdminMode';
 import { useAdminQuery } from './useAdminQuery';
 import type { QuerySchema } from './useAdminQuery';
 
@@ -54,7 +54,7 @@ function UserIdentity({ user, from }: { user: AdminUserRow; from: { from: string
 export function UsersPage() {
   const { filters, update, clear, active, identity } = useAdminQuery(QUERY);
   const { pathname, search } = useLocation();
-  const mode = useAdminMode();
+  const tableFits = useAdminTableFits();
   const { value: query, setValue: setQuery } = useUrlSearch(filters.q, (q) => update({ q }));
   const status = filters.status as StatusFilter;
   const role = filters.role as RoleFilter;
@@ -91,11 +91,11 @@ export function UsersPage() {
         onClear={active ? clear : undefined}
       />
       <ListChrome list={list} empty="Nenhuma conta encontrada.">
-        {mode === 'wide' ? (
+        {tableFits ? (
           <AdminTable caption="Contas">
             <thead>
               <tr>
-                <AdminTh>Usuário</AdminTh><AdminTh>Situação</AdminTh><AdminTh>Papel</AdminTh><AdminTh>Criada em</AdminTh><AdminTh className="text-right">Ações</AdminTh>
+                <AdminTh className="min-w-52">Usuário</AdminTh><AdminTh>Situação</AdminTh><AdminTh>Papel</AdminTh><AdminTh>Criada em</AdminTh><AdminTh className="text-right">Ações</AdminTh>
               </tr>
             </thead>
             <tbody>
@@ -104,7 +104,7 @@ export function UsersPage() {
                   <AdminTd className="max-w-0 w-[40%]"><UserIdentity user={u} from={origin} /></AdminTd>
                   <AdminTd><Badge value={u.status} /></AdminTd>
                   <AdminTd><Badge value={u.role} /></AdminTd>
-                  <AdminTd className="whitespace-nowrap">{formatWhen(u.createdAt)}</AdminTd>
+                  <AdminTd className="whitespace-nowrap">{formatDateShort(u.createdAt)}</AdminTd>
                   <AdminTd><RowActions user={u} /></AdminTd>
                 </AdminTr>
               ))}

@@ -5,13 +5,13 @@ import { renderAdmin } from './adminFixture';
 import { UsersPage } from '@/features/admin/UsersPage';
 import { GroupsPage } from '@/features/admin/GroupsPage';
 import { dayStartIso, nextDayStartIso } from '@/features/admin/adminFormat';
-import { useAdminMode } from '@/features/admin/useAdminMode';
+import { useAdminTableFits } from '@/features/admin/useAdminMode';
 import * as adminApi from '@/features/admin/adminApi';
 
 vi.mock('@/features/admin/adminApi');
 vi.mock('@/features/admin/useAdminMode', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/admin/useAdminMode')>()),
-  useAdminMode: vi.fn(() => 'wide'),
+  useAdminTableFits: vi.fn(() => true),
 }));
 const mocked = vi.mocked(adminApi);
 
@@ -24,7 +24,7 @@ const group = (over: Partial<adminApi.AdminGroupRow> = {}): adminApi.AdminGroupR
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(useAdminMode).mockReturnValue('wide');
+  vi.mocked(useAdminTableFits).mockReturnValue(true);
   mocked.fetchAdminUsers.mockResolvedValue({ items: [user(), user({ id: 'u2', username: 'bia', displayName: 'Bia', role: 'admin', status: 'suspended' })], nextCursor: null });
   mocked.fetchAdminGroups.mockResolvedValue({ items: [group(), group({ id: 'g2', title: '', ownerId: null, ownerUsername: null, status: 'suspended', memberCount: 1 })], nextCursor: null });
 });
@@ -39,7 +39,7 @@ describe('UsersPage layout', () => {
   });
 
   it('compact: stacked rows only — the table is not mounted alongside', async () => {
-    vi.mocked(useAdminMode).mockReturnValue('compact');
+    vi.mocked(useAdminTableFits).mockReturnValue(false);
     renderAdmin(<UsersPage />, { path: '/admin/users', pattern: '/admin/users' });
     expect(await screen.findByText('Ana')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
@@ -101,7 +101,7 @@ describe('GroupsPage layout', () => {
   });
 
   it('compact: stacked rows only, still showing owner, members and date', async () => {
-    vi.mocked(useAdminMode).mockReturnValue('compact');
+    vi.mocked(useAdminTableFits).mockReturnValue(false);
     renderAdmin(<GroupsPage />, { path: '/admin/groups', pattern: '/admin/groups' });
     expect(await screen.findByText('Squad')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();

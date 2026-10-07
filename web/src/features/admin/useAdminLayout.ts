@@ -14,14 +14,24 @@ export function adminModeForWidth(width: number): AdminMode {
   return width >= ADMIN_WIDE_MIN ? 'wide' : 'compact';
 }
 
+export interface AdminLayoutState {
+  mode: AdminMode;
+  /** false until the area has been measured once: `mode` is only a guess before that */
+  measured: boolean;
+}
+
 /** Observes a wrapper whose width doesn't depend on the mode itself. */
-export function useAdminLayout(ref: RefObject<HTMLElement | null>): AdminMode {
-  const [mode, setMode] = useState<AdminMode>('wide');
+export function useAdminLayout(ref: RefObject<HTMLElement | null>): AdminLayoutState {
+  const [state, setState] = useState<AdminLayoutState>({ mode: 'wide', measured: false });
 
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const measure = () => setMode(adminModeForWidth(el.getBoundingClientRect().width));
+    const measure = () => {
+      const mode = adminModeForWidth(el.getBoundingClientRect().width);
+      // a resize that doesn't cross the threshold must not re-render the whole area
+      setState((previous) => (previous.measured && previous.mode === mode ? previous : { mode, measured: true }));
+    };
     measure();
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(measure);
@@ -29,5 +39,5 @@ export function useAdminLayout(ref: RefObject<HTMLElement | null>): AdminMode {
     return () => observer.disconnect();
   }, [ref]);
 
-  return mode;
+  return state;
 }

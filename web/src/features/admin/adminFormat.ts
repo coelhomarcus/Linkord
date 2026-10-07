@@ -4,6 +4,20 @@ export function formatWhen(iso: string | null | undefined): string {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+/** Compact date for table cells (`07/10/2026 04:34`): the long form is for detail pages. */
+export function formatWhenShort(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+/** A date with no time (`07/10/2026`): for columns where the hour adds nothing, like when an account was created. */
+export function formatDateShort(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 export const ACTION_LABELS: Record<string, string> = {
   'user.suspend': 'Conta suspensa', 'user.grant_admin': 'Admin concedido', 'user.revoke_admin': 'Admin removido', 'storage.sweep_orphans': 'Órfãos coletados', 'storage.orphan_delete': 'Falha ao apagar órfão', 'user.reactivate': 'Conta reativada', 'user.revoke_sessions': 'Sessões revogadas', 'user.delete': 'Conta excluída',
   'user.delete.avatar_cleanup': 'Limpeza da foto', 'group.suspend': 'Grupo suspenso', 'group.reactivate': 'Grupo reativado',

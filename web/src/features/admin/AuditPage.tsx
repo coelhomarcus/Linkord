@@ -4,13 +4,13 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useUrlSearch } from '@/shared/hooks/useUrlSearch';
 import { fetchAudit } from './adminApi';
 import type { AuditRow } from './adminApi';
-import { ACTION_LABELS, dayStartIso, formatWhen, nextDayStartIso } from './adminFormat';
+import { ACTION_LABELS, dayStartIso, formatWhenShort, nextDayStartIso } from './adminFormat';
 import { AdminDateField, AdminListToolbar, AdminSelectField } from './AdminListToolbar';
 import { AuditRowDetails } from './AuditRowDetails';
 import { AdminTable, AdminTd, AdminTh, AdminTr } from './AdminTable';
 import { ListChrome } from './adminUi';
 import { useAdminList } from './useAdminList';
-import { useAdminMode } from './useAdminMode';
+import { useAdminTableFits } from './useAdminMode';
 import { useAdminQuery } from './useAdminQuery';
 import type { QuerySchema } from './useAdminQuery';
 
@@ -52,9 +52,11 @@ function Actor({ row }: { row: AuditRow }) {
     : <span>{label}</span>;
 }
 
-function Target({ row }: { row: AuditRow }) {
+function Target({ row, inline }: { row: AuditRow; inline?: boolean }) {
   const href = entityHref(row.targetType, row.targetId, row.action);
   const label = row.targetLabel || row.targetId || '—';
+  const name = href ? <Link to={href} className="hover:underline">{label}</Link> : <span>{label}</span>;
+  if (inline) return <span className="min-w-0 break-words">{TARGET_TYPE_LABEL[row.targetType] ?? row.targetType}: {name}</span>;
   return (
     <span className="min-w-0">
       <span className="block text-caption text-text-muted">{TARGET_TYPE_LABEL[row.targetType] ?? row.targetType}</span>
@@ -67,7 +69,7 @@ function Toggle({ row, open, onToggle, controls }: { row: AuditRow; open: boolea
   return (
     <button type="button" aria-expanded={open} aria-controls={controls} onClick={onToggle} className="flex items-center gap-1.5 rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-ring">
       {open ? <ChevronDown size={14} aria-hidden className="flex-none text-text-muted" /> : <ChevronRight size={14} aria-hidden className="flex-none text-text-muted" />}
-      <span className="whitespace-nowrap">{formatWhen(row.at)}</span>
+      <span>{formatWhenShort(row.at)}</span>
       <span className="sr-only">: detalhes de {ACTION_LABELS[row.action] ?? row.action}</span>
     </button>
   );
@@ -81,8 +83,8 @@ function WideRow({ row }: { row: AuditRow }) {
       <AdminTr>
         <AdminTd><Toggle row={row} open={open} onToggle={() => setOpen((v) => !v)} controls={detailsId} /></AdminTd>
         <AdminTd className="font-medium text-text-primary">{ACTION_LABELS[row.action] ?? row.action}</AdminTd>
-        <AdminTd className="max-w-40 truncate"><Actor row={row} /></AdminTd>
-        <AdminTd className="max-w-56"><Target row={row} /></AdminTd>
+        <AdminTd className="truncate"><Actor row={row} /></AdminTd>
+        <AdminTd className="truncate"><Target row={row} /></AdminTd>
         <AdminTd><Result row={row} /></AdminTd>
       </AdminTr>
       {open && (
@@ -105,7 +107,7 @@ function CompactRow({ row }: { row: AuditRow }) {
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-caption">
         <span>por <Actor row={row} /></span>
-        <span className="flex items-baseline gap-1">alvo: <Target row={row} /></span>
+        <span>alvo: <Target row={row} inline /></span>
       </div>
       <Toggle row={row} open={open} onToggle={() => setOpen((v) => !v)} controls={detailsId} />
       {open && <div id={detailsId} className="rounded-lg bg-white/[0.03] p-3"><AuditRowDetails row={row} /></div>}
@@ -117,7 +119,7 @@ function CompactRow({ row }: { row: AuditRow }) {
  * feature or its API. A record is shown as it was written. */
 export function AuditPage() {
   const { filters, update, clear, active, identity } = useAdminQuery(QUERY);
-  const mode = useAdminMode();
+  const tableFits = useAdminTableFits();
   const action = filters.action;
   const actor = useUrlSearch(filters.actor, (next) => update({ actor: next }));
   const target = useUrlSearch(filters.targetId, (next) => update({ targetId: next }));
@@ -165,10 +167,12 @@ export function AuditPage() {
         onClear={active ? clear : undefined}
       />
       <ListChrome list={list} empty="Nenhum registro para esses filtros.">
-        {mode === 'wide' ? (
-          <AdminTable caption="Registros de auditoria">
+        {tableFits ? (
+          <AdminTable caption="Registros de auditoria" className="min-w-[560px] table-fixed">
             <thead>
-              <tr><AdminTh>Quando</AdminTh><AdminTh>Ação</AdminTh><AdminTh>Administrador</AdminTh><AdminTh>Alvo</AdminTh><AdminTh>Resultado</AdminTh></tr>
+              <tr>
+                <AdminTh className="w-[22%]">Quando</AdminTh><AdminTh className="w-[18%]">Ação</AdminTh><AdminTh className="w-[21%]">Administrador</AdminTh><AdminTh className="w-[23%]">Alvo</AdminTh><AdminTh className="w-[16%]">Resultado</AdminTh>
+              </tr>
             </thead>
             <tbody>{list.items.map((row) => <WideRow key={row.id} row={row} />)}</tbody>
           </AdminTable>

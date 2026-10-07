@@ -3,13 +3,13 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderAdmin, auditRow } from './adminFixture';
 import { AuditPage } from '@/features/admin/AuditPage';
-import { useAdminMode } from '@/features/admin/useAdminMode';
+import { useAdminTableFits } from '@/features/admin/useAdminMode';
 import * as adminApi from '@/features/admin/adminApi';
 
 vi.mock('@/features/admin/adminApi');
 vi.mock('@/features/admin/useAdminMode', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/admin/useAdminMode')>()),
-  useAdminMode: vi.fn(() => 'wide'),
+  useAdminTableFits: vi.fn(() => true),
 }));
 const mocked = vi.mocked(adminApi);
 
@@ -17,7 +17,7 @@ const open = (path = '/admin/audit') => renderAdmin(<AuditPage />, { path, patte
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(useAdminMode).mockReturnValue('wide');
+  vi.mocked(useAdminTableFits).mockReturnValue(true);
   mocked.fetchAudit.mockResolvedValue({ items: [auditRow(), auditRow({ id: 'a2', action: 'user.delete', result: 'failed', targetId: 'u2', targetLabel: 'bia' })], nextCursor: null });
 });
 
@@ -105,7 +105,7 @@ describe('AuditPage', () => {
 
   it('compact: stacked records with the same details on demand, and no table', async () => {
     const u = userEvent.setup();
-    vi.mocked(useAdminMode).mockReturnValue('compact');
+    vi.mocked(useAdminTableFits).mockReturnValue(false);
     open();
     expect(await screen.findByText('Conta suspensa')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();

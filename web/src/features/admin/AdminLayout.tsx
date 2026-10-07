@@ -5,12 +5,16 @@ import { PageHeader } from '@/shared/PageHeader';
 import { Button, buttonVariants } from '@/shared/ui/primitives/button';
 import { ROUTES } from '@/shared/lib/routes';
 import { useRoom } from '@/state/RoomContext';
+import { useElementWidth } from '@/shared/hooks/useElementWidth';
 import { subscribeAdminAccessLost } from './adminAccess';
 import { consumeScrollRestore, invalidateAdminLists } from './adminListCache';
 import { ADMIN_PATH, sectionForPath } from './adminCatalog';
 import { AdminSidebar } from './AdminNavigation';
 import { useAdminLayout } from './useAdminLayout';
 import type { AdminOutletContext } from './useAdminMode';
+
+/** Width of the content column below which a 5–6 column table would cut its last columns. */
+export const ADMIN_TABLE_MIN = 820;
 
 /** Shown when the server stopped treating this account as an administrator.
  * The pages are gone by then (their data, dialogs and pending reads with them);
@@ -35,9 +39,11 @@ function AccessLost() {
 export function AdminLayout() {
   const areaRef = useRef<HTMLDivElement | null>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const contentWidth = useElementWidth(contentRef);
   const firstRender = useRef(true);
   const { pathname } = useLocation();
-  const mode = useAdminLayout(areaRef);
+  const { mode, measured } = useAdminLayout(areaRef);
   const section = sectionForPath(pathname);
   const compactSection = mode === 'compact' && section !== null;
   const [accessLost, setAccessLost] = useState(false);
@@ -71,8 +77,8 @@ export function AdminLayout() {
       <div ref={areaRef} className="@container flex min-h-0 min-w-0 flex-1">
         {mode === 'wide' && !accessLost ? <AdminSidebar /> : null}
         <main ref={scrollerRef} aria-label={section?.label ?? 'Administração'} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-          <div className="flex w-full flex-col gap-4 px-4 py-4 @[520px]:px-6 @[960px]:px-8 @[960px]:py-6">
-            {accessLost ? <AccessLost /> : <Outlet context={{ mode, scroller: scrollerRef } satisfies AdminOutletContext} />}
+          <div ref={contentRef} className="flex w-full flex-col gap-4 px-4 py-4 @[520px]:px-6 @[960px]:px-8 @[960px]:py-6">
+            {accessLost ? <AccessLost /> : <Outlet context={{ mode, measured, tableFits: contentWidth === 0 || contentWidth >= ADMIN_TABLE_MIN, scroller: scrollerRef } satisfies AdminOutletContext} />}
           </div>
         </main>
       </div>

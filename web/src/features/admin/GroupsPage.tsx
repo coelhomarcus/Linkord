@@ -6,14 +6,14 @@ import { buttonVariants } from '@/shared/ui/primitives/button';
 import { useUrlSearch } from '@/shared/hooks/useUrlSearch';
 import { fetchAdminGroups } from './adminApi';
 import type { AdminGroupRow } from './adminApi';
-import { formatWhen } from './adminFormat';
+import { formatDateShort, formatWhen } from './adminFormat';
 import { AdminListToolbar, AdminSelectField } from './AdminListToolbar';
 import { AdminTable, AdminTd, AdminTh, AdminTr } from './AdminTable';
 import { Badge, ListChrome } from './adminUi';
 import { CopyIdButton } from './CopyIdButton';
 import { fromList } from './useAdminBack';
 import { useAdminList } from './useAdminList';
-import { useAdminMode } from './useAdminMode';
+import { useAdminTableFits } from './useAdminMode';
 import { useAdminQuery } from './useAdminQuery';
 import type { QuerySchema } from './useAdminQuery';
 
@@ -54,7 +54,7 @@ function Owner({ group }: { group: AdminGroupRow }) {
 export function GroupsPage() {
   const { filters, update, clear, active, identity } = useAdminQuery(QUERY);
   const { pathname, search } = useLocation();
-  const mode = useAdminMode();
+  const tableFits = useAdminTableFits();
   const { value: query, setValue: setQuery } = useUrlSearch(filters.q, (q) => update({ q }));
   const filter = filters.filter as StatusFilter;
   const fetchPage = useCallback((cursor: string | null) => fetchAdminGroups({
@@ -75,11 +75,11 @@ export function GroupsPage() {
         onClear={active ? clear : undefined}
       />
       <ListChrome list={list} empty="Nenhum grupo encontrado.">
-        {mode === 'wide' ? (
+        {tableFits ? (
           <AdminTable caption="Grupos">
             <thead>
               <tr>
-                <AdminTh>Grupo</AdminTh><AdminTh>Situação</AdminTh><AdminTh>Dono</AdminTh><AdminTh>Membros</AdminTh><AdminTh>Criado em</AdminTh><AdminTh className="text-right">Ações</AdminTh>
+                <AdminTh className="min-w-52">Grupo</AdminTh><AdminTh>Situação</AdminTh><AdminTh>Dono</AdminTh><AdminTh>Membros</AdminTh><AdminTh>Criado em</AdminTh><AdminTh className="text-right">Ações</AdminTh>
               </tr>
             </thead>
             <tbody>
@@ -89,7 +89,7 @@ export function GroupsPage() {
                   <AdminTd><Badge value={g.status} /></AdminTd>
                   <AdminTd className="max-w-40"><Owner group={g} /></AdminTd>
                   <AdminTd>{g.memberCount}</AdminTd>
-                  <AdminTd className="whitespace-nowrap">{formatWhen(g.createdAt)}</AdminTd>
+                  <AdminTd className="whitespace-nowrap">{formatDateShort(g.createdAt)}</AdminTd>
                   <AdminTd><RowActions group={g} /></AdminTd>
                 </AdminTr>
               ))}
