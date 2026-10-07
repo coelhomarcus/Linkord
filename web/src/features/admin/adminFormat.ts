@@ -34,3 +34,9 @@ export function nextDayStartIso(day: string): string | undefined {
   const parsed = parseDay(day);
   return parsed ? new Date(parsed.y, parsed.m - 1, parsed.d + 1).toISOString() : undefined;
 }
+
+export const REPORT_TARGET_LABEL = { user: 'Conta', group: 'Grupo', message: 'Mensagem' } as const;
+
+export const REPORT_RESOLUTION_LABEL: Record<string, string> = {
+  no_action: 'Resolvida sem ação', user_suspended: 'Conta suspensa', group_suspended: 'Grupo suspenso', message_deleted: 'Mensagem apagada',
+};

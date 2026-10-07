@@ -38,6 +38,10 @@ export const ERROR_CODES = {
   already_suspended: 'already_suspended',
   not_suspended: 'not_suspended',
   not_member: 'not_member',
+  already_closed: 'already_closed',
+  not_open: 'not_open',
+  invalid_action: 'invalid_action',
+  action_failed: 'action_failed',
 } as const;
 
 export type KnownErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

@@ -97,7 +97,7 @@ export interface AdminReportDetail {
 }
 export type ReportAction = 'suspend_user' | 'suspend_group' | 'delete_message';
 
-export const fetchAdminReports = (filters: { status?: string }, cursor: string | null) =>
+export const fetchAdminReports = (filters: { status?: string; targetType?: string }, cursor: string | null) =>
   adminFetch<Page<AdminReportRow>>(`/api/admin/reports${qs({ ...filters, cursor })}`);
 export const fetchAdminReport = (id: string) => adminFetch<AdminReportDetail>(`/api/admin/reports/${encodeURIComponent(id)}`);
 export const claimReport = (id: string, reason: string) => post(`/api/admin/reports/${encodeURIComponent(id)}/claim`, { reason });
