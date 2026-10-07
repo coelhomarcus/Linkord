@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { renderAdmin, adminRoom, auditRow } from './adminFixture';
+import { renderWithRoom } from '@tests/fixtures/roomContextFixture';
 import { UserDetailPage } from '@/features/admin/UserDetailPage';
 import * as adminApi from '@/features/admin/adminApi';
 import { ApiError } from '@/shared/api/api';
@@ -15,27 +17,70 @@ const detail = (over: Partial<adminApi.AdminUserDetail['user']> = {}): adminApi.
   storage: { bytes: 2048, files: 2 },
   history: [auditRow()],
 });
-const open = (room = adminRoom()) => renderAdmin(<UserDetailPage />, { path: '/admin/users/u1', pattern: '/admin/users/:id', room });
+const open = (room = adminRoom(), tab = '') => renderAdmin(<UserDetailPage />, { path: `/admin/users/u1${tab ? `?tab=${tab}` : ''}`, pattern: '/admin/users/:id', room });
+const openModeration = (room = adminRoom()) => open(room, 'moderation');
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocked.fetchAdminUser.mockResolvedValue(detail());
+  mocked.fetchAudit.mockResolvedValue({ items: [auditRow()], nextCursor: null });
 });
 
 describe('UserDetailPage', () => {
-  it('shows email, groups, storage and account history', async () => {
+  it('overview shows email, storage and state, with the id in the header', async () => {
     open();
     expect(await screen.findByText('ana@example.com')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Squad' })).toHaveAttribute('href', '/admin/groups/g1');
     expect(screen.getByText(/2.0 KB em 2 arquivo/)).toBeInTheDocument();
-    expect(screen.getByText('Conta suspensa')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Ana' })).toBeInTheDocument();
+    expect(screen.getByText('u1')).toBeInTheDocument();
+    expect(screen.getByText('Ativa')).toBeInTheDocument();
+  });
+
+  it('the groups tab lists the groups with the role of the account in each', async () => {
+    open(adminRoom(), 'groups');
+    expect(await screen.findByRole('link', { name: 'Squad' })).toHaveAttribute('href', '/admin/groups/g1');
+    expect(screen.getByText('Dona do grupo')).toBeInTheDocument();
+  });
+
+  it('the history tab reads the complete history by target, with a cursor', async () => {
+    const u = userEvent.setup();
+    mocked.fetchAudit.mockResolvedValueOnce({ items: [auditRow()], nextCursor: 'c2' }).mockResolvedValue({ items: [auditRow({ id: 'a2', action: 'user.reactivate' })], nextCursor: null });
+    open(adminRoom(), 'history');
+    expect(await screen.findByText('Conta suspensa')).toBeInTheDocument();
     expect(screen.getByText('“spam em massa”')).toBeInTheDocument();
+    expect(mocked.fetchAudit).toHaveBeenCalledWith({ targetType: 'user', targetId: 'u1' }, null);
+    await u.click(screen.getByRole('button', { name: 'Carregar mais' }));
+    expect(await screen.findByText('Conta reativada')).toBeInTheDocument();
+    expect(mocked.fetchAudit).toHaveBeenLastCalledWith({ targetType: 'user', targetId: 'u1' }, 'c2');
+  });
+
+  it('the tabs are links with their own URL, the current one marked', async () => {
+    open();
+    await screen.findByText('ana@example.com');
+    expect(screen.getByRole('link', { name: 'Resumo' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Moderação' })).toHaveAttribute('href', '/admin/users/u1?tab=moderation');
+    expect(screen.getByRole('link', { name: 'Grupos (1)' })).toHaveAttribute('href', '/admin/users/u1?tab=groups');
+  });
+
+  it('only the open tab mounts: moderation actions are not on the overview', async () => {
+    const u = userEvent.setup();
+    open();
+    await screen.findByText('ana@example.com');
+    expect(screen.queryByRole('button', { name: 'Suspender' })).not.toBeInTheDocument();
+    await u.click(screen.getByRole('link', { name: 'Moderação' }));
+    expect(await screen.findByRole('button', { name: 'Suspender' })).toBeInTheDocument();
+    expect(mocked.fetchAudit).not.toHaveBeenCalled();
+  });
+
+  it('an unknown tab in the URL falls back to the overview', async () => {
+    open(adminRoom(), 'banana');
+    expect(await screen.findByText('ana@example.com')).toBeInTheDocument();
   });
 
   it('suspending requires a reason, sends it, and reloads', async () => {
     const u = userEvent.setup();
     mocked.suspendUser.mockResolvedValue({ ok: true });
-    open();
+    openModeration();
     await u.click(await screen.findByRole('button', { name: 'Suspender' }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog.querySelector('button:disabled')).not.toBeNull();
@@ -47,7 +92,7 @@ describe('UserDetailPage', () => {
 
   it('suspended account offers Reactivate (and not Suspend)', async () => {
     mocked.fetchAdminUser.mockResolvedValue(detail({ status: 'suspended', statusReason: 'abuso', statusChangedAt: '2026-01-02T00:00:00.000Z' }));
-    open();
+    openModeration();
     expect(await screen.findByRole('button', { name: 'Reativar conta' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Suspender' })).not.toBeInTheDocument();
     expect(screen.getByText(/“abuso”/)).toBeInTheDocument();
@@ -56,7 +101,7 @@ describe('UserDetailPage', () => {
   it('deleting asks for the username to be typed, and only then calls the API', async () => {
     const u = userEvent.setup();
     mocked.deleteUser.mockResolvedValue({ ok: true });
-    open();
+    openModeration();
     await u.click(await screen.findByRole('button', { name: 'Excluir conta' }));
     await u.type(screen.getByLabelText(/Motivo/), 'requested by the account holder');
     const confirm = screen.getByRole('button', { name: 'Excluir para sempre' });
@@ -68,7 +113,7 @@ describe('UserDetailPage', () => {
   });
 
   it('on your own account, suspend and delete stay disabled', async () => {
-    open(adminRoom('admin', 'u1'));
+    openModeration(adminRoom('admin', 'u1'));
     expect(await screen.findByRole('button', { name: 'Suspender' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Excluir conta' })).toBeDisabled();
   });
@@ -82,7 +127,7 @@ describe('UserDetailPage', () => {
   it('granting admin requires a reason and the username to be typed', async () => {
     const u = userEvent.setup();
     mocked.grantAdmin.mockResolvedValue({ ok: true });
-    open();
+    openModeration();
     await u.click(await screen.findByRole('button', { name: 'Conceder admin' }));
     await u.type(screen.getByLabelText(/Motivo/), 'second trusted person');
     const confirm = screen.getAllByRole('button', { name: 'Conceder admin' }).at(-1)!;
@@ -94,18 +139,18 @@ describe('UserDetailPage', () => {
 
   it('admin account offers Remove admin (disabled on your own)', async () => {
     mocked.fetchAdminUser.mockResolvedValue(detail({ role: 'admin' }));
-    const { unmount } = open();
+    const { unmount } = openModeration();
     expect(await screen.findByRole('button', { name: 'Remover admin' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Conceder admin' })).not.toBeInTheDocument();
     unmount();
 
-    open(adminRoom('admin', 'u1'));
+    openModeration(adminRoom('admin', 'u1'));
     expect(await screen.findByRole('button', { name: 'Remover admin' })).toBeDisabled();
   });
 
   it('suspended account cannot be granted admin', async () => {
     mocked.fetchAdminUser.mockResolvedValue(detail({ status: 'suspended', statusChangedAt: '2026-01-02T00:00:00.000Z' }));
-    open();
+    openModeration();
     expect(await screen.findByRole('button', { name: 'Conceder admin' })).toBeDisabled();
   });
 
@@ -113,7 +158,7 @@ describe('UserDetailPage', () => {
     const u = userEvent.setup();
     mocked.fetchAdminUser.mockResolvedValue(detail({ role: 'admin' }));
     mocked.revokeAdmin.mockRejectedValue(new ApiError(409, 'last_admin', 'x'));
-    open();
+    openModeration();
     await u.click(await screen.findByRole('button', { name: 'Remover admin' }));
     await u.type(screen.getByLabelText(/Motivo/), 'rotation');
     await u.type(screen.getByLabelText(/Para confirmar/), 'ana');
@@ -124,14 +169,14 @@ describe('UserDetailPage', () => {
   it('a mutation that succeeded but whose refresh failed says so, and retrying only re-reads', async () => {
     const u = userEvent.setup();
     mocked.suspendUser.mockResolvedValue({ ok: true });
-    open();
+    openModeration();
     await u.click(await screen.findByRole('button', { name: 'Suspender' }));
     mocked.fetchAdminUser.mockRejectedValueOnce(new Error('offline'));
     await u.type(screen.getByLabelText(/Motivo/), 'confirmed spam');
     await u.click(screen.getAllByRole('button', { name: 'Suspender' }).at(-1)!);
 
     expect(await screen.findByText(/Ação concluída, mas não foi possível atualizar/)).toBeInTheDocument();
-    expect(screen.getByText('ana@example.com')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Ana' })).toBeInTheDocument();
     expect(mocked.suspendUser).toHaveBeenCalledTimes(1);
 
     mocked.fetchAdminUser.mockResolvedValue(detail({ status: 'suspended', statusChangedAt: '2026-01-02T00:00:00.000Z' }));
@@ -139,5 +184,56 @@ describe('UserDetailPage', () => {
     expect(await screen.findByRole('button', { name: 'Reativar conta' })).toBeInTheDocument();
     expect(mocked.suspendUser).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/Ação concluída, mas/)).not.toBeInTheDocument();
+  });
+
+  it('on your own account every unavailable action says why', async () => {
+    openModeration(adminRoom('admin', 'u1'));
+    expect(await screen.findByText('Você não pode suspender a própria conta.')).toBeInTheDocument();
+    expect(screen.getByText('Você não pode excluir a própria conta.')).toBeInTheDocument();
+    expect(screen.getByText(/encerra a sua própria sessão/)).toBeInTheDocument();
+  });
+
+  it('deleting sits apart, in its own danger section, with the real effect spelled out', async () => {
+    openModeration();
+    const danger = (await screen.findByRole('heading', { name: 'Zona de perigo' })).closest('section')!;
+    expect(danger).toHaveTextContent('passam ao membro mais antigo');
+    expect(danger).toHaveTextContent('As mensagens já enviadas continuam no histórico');
+    expect(danger.querySelectorAll('button')).toHaveLength(1);
+  });
+
+  it('revoking ANOTHER account\'s sessions re-reads the account', async () => {
+    const u = userEvent.setup();
+    mocked.revokeUserSessions.mockResolvedValue({ ok: true });
+    openModeration();
+    await u.click(await screen.findByRole('button', { name: 'Revogar sessões' }));
+    await u.type(screen.getByLabelText(/Motivo/), 'stolen device');
+    await u.click(screen.getAllByRole('button', { name: 'Revogar' }).at(-1)!);
+    await waitFor(() => expect(mocked.revokeUserSessions).toHaveBeenCalledWith('u1', 'stolen device'));
+    await waitFor(() => expect(mocked.fetchAdminUser).toHaveBeenCalledTimes(2));
+  });
+
+  it('revoking your OWN sessions ends this session: say so instead of re-reading into a 401', async () => {
+    const u = userEvent.setup();
+    mocked.revokeUserSessions.mockResolvedValue({ ok: true });
+    openModeration(adminRoom('admin', 'u1'));
+    await u.click(await screen.findByRole('button', { name: 'Revogar sessões' }));
+    await u.type(screen.getByLabelText(/Motivo/), 'testing logout');
+    await u.click(screen.getAllByRole('button', { name: 'Revogar' }).at(-1)!);
+    expect(await screen.findByRole('status')).toHaveTextContent('Suas sessões foram encerradas');
+    expect(mocked.fetchAdminUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('the list the admin came from travels through the tabs, so "back" still returns to its query', async () => {
+    const u = userEvent.setup();
+    renderWithRoom(
+      <MemoryRouter initialEntries={[{ pathname: '/admin/users/u1', state: { from: '/admin/users?status=suspended' } }]}>
+        <Routes><Route path="/admin/users/:id" element={<UserDetailPage />} /></Routes>
+      </MemoryRouter>,
+      adminRoom(),
+    );
+    await screen.findByText('ana@example.com');
+    await u.click(screen.getByRole('link', { name: 'Moderação' }));
+    await screen.findByRole('button', { name: 'Suspender' });
+    expect(screen.getByRole('link', { name: '← Usuários' })).toHaveAttribute('href', '/admin/users?status=suspended');
   });
 });
