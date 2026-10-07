@@ -37,6 +37,15 @@ describe('AuditPage', () => {
     await waitFor(() => expect(mocked.fetchAudit).toHaveBeenLastCalledWith(expect.objectContaining({ action: 'user.suspend' }), null));
   });
 
+  it('the period end includes the whole last day: the server gets the start of the next one', async () => {
+    renderAdmin(<AuditPage />, { path: '/admin/audit?from=2026-03-01&to=2026-03-31', pattern: '/admin/audit' });
+    await screen.findByText('Conta suspensa');
+    expect(mocked.fetchAudit).toHaveBeenCalledWith(expect.objectContaining({
+      from: new Date(2026, 2, 1).toISOString(),
+      to: new Date(2026, 3, 1).toISOString(),
+    }), null);
+  });
+
   it('is read-only: there is no edit or delete control', async () => {
     renderAdmin(<AuditPage />, { path: '/admin/audit', pattern: '/admin/audit' });
     await screen.findByText('Conta suspensa');

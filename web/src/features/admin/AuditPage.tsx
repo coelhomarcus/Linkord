@@ -5,7 +5,7 @@ import { Button } from '@/shared/ui/primitives/button';
 import { Input } from '@/shared/ui/primitives/input';
 import { fetchAudit } from './adminApi';
 import type { AuditRow } from './adminApi';
-import { ACTION_LABELS, formatWhen } from './adminFormat';
+import { ACTION_LABELS, dayStartIso, formatWhen, nextDayStartIso } from './adminFormat';
 import { ListChrome } from './adminUi';
 import { useAdminList } from './useAdminList';
 import { useAdminQuery } from './useAdminQuery';
@@ -51,8 +51,9 @@ export function AuditPage() {
   const { from, to } = filters;
   const fetchPage = useCallback((cursor: string | null) => fetchAudit({
     action: filters.action, actor: filters.actor, targetId: filters.targetId,
-    from: from ? new Date(`${from}T00:00:00`).toISOString() : undefined,
-    to: to ? new Date(`${to}T23:59:59.999`).toISOString() : undefined,
+    from: dayStartIso(from),
+    // the server's upper bound is exclusive: "up to this day" is the start of the next one
+    to: nextDayStartIso(to),
   }, cursor), [filters.action, filters.actor, filters.targetId, from, to]);
   const list = useAdminList(fetchPage, identity, (row) => row.id);
   const field = 'h-9 border-white/10 bg-white/[0.04] text-label';
