@@ -4,7 +4,7 @@ import { Button } from '@/shared/ui/primitives/button';
 import { Avatar } from '@/shared/Avatar';
 import { GroupAvatar } from '@/features/conversations/GroupAvatar';
 import { LoadMoreFooter } from '@/features/friends/LoadMoreFooter';
-import { useCursorList } from '@/features/friends/useCursorList';
+import { useCursorList } from '@/shared/hooks/useCursorList';
 import { useFriends } from '@/features/friends/FriendsContext';
 import { fetchNotifications } from '@/shared/api/api';
 import type { NotificationEntry } from '@/shared/api/api';

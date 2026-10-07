@@ -80,10 +80,30 @@ async function listDiskFiles(): Promise<DiskFile[]> {
   return files;
 }
 
+/** Thrown when a sweep is requested while another one is still running. */
+export class SweepInProgressError extends Error {
+  constructor() { super('Já existe uma varredura de arquivos em andamento.'); }
+}
+
+// One sweep at a time per process: two real runs would list the same orphans
+// and race each other's unlinks (each counting the other's deletions as its
+// own), and a preview taken during a run describes a disk that is changing.
+let sweeping = false;
+
+export async function sweepOrphans(opts: { dryRun: boolean; actor: AuditActor | null; requestId?: string; reason?: string }): Promise<SweepResult> {
+  if (sweeping) throw new SweepInProgressError();
+  sweeping = true;
+  try {
+    return await runSweep(opts);
+  } finally {
+    sweeping = false;
+  }
+}
+
 /** `actor` null = the scheduled run. A real (non-dry) run leaves an audit
  * entry; every file it could not delete becomes a `failed` entry instead of
  * disappearing into the log. */
-export async function sweepOrphans(opts: { dryRun: boolean; actor: AuditActor | null; requestId?: string; reason?: string }): Promise<SweepResult> {
+async function runSweep(opts: { dryRun: boolean; actor: AuditActor | null; requestId?: string; reason?: string }): Promise<SweepResult> {
   const files = await listDiskFiles();
   // a staged file has no attachments row yet but is very much in use
   const dbIds = new Set([...(await db.select({ id: attachments.id }).from(attachments)).map((r) => r.id), ...(await stagedFileIds())]);

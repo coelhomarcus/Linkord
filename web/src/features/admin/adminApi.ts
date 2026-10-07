@@ -1,9 +1,29 @@
-import { apiFetch } from '@/shared/api/api';
+import { ApiError, apiFetch } from '@/shared/api/api';
+import { ERROR_CODES } from '@/shared/api/errorCodes';
+import { reportAdminAccessLost, reportAdminSessionEnded } from './adminAccess';
+import { invalidateAdminLists } from './adminListCache';
 
 // Client for /api/admin/* (docs/plano-rede-social.md §9). The server is the
 // authority on every one of these — a non-admin gets 403 whatever the UI shows.
 
 export interface Page<T> { items: T[]; nextCursor: string | null }
+
+/** apiFetch plus two rules, so the area reacts as a whole instead of each page
+ * showing its own error: a 403 `forbidden` means the server no longer sees this
+ * account as an administrator (demoted, suspended, role out of date); a 401
+ * means there is no session any more (expired, revoked — even by this very admin). */
+async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  try {
+    const result = await apiFetch<T>(path, init);
+    // anything but a read may have changed what a remembered list shows
+    if (init?.method && init.method !== 'GET') invalidateAdminLists();
+    return result;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 403 && err.code === ERROR_CODES.forbidden) reportAdminAccessLost();
+    else if (err instanceof ApiError && err.status === 401) reportAdminSessionEnded();
+    throw err;
+  }
+}
 
 function qs(params: Record<string, string | boolean | null | undefined>): string {
   const q = new URLSearchParams();
@@ -15,7 +35,7 @@ function qs(params: Record<string, string | boolean | null | undefined>): string
   return text ? `?${text}` : '';
 }
 
-const post = <T = { ok: true }>(path: string, body: Record<string, unknown>) => apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) });
+const post = <T = { ok: true }>(path: string, body: Record<string, unknown>) => adminFetch<T>(path, { method: 'POST', body: JSON.stringify(body) });
 
 // ---- users -------------------------------------------------------------------
 
@@ -34,16 +54,16 @@ export interface AdminUserDetail {
   history: AuditRow[];
 }
 
-export const fetchAdminUsers = (filters: { q?: string; status?: string; role?: string }, cursor: string | null) =>
-  apiFetch<Page<AdminUserRow>>(`/api/admin/users${qs({ ...filters, cursor })}`);
-export const fetchAdminUser = (id: string) => apiFetch<AdminUserDetail>(`/api/admin/users/${encodeURIComponent(id)}`);
+export const fetchAdminUsers = (filters: { q?: string; status?: string; role?: string; from?: string; to?: string }, cursor: string | null) =>
+  adminFetch<Page<AdminUserRow>>(`/api/admin/users${qs({ ...filters, cursor })}`);
+export const fetchAdminUser = (id: string) => adminFetch<AdminUserDetail>(`/api/admin/users/${encodeURIComponent(id)}`);
 export const suspendUser = (id: string, reason: string) => post(`/api/admin/users/${encodeURIComponent(id)}/suspend`, { reason });
 export const reactivateUser = (id: string, reason: string) => post(`/api/admin/users/${encodeURIComponent(id)}/reactivate`, { reason });
 export const grantAdmin = (id: string, reason: string) => post(`/api/admin/users/${encodeURIComponent(id)}/grant-admin`, { reason });
 export const revokeAdmin = (id: string, reason: string) => post(`/api/admin/users/${encodeURIComponent(id)}/revoke-admin`, { reason });
 export const revokeUserSessions = (id: string, reason: string) => post(`/api/admin/users/${encodeURIComponent(id)}/revoke-sessions`, { reason });
 export const deleteUser = (id: string, reason: string, confirm: string) =>
-  apiFetch<{ ok: true }>(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ reason, confirm }) });
+  adminFetch<{ ok: true }>(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ reason, confirm }) });
 
 // ---- groups ------------------------------------------------------------------
 
@@ -59,13 +79,13 @@ export interface AdminGroupDetail {
 }
 
 export const fetchAdminGroups = (filters: { q?: string; status?: string; orphan?: boolean }, cursor: string | null) =>
-  apiFetch<Page<AdminGroupRow>>(`/api/admin/groups${qs({ ...filters, cursor })}`);
-export const fetchAdminGroup = (id: string, cursor?: string | null) => apiFetch<AdminGroupDetail>(`/api/admin/groups/${encodeURIComponent(id)}${qs({ cursor })}`);
+  adminFetch<Page<AdminGroupRow>>(`/api/admin/groups${qs({ ...filters, cursor })}`);
+export const fetchAdminGroup = (id: string, cursor?: string | null) => adminFetch<AdminGroupDetail>(`/api/admin/groups/${encodeURIComponent(id)}${qs({ cursor })}`);
 export const suspendGroup = (id: string, reason: string) => post(`/api/admin/groups/${encodeURIComponent(id)}/suspend`, { reason });
 export const reactivateGroup = (id: string, reason: string) => post(`/api/admin/groups/${encodeURIComponent(id)}/reactivate`, { reason });
 export const assignGroupOwner = (id: string, userId: string, reason: string) => post(`/api/admin/groups/${encodeURIComponent(id)}/owner`, { userId, reason });
 export const deleteGroup = (id: string, reason: string) =>
-  apiFetch<{ ok: true }>(`/api/admin/groups/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ reason }) });
+  adminFetch<{ ok: true }>(`/api/admin/groups/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ reason }) });
 
 // ---- reports -----------------------------------------------------------------
 
@@ -79,9 +99,9 @@ export interface AdminReportDetail {
 }
 export type ReportAction = 'suspend_user' | 'suspend_group' | 'delete_message';
 
-export const fetchAdminReports = (filters: { status?: string }, cursor: string | null) =>
-  apiFetch<Page<AdminReportRow>>(`/api/admin/reports${qs({ ...filters, cursor })}`);
-export const fetchAdminReport = (id: string) => apiFetch<AdminReportDetail>(`/api/admin/reports/${encodeURIComponent(id)}`);
+export const fetchAdminReports = (filters: { status?: string; targetType?: string }, cursor: string | null) =>
+  adminFetch<Page<AdminReportRow>>(`/api/admin/reports${qs({ ...filters, cursor })}`);
+export const fetchAdminReport = (id: string) => adminFetch<AdminReportDetail>(`/api/admin/reports/${encodeURIComponent(id)}`);
 export const claimReport = (id: string, reason: string) => post(`/api/admin/reports/${encodeURIComponent(id)}/claim`, { reason });
 export const resolveReport = (id: string, input: { reason: string; action: ReportAction | null; dismiss: boolean }) =>
   post(`/api/admin/reports/${encodeURIComponent(id)}/resolve`, input);
@@ -89,7 +109,7 @@ export const resolveReport = (id: string, input: { reason: string; action: Repor
 // ---- audit -------------------------------------------------------------------
 
 export const fetchAudit = (filters: { actor?: string; targetType?: string; targetId?: string; action?: string; from?: string; to?: string }, cursor: string | null) =>
-  apiFetch<Page<AuditRow>>(`/api/admin/audit${qs({ ...filters, cursor })}`);
+  adminFetch<Page<AuditRow>>(`/api/admin/audit${qs({ ...filters, cursor })}`);
 
 // ---- system ------------------------------------------------------------------
 
@@ -103,9 +123,9 @@ export interface SystemInfo {
   livekit: { configured: boolean };
   outbox: { pending: number; failed: number };
   notifications: { unread: number };
-  orphanSweep: { dryRunByDefault: boolean; last: SweepResult | null };
+  orphanSweep: { dryRunByDefault: boolean; /** absent on a server that predates it */ graceMs?: number; last: SweepResult | null };
 }
 
-export const fetchSystem = () => apiFetch<SystemInfo>('/api/admin/system');
+export const fetchSystem = () => adminFetch<SystemInfo>('/api/admin/system');
 export const sweepOrphans = (input: { dryRun: true } | { dryRun: false; reason: string }) =>
-  apiFetch<{ result: SweepResult }>('/api/admin/system/sweep-orphans', { method: 'POST', body: JSON.stringify(input) });
+  adminFetch<{ result: SweepResult }>('/api/admin/system/sweep-orphans', { method: 'POST', body: JSON.stringify(input) });

@@ -11,9 +11,9 @@ import { useFriends } from './FriendsContext';
 import { ListSearch } from './ListSearch';
 import { ListSectionHeader } from './ListSectionHeader';
 import { LoadMoreFooter } from './LoadMoreFooter';
-import { useCursorList } from './useCursorList';
+import { useCursorList } from '@/shared/hooks/useCursorList';
 import { usePendingIds } from './usePendingIds';
-import { useUrlSearch } from './useUrlSearch';
+import { useUrlSearch } from '@/shared/hooks/useUrlSearch';
 
 const HEADING_ID = 'invitations-title';
 const invitationKey = (entry: ReceivedInvitationEntry) => entry.id;

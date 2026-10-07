@@ -4,7 +4,7 @@ import { FriendRequestList } from './FriendRequestList';
 import { useFriends } from './FriendsContext';
 import { ListSearch } from './ListSearch';
 import { ListSectionHeader } from './ListSectionHeader';
-import { useUrlSearch } from './useUrlSearch';
+import { useUrlSearch } from '@/shared/hooks/useUrlSearch';
 
 /** Received and sent requests in one scroll, each with its own pagination. The
  * hash (#received / #sent) is a direct link to a section. */

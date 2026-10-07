@@ -217,7 +217,8 @@ export async function listAdminUsers(filters: AdminUserFilters, cursorRaw?: stri
     .select({ user: users, ts: createdAtIso })
     .from(users)
     .where(and(
-      q ? sql`(lower(${users.username}) like ${`%${q}%`} or lower(${users.displayName}) like ${`%${q}%`})` : undefined,
+      // the exact id uses the raw text: ids are case-sensitive and `q` was lowered and escaped for LIKE
+      q ? sql`(lower(${users.username}) like ${`%${q}%`} or lower(${users.displayName}) like ${`%${q}%`} or ${users.id} = ${filters.q?.trim() ?? ''})` : undefined,
       filters.status === 'active' || filters.status === 'suspended' ? eq(users.status, filters.status) : undefined,
       filters.role === 'admin' || filters.role === 'user' ? eq(users.role, filters.role) : undefined,
       from ? sql`${users.createdAt} >= ${from.toISOString()}::timestamptz` : undefined,

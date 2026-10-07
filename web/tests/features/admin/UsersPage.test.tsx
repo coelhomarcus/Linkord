@@ -19,7 +19,7 @@ beforeEach(() => {
 describe('UsersPage', () => {
   it('lists accounts with status and role, each linking to its detail page', async () => {
     renderAdmin(<UsersPage />, { path: '/admin/users', pattern: '/admin/users' });
-    const link = await screen.findByRole('link', { name: /Ana/ });
+    const link = await screen.findByRole('link', { name: /Ana.*@ana/ });
     expect(link).toHaveAttribute('href', '/admin/users/u1');
     expect(screen.getByText('Suspenso')).toBeInTheDocument();
     expect(screen.getByText('Admin')).toBeInTheDocument();
@@ -30,10 +30,12 @@ describe('UsersPage', () => {
     const u = userEvent.setup();
     renderAdmin(<UsersPage />, { path: '/admin/users', pattern: '/admin/users' });
     await screen.findByText('Ana');
-    await u.click(screen.getByRole('button', { name: 'Suspensos' }));
+    await u.selectOptions(screen.getByLabelText('Situação'), 'suspended');
     await waitFor(() => expect(mocked.fetchAdminUsers).toHaveBeenLastCalledWith({ q: '', status: 'suspended', role: undefined }, null));
-    await u.click(screen.getByRole('button', { name: 'Admins' }));
+    await u.selectOptions(screen.getByLabelText('Papel'), 'admin');
     await waitFor(() => expect(mocked.fetchAdminUsers).toHaveBeenLastCalledWith({ q: '', status: 'suspended', role: 'admin' }, null));
+    await u.selectOptions(screen.getByLabelText('Papel'), 'user');
+    await waitFor(() => expect(mocked.fetchAdminUsers).toHaveBeenLastCalledWith({ q: '', status: 'suspended', role: 'user' }, null));
   });
 
   it('text search and cursor-based pagination', async () => {

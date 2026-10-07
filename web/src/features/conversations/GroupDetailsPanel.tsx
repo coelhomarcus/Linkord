@@ -24,7 +24,7 @@ import { GroupAvatar } from './GroupAvatar';
 import { FriendPicker } from './FriendPicker';
 import { describeInviteOutcome } from './inviteOutcome';
 import { useFriends } from '@/features/friends/FriendsContext';
-import { useCursorList } from '@/features/friends/useCursorList';
+import { useCursorList } from '@/shared/hooks/useCursorList';
 import { ReportDialog } from '@/features/reports/ReportDialog';
 import { fetchGroupInvitations, fetchGroupMembers, inviteToGroup, revokeInvitation } from '@/shared/api/api';
 import type { SocialUser } from '@/shared/api/api';

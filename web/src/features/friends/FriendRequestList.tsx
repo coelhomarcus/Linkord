@@ -7,7 +7,7 @@ import type { Feedback } from './ActionFeedback';
 import { LoadMoreFooter } from './LoadMoreFooter';
 import { SocialUserRow } from './SocialUserRow';
 import { useFriends } from './FriendsContext';
-import { useCursorList } from './useCursorList';
+import { useCursorList } from '@/shared/hooks/useCursorList';
 import { usePendingIds } from './usePendingIds';
 
 export type RequestDirection = 'incoming' | 'outgoing';

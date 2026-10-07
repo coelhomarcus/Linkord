@@ -3,7 +3,7 @@ import { Button } from '@/shared/ui/primitives/button';
 import { fetchBlocks, unblockUser } from '@/shared/api/api';
 import { SocialUserRow } from '@/features/friends/SocialUserRow';
 import { useFriends } from '@/features/friends/FriendsContext';
-import { useCursorList } from '@/features/friends/useCursorList';
+import { useCursorList } from '@/shared/hooks/useCursorList';
 import { usePendingIds } from '@/features/friends/usePendingIds';
 import { ActionFeedback } from '@/features/friends/ActionFeedback';
 import type { Feedback } from '@/features/friends/ActionFeedback';

@@ -4,6 +4,19 @@ import { ERROR_CODES } from '@/shared/api/errorCodes';
 export const REASON_MIN = 3;
 export const REASON_MAX = 500;
 
+/** Mirrors the server's normalizeReason: whitespace runs collapse to one space, so
+ * what the form validates is what the server will accept (and store). */
+export function normalizeReasonText(raw: string): string {
+  return raw.replace(/\s+/g, ' ').trim();
+}
+
+/** The server refused because the entity is no longer in the state the admin was
+ * looking at (409), or is gone (404): what is on screen is out of date. */
+export function isStaleStateError(err: unknown): boolean {
+  const status = (err as { status?: number } | null)?.status;
+  return status === 409 || status === 404;
+}
+
 export function describeAdminError(err: unknown): string {
   if (err instanceof ApiError) {
     switch (err.code) {
@@ -14,6 +27,13 @@ export function describeAdminError(err: unknown): string {
       case ERROR_CODES.already_admin: return 'Essa conta já é administradora.';
       case ERROR_CODES.not_admin: return 'Essa conta não é administradora.';
       case ERROR_CODES.target_inactive: return 'Só uma conta ativa pode virar administradora.';
+      case ERROR_CODES.already_suspended: return 'Já estava suspenso — o estado mudou antes da sua ação. Os dados foram atualizados.';
+      case ERROR_CODES.not_suspended: return 'Já estava ativo — o estado mudou antes da sua ação. Os dados foram atualizados.';
+      case ERROR_CODES.already_closed: return 'Essa denúncia já foi encerrada por outra pessoa. Os dados foram atualizados.';
+      case ERROR_CODES.not_open: return 'Essa denúncia já está em análise. Os dados foram atualizados.';
+      case ERROR_CODES.invalid_action: return 'Essa ação não se aplica a esse tipo de denúncia.';
+      case ERROR_CODES.action_failed: return 'Não foi possível aplicar a ação, então a denúncia continua aberta. Confira o estado do alvo e tente de novo.';
+      case ERROR_CODES.not_member: return 'Essa conta não é mais membro do grupo. A lista de membros foi atualizada.';
       case ERROR_CODES.forbidden: return 'Você não tem mais permissão de administrador.';
       case ERROR_CODES.rate_limited: return 'Muitas ações seguidas. Espere um pouco.';
       default: if (err.message) return err.message;
