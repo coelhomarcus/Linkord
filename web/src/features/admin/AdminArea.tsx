@@ -1,9 +1,9 @@
-import { Navigate, NavLink, Route, Routes } from 'react-router';
+import { Navigate, Route, Routes } from 'react-router';
 import { useRoom } from '@/state/RoomContext';
-import { SocialPageLayout } from '@/features/friends/SocialPageLayout';
 import { ROUTES } from '@/shared/lib/routes';
-import { cn } from '@/shared/lib/utils';
 import { AuditPage } from './AuditPage';
+import { AdminLayout } from './AdminLayout';
+import { AdminIndex } from './AdminNavigation';
 import { GroupDetailPage } from './GroupDetailPage';
 import { GroupsPage } from './GroupsPage';
 import { ReportDetailPage } from './ReportDetailPage';
@@ -11,14 +11,14 @@ import { ReportsPage } from './ReportsPage';
 import { SystemPage } from './SystemPage';
 import { UserDetailPage } from './UserDetailPage';
 import { UsersPage } from './UsersPage';
+import { useAdminMode } from './useAdminMode';
 
-const NAV = [
-  { to: '/admin/users', label: 'Usuários' },
-  { to: '/admin/groups', label: 'Grupos' },
-  { to: '/admin/reports', label: 'Denúncias' },
-  { to: '/admin/audit', label: 'Auditoria' },
-  { to: '/admin/system', label: 'Sistema' },
-] as const;
+/** Bare /admin: the section index when there is no sidebar to pick from,
+ * Users otherwise. Only this entry depends on the mode — a detail URL is
+ * never redirected because of the window size. */
+function AdminEntry() {
+  return useAdminMode() === 'compact' ? <AdminIndex /> : <Navigate to={ROUTES.admin} replace />;
+}
 
 /** The administrative area (docs/plano-rede-social.md §9). Loaded on demand —
  * ordinary users never download it — and mounted under the same shell as the
@@ -30,28 +30,19 @@ export default function AdminArea() {
   if (state.me.role !== 'admin') return <Navigate to={ROUTES.conversations} replace />;
 
   return (
-    <SocialPageLayout title="Administração" subtitle="Área restrita — toda ação fica registrada na auditoria">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-        <nav aria-label="Administração" className="flex flex-wrap gap-1 rounded-lg bg-white/[0.05] p-0.5 self-start">
-          {NAV.map((item) => (
-            <NavLink key={item.to} to={item.to} className={({ isActive }) => cn(
-              'rounded-md px-3 py-1 text-label font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              isActive ? 'bg-primary/15 text-text-primary' : 'text-text-muted hover:text-text-primary',
-            )}>{item.label}</NavLink>
-          ))}
-        </nav>
-        <Routes>
-          <Route path="users" element={<UsersPage />} />
-          <Route path="users/:id" element={<UserDetailPage />} />
-          <Route path="groups" element={<GroupsPage />} />
-          <Route path="groups/:id" element={<GroupDetailPage />} />
-          <Route path="reports" element={<ReportsPage />} />
-          <Route path="reports/:id" element={<ReportDetailPage />} />
-          <Route path="audit" element={<AuditPage />} />
-          <Route path="system" element={<SystemPage />} />
-          <Route path="*" element={<Navigate to="/admin/users" replace />} />
-        </Routes>
-      </div>
-    </SocialPageLayout>
+    <Routes>
+      <Route element={<AdminLayout />}>
+        <Route index element={<AdminEntry />} />
+        <Route path="users" element={<UsersPage />} />
+        <Route path="users/:id" element={<UserDetailPage />} />
+        <Route path="groups" element={<GroupsPage />} />
+        <Route path="groups/:id" element={<GroupDetailPage />} />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="reports/:id" element={<ReportDetailPage />} />
+        <Route path="audit" element={<AuditPage />} />
+        <Route path="system" element={<SystemPage />} />
+        <Route path="*" element={<Navigate to={ROUTES.admin} replace />} />
+      </Route>
+    </Routes>
   );
 }
