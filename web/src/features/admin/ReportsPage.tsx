@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Link } from 'react-router';
 import { Segmented } from '@/features/friends/Segmented';
-import { useCursorList } from '@/features/friends/useCursorList';
+import { useCursorList } from '@/shared/hooks/useCursorList';
 import { categoryLabel } from '@/features/reports/reportCategories';
 import { fetchAdminReports } from './adminApi';
 import { formatWhen } from './adminFormat';

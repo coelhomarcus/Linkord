@@ -5,8 +5,8 @@ import { Button } from '@/shared/ui/primitives/button';
 import { cn } from '@/shared/lib/utils';
 import { fetchFriends } from '@/shared/api/api';
 import type { SocialUser } from '@/shared/api/api';
-import { useCursorList } from '@/features/friends/useCursorList';
-import { useDebouncedValue } from '@/features/friends/useDebouncedValue';
+import { useCursorList } from '@/shared/hooks/useCursorList';
+import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue';
 
 interface FriendPickerProps {
   selected: Map<string, SocialUser>;

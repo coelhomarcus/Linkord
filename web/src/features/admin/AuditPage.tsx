@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { useCursorList } from '@/features/friends/useCursorList';
-import { useDebouncedValue } from '@/features/friends/useDebouncedValue';
+import { useCursorList } from '@/shared/hooks/useCursorList';
+import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue';
 import { Input } from '@/shared/ui/primitives/input';
 import { fetchAudit } from './adminApi';
 import type { AuditRow } from './adminApi';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { useCursorList } from '@/features/friends/useCursorList';
+import { useCursorList } from '@/shared/hooks/useCursorList';
 
 type Row = { id: string };
 const rows = (...ids: string[]): Row[] => ids.map((id) => ({ id }));

@@ -16,10 +16,10 @@ import { SocialConfirmDialog } from './SocialConfirmDialog';
 import type { SocialConfirm } from './SocialConfirmDialog';
 import { SocialUserRow } from './SocialUserRow';
 import { useFriends } from './FriendsContext';
-import { useCursorList } from './useCursorList';
-import { useDebouncedValue } from './useDebouncedValue';
+import { useCursorList } from '@/shared/hooks/useCursorList';
+import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue';
 import { usePendingIds } from './usePendingIds';
-import { useUrlSearch } from './useUrlSearch';
+import { useUrlSearch } from '@/shared/hooks/useUrlSearch';
 
 const friendKey = (entry: SocialEntry) => entry.user.id;
 
