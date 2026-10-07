@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ReasonDialog } from '@/features/admin/ReasonDialog';
 import { ApiError } from '@/shared/api/api';
@@ -48,5 +48,50 @@ describe('ReasonDialog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Suspender' }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('validates and sends the reason the way the server normalizes it', async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = setup();
+    await user.type(screen.getByLabelText(/Motivo/), '   a    ');
+    expect(screen.getByRole('button', { name: 'Suspender' })).toBeDisabled();
+    await user.type(screen.getByLabelText(/Motivo/), '\n\nb');
+    await user.click(screen.getByRole('button', { name: 'Suspender' }));
+    expect(onSubmit).toHaveBeenCalledWith('a b', '');
+  });
+
+  describe('while the request is pending', () => {
+    const pending = () => {
+      let release!: () => void;
+      const onSubmit = vi.fn(() => new Promise<void>((resolve) => { release = resolve; }));
+      return { onSubmit, release: () => release() };
+    };
+
+    it('cannot be dismissed by Cancel, Escape or the close button, and keeps the typed reason', async () => {
+      const user = userEvent.setup();
+      const { onSubmit, release } = pending();
+      const { onOpenChange } = setup({ onSubmit });
+      await user.type(screen.getByLabelText(/Motivo/), 'valid reason');
+      await user.click(screen.getByRole('button', { name: 'Suspender' }));
+
+      expect(screen.getByRole('button', { name: 'Cancelar' })).toBeDisabled();
+      expect(screen.queryByRole('button', { name: 'Fechar' })).not.toBeInTheDocument();
+      await user.keyboard('{Escape}');
+      expect(onOpenChange).not.toHaveBeenCalled();
+      expect(screen.getByLabelText(/Motivo/)).toHaveValue('valid reason');
+
+      release();
+      await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    });
+
+    it('a second click does not send the action twice', async () => {
+      const user = userEvent.setup();
+      const { onSubmit } = pending();
+      setup({ onSubmit });
+      await user.type(screen.getByLabelText(/Motivo/), 'valid reason');
+      await user.click(screen.getByRole('button', { name: 'Suspender' }));
+      await user.click(screen.getByRole('button', { name: 'Aguarde…' }));
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
   });
 });

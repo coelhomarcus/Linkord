@@ -3,7 +3,7 @@ import { Button } from '@/shared/ui/primitives/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/shared/ui/primitives/dialog';
 import { Input } from '@/shared/ui/primitives/input';
 import { Textarea } from '@/shared/ui/primitives/textarea';
-import { REASON_MAX, REASON_MIN, describeAdminError } from './adminErrors';
+import { REASON_MAX, REASON_MIN, describeAdminError, normalizeReasonText } from './adminErrors';
 
 /** Every restrictive or destructive admin action asks for a written reason
  * (§7.5), optionally a typed confirmation, and closes only once the server
@@ -24,15 +24,19 @@ export function ReasonDialog({ open, onOpenChange, title, description, confirmLa
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const reasonOk = reason.trim().length >= REASON_MIN;
+  const normalizedReason = normalizeReasonText(reason);
+  const reasonOk = normalizedReason.length >= REASON_MIN && normalizedReason.length <= REASON_MAX;
   const confirmOk = !confirmText || confirm.trim().toLowerCase() === confirmText.toLowerCase();
 
-  function close() {
+  function finish() {
     onOpenChange(false);
     setReason('');
     setConfirm('');
     setError(null);
-    setBusy(false);
+  }
+
+  function close() {
+    if (!busy) finish();
   }
 
   async function submit() {
@@ -40,8 +44,9 @@ export function ReasonDialog({ open, onOpenChange, title, description, confirmLa
     setBusy(true);
     setError(null);
     try {
-      await onSubmit(reason.trim(), confirm.trim());
-      close();
+      await onSubmit(normalizedReason, confirm.trim());
+      setBusy(false);
+      finish();
     } catch (err) {
       setError(describeAdminError(err));
       setBusy(false);
@@ -50,7 +55,7 @@ export function ReasonDialog({ open, onOpenChange, title, description, confirmLa
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) close(); }}>
-      <DialogContent className="max-w-[calc(100%-2rem)] gap-0 bg-bg-modal p-0 sm:max-w-md">
+      <DialogContent showCloseButton={!busy} className="max-w-[calc(100%-2rem)] gap-0 bg-bg-modal p-0 sm:max-w-md">
         <DialogHeader className="px-6 pt-6 pr-12">
           <DialogTitle className="text-title font-bold text-text-primary">{title}</DialogTitle>
           <DialogDescription className="text-body text-text-secondary">{description}</DialogDescription>
@@ -69,7 +74,7 @@ export function ReasonDialog({ open, onOpenChange, title, description, confirmLa
           {error && <p role="alert" className="text-label text-red-text">{error}</p>}
         </div>
         <DialogFooter className="border-subtle bg-bg-tertiary/60 px-6 py-4">
-          <Button type="button" variant="ghost" onClick={close}>Cancelar</Button>
+          <Button type="button" variant="ghost" disabled={busy} onClick={close}>Cancelar</Button>
           <Button type="button" variant={destructive ? 'destructive' : 'default'} disabled={!reasonOk || !confirmOk || busy} onClick={() => void submit()}>
             {busy ? 'Aguarde…' : confirmLabel}
           </Button>

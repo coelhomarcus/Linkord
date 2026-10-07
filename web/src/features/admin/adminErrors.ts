@@ -4,6 +4,12 @@ import { ERROR_CODES } from '@/shared/api/errorCodes';
 export const REASON_MIN = 3;
 export const REASON_MAX = 500;
 
+/** Mirrors the server's normalizeReason: whitespace runs collapse to one space, so
+ * what the form validates is what the server will accept (and store). */
+export function normalizeReasonText(raw: string): string {
+  return raw.replace(/\s+/g, ' ').trim();
+}
+
 export function describeAdminError(err: unknown): string {
   if (err instanceof ApiError) {
     switch (err.code) {
